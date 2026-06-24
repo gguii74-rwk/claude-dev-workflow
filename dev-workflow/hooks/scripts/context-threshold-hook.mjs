@@ -16,7 +16,12 @@ const DEFAULT_THRESHOLD = 0.4;
 // transcript JSONL 텍스트에서 마지막 assistant usage를 찾아 컨텍스트 사용량을 계산한다.
 export function computeContextUsage(transcriptText, env = {}) {
   const lines = String(transcriptText).split(/\r?\n/);
+  const usedOf = (u) =>
+    ((u && u.input_tokens) || 0) +
+    ((u && u.cache_read_input_tokens) || 0) +
+    ((u && u.cache_creation_input_tokens) || 0);
   let last = null;
+  let peakUsed = 0; // 세션 전체에서 관측된 최대 used(자기보정용)
   for (const line of lines) {
     if (line.trim() === "") continue;
     let obj;
@@ -26,20 +31,27 @@ export function computeContextUsage(transcriptText, env = {}) {
       continue;
     }
     const msg = obj && obj.message;
-    if (msg && msg.role === "assistant" && msg.usage) last = msg;
+    if (msg && msg.role === "assistant" && msg.usage) {
+      last = msg;
+      const turnUsed = usedOf(msg.usage);
+      if (turnUsed > peakUsed) peakUsed = turnUsed;
+    }
   }
   if (!last) return null;
-  const u = last.usage || {};
-  const used =
-    (u.input_tokens || 0) +
-    (u.cache_read_input_tokens || 0) +
-    (u.cache_creation_input_tokens || 0);
+  const used = usedOf(last.usage);
   const model = last.model || "";
   const envLimit = Number(env.CLAUDE_CTX_LIMIT);
+  // 1M 컨텍스트 감지의 한계: transcript의 message.model은 베어 ID("claude-opus-4-8")만 담고,
+  // Claude Code 화면 라벨의 "[1m]" 접미사는 들어오지 않는다 → 1M 세션이라도 used가 한 번도
+  // 200k를 넘기 전엔 model 문자열만으론 1M임을 알 수 없다. 그래서 우선순위:
+  //  (1) CLAUDE_CTX_LIMIT env 오버라이드(최우선·명시),
+  //  (2) model에 "[1m]"이 있거나(미래 호환) peakUsed가 200k 초과면 윈도가 1M임이 확정 → 자기보정,
+  //  (3) 그 외 200k.
+  // 200k 미만 1M 세션은 자동 식별이 원천 불가하므로 CLAUDE_CTX_LIMIT=1000000 설정을 권장한다.
   const limit =
     Number.isFinite(envLimit) && envLimit > 0
       ? envLimit
-      : /\[1m\]/i.test(model)
+      : /\[1m\]/i.test(model) || peakUsed > DEFAULT_LIMIT_STD
         ? DEFAULT_LIMIT_1M
         : DEFAULT_LIMIT_STD;
   return { used, limit, ratio: used / limit, model };
