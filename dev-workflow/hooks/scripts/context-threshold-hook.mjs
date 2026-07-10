@@ -5,7 +5,7 @@
 // 자가 /clear는 불가하므로 실제 초기화는 사용자가 한다(설계 §2).
 
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -13,8 +13,21 @@ const DEFAULT_LIMIT_1M = 1_000_000;
 const DEFAULT_LIMIT_STD = 200_000;
 const DEFAULT_THRESHOLD = 0.4;
 
+// 글로벌 설정(~/.claude/settings.json 또는 CLAUDE_CONFIG_DIR)의 model 값을 읽는다.
+// Claude Code 설정의 model은 "claude-fable-5[1m]"처럼 [1m] 접미사를 보존하므로
+// transcript와 달리 1M 윈도를 세션 초반부터 식별할 수 있다. 실패 시 "".
+export function readSettingsModel(env = {}) {
+  try {
+    const dir = env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+    const settings = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
+    return typeof settings.model === "string" ? settings.model : "";
+  } catch {
+    return "";
+  }
+}
+
 // transcript JSONL 텍스트에서 마지막 assistant usage를 찾아 컨텍스트 사용량을 계산한다.
-export function computeContextUsage(transcriptText, env = {}) {
+export function computeContextUsage(transcriptText, env = {}, settingsModel = "") {
   const lines = String(transcriptText).split(/\r?\n/);
   const usedOf = (u) =>
     ((u && u.input_tokens) || 0) +
@@ -42,16 +55,19 @@ export function computeContextUsage(transcriptText, env = {}) {
   const model = last.model || "";
   const envLimit = Number(env.CLAUDE_CTX_LIMIT);
   // 1M 컨텍스트 감지의 한계: transcript의 message.model은 베어 ID("claude-opus-4-8")만 담고,
-  // Claude Code 화면 라벨의 "[1m]" 접미사는 들어오지 않는다 → 1M 세션이라도 used가 한 번도
-  // 200k를 넘기 전엔 model 문자열만으론 1M임을 알 수 없다. 그래서 우선순위:
+  // Claude Code 화면 라벨의 "[1m]" 접미사는 들어오지 않는다. 그래서 우선순위:
   //  (1) CLAUDE_CTX_LIMIT env 오버라이드(최우선·명시),
-  //  (2) model에 "[1m]"이 있거나(미래 호환) peakUsed가 200k 초과면 윈도가 1M임이 확정 → 자기보정,
+  //  (2) transcript model에 "[1m]"이 있거나(미래 호환) settings.json model에 "[1m]"이 있거나
+  //      peakUsed가 200k 초과면 윈도가 1M임이 확정 → 자기보정,
   //  (3) 그 외 200k.
-  // 200k 미만 1M 세션은 자동 식별이 원천 불가하므로 CLAUDE_CTX_LIMIT=1000000 설정을 권장한다.
+  // settings 감지는 글로벌 설정만 읽으므로, 프로젝트별 model 오버라이드를 쓰거나 세션 중
+  // /model로 바꾼 경우는 CLAUDE_CTX_LIMIT로 명시하는 것이 확실하다.
   const limit =
     Number.isFinite(envLimit) && envLimit > 0
       ? envLimit
-      : /\[1m\]/i.test(model) || peakUsed > DEFAULT_LIMIT_STD
+      : /\[1m\]/i.test(model) ||
+          /\[1m\]/i.test(settingsModel) ||
+          peakUsed > DEFAULT_LIMIT_STD
         ? DEFAULT_LIMIT_1M
         : DEFAULT_LIMIT_STD;
   return { used, limit, ratio: used / limit, model };
@@ -108,7 +124,11 @@ function main() {
 
   let usage;
   try {
-    usage = computeContextUsage(readFileSync(transcriptPath, "utf8"), process.env);
+    usage = computeContextUsage(
+      readFileSync(transcriptPath, "utf8"),
+      process.env,
+      readSettingsModel(process.env),
+    );
   } catch {
     process.exit(0);
   }
