@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "dev-workflow",
   "displayName": "Dev Workflow",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "검증된 개발 워크플로 도구 모음 — 적대검증 반복 루프(review-loop), 분할 구현계획(writing-plans-split), 컨텍스트 임계 핸드오프 넛지(Stop 훅).",
   "author": { "name": "gguii74-rwk" },
   "repository": "https://github.com/gguii74-rwk/claude-dev-workflow",
