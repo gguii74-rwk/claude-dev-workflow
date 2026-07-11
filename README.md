@@ -1,11 +1,12 @@
 # claude-dev-workflow
 
-검증된 개발 워크플로 도구 3종을 단일 Claude Code 플러그인 **`dev-workflow`**로 묶어 배포하는 마켓플레이스. 한 번 설치하면 **모든 프로젝트**에서 쓸 수 있다.
+검증된 개발 워크플로 도구 4종을 단일 Claude Code 플러그인 **`dev-workflow`**로 묶어 배포하는 마켓플레이스. 한 번 설치하면 **모든 프로젝트**에서 쓸 수 있다.
 
 | 도구 | 종류 | 호출 | 역할 |
 |---|---|---|---|
 | review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증→판정·자동수정 반복 (판정 없이 남은 critical/high 0까지) |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 |
+| grill-me | skill | `/dev-workflow:grill-me` | 계획·설계를 실행하기 전, 합의에 도달할 때까지 질문을 한 번에 하나씩 던지는 압박면접 |
 | 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%) 초과 시 핸드오프 작성 + `/clear` 안내를 1회 넛지 |
 
 ## 목차
@@ -15,7 +16,8 @@
 - [사용법](#사용법)
   - [review-loop](#1-review-loop--적대검증-반복-루프)
   - [writing-plans-split](#2-writing-plans-split--분할-구현-계획)
-  - [컨텍스트 임계 핸드오프 훅](#3-컨텍스트-임계-핸드오프-훅-자동)
+  - [grill-me](#3-grill-me--계획-압박면접)
+  - [컨텍스트 임계 핸드오프 훅](#4-컨텍스트-임계-핸드오프-훅-자동)
 - [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
 - [트러블슈팅](#트러블슈팅)
 - [주의](#주의)
@@ -99,7 +101,17 @@ docs/plans/YYYY-MM-DD-<feature>/       # 태스크 본문
 
 실행은 `superpowers:subagent-driven-development`로 — 디스패처가 엔트리포인트의 Shared Contracts + 태스크 1개씩을 서브에이전트에 넘긴다.
 
-### 3. 컨텍스트 임계 핸드오프 훅 (자동)
+### 3. `grill-me` — 계획 압박면접
+
+계획·설계를 실행에 옮기기 전에, 합의(shared understanding)에 도달할 때까지 Claude가 사용자를 집요하게 인터뷰한다. 결정 트리의 각 분기를 하나씩 따라가며 질문을 **한 번에 하나만** 던지고, 매 질문에 추천 답을 함께 제시한다. 코드베이스에서 찾을 수 있는 *사실*은 직접 조사하고 *결정*만 사용자에게 묻는다. 합의 확인 전에는 계획을 실행하지 않는다.
+
+```
+/dev-workflow:grill-me
+```
+
+슬래시 커맨드 외에 "이 계획 grill해줘"처럼 말해도 모델이 자동 호출한다. (출처: [mattpocock/skills](https://github.com/mattpocock/skills)의 grilling 프롬프트 원문 그대로)
+
+### 4. 컨텍스트 임계 핸드오프 훅 (자동)
 
 설치하면 바로 동작한다. 설정 불필요. 대화 컨텍스트 사용량이 임계(기본 40%)를 넘으면, 멈추기 전에 핸드오프를 작성하고 `/clear` 하라고 1회 안내한다 — 컨텍스트가 터져 작업이 끊기기 전에 인계하도록 돕는다.
 
@@ -152,7 +164,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # 마켓플레이스 카탈로그(repo 루트)
 ├── dev-workflow/                     # 플러그인
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
-│   ├── skills/{review-loop,writing-plans-split}/SKILL.md
+│   ├── skills/{review-loop,writing-plans-split,grill-me}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 └── README.md
 ```
