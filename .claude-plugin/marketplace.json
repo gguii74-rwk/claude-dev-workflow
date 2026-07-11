@@ -7,7 +7,7 @@
     {
       "name": "dev-workflow",
       "source": "./dev-workflow",
-      "description": "review-loop · writing-plans-split · harden-spec 스킬 + 컨텍스트 임계 Stop 훅. review-loop는 codex 플러그인을 의존."
+      "description": "dev-cycle · harden-spec · review-loop · writing-plans-split · setup 스킬 + 컨텍스트 임계 Stop 훅. review-loop는 codex 플러그인을 의존."
     }
   ]
 }
