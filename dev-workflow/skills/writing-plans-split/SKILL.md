@@ -1,6 +1,6 @@
 ---
 name: writing-plans-split
-description: Use when you have a spec or requirements for a multi-step task and are about to write an implementation plan that should be split into a thin entrypoint .md plus one file per task (instead of one large plan file). Use instead of superpowers:writing-plans when split plans are preferred in the repo you are working in.
+description: Use when you have a spec or requirements for a multi-step task and are about to write an implementation plan that should be split into a thin entrypoint .md plus one file per task (instead of one large plan file). Use instead of superpowers:writing-plans when split plans are preferred in the repo you are working in. 트리거 예: "분할 계획 짜줘", "plan 나눠서 작성해줘", "구현 계획 작성해줘(분할 plan 규약 repo)", "태스크별 plan 파일로 쪼개줘".
 ---
 
 # Writing Split Plans
