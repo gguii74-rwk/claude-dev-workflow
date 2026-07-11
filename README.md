@@ -6,7 +6,7 @@
 |---|---|---|---|
 | review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증→판정·자동수정 반복 (판정 없이 남은 critical/high 0까지) |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 |
-| grill-me | skill | `/dev-workflow:grill-me` | 계획·설계를 실행하기 전, 합의에 도달할 때까지 질문을 한 번에 하나씩 던지는 압박면접 |
+| harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
 | 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%) 초과 시 핸드오프 작성 + `/clear` 안내를 1회 넛지 |
 
 ## 목차
@@ -16,7 +16,7 @@
 - [사용법](#사용법)
   - [review-loop](#1-review-loop--적대검증-반복-루프)
   - [writing-plans-split](#2-writing-plans-split--분할-구현-계획)
-  - [grill-me](#3-grill-me--계획-압박면접)
+  - [harden-spec](#3-harden-spec--spec-굳히기)
   - [컨텍스트 임계 핸드오프 훅](#4-컨텍스트-임계-핸드오프-훅-자동)
 - [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
 - [트러블슈팅](#트러블슈팅)
@@ -101,15 +101,15 @@ docs/plans/YYYY-MM-DD-<feature>/       # 태스크 본문
 
 실행은 `superpowers:subagent-driven-development`로 — 디스패처가 엔트리포인트의 Shared Contracts + 태스크 1개씩을 서브에이전트에 넘긴다.
 
-### 3. `grill-me` — 계획 압박면접
+### 3. `harden-spec` — spec 굳히기
 
-계획·설계를 실행에 옮기기 전에, 합의(shared understanding)에 도달할 때까지 Claude가 사용자를 집요하게 인터뷰한다. 결정 트리의 각 분기를 하나씩 따라가며 질문을 **한 번에 하나만** 던지고, 매 질문에 추천 답을 함께 제시한다. 코드베이스에서 찾을 수 있는 *사실*은 직접 조사하고 *결정*만 사용자에게 묻는다. 합의 확인 전에는 계획을 실행하지 않는다.
+brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에** 적대적으로 압박해, 늦게 발각되면 재설계를 부르는 갭(놓친 요구·숨은 가정·엣지케이스·교차모듈 파급·불변식 위반)을 파내고 **spec을 그 자리에서 보강**한다. **project-aware** — 실행 repo의 `CLAUDE.md`·ADR·기존 spec을 읽어 *그 프로젝트의 불변식·기결정*으로 압박한다.
 
 ```
-/dev-workflow:grill-me
+/dev-workflow:harden-spec [spec 경로]
 ```
 
-슬래시 커맨드 외에 "이 계획 grill해줘"처럼 말해도 모델이 자동 호출한다. (출처: [mattpocock/skills](https://github.com/mattpocock/skills)의 grilling 프롬프트 원문 그대로)
+질문은 **한 번에 하나**, 위험 높은 것(비가역·교차모듈·불변식)부터. 사실은 코드에서 직접 조사하고 열린 결정만 묻는다. 이미 정해진 것(ADR·기결정)은 재론하지 않는다. 갭 해소마다 spec에 넣을 문구를 제안→승인 시 반영하고, 끝나면 잔여 리스크(DEFERRED)를 명시한 뒤 커밋하고 멈춘다(다음 단계는 새 세션 권고). `review-loop`(codex 산출물 검증) 앞단에서 *사람만 아는 누락*을 먼저 메우는 상보 도구다. "spec 굳혀줘 / 내가 놓친 것 찾아줘 / pre-mortem"처럼 말해도 자동 호출된다.
 
 ### 4. 컨텍스트 임계 핸드오프 훅 (자동)
 
@@ -164,7 +164,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # 마켓플레이스 카탈로그(repo 루트)
 ├── dev-workflow/                     # 플러그인
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
-│   ├── skills/{review-loop,writing-plans-split,grill-me}/SKILL.md
+│   ├── skills/{review-loop,writing-plans-split,harden-spec}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 └── README.md
 ```
