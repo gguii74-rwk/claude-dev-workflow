@@ -1,155 +1,157 @@
 # claude-dev-workflow
 
-검증된 개발 워크플로 도구 모음을 단일 Claude Code 플러그인 **`dev-workflow`**로 묶어 배포하는 마켓플레이스. 한 번 설치하면 **모든 프로젝트**에서 쓸 수 있다.
+**English** | [한국어](README.ko.md) | [日本語](README.ja.md)
 
-| 도구 | 종류 | 호출 | 역할 |
+A marketplace that ships a set of battle-tested development-workflow tools as a single Claude Code plugin, **`dev-workflow`**. Install once, use in **every project**.
+
+| Tool | Kind | Invocation | Role |
 |---|---|---|---|
-| dev-cycle | skill | `/dev-workflow:dev-cycle` | 새 기능의 권장 파이프라인 지도 + 현재 단계 안내 (읽기 전용, 여기서 시작) |
-| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증→판정·자동수정 반복 (판정 없이 남은 critical/high 0까지) |
-| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 |
-| harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
-| setup | skill | `/dev-workflow:setup` | (명시 요청 시) 이 repo의 CLAUDE.md에 파이프라인 규약 포인터를 멱등 삽입 |
-| 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%) 초과 시 핸드오프 작성 + `/clear` 안내를 1회 넛지 |
+| dev-cycle | skill | `/dev-workflow:dev-cycle` | Recommended pipeline map for a new feature + tells you which step you're on (read-only, start here) |
+| review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review → adjudicate/auto-fix, repeated until zero unadjudicated critical/high findings remain |
+| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | Write multi-step implementation plans as a thin entrypoint + one file per task |
+| harden-spec | skill | `/dev-workflow:harden-spec` | Adversarially pressure a draft spec before plan/implementation to dig out missed gaps, assumptions, and invariant violations, and harden the spec in place (project-aware) |
+| setup | skill | `/dev-workflow:setup` | (On explicit request) idempotently insert a pipeline-convention pointer into this repo's CLAUDE.md |
+| Context-threshold nudge | Stop hook | (automatic) | When context usage exceeds a threshold (default 40%), nudges once to write a handoff + `/clear` |
 
-## 목차
+## Table of Contents
 
-- [요구사항](#요구사항)
-- [설치](#설치)
-- [사용법](#사용법)
-  - [dev-cycle](#1-dev-cycle--파이프라인-지도-여기서-시작)
-  - [review-loop](#2-review-loop--적대검증-반복-루프)
-  - [writing-plans-split](#3-writing-plans-split--분할-구현-계획)
-  - [harden-spec](#4-harden-spec--spec-굳히기)
-  - [setup](#5-setup--repo에-파이프라인-채택)
-  - [컨텍스트 임계 핸드오프 훅](#6-컨텍스트-임계-핸드오프-훅-자동)
-- [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
-- [트러블슈팅](#트러블슈팅)
-- [주의](#주의)
-- [개발 / 릴리스](#개발--릴리스)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [dev-cycle](#1-dev-cycle--pipeline-map-start-here)
+  - [review-loop](#2-review-loop--adversarial-review-loop)
+  - [writing-plans-split](#3-writing-plans-split--split-implementation-plans)
+  - [harden-spec](#4-harden-spec--spec-hardening)
+  - [setup](#5-setup--adopt-the-pipeline-in-a-repo)
+  - [Context-threshold handoff hook](#6-context-threshold-handoff-hook-automatic)
+- [Auto-prompting the plugin when a repo is cloned](#auto-prompting-the-plugin-when-a-repo-is-cloned)
+- [Troubleshooting](#troubleshooting)
+- [Caveats](#caveats)
+- [Development / Release](#development--release)
 
-## 요구사항
+## Requirements
 
-- **Claude Code v2.1.140 이상** 권장 (플러그인 의존성 기능 포함).
-- **codex 플러그인** — `review-loop`가 codex의 `adversarial-review`를 호출하므로 `codex@openai-codex` 플러그인을 의존한다. `plugin.json`의 `dependencies`로 선언돼 **설치 시 자동으로 함께 설치**된다(단 `openai-codex` 마켓플레이스가 등록돼 있어야 함 — 아래 설치 참고).
-- **codex CLI 인증은 별도** — 플러그인 의존은 codex *플러그인*만 끌어온다. codex CLI 자체 설치·로그인(`/codex:setup`)은 직접 해야 `review-loop`가 실제로 동작한다. `writing-plans-split`·컨텍스트 훅은 이 인증 없이 바로 동작한다.
+- **Claude Code v2.1.140 or later** recommended (includes plugin dependency support).
+- **codex plugin** — `review-loop` calls codex's `adversarial-review`, so this plugin depends on `codex@openai-codex`. The dependency is declared in `plugin.json`'s `dependencies`, so it is **installed automatically alongside** (provided the `openai-codex` marketplace is registered — see Installation below).
+- **codex CLI authentication is separate** — the plugin dependency only pulls in the codex *plugin*. You must install and log in to the codex CLI yourself (`/codex:setup`) for `review-loop` to actually work. `writing-plans-split` and the context hook work without this authentication.
 
-## 설치
+## Installation
 
-최초 1회만. 아래 줄을 **순서대로 각각** 실행한다(둘 중 하나가 아니라 전부).
+One time only. Run each line below **in order** (all of them, not just one).
 
 ```
-# (codex를 한 번도 쓴 적 없는 사람만) codex 마켓플레이스 등록:
+# (Only if you have never used codex) register the codex marketplace:
 /plugin marketplace add openai/codex-plugin-cc
 
-# 본체:
+# The main plugin:
 /plugin marketplace add gguii74-rwk/claude-dev-workflow
-/plugin install dev-workflow@claude-dev-workflow      # codex 플러그인도 의존성으로 자동 설치
+/plugin install dev-workflow@claude-dev-workflow      # the codex plugin is installed automatically as a dependency
 ```
 
-- `marketplace add`는 "카탈로그 등록"(어디서 받을지 알려주기)이고, `install`이 "실제 설치"다.
-- `dev-workflow@claude-dev-workflow`는 `<플러그인>@<마켓플레이스>` 형식 — 앞이 플러그인, 뒤가 마켓플레이스다(이름이 비슷하지만 다른 것).
-- user 스코프(기본)로 설치하면 모든 프로젝트에서 활성화된다. 한 번 설치하면 이후 세션·다른 프로젝트에서 다시 칠 필요 없다.
+- `marketplace add` is "catalog registration" (telling Claude Code where to fetch from); `install` is the actual installation.
+- `dev-workflow@claude-dev-workflow` follows the `<plugin>@<marketplace>` format — plugin first, marketplace second (similar names, different things).
+- Installing at user scope (the default) enables it in every project. Once installed, you never need to type this again in later sessions or other projects.
 
-**설치 확인:**
+**Verify installation:**
 
 ```
-/plugin                                   # Manage 탭에서 dev-workflow / codex 확인
-# 또는 CLI:
-claude plugin list                        # dev-workflow@claude-dev-workflow, codex@openai-codex 가 보이면 OK
+/plugin                                   # check dev-workflow / codex in the Manage tab
+# or via CLI:
+claude plugin list                        # OK if dev-workflow@claude-dev-workflow and codex@openai-codex appear
 ```
 
-## 사용법
+## Usage
 
-### 1. `dev-cycle` — 파이프라인 지도 (여기서 시작)
+### 1. `dev-cycle` — pipeline map (start here)
 
-새 기능·큰 변경을 어디서부터 어떤 순서로 진행할지 모를 때 호출한다. 이 툴킷의 **권장 개발 파이프라인**과 **지금 어느 단계인지**를 알려주는 **읽기 전용 지도**다(파일 미변경).
+Invoke when you don't know where or in what order to start a new feature or a large change. A **read-only map** that shows this toolkit's **recommended development pipeline** and **which step you're currently on** (modifies no files).
 
 ```
 /dev-workflow:dev-cycle
 ```
 
-권장 순서: **brainstorming → 스펙 → harden-spec → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**. 단계 경계(spec→plan, plan→impl)는 새 세션 + `/clear`가 규약이라, dev-cycle은 **현재 단계만 안내하고 다음은 넛지**한다(한 세션 오토파일럿 아님). 1·7단계(brainstorming·subagent-driven-development)는 `superpowers` 플러그인 권장 — 없으면 자체 설계/구현으로 대체 가능(하드 의존 아님).
+Recommended order: **brainstorming → spec → harden-spec → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**. Stage boundaries (spec→plan, plan→impl) require a fresh session + `/clear` by convention, so dev-cycle **guides only the current step and nudges toward the next** (it is not a single-session autopilot). Steps 1 and 7 (brainstorming, subagent-driven-development) recommend the `superpowers` plugin — without it, you can substitute your own design/implementation process (not a hard dependency).
 
-### 2. `review-loop` — 적대검증 반복 루프
+### 2. `review-loop` — adversarial review loop
 
-각 단계 완료 후 변경을 커밋하고 codex로 적대검증을 돌린다. 결함은 자동수정하거나 판정(disposition)으로 닫으면서, **"판정 없이 남은 critical/high가 0"**이 될 때까지 반복한다. 목표는 "지적사항 0"이 아니라 "미판정 0"이다.
+After each stage, commit your changes and run codex adversarial review. Findings are auto-fixed or closed with a disposition, repeating until **"zero critical/high findings remain unadjudicated."** The goal is not "zero findings" but "zero unadjudicated."
 
-옵션은 전부 선택 — `/dev-workflow:review-loop`만 써도 동작한다.
+All options are optional — plain `/dev-workflow:review-loop` works.
 
-| 옵션 | 기본값 | 역할 |
+| Option | Default | Role |
 |---|---|---|
-| `--phase spec\|plan\|impl` | 자동 추론 | 어느 단계를 검증할지. 생략하면 변경 내용으로 추론 |
-| `--base <ref>` | `main` | 적대검증이 비교하는 기준 브랜치(이 diff를 본다) |
-| `--max <n>` | `5` | 리뷰 반복 횟수의 절대 상한 |
-| `--auto-rounds <n>` | `3` | 초반 n회 **자동 모드** — 결함 자동수정 + 위험 없는 사용자 결정은 모아뒀다 한 번에 질문. `0`=매 라운드 즉시 질문, 보안 민감 작업은 `1` |
-| `--resume` | — | 중단된 루프를 `.remember/remember.md`의 저장 상태(ledger 포함)에서 재개 |
+| `--phase spec\|plan\|impl` | auto-inferred | Which stage to review. If omitted, inferred from the changes |
+| `--base <ref>` | `main` | Base branch the adversarial review diffs against |
+| `--max <n>` | `5` | Hard cap on the number of review iterations |
+| `--auto-rounds <n>` | `3` | First n rounds run in **auto mode** — auto-fix defects and batch up non-risky user decisions to ask at once. `0` = ask immediately every round; use `1` for security-sensitive work |
+| `--resume` | — | Resume an interrupted loop from the saved state (including the ledger) in `.remember/remember.md` |
 
 ```
-/dev-workflow:review-loop --phase impl                  # 구현 검증 (typecheck·lint·test·build 게이트 후)
-/dev-workflow:review-loop --phase spec --auto-rounds 1  # 보안 민감 → 자동 모드 최소화
-/dev-workflow:review-loop --base develop                # main 대신 develop 기준 diff
-/dev-workflow:review-loop --resume                      # 컨텍스트 한계로 끊겼던 루프 이어가기
+/dev-workflow:review-loop --phase impl                  # review the implementation (after typecheck·lint·test·build gates)
+/dev-workflow:review-loop --phase spec --auto-rounds 1  # security-sensitive → minimize auto mode
+/dev-workflow:review-loop --base develop                # diff against develop instead of main
+/dev-workflow:review-loop --resume                      # continue a loop cut off by context limits
 ```
 
-**동작 흐름** — 매 반복: ① 미커밋 변경 커밋 → ② codex 적대검증 실행 → ③ finding을 fingerprint로 분류·판정(FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE) → ④ FIXED는 (impl이면 TDD로) 수정 → ⑤ 게이트 재실행. 미판정 blocking이 0이 되면 종료.
+**How it works** — each iteration: ① commit uncommitted changes → ② run codex adversarial review → ③ classify and adjudicate findings by fingerprint (FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE) → ④ fix FIXED items (via TDD for impl) → ⑤ re-run gates. Terminates when unadjudicated blocking findings reach zero.
 
-> 적대검증은 **커밋된 HEAD(브랜치 diff)** 를 본다. 미커밋 상태로 돌리면 직전 수정을 놓치므로, 루프는 항상 "수정→커밋→리뷰" 순서를 강제한다.
+> Adversarial review looks at the **committed HEAD (branch diff)**. Running it with uncommitted changes misses your latest fixes, so the loop always enforces the order "fix → commit → review."
 
-### 3. `writing-plans-split` — 분할 구현 계획
+### 3. `writing-plans-split` — split implementation plans
 
-spec이 준비된 상태에서 호출하면, 큰 구현 계획을 **얇은 엔트리포인트 + 태스크별 파일**로 쪼개 작성한다. 수천 줄짜리 단일 plan 파일이 작성·리뷰·실행 모두에 주는 부담을 피한다.
+Invoke once a spec is ready: writes a large implementation plan as a **thin entrypoint + one file per task**. Avoids the burden a single thousands-of-lines plan file puts on writing, adversarial review, and execution alike.
 
 ```
 /dev-workflow:writing-plans-split
 ```
 
-산출물 구조:
+Output structure:
 
 ```
-docs/plans/YYYY-MM-DD-<feature>.md     # 얇은 엔트리포인트(목표·아키텍처·Shared Contracts·태스크 표)
-docs/plans/YYYY-MM-DD-<feature>/       # 태스크 본문
-├── task-01-<slug>.md                  # 각 파일이 자족적: Files·TDD 단계·AC·Cautions
+docs/plans/YYYY-MM-DD-<feature>.md     # thin entrypoint (goal, architecture, Shared Contracts, task table)
+docs/plans/YYYY-MM-DD-<feature>/       # task bodies
+├── task-01-<slug>.md                  # each file self-contained: Files, TDD steps, AC, Cautions
 ├── task-02-<slug>.md
 └── task-NN-<slug>.md
 ```
 
-실행은 `superpowers:subagent-driven-development`로 — 디스패처가 엔트리포인트의 Shared Contracts + 태스크 1개씩을 서브에이전트에 넘긴다.
+Execute with `superpowers:subagent-driven-development` — the dispatcher hands each subagent the entrypoint's Shared Contracts plus one task at a time.
 
-### 4. `harden-spec` — spec 굳히기
+### 4. `harden-spec` — spec hardening
 
-brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에** 적대적으로 압박해, 늦게 발각되면 재설계를 부르는 갭(놓친 요구·숨은 가정·엣지케이스·교차모듈 파급·불변식 위반)을 파내고 **spec을 그 자리에서 보강**한다. **project-aware** — 실행 repo의 `CLAUDE.md`·ADR·기존 spec을 읽어 *그 프로젝트의 불변식·기결정*으로 압박한다.
+**Before a brainstormed draft spec moves on to plan/implementation**, adversarially pressure it to dig out the gaps that force a redesign when discovered late (missed requirements, hidden assumptions, edge cases, cross-module ripple, invariant violations), and **harden the spec in place**. **Project-aware** — it reads the running repo's `CLAUDE.md`, ADRs, and existing specs to pressure with *that project's* invariants and prior decisions.
 
 ```
-/dev-workflow:harden-spec [spec 경로]
+/dev-workflow:harden-spec [spec path]
 ```
 
-질문은 **한 번에 하나**, 위험 높은 것(비가역·교차모듈·불변식)부터. 사실은 코드에서 직접 조사하고 열린 결정만 묻는다. 이미 정해진 것(ADR·기결정)은 재론하지 않는다. 갭 해소마다 spec에 넣을 문구를 제안→승인 시 반영하고, 끝나면 잔여 리스크(DEFERRED)를 명시한 뒤 커밋하고 멈춘다(다음 단계는 새 세션 권고). `review-loop`(codex 산출물 검증) 앞단에서 *사람만 아는 누락*을 먼저 메우는 상보 도구다. "spec 굳혀줘 / 내가 놓친 것 찾아줘 / pre-mortem"처럼 말해도 자동 호출된다.
+Questions come **one at a time**, highest-risk first (irreversible, cross-module, invariants). Facts are investigated directly in the code; only open decisions are asked. Settled matters (ADRs, prior decisions) are not relitigated. Each resolved gap becomes a proposed wording change applied to the spec on approval; at the end, residual risks are recorded as DEFERRED, the spec is committed, and the skill stops (next stage recommended in a fresh session). It is the complement that runs ahead of `review-loop` (codex artifact verification), filling in *what only a human knows* first. Also auto-triggers on phrases like "harden this spec" or "find what I missed" or "pre-mortem."
 
-### 5. `setup` — repo에 파이프라인 채택
+### 5. `setup` — adopt the pipeline in a repo
 
-특정 repo가 이 파이프라인을 따르도록 **명시적으로** 채택할 때 호출한다. 프로젝트 CLAUDE.md에 마커 블록으로 **한 줄 포인터**(`dev-cycle`로의 포인터 + 미설치자용 설치법)를 멱등 삽입한다 — 전체 가이드를 복사하지 않으므로, 규약 본문이 바뀌어도(SSOT=`dev-cycle`) 각 repo의 CLAUDE.md는 낡지 않는다.
+Invoke when a repo should **explicitly** adopt this pipeline. Idempotently inserts a marker block with a **one-line pointer** (to `dev-cycle`, plus install instructions for those without the plugin) into the project's CLAUDE.md — it does not copy the full guide, so when the convention body changes (SSOT = `dev-cycle`), each repo's CLAUDE.md never goes stale.
 
 ```
 /dev-workflow:setup
 ```
 
-명시 요청 시에만 동작하며 마커 블록 밖 내용은 건드리지 않는다. 협업자·플러그인 미설치자도 CLAUDE.md만 보고 규약과 설치법을 알 수 있다.
+Runs only on explicit request and never touches content outside the marker block. Collaborators and non-plugin users can learn the convention and how to install just by reading CLAUDE.md.
 
-### 6. 컨텍스트 임계 핸드오프 훅 (자동)
+### 6. Context-threshold handoff hook (automatic)
 
-설치하면 바로 동작한다. 설정 불필요. 대화 컨텍스트 사용량이 임계(기본 40%)를 넘으면, 멈추기 전에 핸드오프를 작성하고 `/clear` 하라고 1회 안내한다 — 컨텍스트가 터져 작업이 끊기기 전에 인계하도록 돕는다.
+Works immediately after installation; no configuration. When conversation context usage crosses a threshold (default 40%), it nudges once to write a handoff and `/clear` before stalling — helping you hand over before context blows up mid-task.
 
-환경변수로 조정(선택):
+Tune via environment variables (optional):
 
 ```
-CLAUDE_CTX_THRESHOLD=0.5    # 임계를 50%로 (0~1, 기본 0.4)
-CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
-                            # 미지정 시 모델명에 [1m]이 있으면 1,000,000 / 아니면 200,000 자동
+CLAUDE_CTX_THRESHOLD=0.5    # set threshold to 50% (0–1, default 0.4)
+CLAUDE_CTX_LIMIT=200000     # set the context token limit explicitly
+                            # if unset: 1,000,000 when the model name contains [1m], otherwise 200,000
 ```
 
-## 특정 repo에서 clone 시 자동 적용
+## Auto-prompting the plugin when a repo is cloned
 
-협업자가 repo를 clone하고 trust할 때 이 플러그인을 자동으로 설치 프롬프트하려면, 그 repo의 `.claude/settings.json`에 마켓플레이스와 활성화를 선언한다:
+To automatically prompt collaborators to install this plugin when they clone and trust a repo, declare the marketplace and enablement in that repo's `.claude/settings.json`:
 
 ```json
 {
@@ -167,30 +169,33 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 }
 ```
 
-`openai-codex`를 함께 선언해야 cross-marketplace 의존(codex)이 자동 해결된다. 협업자는 `/plugin marketplace add`·`/plugin install`을 수동으로 칠 필요 없이, 폴더 trust 시 설치 프롬프트만 수락하면 된다.
+Declaring `openai-codex` alongside lets the cross-marketplace dependency (codex) resolve automatically. Collaborators don't need to type `/plugin marketplace add` or `/plugin install` — they just accept the install prompt when trusting the folder.
 
-## 트러블슈팅
+## Troubleshooting
 
-- **`marketplace add openai/codex-plugin-cc` 에서 SSH 인증 실패** (`Permission denied (publickey)`) — codex를 이미 쓰고 있다면 codex 마켓플레이스가 이미 `openai-codex`로 등록돼 있어 이 줄 자체가 불필요하다. `claude plugin marketplace list`로 `openai-codex`가 보이면 건너뛰면 된다. SSH 키가 없는 환경이면 슬래시 커맨드가 SSH를 시도하다 실패할 수 있는데, 어차피 안 해도 되는 작업이다.
-- **`dependency-unsatisfied` 또는 codex가 안 깔림** — `openai-codex` 마켓플레이스가 등록 안 된 상태다. `/plugin marketplace add openai/codex-plugin-cc` 후 `/plugin install dev-workflow@claude-dev-workflow`를 다시 실행하면 의존이 해결된다.
-- **`review-loop`가 codex 단계에서 멈춤** — codex CLI 미설치/미인증이다. `/codex:setup`으로 설정한다.
-- **스킬이 안 보임** — `/plugin` Manage 탭에서 `dev-workflow`가 enabled인지 확인하고, 안 되면 `/reload-plugins` 또는 Claude Code 재시작. (훅·스킬 외 컴포넌트 변경은 재시작 후 반영)
+- **SSH authentication failure on `marketplace add openai/codex-plugin-cc`** (`Permission denied (publickey)`) — if you already use codex, the codex marketplace is already registered as `openai-codex` and this line is unnecessary. If `claude plugin marketplace list` shows `openai-codex`, skip it. On machines without SSH keys the slash command may try SSH and fail — but you didn't need to run it anyway.
+- **`dependency-unsatisfied` or codex not installed** — the `openai-codex` marketplace isn't registered. Run `/plugin marketplace add openai/codex-plugin-cc`, then `/plugin install dev-workflow@claude-dev-workflow` again to resolve the dependency.
+- **`review-loop` stalls at the codex step** — the codex CLI is not installed/authenticated. Set it up with `/codex:setup`.
+- **Skills not showing up** — check that `dev-workflow` is enabled in the `/plugin` Manage tab; if not, `/reload-plugins` or restart Claude Code. (Changes to components other than hooks/skills take effect after a restart.)
 
-## 주의
+## Caveats
 
-- user 스코프로 설치하면 컨텍스트 임계 Stop 훅이 **모든 프로젝트**에서 동작한다. 넛지 메시지는 `.remember/remember.md`에 핸드오프를 쓰라고 안내하므로, `.remember/`를 쓰지 않는 프로젝트에서는 그 문구만 맞지 않을 뿐 동작은 무해하다.
-- `writing-plans-split`은 분할 plan 관례를 쓰는 repo를 전제로 한다. 단일 plan 파일을 쓰는 repo에서는 `superpowers:writing-plans`를 그대로 쓰면 된다.
+- Installed at user scope, the context-threshold Stop hook runs in **every project**. The nudge message tells you to write a handoff to `.remember/remember.md`; in projects that don't use `.remember/`, only that wording is off — the behavior is harmless.
+- `writing-plans-split` assumes a repo that uses the split-plan convention. In repos using single plan files, just use `superpowers:writing-plans` as is.
 
-## 개발 / 릴리스
+## Development / Release
 
 ```
 claude-dev-workflow/
-├── .claude-plugin/marketplace.json   # 마켓플레이스 카탈로그(repo 루트)
-├── dev-workflow/                     # 플러그인
-│   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
+├── .claude-plugin/marketplace.json   # marketplace catalog (repo root)
+├── dev-workflow/                     # the plugin
+│   ├── .claude-plugin/plugin.json    # name, version, dependencies (codex@openai-codex)
 │   ├── skills/{dev-cycle,harden-spec,writing-plans-split,review-loop,setup}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
-└── README.md
+├── README.md                         # English (default)
+└── README.ko.md / README.ja.md       # Korean / Japanese
 ```
 
-`plugin.json`의 `version`을 올린 커밋에서만 사용자가 업데이트를 받는다. 버전을 생략하면 git commit SHA가 버전이 되어 매 커밋이 새 버전으로 취급된다. 사용자는 `/plugin update` 또는 백그라운드 자동 업데이트로 갱신한다.
+Users receive updates only from commits that bump `version` in `plugin.json`. If the version is omitted, the git commit SHA becomes the version and every commit is treated as a new release. Users update via `/plugin update` or background auto-update.
+
+**The README is maintained in three languages** — `README.md` (English, default) / `README.ko.md` / `README.ja.md`. When changing content, **update all three files together** (drift prevention).
