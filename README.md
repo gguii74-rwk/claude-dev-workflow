@@ -10,6 +10,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review → adjudicate/auto-fix, repeated until zero unadjudicated critical/high findings remain |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | Write multi-step implementation plans as a thin entrypoint + one file per task |
 | harden-spec | skill | `/dev-workflow:harden-spec` | Adversarially pressure a draft spec before plan/implementation to dig out missed gaps, assumptions, and invariant violations, and harden the spec in place (project-aware) |
+| ui-mockup | skill | `/dev-workflow:ui-mockup` | (Optional, step 3.5) When a hardened spec creates or reshapes a screen: diverge non-executable HTML mockups, let the user pick, and record the UI decision in the spec as a settled decision |
 | setup | skill | `/dev-workflow:setup` | (On explicit request) idempotently insert a pipeline-convention pointer into this repo's CLAUDE.md |
 | Context-threshold nudge | Stop hook | (automatic) | When context usage exceeds a threshold (default 40%), nudges once to write a handoff + `/clear` |
 
@@ -22,8 +23,9 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
   - [review-loop](#2-review-loop--adversarial-review-loop)
   - [writing-plans-split](#3-writing-plans-split--split-implementation-plans)
   - [harden-spec](#4-harden-spec--spec-hardening)
-  - [setup](#5-setup--adopt-the-pipeline-in-a-repo)
-  - [Context-threshold handoff hook](#6-context-threshold-handoff-hook-automatic)
+  - [ui-mockup](#5-ui-mockup--ui-mockup-selection)
+  - [setup](#6-setup--adopt-the-pipeline-in-a-repo)
+  - [Context-threshold handoff hook](#7-context-threshold-handoff-hook-automatic)
 - [Auto-prompting the plugin when a repo is cloned](#auto-prompting-the-plugin-when-a-repo-is-cloned)
 - [Troubleshooting](#troubleshooting)
 - [Caveats](#caveats)
@@ -70,7 +72,7 @@ Invoke when you don't know where or in what order to start a new feature or a la
 /dev-workflow:dev-cycle
 ```
 
-Recommended order: **brainstorming → spec → harden-spec → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**. Stage boundaries (spec→plan, plan→impl) require a fresh session + `/clear` by convention, so dev-cycle **guides only the current step and nudges toward the next** (it is not a single-session autopilot). Steps 1 and 7 (brainstorming, subagent-driven-development) recommend the `superpowers` plugin — without it, you can substitute your own design/implementation process (not a hard dependency).
+Recommended order: **brainstorming → spec → harden-spec → ui-mockup (optional, only when screens change) → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**. Stage boundaries (spec→plan, plan→impl) require a fresh session + `/clear` by convention, so dev-cycle **guides only the current step and nudges toward the next** (it is not a single-session autopilot). Steps 1 and 7 (brainstorming, subagent-driven-development) recommend the `superpowers` plugin — without it, you can substitute your own design/implementation process (not a hard dependency).
 
 ### 2. `review-loop` — adversarial review loop
 
@@ -127,7 +129,17 @@ Execute with `superpowers:subagent-driven-development` — the dispatcher hands 
 
 **Pinned to Fable** — frontmatter (`model: fable` + `effort: max`) so the pressure runs on the strongest model regardless of the session model. Questioning is **hybrid**: high-risk gaps (irreversible, cross-module, invariants, AC-changing) are probed one at a time in depth, while remaining judgment gaps go out in batched rounds of up to 4 (AskUserQuestion) **until the ledger is exhausted**. Facts are investigated directly in the code; every judgment gap is asked to the user — **no DEFERRED without a question first**. Settled matters (ADRs, prior decisions) are not relitigated. Each resolved gap becomes a proposed wording change applied to the spec on approval; at the end, residual risks are recorded as DEFERRED, the spec is committed, and the skill stops (next stage recommended in a fresh session). It is the complement that runs ahead of `review-loop` (codex artifact verification), filling in *what only a human knows* first. Also auto-triggers on phrases like "harden this spec" or "find what I missed" or "pre-mortem."
 
-### 5. `setup` — adopt the pipeline in a repo
+### 5. `ui-mockup` — UI mockup selection
+
+**Optional step 3.5 — between `harden-spec` and `review-loop(spec)`.** Invoke when a hardened spec **creates a new screen or changes an existing screen's composition**. It diverges self-contained **non-executable** static HTML mockups, has you pick one, and records the decision in the spec's `## UI 설계` section plus the settled-decision block — so plan and implementation cannot reinterpret the visual direction later. Selections converge into `docs/design/style-guide.md`, which keeps UI from fragmenting feature by feature.
+
+```
+/dev-workflow:ui-mockup [spec path]
+```
+
+Divergence follows repo state: no style guide and no existing UI → **4 distinct styles**; no guide but existing UI → you choose **keep (reverse-extract a guide from it)** or **renew**; guide present → **2–3 layout variants** only. Multi-screen specs diverge the **representative screen alone**; the rest are generated after the pick, so rejected candidates cost nothing. Divergence is capped at 2 rounds total. Nothing is finalized without your confirmation — a combination ("layout 2 + colors 4") is regenerated once and re-confirmed, and the remaining screens of a multi-screen spec get one final check before anything is written to the spec. Output lands in `docs/design/<feature>/`, with candidates and the comparison page committed as history. Minor changes (copy, color, a single control) are skipped entirely, and a call with no target spec is refused — it points you at brainstorming → harden-spec instead.
+
+### 6. `setup` — adopt the pipeline in a repo
 
 Invoke when a repo should **explicitly** adopt this pipeline. Idempotently inserts a marker block with a **one-line pointer** (to `dev-cycle`, plus install instructions for those without the plugin) into the project's CLAUDE.md — it does not copy the full guide, so when the convention body changes (SSOT = `dev-cycle`), each repo's CLAUDE.md never goes stale.
 
@@ -137,7 +149,7 @@ Invoke when a repo should **explicitly** adopt this pipeline. Idempotently inser
 
 Runs only on explicit request and never touches content outside the marker block. Collaborators and non-plugin users can learn the convention and how to install just by reading CLAUDE.md.
 
-### 6. Context-threshold handoff hook (automatic)
+### 7. Context-threshold handoff hook (automatic)
 
 Works immediately after installation; no configuration. When conversation context usage crosses a threshold (default 40%), it nudges once to write a handoff and `/clear` before stalling — helping you hand over before context blows up mid-task.
 
@@ -190,7 +202,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # marketplace catalog (repo root)
 ├── dev-workflow/                     # the plugin
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies (codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,writing-plans-split,review-loop,setup}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── README.md                         # English (default)
 └── README.ko.md / README.ja.md       # Korean / Japanese

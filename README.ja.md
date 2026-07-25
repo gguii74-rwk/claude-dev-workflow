@@ -10,6 +10,7 @@
 | review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー → 裁定・自動修正を反復（未裁定の critical/high が 0 になるまで） |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 多段階の実装プランを薄いエントリポイント + タスク別ファイルに分割して作成 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | plan・実装に進む前に spec ドラフトを敵対的に圧迫し、見逃したギャップ・前提・不変条件違反を掘り出して spec をその場で固める（project-aware） |
+| ui-mockup | skill | `/dev-workflow:ui-mockup` | （オプション、ステップ 3.5）固めた spec が画面を新設・再構成する場合: 非実行の HTML モックアップを発散させてユーザーに選ばせ、UI の決定を spec に既決事項として記録 |
 | setup | skill | `/dev-workflow:setup` | （明示的な依頼時のみ）このリポジトリの CLAUDE.md にパイプライン規約へのポインタを冪等に挿入 |
 | コンテキスト閾値ナッジ | Stop hook | （自動） | コンテキスト使用量が閾値（デフォルト 40%）を超えたら、ハンドオフ作成 + `/clear` を一度だけ促す |
 
@@ -22,8 +23,9 @@
   - [review-loop](#2-review-loop--敵対的レビューの反復ループ)
   - [writing-plans-split](#3-writing-plans-split--分割実装プラン)
   - [harden-spec](#4-harden-spec--spec硬化)
-  - [setup](#5-setup--リポジトリへのパイプライン導入)
-  - [コンテキスト閾値ハンドオフフック](#6-コンテキスト閾値ハンドオフフック自動)
+  - [ui-mockup](#5-ui-mockup--ui-モックアップ選択)
+  - [setup](#6-setup--リポジトリへのパイプライン導入)
+  - [コンテキスト閾値ハンドオフフック](#7-コンテキスト閾値ハンドオフフック自動)
 - [リポジトリ clone 時の自動適用](#リポジトリ-clone-時の自動適用)
 - [トラブルシューティング](#トラブルシューティング)
 - [注意](#注意)
@@ -70,7 +72,7 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 /dev-workflow:dev-cycle
 ```
 
-推奨順序: **brainstorming → spec → harden-spec → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**。段階境界（spec→plan、plan→impl）は新しいセッション + `/clear` が規約のため、dev-cycle は**現在のステップだけを案内し、次へはナッジ**する（1 セッションでのオートパイロットではない）。ステップ 1・7（brainstorming・subagent-driven-development）は `superpowers` プラグインを推奨 — なければ独自の設計/実装プロセスで代替可能（ハード依存ではない）。
+推奨順序: **brainstorming → spec → harden-spec → ui-mockup（オプション — 画面が変わる場合のみ）→ review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**。段階境界（spec→plan、plan→impl）は新しいセッション + `/clear` が規約のため、dev-cycle は**現在のステップだけを案内し、次へはナッジ**する（1 セッションでのオートパイロットではない）。ステップ 1・7（brainstorming・subagent-driven-development）は `superpowers` プラグインを推奨 — なければ独自の設計/実装プロセスで代替可能（ハード依存ではない）。
 
 ### 2. `review-loop` — 敵対的レビューの反復ループ
 
@@ -127,7 +129,17 @@ brainstorming で得た **spec ドラフトを plan・実装に渡す前に**敵
 
 **Fable 固定** — frontmatter（`model: fable` + `effort: max`）により、セッションのモデルに関係なく最強モデルで圧迫する。質問は**ハイブリッド** — リスクの高いギャップ（不可逆・モジュール横断・不変条件・AC 変更）は一つずつ深く、残りの判断ギャップは最大 4 問のバッチラウンド（AskUserQuestion）で**台帳が尽きるまで**尋ねる。事実はコードから直接調査し、判断が絡むギャップはすべてユーザーに尋ねる — **質問を経ない DEFERRED はない**。すでに決まったこと（ADR・既決事項）は蒸し返さない。ギャップが解消するたびに spec へ入れる文言を提案 → 承認時に反映し、終了時は残余リスク（DEFERRED）を明記してコミットし停止する（次の段階は新しいセッションを推奨）。`review-loop`（codex による成果物検証）の前段で、*人間にしか分からない見落とし*を先に埋める補完ツール。「この spec を固めて / 見落としを探して / pre-mortem」のような発話でも自動起動する。
 
-### 5. `setup` — リポジトリへのパイプライン導入
+### 5. `ui-mockup` — UI モックアップ選択
+
+**オプションのステップ 3.5 — `harden-spec` の直後・`review-loop(spec)` の直前。** 固めた spec が**新しい画面を作る、または既存画面の構成を変える**場合に呼ぶ。自己完結型の**非実行**な静的 HTML モックアップを発散させてユーザーに選ばせ、その決定を spec の `## UI 設計` セクション + 再議論禁止（既決事項）ブロックに記録する — plan・実装が視覚方針を後から再解釈できないようにする仕掛けだ。選択結果は `docs/design/style-guide.md` に収束させ、機能ごとに UI が断片化するのを防ぐ。
+
+```
+/dev-workflow:ui-mockup [spec のパス]
+```
+
+発散の形はリポジトリの状態が決める: ガイドなし + 既存 UI なし → **異なるスタイル 4 案** / ガイドなし + 既存 UI あり → **維持（既存 UI からガイドを逆抽出）** か **リニューアル** をユーザーが選択 / ガイドあり → **レイアウト変形 2〜3 案**のみ。複数画面の spec は**代表画面 1 つだけ**を発散し、残りは確定後に生成するため、落選案にコストがかからない。発散は合計 2 ラウンドが上限。**ユーザーの確認なしに確定する経路はない** — 組み合わせ指定（「2 番のレイアウト + 4 番の色」）は 1 回だけ再生成して再確認し、複数画面の残りも spec に記録する前に最終確認を 1 回とる。成果物は `docs/design/<feature>/` に置かれ、候補・比較ページまで履歴としてコミットする。文言・色・単一コントロール程度の軽微な変更は完全にスキップし、対象 spec のない単独呼び出しは拒否して brainstorming → harden-spec の経路を案内する。
+
+### 6. `setup` — リポジトリへのパイプライン導入
 
 特定のリポジトリがこのパイプラインに従うことを**明示的に**採択するときに呼ぶ。プロジェクトの CLAUDE.md にマーカーブロックで**一行ポインタ**（`dev-cycle` へのポインタ + 未インストール者向けのインストール手順）を冪等に挿入する — ガイド全文はコピーしないため、規約本文が変わっても（SSOT = `dev-cycle`）各リポジトリの CLAUDE.md は古びない。
 
@@ -137,7 +149,7 @@ brainstorming で得た **spec ドラフトを plan・実装に渡す前に**敵
 
 明示的な依頼時のみ動作し、マーカーブロック外の内容には触れない。コラボレーターやプラグイン未インストールのユーザーも、CLAUDE.md を読むだけで規約とインストール方法が分かる。
 
-### 6. コンテキスト閾値ハンドオフフック（自動）
+### 7. コンテキスト閾値ハンドオフフック（自動）
 
 インストールすればすぐ動く。設定不要。会話コンテキストの使用量が閾値（デフォルト 40%）を超えると、止まる前にハンドオフを書いて `/clear` するよう一度だけ案内する — コンテキストが溢れて作業が切れる前の引き継ぎを助ける。
 
@@ -190,7 +202,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # マーケットプレイスカタログ（repo ルート）
 ├── dev-workflow/                     # プラグイン
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,writing-plans-split,review-loop,setup}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── README.md                         # 英語（デフォルト）
 └── README.ko.md / README.ja.md       # 韓国語 / 日本語

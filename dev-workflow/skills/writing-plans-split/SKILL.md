@@ -50,6 +50,7 @@ docs/plans/YYYY-MM-DD-<feature>/       # task body directory
 
    - **status:** `[ ]` todo / `[x]` done (markdown checkbox — current convention).
    - **outcome:** filled in one line on completion (files created, key decisions, what later tasks must know). Lightweight context accumulation in markdown — no JSON, no runner.
+5. **UI mockup contract (only when the spec has a `## UI 설계` section):** state the selected mockup path (`docs/design/<feature>/…`) and `docs/design/style-guide.md` as an **implementation contract** — the implemented screen must match the chosen mockup's visual structure. Put it in the entrypoint **and in the Prep of every UI task file**: execution subagents read one task file (plus §Shared Contracts) and never see the spec, so a path that lives only in the entrypoint header does not reach them.
 
 ## Task file `<feature>/task-NN-<slug>.md` (self-contained — target 150–400 lines)
 

@@ -13,12 +13,13 @@ description: Use when starting a new feature or multi-step change, or when unsur
 
 **한 세션에서 전 과정을 자동으로 돌리지 않는다.** 단계 경계마다 새 세션 + `/clear`가 필요하고(아래), Claude는 자가 `/clear`를 못 한다. 그러니 **현재 단계 하나만 수행하고, 다음 단계는 핸드오프로 넘긴다.**
 
-## 권장 파이프라인 (8단계)
+## 권장 파이프라인 (8단계 + 옵션 3.5)
 
 | # | 단계 | 스킬 | 소속 |
 |---|---|---|---|
 | 1–2 | 협업 설계 → spec 초안 | brainstorming | superpowers |
 | 3 | spec 압박·굳히기 (사람 적대) | harden-spec | dev-workflow |
+| 3.5 | UI 목업 선택 (옵션 — spec이 화면을 만들거나 바꿀 때) | ui-mockup | dev-workflow |
 | 4 | spec 적대검증 (codex) | review-loop `--phase spec` | dev-workflow |
 | 5 | 분할 구현계획 | writing-plans-split | dev-workflow |
 | 6 | plan 적대검증 | review-loop `--phase plan` | dev-workflow |
@@ -26,6 +27,7 @@ description: Use when starting a new feature or multi-step change, or when unsur
 | 8 | impl 적대검증 | review-loop `--phase impl` | dev-workflow |
 
 - 1–2단계 후 brainstorming의 기본 종착점(writing-plans)으로 바로 가지 말고 **3–4(harden-spec → review-loop)로 spec을 굳힌 뒤** 5로 간다.
+- **3.5는 옵션**이다 — spec이 새 화면을 만들거나 기존 화면 구성을 바꿀 때만 3과 4 사이에 넣는다(문구·색 같은 경미 변경은 건너뜀). 화면 결정을 굳힌 *뒤* 4를 돌려야 목업발 spec 변경도 적대검증 안에 들어온다.
 - **superpowers 미설치 시**: 1·7단계는 자체 브레인스토밍/구현으로 대체 가능하다. 3–6·8단계(dev-workflow 자체 스킬)만으로도 spec–plan–검증 골격은 완결된다.
 
 ## 단계 경계 = 새 세션 + `/clear`
@@ -37,11 +39,15 @@ spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시
 현 작업의 산출물로 추론해 **해당 단계만** 안내한다:
 
 1. 대응하는 `docs/specs/<feature>`가 없다 → **1–2** (brainstorming으로 spec 초안).
-2. spec은 있으나 아직 안 굳음(harden 미실시 / `## 적대검증 ledger` 미종결) → **3 harden-spec → 4 review-loop(spec)**.
-3. spec이 굳었고 `docs/plans/<feature>`가 없다 → **5 writing-plans-split → 6 review-loop(plan)**.
-4. plan이 있고 구현이 미완이다 → **7 subagent-driven-development → 8 review-loop(impl)**.
+2. spec은 있으나 **harden 미실시**(`## 재논의 금지(기결정)` 블록 없음) → **3 harden-spec**.
+3. spec이 굳었고(재논의 금지 블록 존재) **spec이 새 화면을 만들거나 기존 화면 구성을 바꾸는데**, spec에 **`## UI 설계` 섹션이 없고** 재논의 금지 블록에 목업 생략 기록도 없다 → **3.5 ui-mockup**.
+   - 완료 판정 기준은 **spec의 `## UI 설계` 섹션**이다 — `docs/design/<feature>/` 디렉터리 존재만으로 완료로 보지 않는다.
+   - 섹션이 있으면 거기 적힌 목업 경로가 **실재하는지 확인**한다. 불일치면 완료가 아니라 ui-mockup의 재개 경로로 보낸다.
+4. 3.5가 완료(`## UI 설계` 기록)됐거나 생략 기록이 있고, `## 적대검증 ledger`가 미종결이다 → **4 review-loop(spec)**. 3.5 직후의 다음 단계는 항상 4다 — **5(plan) 직행이나 3(harden-spec) 회귀가 아니다.**
+5. ledger가 종결됐고 `docs/plans/<feature>`가 없다 → **5 writing-plans-split → 6 review-loop(plan)**.
+6. plan이 있고 구현이 미완이다 → **7 subagent-driven-development → 8 review-loop(impl)**.
 
-git 브랜치명·`docs/specs`·`docs/plans`·ledger 상태를 신호로 쓴다. 애매하면 사용자에게 현재 위치를 확인한다.
+git 브랜치명·`docs/specs`·`docs/plans`·`docs/design`·ledger 상태를 신호로 쓴다. 애매하면 사용자에게 현재 위치를 확인한다.
 
 ## 하지 말 것
 

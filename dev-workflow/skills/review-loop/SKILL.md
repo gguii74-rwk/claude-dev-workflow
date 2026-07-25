@@ -180,6 +180,7 @@ iteration++ 하고 2a로 돌아간다(다음 반복도 커밋 후 리뷰).
 - **disposition별 집계**: FIXED / ACCEPTED / DEFERRED_TO_IMPL / OUT_OF_SCOPE / DUPLICATE / ESCALATE, 남은 low.
 - 최종 verdict.
 - **no-AI-trace 확인**: 이번 루프가 만든 커밋 메시지·문서에 AI 도구 흔적이 없는지 grep으로 확인한다(예: `git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with'` + 이번 루프가 수정한 문서 동일 검사). 운영 프로젝트 no-AI-trace 규칙.
+- **(impl 한정) UI 대조 안내**: UI 기능이면(spec에 `## UI 설계` 존재) `docs/design/<feature>/`의 선택 목업·`docs/design/style-guide.md`와 구현된 화면을 **사용자가 수동 대조**하도록 **1회 안내**한다(매 라운드 아님, 자동 비교 없음).
 
 **단계 경계(spec→plan, plan→impl)**:
 - ledger의 ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE를 **다음 단계 진입 전 단계 산출물 문서에 명시**한다(blocking unresolved 채로 다음 단계 진입 금지).

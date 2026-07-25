@@ -10,6 +10,7 @@
 | review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증→판정·자동수정 반복 (판정 없이 남은 critical/high 0까지) |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
+| ui-mockup | skill | `/dev-workflow:ui-mockup` | (옵션, 3.5단계) 굳은 spec이 화면을 만들거나 구성을 바꿀 때: 비실행 HTML 목업을 발산해 사용자가 고르고, UI 결정을 spec에 기결정으로 기록 |
 | setup | skill | `/dev-workflow:setup` | (명시 요청 시) 이 repo의 CLAUDE.md에 파이프라인 규약 포인터를 멱등 삽입 |
 | 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%) 초과 시 핸드오프 작성 + `/clear` 안내를 1회 넛지 |
 
@@ -22,8 +23,9 @@
   - [review-loop](#2-review-loop--적대검증-반복-루프)
   - [writing-plans-split](#3-writing-plans-split--분할-구현-계획)
   - [harden-spec](#4-harden-spec--spec-굳히기)
-  - [setup](#5-setup--repo에-파이프라인-채택)
-  - [컨텍스트 임계 핸드오프 훅](#6-컨텍스트-임계-핸드오프-훅-자동)
+  - [ui-mockup](#5-ui-mockup--ui-목업-선택)
+  - [setup](#6-setup--repo에-파이프라인-채택)
+  - [컨텍스트 임계 핸드오프 훅](#7-컨텍스트-임계-핸드오프-훅-자동)
 - [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
 - [트러블슈팅](#트러블슈팅)
 - [주의](#주의)
@@ -70,7 +72,7 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 /dev-workflow:dev-cycle
 ```
 
-권장 순서: **brainstorming → 스펙 → harden-spec → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**. 단계 경계(spec→plan, plan→impl)는 새 세션 + `/clear`가 규약이라, dev-cycle은 **현재 단계만 안내하고 다음은 넛지**한다(한 세션 오토파일럿 아님). 1·7단계(brainstorming·subagent-driven-development)는 `superpowers` 플러그인 권장 — 없으면 자체 설계/구현으로 대체 가능(하드 의존 아님).
+권장 순서: **brainstorming → 스펙 → harden-spec → ui-mockup(옵션 — 화면이 바뀔 때만) → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**. 단계 경계(spec→plan, plan→impl)는 새 세션 + `/clear`가 규약이라, dev-cycle은 **현재 단계만 안내하고 다음은 넛지**한다(한 세션 오토파일럿 아님). 1·7단계(brainstorming·subagent-driven-development)는 `superpowers` 플러그인 권장 — 없으면 자체 설계/구현으로 대체 가능(하드 의존 아님).
 
 ### 2. `review-loop` — 적대검증 반복 루프
 
@@ -127,7 +129,17 @@ brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에*
 
 **Fable 고정** — frontmatter(`model: fable` + `effort: max`)로 세션 모델과 무관하게 최고 모델로 압박한다. 질문은 **하이브리드** — 위험 높은 갭(비가역·교차모듈·불변식·AC 변경)은 단독으로 깊게, 나머지 판단 갭은 최대 4개 묶음 라운드(AskUserQuestion)로 **소진할 때까지** 묻는다. 사실은 코드에서 직접 조사하고, 판단이 걸린 갭은 전부 사용자에게 묻는다 — **질문을 거치지 않은 DEFERRED는 없다**. 이미 정해진 것(ADR·기결정)은 재론하지 않는다. 갭 해소마다 spec에 넣을 문구를 제안→승인 시 반영하고, 끝나면 잔여 리스크(DEFERRED)를 명시한 뒤 커밋하고 멈춘다(다음 단계는 새 세션 권고). `review-loop`(codex 산출물 검증) 앞단에서 *사람만 아는 누락*을 먼저 메우는 상보 도구다. "spec 굳혀줘 / 내가 놓친 것 찾아줘 / pre-mortem"처럼 말해도 자동 호출된다.
 
-### 5. `setup` — repo에 파이프라인 채택
+### 5. `ui-mockup` — UI 목업 선택
+
+**옵션 3.5단계 — `harden-spec` 직후·`review-loop(spec)` 직전.** 굳은 spec이 **새 화면을 만들거나 기존 화면 구성을 바꿀 때** 호출한다. 자체완결 **비실행** 정적 HTML 목업을 발산해 사용자가 고르게 하고, 그 결정을 spec의 `## UI 설계` 섹션 + 재논의 금지(기결정) 블록에 기록한다 — plan·구현이 시각 방향을 나중에 재해석하지 못하게 막는 장치다. 선택 결과는 `docs/design/style-guide.md`로 수렴해 기능마다 UI가 파편화되는 것을 막는다.
+
+```
+/dev-workflow:ui-mockup [spec 경로]
+```
+
+발산 방식은 repo 상태가 정한다: 가이드 없음 + 기존 UI 없음 → **서로 다른 스타일 4종** / 가이드 없음 + 기존 UI 있음 → **유지(기존 UI에서 가이드 역추출)** 냐 **리뉴얼**이냐를 사용자가 선택 / 가이드 있음 → **레이아웃 변형 2~3종**만. 다중 화면 spec은 **대표 화면 1개만** 발산하고 나머지는 선택 확정 후 생성해, 탈락안에 비용이 들지 않는다. 발산은 총 2라운드 상한. **사용자 확인 없이 확정되는 경로가 없다** — 조합 지정("2번 레이아웃 + 4번 색")은 1회 재생성해 다시 확인받고, 다중 화면의 나머지 화면도 spec에 기록하기 전 최종 확인 1회를 거친다. 산출물은 `docs/design/<feature>/`에 놓이고 후보·비교 페이지까지 이력으로 커밋한다. 문구·색·단일 컨트롤 수준의 경미 변경은 완전히 건너뛰며, 대상 spec 없는 단독 호출은 거부하고 brainstorming → harden-spec 경로를 안내한다.
+
+### 6. `setup` — repo에 파이프라인 채택
 
 특정 repo가 이 파이프라인을 따르도록 **명시적으로** 채택할 때 호출한다. 프로젝트 CLAUDE.md에 마커 블록으로 **한 줄 포인터**(`dev-cycle`로의 포인터 + 미설치자용 설치법)를 멱등 삽입한다 — 전체 가이드를 복사하지 않으므로, 규약 본문이 바뀌어도(SSOT=`dev-cycle`) 각 repo의 CLAUDE.md는 낡지 않는다.
 
@@ -137,7 +149,7 @@ brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에*
 
 명시 요청 시에만 동작하며 마커 블록 밖 내용은 건드리지 않는다. 협업자·플러그인 미설치자도 CLAUDE.md만 보고 규약과 설치법을 알 수 있다.
 
-### 6. 컨텍스트 임계 핸드오프 훅 (자동)
+### 7. 컨텍스트 임계 핸드오프 훅 (자동)
 
 설치하면 바로 동작한다. 설정 불필요. 대화 컨텍스트 사용량이 임계(기본 40%)를 넘으면, 멈추기 전에 핸드오프를 작성하고 `/clear` 하라고 1회 안내한다 — 컨텍스트가 터져 작업이 끊기기 전에 인계하도록 돕는다.
 
@@ -190,7 +202,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # 마켓플레이스 카탈로그(repo 루트)
 ├── dev-workflow/                     # 플러그인
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,writing-plans-split,review-loop,setup}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── README.md                         # 영어(기본)
 └── README.ko.md / README.ja.md       # 한국어 / 일본어
