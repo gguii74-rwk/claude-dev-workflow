@@ -1,6 +1,6 @@
 ---
 name: harden-spec
-description: Use when a spec, design doc, or a plan/idea you already have has been drafted (e.g. after brainstorming) and you want to surface gaps, unstated assumptions, missed edge cases, cross-module ripple, or project-invariant violations before committing to a plan or implementation — so a late discovery does not force a full redesign. 트리거 예: "spec 굳혀줘", "harden this spec", "이 계획/아이디어 압박해줘", "내가 놓친 것 찾아줘", "구멍 찾아줘", "pre-mortem".
+description: Use when a spec, design doc, or a plan/idea you already have has been drafted (e.g. after brainstorming) and you want to surface gaps, unstated assumptions, missed edge cases, cross-module ripple, or project-invariant violations before committing to a plan or implementation — so a late discovery does not force a full redesign. 트리거 예 — "spec 굳혀줘", "harden this spec", "이 계획/아이디어 압박해줘", "내가 놓친 것 찾아줘", "구멍 찾아줘", "pre-mortem".
 model: fable
 effort: max
 ---

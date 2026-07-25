@@ -1,6 +1,6 @@
 ---
 name: ui-mockup
-description: Use when a hardened spec (it has a `## 재논의 금지(기결정)` block) creates a new screen or changes an existing screen's layout/composition, and the visual direction has not yet been chosen and recorded in that spec — pipeline step 3.5, after harden-spec and before review-loop(spec). 트리거 예: "목업 만들어줘", "UI 시안 보여줘", "화면 구성 정하자", "디자인 시안 골라볼래".
+description: Use when a hardened spec (it has a `## 재논의 금지(기결정)` block) creates a new screen or changes an existing screen's layout/composition, and the visual direction has not yet been chosen and recorded in that spec — pipeline step 3.5, after harden-spec and before review-loop(spec). 트리거 예 — "목업 만들어줘", "UI 시안 보여줘", "화면 구성 정하자", "디자인 시안 골라볼래".
 ---
 
 # ui-mockup

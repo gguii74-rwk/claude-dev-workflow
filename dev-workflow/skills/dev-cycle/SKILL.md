@@ -1,6 +1,6 @@
 ---
 name: dev-cycle
-description: Use when starting a new feature or multi-step change, or when unsure which development step to do next, and you want this repo's recommended end-to-end pipeline (design → spec → harden → review → plan → review → implement → review). 트리거 예: "새 기능 시작", "어디서부터 시작해", "개발 사이클", "다음 단계 뭐야", "how do I run this feature end to end".
+description: Use when starting a new feature or multi-step change, or when unsure which development step to do next, and you want this repo's recommended end-to-end pipeline (design → spec → harden → review → plan → review → implement → review). 트리거 예 — "새 기능 시작", "어디서부터 시작해", "개발 사이클", "다음 단계 뭐야", "how do I run this feature end to end".
 ---
 
 # dev-cycle
