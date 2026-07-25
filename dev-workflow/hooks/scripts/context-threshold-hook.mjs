@@ -1,40 +1,26 @@
 #!/usr/bin/env node
 // 컨텍스트 임계 Stop 훅: transcript 마지막 assistant usage로 컨텍스트 사용량을 계산하고,
 // 임계(기본 40%) 초과 시 핸드오프 작성 + /clear 안내를 1회 넛지한다.
+// 윈도 상한은 기본 1M(최신 모델 기준) — 200k 세션은 CLAUDE_CTX_LIMIT로 명시한다.
 // Stop 훅 계약: stdin JSON 입력, 넛지 시 {"decision":"block","reason":...} 출력, 그 외 exit 0.
 // 자가 /clear는 불가하므로 실제 초기화는 사용자가 한다(설계 §2).
 
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_LIMIT_1M = 1_000_000;
-const DEFAULT_LIMIT_STD = 200_000;
+const DEFAULT_LIMIT = 1_000_000;
 const DEFAULT_THRESHOLD = 0.4;
 
-// 글로벌 설정(~/.claude/settings.json 또는 CLAUDE_CONFIG_DIR)의 model 값을 읽는다.
-// Claude Code 설정의 model은 "claude-fable-5[1m]"처럼 [1m] 접미사를 보존하므로
-// transcript와 달리 1M 윈도를 세션 초반부터 식별할 수 있다. 실패 시 "".
-export function readSettingsModel(env = {}) {
-  try {
-    const dir = env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
-    const settings = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
-    return typeof settings.model === "string" ? settings.model : "";
-  } catch {
-    return "";
-  }
-}
-
 // transcript JSONL 텍스트에서 마지막 assistant usage를 찾아 컨텍스트 사용량을 계산한다.
-export function computeContextUsage(transcriptText, env = {}, settingsModel = "") {
+export function computeContextUsage(transcriptText, env = {}) {
   const lines = String(transcriptText).split(/\r?\n/);
   const usedOf = (u) =>
     ((u && u.input_tokens) || 0) +
     ((u && u.cache_read_input_tokens) || 0) +
     ((u && u.cache_creation_input_tokens) || 0);
   let last = null;
-  let peakUsed = 0; // 세션 전체에서 관측된 최대 used(자기보정용)
   for (const line of lines) {
     if (line.trim() === "") continue;
     let obj;
@@ -44,32 +30,19 @@ export function computeContextUsage(transcriptText, env = {}, settingsModel = ""
       continue;
     }
     const msg = obj && obj.message;
-    if (msg && msg.role === "assistant" && msg.usage) {
-      last = msg;
-      const turnUsed = usedOf(msg.usage);
-      if (turnUsed > peakUsed) peakUsed = turnUsed;
-    }
+    if (msg && msg.role === "assistant" && msg.usage) last = msg;
   }
   if (!last) return null;
   const used = usedOf(last.usage);
   const model = last.model || "";
   const envLimit = Number(env.CLAUDE_CTX_LIMIT);
-  // 1M 컨텍스트 감지의 한계: transcript의 message.model은 베어 ID("claude-opus-4-8")만 담고,
-  // Claude Code 화면 라벨의 "[1m]" 접미사는 들어오지 않는다. 그래서 우선순위:
-  //  (1) CLAUDE_CTX_LIMIT env 오버라이드(최우선·명시),
-  //  (2) transcript model에 "[1m]"이 있거나(미래 호환) settings.json model에 "[1m]"이 있거나
-  //      peakUsed가 200k 초과면 윈도가 1M임이 확정 → 자기보정,
-  //  (3) 그 외 200k.
-  // settings 감지는 글로벌 설정만 읽으므로, 프로젝트별 model 오버라이드를 쓰거나 세션 중
-  // /model로 바꾼 경우는 CLAUDE_CTX_LIMIT로 명시하는 것이 확실하다.
-  const limit =
-    Number.isFinite(envLimit) && envLimit > 0
-      ? envLimit
-      : /\[1m\]/i.test(model) ||
-          /\[1m\]/i.test(settingsModel) ||
-          peakUsed > DEFAULT_LIMIT_STD
-        ? DEFAULT_LIMIT_1M
-        : DEFAULT_LIMIT_STD;
+  // 컨텍스트 윈도 크기는 런타임에서 알 수 없다 — transcript의 message.model은 베어 ID
+  // ("claude-opus-5")만 담고 Claude Code 화면 라벨의 "[1m]" 접미사가 없으며, usage·diagnostics에도
+  // 윈도 크기가 없다. /model 런타임 선택은 settings.json에도 기록되지 않는다.
+  // 그래서 최신 모델 기준인 1M을 기본으로 두고, 200k 세션에서만 CLAUDE_CTX_LIMIT로 명시한다.
+  // (과대평가가 더 해롭다: 1M 세션에 200k를 가정하면 실제 8% 사용 시점에 40% 임계로 오판해
+  //  멀쩡한 작업을 조기 종료시킨다. 과소평가는 auto-compact가 후위 안전망으로 남는다.)
+  const limit = Number.isFinite(envLimit) && envLimit > 0 ? envLimit : DEFAULT_LIMIT;
   return { used, limit, ratio: used / limit, model };
 }
 
@@ -124,11 +97,7 @@ function main() {
 
   let usage;
   try {
-    usage = computeContextUsage(
-      readFileSync(transcriptPath, "utf8"),
-      process.env,
-      readSettingsModel(process.env),
-    );
+    usage = computeContextUsage(readFileSync(transcriptPath, "utf8"), process.env);
   } catch {
     process.exit(0);
   }

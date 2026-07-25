@@ -158,7 +158,8 @@ Tune via environment variables (optional):
 ```
 CLAUDE_CTX_THRESHOLD=0.5    # set threshold to 50% (0–1, default 0.4)
 CLAUDE_CTX_LIMIT=200000     # set the context token limit explicitly
-                            # if unset: 1,000,000 when the model name contains [1m], otherwise 200,000
+                            # if unset: 1,000,000 (current models). Set this only for 200k-window
+                            # models — the window size is not knowable at runtime, so it is not detected
 ```
 
 ## Auto-prompting the plugin when a repo is cloned
