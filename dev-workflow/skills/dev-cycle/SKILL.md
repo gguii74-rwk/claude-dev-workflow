@@ -43,7 +43,7 @@ spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시
 3. spec이 굳었고(재논의 금지 블록 존재) **spec이 새 화면을 만들거나 기존 화면 구성을 바꾸는데**, spec에 **`## UI 설계` 섹션이 없고** 재논의 금지 블록에 목업 생략 기록도 없다 → **3.5 ui-mockup**.
    - 완료 판정 기준은 **spec의 `## UI 설계` 섹션**이다 — `docs/design/<feature>/` 디렉터리 존재만으로 완료로 보지 않는다.
    - 섹션이 있으면 거기 적힌 목업 경로가 **실재하는지 확인**한다. 불일치면 완료가 아니라 ui-mockup의 재개 경로로 보낸다.
-4. 3.5가 완료(`## UI 설계` 기록)됐거나 생략 기록이 있고, `## 적대검증 ledger`가 미종결이다 → **4 review-loop(spec)**. 3.5 직후의 다음 단계는 항상 4다 — **5(plan) 직행이나 3(harden-spec) 회귀가 아니다.**
+4. spec이 굳었고 `## 적대검증 ledger`가 미종결이며, **3.5 비대상**(화면을 만들거나 바꾸지 않음·경미 변경)이거나 3.5가 완료(`## UI 설계` 기록)됐거나 생략 기록이 있다 → **4 review-loop(spec)**. 3.5 직후의 다음 단계는 항상 4다 — **5(plan) 직행이나 3(harden-spec) 회귀가 아니다.**
 5. ledger가 종결됐고 `docs/plans/<feature>`가 없다 → **5 writing-plans-split → 6 review-loop(plan)**.
 6. plan이 있고 구현이 미완이다 → **7 subagent-driven-development → 8 review-loop(impl)**.
 

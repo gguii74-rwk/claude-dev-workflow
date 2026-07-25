@@ -172,3 +172,16 @@ review-loop(spec) 판정 기록. fingerprint = file + 정규화 title + 정규�
 | L13 | 조합본이 생성 결과 확인 없이 확정(선택된 건 조합 규칙) → 결과 최종 확인 게이트 | medium | FIXED (R5) | §4-3 조합본 비교 페이지 표시 + 최종 확인 1회 후 확정, 거부 시 수정 요청 루프(재조합 금지·D5 재생성 1회 준수), §7 AC 보강. L2와 동일 원리 |
 
 **미확인 FIXED 이월(확인 부채):** L11·L12·L13은 R5(최종 라운드) 수정이라 후속 리뷰로 소멸을 확인하지 못했다. **plan phase review-loop 진입 시 필수 확인 항목**으로 이월한다(§2h ① 경로) — plan 리뷰 R1에서 이 3건의 반영 상태를 우선 대조할 것.
+→ **이월 해소(impl R1):** plan phase는 사용자 결정으로 생략(writing-skills TDD 직접 구현)되어 impl 리뷰 R1이 이월 확인 라운드를 대신했다. **L11·L12·L13 전부 R1에서 재지목되지 않아 소멸 확인** — 각각 dev-cycle 판별 시나리오 D1~D3(L11) · S9 및 재실행(L12) · S8(L13)로 실행 검증도 완료.
+
+## 적대검증 ledger (impl)
+
+review-loop(impl) 판정 기록. 대상 = ui-mockup SKILL.md 본문 + 연동 4곳(dev-cycle·harden-spec·review-loop·writing-plans-split) + 릴리스 파일. base = `92de869`.
+
+| # | fingerprint (요지) | severity | disposition | 근거 / 연결 |
+|---|---|---|---|---|
+| I1 | dev-cycle 판별 4번이 3.5 완료·생략 기록을 전제해 **비-UI spec이 harden 이후 어떤 규칙에도 걸리지 않는다**(파이프라인 중단) | high | FIXED (R1) | 실제 회귀 확인 — 0.6.0 규칙 2번이 담당했던 "ledger 미종결" 경로가 3.5 도입 시 4번으로 이동하며 UI 전제가 붙었다. 판별 4번을 `ledger 미종결 && (3.5 비대상 \|\| 완료 \|\| 생략)`으로 수정 |
+| I2 | 다중 화면 파일명 `screen-<n>-<이름>.html`의 `<이름>`이 미검증 — spec 화면 이름에 `/`·`..`가 있으면 feature 디렉터리 밖으로 쓴다 | high | FIXED (R1, 경량) | L5 계열이나 **적용 위치가 다르다**(L5=feature 슬러그, I2=생성 파일명) → DUPLICATE 아님. §절차 4-1에 `<이름>` 슬러그화 명시 + red flag를 "슬러그·생성 파일명"으로 확장. 권고 중 **"쓰기 직전 realpath containment 검증"은 G2로 미수용**(기계 검증 장치는 위협 모델 밖) |
+| I3 | UI 재선택으로 `## UI 설계`가 갱신돼도 종결된 spec ledger가 무효화되지 않아 plan으로 직행 → ledger에 검토 commit/revision 기록 | medium | DUPLICATE (G1 / L4) | G1이 각하한 "완료 레코드 digest·spec 변경 시 자동 무효화" 재론이다. 재선택 경로는 D11(종료 = review-loop(spec) 권고 후 정지)과 §절차 §언제(명시 재선택 시 섹션 갱신)가 커버 — 재수정·재논의 금지 |
+| I4 | 나머지 화면 생성에 병렬 지시 없음 — 실측 화면 1개 26분+, N화면 순차 누적(§절차 2에는 병렬 지시가 있으나 4-1에는 없음) | medium | FIXED (R1) | codex R1 미지목 · 로컬 실전 테스트(F1 완주) 발견 항목. §절차 4-1에 "2개 이상이면 §절차 2와 같이 서브에이전트 병렬 생성" 추가 |
+| I5 | 커밋 단계에서 무관한 untracked 파일에 `rm -rf` 즉흥 실행(사전 존재 확인 없음) | high | FIXED (R1 이전, 커밋 `82b8b2a`) | 파괴적 경로라 리뷰 대기 없이 선처리. §절차 5·합리화 표·red flag 3곳에 "명시 stage이므로 다른 untracked·변경 파일은 지우거나 정리하지 않는다" 반영. **재검증 S11 통과**(미끼 untracked 3개 전부 생존, `rm`·`git clean`·`git add -A` 실행 0건). R1에서 재지목되지 않아 소멸 확인 |
