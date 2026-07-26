@@ -147,6 +147,8 @@ Invoke when a repo should **explicitly** adopt this pipeline. Idempotently inser
 /dev-workflow:setup
 ```
 
+It then asks for the **context window size** used by the threshold hook (`CLAUDE_CTX_LIMIT`) and writes it to settings.json (global or project — your choice). The hook cannot know the window size at runtime, so it assumes 1M; on a 200k model you need to state it for the nudge to fire on time.
+
 Runs only on explicit request and never touches content outside the marker block. Collaborators and non-plugin users can learn the convention and how to install just by reading CLAUDE.md.
 
 ### 7. Context-threshold handoff hook (automatic)
