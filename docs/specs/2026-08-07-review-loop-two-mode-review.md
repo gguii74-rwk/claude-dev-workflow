@@ -375,3 +375,29 @@ D5 ESCALATE에 대한 사용자 선택 = whole-branch 리뷰 재실행. `--resum
 - 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b).
 - 미확인 FIXED 큐(R5 수정 후, 확인 라운드 임무 ① 대상): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 · fp-J4 · fp-J5 · fp-J6 · fp-J7 · fp-J8 (**10건**).
 - 루프 직접 판정(임무 ③ 감사 대상): fp-I8 재지목 DUPLICATE(5회) · fp-I7 계열 재지목 DUPLICATE(2회). fp-J3은 사용자 확정이라 감사 대상 제외.
+- 루프 커밋: `8201e1b`.
+
+#### 확인 라운드 C1 (2026-08-08) — 응답 완전, 확인 예산 1/2 소진
+
+base `04a9fbf` / target `8201e1b` 고정. 응답 수신 후 branch·HEAD·clean 재확인 통과. 응답 완전성 계약 5요소(큐 전 fingerprint별 명시 결과 · 회귀 확인 · 판정 감사 · 신규 finding 명시 · verdict) 전부 충족 → 예산 차감.
+
+- **소멸 확인(10건, 전건)**: fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 · fp-J4 · fp-J5 · fp-J6 · fp-J7 · fp-J8.
+  - fp-J4는 R5에서 한 번 잔존 판정을 받은 이력이 있어 두 위치(§확인 모드 결과 처리 L160 · §2h L278)의 문구 일치를 별도 확인 요청했고, 확인 리뷰가 양쪽 모두 "batch flush만 수행, 일반 확인 예산 검사 면제"로 일치함을 명시 판정.
+- **회귀**: 없음 — §두 큐 · §자동 모드 · §2c · §2e · §2h · §2j · §종료 조건 요약 · §하지 말 것과 일관.
+- **판정 감사**: [A] fp-I8 재지목 DUPLICATE **적정**(5회 전부 의미적 동일, 원 disposition OUT_OF_SCOPE 유지·오매칭 아님) · [B] fp-I7 계열 재지목 DUPLICATE **적정**(fp-I7/fp-I13 계열과 동일, 확인 부채 재서술).
+- **신규 finding**: 없음.
+- **verdict**: **통과**.
+- **미확인 FIXED 큐: 0건** — 확인 부채 0.
+
+### 새 루프 종결 (2026-08-08) — 성공 종료
+
+**§2e 성공 종료 불변식 3종 충족**: 미판정 blocking 0 · 미확인 FIXED 큐 빔 · 확인 라운드 verdict 통과.
+
+- 예산 소비: 적대 5/5(R1~R5) · 확인 1/2(C1). **복귀 미사용** · 재진입 확인 미사용.
+- 전환용 score 이력(신산식): R1 = 5 → R2 = 4 → R3 = 7 → R4 = 4 → R5 = 3 → C1 = 0. (R1·R2의 구산식 값 5·9는 위 R2 항목에 산식 병기로 보존)
+- disposition 집계: **FIXED 10건 전건 소멸 확인**(fp-J1·fp-J2·fp-J3·fp-J4·fp-J5·fp-J6·fp-J7·fp-J8 신규 8 + 이월 fp-I11·fp-I14 2) · **DUPLICATE 7건**(fp-I8 재지목 5 + fp-I7 계열 재지목 2) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0(신규) · ESCALATE 1건은 사용자 확정으로 FIXED 전환(fp-J3).
+- low/DEFER_LOW: 없음. batch ESCALATE 적재: 없음(즉시군 1건만 발생, 그 자리에서 처리).
+- 루프 커밋: `7e8e7be`(R1) → `5eb2a1b`(R2) → `44738d3`(R3) → `23ac932`(R4) → `8201e1b`(R5) → 종료 전 커밋(C1 기록).
+- **직전 루프 대비**: 이월된 fp-I11·fp-I14가 R1에서 곧바로 재지목되어 재판정·재수정됐고, 그 수정이 다시 파생 결함(fp-J2→fp-J4)을 낳는 연쇄가 R5까지 이어졌다. score 산식 개정(fp-J3, 사용자 확정)으로 적대 5라운드를 끝까지 쓴 뒤 확인에 들어간 것이 큐 전건 1회 소멸로 이어졌다 — 직전 루프는 적대 3라운드에서 조기 전환해 C1·C2 두 라운드가 모두 잔존을 냈다.
+
+**릴리스 전 필수 follow-up(fp-I8, OUT_OF_SCOPE 유지·감사 적정)**: `dev-workflow/.claude-plugin/plugin.json` 0.7.1 → 0.8.0 범프 + README en/ko/ja에 2모드·`--max` 의미 변경·`--confirm-rounds`·최대 라운드 수(기본값 기준 9) 반영. 이 후속 없이는 다른 머신이 변경을 받지 못하고 `--max`를 여전히 전체 상한으로 읽는다.
