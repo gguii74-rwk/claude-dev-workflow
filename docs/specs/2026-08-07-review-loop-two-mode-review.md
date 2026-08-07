@@ -294,3 +294,22 @@ base `04a9fbf` / target `6d955a1` 고정. 응답 수신 후 branch·HEAD·clean 
 - **D5 발동**: 복귀 1회 사용 + 재진입 확인에서 또 blocking → **ESCALATE(사용자 판정)**, whole-branch 리뷰 권고 동반.
 - 예산 현황: 적대 소진 3/5 · 복귀 적대 1(상한 밖, 소진) · 확인 소진 1/2 · 재진입 확인 1(상한 밖, 소진). **확인 예산 잔여 1회.**
 - 미확인 FIXED 큐: fp-I11 · fp-I14 (2건).
+
+### whole-branch 재실행 루프 (2026-08-07, 새 루프 — 예산 초기화)
+
+D5 ESCALATE에 대한 사용자 선택 = whole-branch 리뷰 재실행. `--resume`이 아닌 새 루프이므로 적대·확인·복귀 예산을 새로 시작한다. base = `04a9fbf`(고정 SHA) 유지, 시작 target HEAD = `67f36a4`, branch = `main`. 보안 크리티컬 트랙 = 아니오(문서·절차 변경). 사전 게이트 = plugin.json JSON 유효성 + SKILL.md frontmatter 유효성(이 repo는 npm 프로젝트가 아님).
+
+**이월된 필수 확인 항목**(직전 루프 §2h 폴백 ①): fp-I11 · fp-I14 → 새 루프의 미확인 FIXED 큐 시작값(시작 score 4). 직전 루프에서 소멸 확인된 9건(fp-I1·I2·I3·I4·I5·I6·I9·I10·I12)과 판정 완료 3건(fp-I7·I8·I13)은 재지목 시 DUPLICATE 각하.
+
+#### 적대 라운드 R1
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-J1 · SKILL.md §확인 모드 결과 처리 · "확인 예산 소진 시 복귀와 즉시 폴백이 동시에 요구된다" · "복귀·재진입 허용량을 별도 상태로 정의하고 우선순위 명시, 폴백은 예약분 소비 후 발동" | high | FIXED(R1) | D5(복귀 상한 1회)와 D11(예산 소진 무관 ESCALATE+폴백)의 **우선순위 미정의** — `--confirm-rounds 1`에서 C1이 blocking을 내면 두 전이가 동시 성립해 실행자가 복귀 검증을 건너뛰거나 예산 계약을 무시한다. 기결정 번복이 아니라 미정의 경로 보완(R5-F2 계열). 수정: 복귀 예약분(상한 밖 적대 1 + 확인 1)이 폴백보다 우선하며, "복귀 발동 여부 무관"은 복귀 불가 경로의 교착 방지지 발동 가능한 복귀의 생략이 아님을 명시. §종료 조건 요약도 동기 |
+| fp-I11 · SKILL.md §확인 모드 결과 처리 · "확인 finding의 ESCALATE 처리가 즉시와 batch로 충돌" · "확인 모드 ESCALATE는 전부 즉시 처리로 우선 규칙 명시 또는 batch flush 단계 정의" | high→medium | 재분류→FIXED(R1) | 이월 큐 항목이 적대 R1에 재출현 → §두 큐 이탈 경로 ②(blocking 재분류)로 큐에서 나와 재판정. severity 재평가: 실행자가 즉시/batch 중 선택하는 국소 갭이나 미판정 교착 유발 → medium 착지(수정 반영 항목이므로 low 불가, §2c). 수정: §ESCALATE 세분에 **확인 모드 예외**(군 구분 없이 전부 즉시) 추가 — 확인 진입 시점에 batch는 이미 flush됐고 이후 flush 지점이 없어 적재하면 교착. §확인 모드 결과 처리가 그 규칙을 참조. batch flush 단계 신설은 §2h 순서(D6)와 중복이라 불채택 |
+| fp-I14 · SKILL.md §종료 조건 요약 · "자동 모드 경계가 0-based 소진 규칙과 모순(`iteration ≤ auto-rounds`)" · "요약을 `적대 소진 < --auto-rounds`로 교체, 잔여 iteration 용어 정리" | medium | 재분류→FIXED(R1) | 이월 큐 항목 재출현 → blocking 재분류 후 재판정. 본문(§자동 모드)은 이미 0-based인데 요약만 구용어가 남아 자동 모드가 한 라운드 늘어 읽힌다. 수정: 요약 316행 교체 + §4 종료 요약의 "iteration별 추세표"를 "라운드별"로 교체 — 파일 내 `iteration` 잔여 0건 |
+| (R1-F1) · plugin.json:5 · "0.7.1 유지 + README가 --max를 전체 상한으로 안내, --confirm-rounds 누락" · "0.8.0 범프 + README 3종 동기" | high | DUPLICATE(fp-I8) | file·title·recommendation이 fp-I8과 동일. fp-I8은 OUT_OF_SCOPE로 판정 완료·C2 감사 적정(조건부). 릴리스 follow-up은 트랙 §다음 액션 2에 기록됨 — 재수정 대상 아님 |
+
+- blocking score: **R1 = 5** (fp-J1 high 3 + fp-I11 medium 1 + fp-I14 medium 1). DUPLICATE는 score 밖. 자동 모드(적대 소진 0 < 3) — 즉시군 ESCALATE 0건, batch 적재 0건.
+- 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b).
+- 미확인 FIXED 큐(R1 수정 후): fp-J1 · fp-I11 · fp-I14 (3건, 전부 재편입).
