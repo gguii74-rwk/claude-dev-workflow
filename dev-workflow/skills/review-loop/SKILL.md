@@ -151,7 +151,9 @@ node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 ### 결과 처리
 
 - **큐 전 항목 소멸 확인 + 신규 blocking 0 + 감사 이상 없음 + verdict 통과** → 성공 종료(§2e 불변식 충족). 소멸 확인 fingerprint 목록·verdict를 ledger에 기록.
-- **blocking 발견**(큐 항목 잔존/재분류, 회귀, 신규 blocking) → **적대 모드 복귀(상한 1회)**. 복귀 시 적대 1라운드 + 확인 재진입 1라운드가 누적 상한 밖에서 추가 허용된다. **재진입 확인에서 또 blocking이 나오면 → ESCALATE**(edge 표면이 넓다는 신호 — 새 세션 whole-branch 리뷰 권고 동반).
+- **blocking 발견**(큐 항목 잔존/재분류, 회귀, 신규 blocking) → 확인 리뷰가 지목한 항목을 **먼저 수정 큐에 직접 넣고** §2f로 수정·게이트·커밋한 뒤 **적대 모드 복귀(상한 1회)**. 복귀 시 적대 1라운드 + 확인 재진입 1라운드가 누적 상한 밖에서 추가 허용된다. **재진입 확인에서 또 blocking이 나오면 → ESCALATE**(edge 표면이 넓다는 신호 — 새 세션 whole-branch 리뷰 권고 동반).
+  - **확인이 지목한 blocking은 적대 리뷰가 다시 찾아주기를 기다리지 않는다.** 복귀 적대 라운드는 그 수정의 회귀를 보는 것이지 항목을 재발견하는 경로가 아니다 — 적대 침묵은 해결 증거가 아니므로(§두 큐), 기다리면 그 항목은 고칠 경로 없이 미판정으로 남아 교착한다.
+  - 수정한 항목은 **다시 미확인 FIXED 큐에 넣는다**(재확인 대상). 잔존 항목은 큐에 계속 남고, blocking 재분류된 항목은 재판정 후 FIXED로 고쳤다면 새로 큐에 편입된다 — 어느 경로로도 확인 없이 사라지지 않는다.
 - **판정 감사 이의**(비례성·연결 누락·DUPLICATE 오매칭 지적) → 루프가 스스로 번복하지 않는다. **해당 항목만 ESCALATE로 사용자 재판정**(기결정 가드 규약 유지).
 - **verdict 비통과인데 blocking 지목 없음** → 성공 종료 아님·침묵 종료 금지 → **ESCALATE(verdict 근거 동반, 사용자 판정)**. 모든 미충족 성공 불변식은 성공/복귀/ESCALATE 중 하나로 반드시 전이된다(종료 불능 상태 금지).
 - **확인 예산 소진(복귀 발동 여부 무관) + 미확인 FIXED 큐 잔존** → ESCALATE + 폴백 3택을 ledger에 명시: ① 다음 phase 리뷰의 필수 확인 항목으로 이월, ② 새 세션에서 확인 라운드 1회(신규 결함이 나오면 whole-branch 리뷰 권고), ③ 배포 smoke/검증을 blocking 체크로 대체.
@@ -219,8 +221,9 @@ git commit -m "<무엇을 했는지>"
 - **적대 모드**:
 ```bash
 ROOT=$(ls -d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/ | sort -V | tail -1)
-node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <ref>
+node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <해소한 base SHA>
 ```
+- **`--base`에는 루프 시작 시 해소한 base SHA를 넘긴다** — `main` 같은 가변 ref를 그대로 넘기지 않는다. 루프가 도는 동안 ref가 움직이면 라운드마다 diff 범위가 달라져 ledger·score 이력·확인 verdict가 서로 다른 스냅샷을 가리킨다. 모든 적대·확인 라운드가 같은 SHA를 본다(§1 base 해소 · §2i 핸드오프 base 필드).
 - 변경이 크면(여러 파일/디렉터리 단위) `run_in_background: true`로 띄우고 `/codex:status`로 폴링한다. 결과 파일에서 리뷰 본문만 추출: `sed -n '/^# Codex Adversarial Review/,$p' <출력 파일>`.
 - 출력 JSON을 파싱한다: `{ verdict, summary, findings[{severity,title,body,file,line_start,line_end,confidence,recommendation}], next_steps }`.
 - 출력이 스키마와 다르면 루프를 멈추고 원문을 보고한다(추측 금지). 자동 재시도 금지 — 재실행은 사용자 판단.
@@ -270,8 +273,18 @@ phase=impl이면 §1 게이트를 다시 통과시킨다. 깨지면 그 반복�
 컨텍스트 사용량이 ≥40%로 느껴지면(또는 Stop 훅이 넛지하면): `.remember/remember.md`에 핸드오프를 쓰고, 사용자에게 "/clear 후 `/review-loop --resume`로 이어가세요"라고 안내한 뒤 이 세션의 루프를 종료한다. (자가 /clear 불가)
 - **핸드오프 필드**(§0 복원 필드와 동일 목록): phase / 적대 라운드 소진 카운트 / 확인 라운드 소진 카운트 / 현재 모드 / 복귀 사용 여부 / base(해소된 ref + SHA) / branch / 중단 시 HEAD SHA / ledger(미확인 FIXED 큐 명시 포함) / score 이력 / 보안 크리티컬 트랙 판정 상태.
 
-#### 2j. 다음 반복
-iteration++ 하고 2a로 돌아간다(다음 반복도 커밋 후 리뷰).
+#### 2j. 다음 반복 — 모드별 카운터 갱신
+반복은 iteration이 아니라 **현재 모드**가 몬다. 2a로 돌아가기 전에 이번 라운드의 모드에 해당하는 카운터만 올린다.
+
+| 이번 라운드 | 카운터 갱신 | 다음 라운드 진입 조건 |
+|---|---|---|
+| **적대** (응답 수신) | `iteration++` (적대 소진) | `iteration ≤ max` AND 전환 신호 미발화 → 적대 계속. 전환 신호 발화 또는 `iteration > max` → §2h로(확인 진입 판단) |
+| **확인** (응답이 **완전**) | `확인 소진++` | 결과 처리(§확인 모드)가 복귀를 지시하면 적대 1라운드(상한 밖), 아니면 확인 예산 잔여 시 확인 계속 |
+| **확인** (실패·타임아웃·부분 응답) | **갱신 없음** | 중단 보고(§응답 완전성 계약) |
+
+- **확인 라운드는 `iteration`을 올리지 않는다** — `--max`는 적대 상한이므로 확인 라운드가 적대 카운트를 오염시키거나 상한에 밀려 실행되지 못하면 안 된다. 마지막 적대 라운드(`iteration == max`)에서 전환 신호가 발화하면 `iteration`은 그대로 둔 채 확인 모드로 들어간다.
+- **복귀로 추가되는 적대 1라운드와 재진입 확인 1라운드는 각 상한 밖**이며 두 카운터 어느 쪽도 올리지 않는다(§인자 `--confirm-rounds` 산법).
+- 두 카운터와 현재 모드는 매 라운드 핸드오프 필드(§2i)와 같은 값이어야 한다 — resume가 같은 지점에서 이어지려면 이 갱신이 유일한 증가 지점이어야 한다.
 
 ### 3. (반복 끝의 커밋은 2a가 다음 반복 시작에 수행)
 

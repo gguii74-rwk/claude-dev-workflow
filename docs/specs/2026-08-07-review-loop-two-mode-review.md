@@ -237,6 +237,11 @@ review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커�
 | fp-I2 · SKILL.md §두 큐 · "적대 리뷰의 침묵만으로 확인 부채 제거 가능" · "큐 제거는 명시 확인 결과로만 허용" | high | ESCALATE→FIXED(R1, 사용자 확정) | 확인 우회 계열 4회차(sR1-F1→sR3-F1→R4-F2→fp-I2)로 규칙상 사용자 판정. 2026-08-07 사용자 선택 = **큐 이탈 경로 ① 폐지**. 적대 비재출현은 ledger 참고 신호로만 기록하고 큐 유지 → FIXED가 있었던 트랙은 확인 라운드 필수. §두 큐 28행·§2c 동기 개정. D8 빠른 종료 원 취지(클린 트랙 라운드 미추가)는 보존 |
 | fp-I3 · SKILL.md §확인 모드 실행 · "백그라운드 확인 작업의 결과 회수 절차 없음" · "foreground 또는 job id·status·result 명시" | medium | FIXED(R1) | 기본 foreground 명시(`task "$PROMPT"` 출력이 곧 확인 응답), `--background` 사용 시 job id 캡처 → `status` 폴링 → `result` 회수 절차 추가. job 시작 출력은 확인 응답이 아니므로 부분 응답 규약 미적용임을 명시 |
 
-- R1 blocking score = 7 (high 3 + high 3 + medium 1).
-- 미확인 FIXED(확인 부채): fp-I1 · fp-I2 · fp-I3 — R2에서 확인.
+| fp-I4 · SKILL.md §2j · "--max 경계에서 확인 라운드가 실행되지 않을 수 있음(iteration 무조건 증가·확인 카운터 부재)" · "모드별 카운터 갱신 규칙 명시" | high | FIXED(R2) | §2j를 모드별 카운터 표로 교체 — 적대 응답 후에만 `iteration++`, **완전한** 확인 응답 후에만 확인 소진++, 실패·타임아웃·부분 응답은 무갱신. 확인 라운드는 iteration 미증가(마지막 적대 라운드에서 전환해도 상한에 밀리지 않음), 복귀 추가 라운드는 양쪽 무갱신. D2 산법의 절차 구현 |
+| fp-I5 · SKILL.md §확인 모드 결과 처리 · "확인에서 발견한 blocking이 수정 경로로 전달되지 않아 교착" · "수정 큐 직접 투입 후 복귀, 수정분 재확인" | high | FIXED(R2) | 복귀 전에 지목 항목을 수정 큐에 직접 넣고 §2f로 수정·게이트·커밋하도록 명시. 적대 재발견 대기 금지 근거(적대 침묵 = 해결 증거 아님) 명시. 수정분은 다시 미확인 FIXED 큐 편입. **fp-I2 개정으로 생긴 파생 구멍** — 큐 이탈 경로를 좁히자 재분류 항목의 수정 경로가 드러남 |
+| fp-I6 · SKILL.md §2b · "해소한 base SHA가 실제 리뷰 명령에 사용되지 않음" · "모든 라운드에 고정 SHA 전달" | medium | FIXED(R2) | `--base`에 해소한 SHA를 넘기도록 명시, 가변 ref 사용 금지 근거(루프 중 ref 이동 → 라운드별 diff 범위 변동 → ledger·score 이력·확인 verdict가 서로 다른 스냅샷) 추가 |
+
+- blocking score 이력: R1 = 7 · R2 = 14 (미확인 FIXED 큐 fp-I1~I3 = 7 + 신규 7). 초반 신규 영역 유입으로 상승 — 전환 신호(2회 연속 비감소)는 미발화.
+- **적대 비재출현(R2)**: fp-I1 · fp-I2 · fp-I3 — 이번 개정으로 큐 제거 사유가 아니므로 참고 신호로만 기록하고 큐에 유지.
+- 미확인 FIXED(확인 부채): fp-I1 ~ fp-I6 (6건) — 확인 라운드에서 처리.
 - low/DEFER_LOW: 없음. batch ESCALATE 적재: 없음.
