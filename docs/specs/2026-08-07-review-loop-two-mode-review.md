@@ -360,3 +360,18 @@ D5 ESCALATE에 대한 사용자 선택 = whole-branch 리뷰 재실행. `--resum
 - 적대 비재출현(R4): 큐 8건 전부 — 참고 신호, 큐 유지.
 - 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b). 정밀 모드 진입 후 첫 라운드, ESCALATE 0건.
 - 미확인 FIXED 큐(R4 수정 후): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 · fp-J4 · fp-J5 · fp-J6 · fp-J7 · fp-J8 (10건).
+- 루프 커밋: `23ac932`.
+
+#### 적대 라운드 R5 (정밀 모드, 적대 예산 소진)
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-J4 · SKILL.md §확인 모드 결과 처리 · "예약된 재진입 확인이 예산 검사에 다시 차단될 수 있다" · "재진입 시 batch flush만 수행하고 일반 예산 검사는 면제한다고 이 문장을 수정" | high | 재분류→FIXED(R5) | **R3 수정의 불완전 해소** — §2h에는 면제를 명시했으나 §확인 모드 결과 처리의 복귀 문장(R2에서 쓴 "batch flush·예산 검사를 수행한다")을 정정하지 않아 같은 규칙이 두 곳에서 반대로 읽힌다. 큐 항목이 적대에 blocking으로 재출현 → §두 큐 이탈 경로 ②로 재판정. 수정: 그 문장을 "flush만 수행, 예산 검사 면제"로 정정 |
+| (R5-F2) · spec impl ledger · "브랜치 자체가 10건의 FIXED를 아직 확인하지 않았다" | high | DUPLICATE(fp-I7 계열) | 2회차. 확인 부채 추적 상태 자체의 재서술 — 해소 경로 = 지금 진입하는 확인 라운드 |
+| (R5-F3) · SKILL.md:171-172 · 릴리스 미범프 + README 3종 | high | DUPLICATE(fp-I8) | 5회차 재지목. score 밖 |
+
+- 전환용 score: R1 = 5 · R2 = 4 · R3 = 7 · R4 = 4 · **R5 = 3** (fp-J4 3).
+- **전환 신호 3(적대 예산 소진, 소진 5 == max 5) 발화** → §2h: ① batch ESCALATE 적재 0건(제시할 것 없음) → ② 확인 필수 조건 성립(큐 10건 + 루프 직접 판정 2계열), 확인 예산 잔여 2/2 → ③ **확인 모드 진입**.
+- 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b).
+- 미확인 FIXED 큐(R5 수정 후, 확인 라운드 임무 ① 대상): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 · fp-J4 · fp-J5 · fp-J6 · fp-J7 · fp-J8 (**10건**).
+- 루프 직접 판정(임무 ③ 감사 대상): fp-I8 재지목 DUPLICATE(5회) · fp-I7 계열 재지목 DUPLICATE(2회). fp-J3은 사용자 확정이라 감사 대상 제외.
