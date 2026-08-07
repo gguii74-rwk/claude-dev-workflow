@@ -323,7 +323,24 @@ D5 ESCALATE에 대한 사용자 선택 = whole-branch 리뷰 재실행. `--resum
 | fp-J2 · SKILL.md §2h/§확인 모드 결과 처리 · "복귀 적대 라운드에서 batch ESCALATE가 재진입 확인 전에 유실될 수 있다" · "복귀 라운드를 정밀 모드로 강제하거나 재진입 확인 직전 batch 강제 flush" | medium | FIXED(R2) | **fp-I11 수정(R1)의 파생 구멍** — R1이 추가한 확인 모드 예외는 확인 라운드에서 발생한 ESCALATE만 덮고, 복귀 **적대** 라운드는 카운터 미증가로 여전히 자동 모드라 batch를 적재할 수 있는데 flush 지점이 없다. 수정: §2h에 "복귀 후 재진입 확인도 확인 진입 — ①batch 일괄 제시·②예산 검사를 그대로 수행" 추가, §확인 모드 결과 처리 복귀 문장에서 참조. 복귀 라운드 정밀 모드 강제(대안 i)는 auto/정밀 축 불변(D6)을 건드려 불채택 |
 | (R2-F2) · plugin.json:5 · 릴리스 미범프 + README 3종 | high | DUPLICATE(fp-I8) | fp-I8 2회차 재지목. 판정 완료·감사 적정. score 밖 |
 
-- blocking score: R1 = 5 · **R2 = 9** (fp-J1 3 + fp-I11 1 + fp-I14 1 + fp-J3 3 + fp-J2 1). **주의 — 이 값은 개정 전 산식(부채 포함)이다.** fp-J3 개정으로 R3부터 전환용 score는 미수정 blocking만 센다. 소급 재계산하면 R1 = 0, R2 = 4.
+- blocking score: **구산식(부채 포함)** R1 = 5 · R2 = 9. **신산식(fp-J3, 전환용 = 미수정분만)** R1 = 5(fp-J1 3 + fp-I11 1 + fp-I14 1) · **R2 = 4**(fp-J3 3 + fp-J2 1). R3부터는 신산식만 기록한다.
+  - 최초 기록 시 R1을 신산식 0으로 적었던 것은 **오기**다(FIXED 후보를 수정 전 시점에 포함해야 하는데 제외해 셌다). R3-F2가 그 불일치를 지적했고, 스냅샷 시점 규정(fp-J5)으로 확정한 뒤 5로 정정했다.
 - 적대 비재출현(R2): fp-J1 · fp-I11 · fp-I14 — 참고 신호, 큐 유지.
 - 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b).
 - 미확인 FIXED 큐(R2 수정 후): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 (5건).
+- 루프 커밋: `5eb2a1b`.
+
+#### 적대 라운드 R3 (자동 모드 마지막 — 소진 3 = auto-rounds 도달)
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-J4 · SKILL.md §2h · "예약된 재진입 확인이 예산 검사에 차단된다" · "재진입 예약분을 별도 상태로 추적하고 재진입 시 batch flush만, 일반 잔여 검사는 면제" | high | FIXED(R3) | **fp-J2 수정(R2)의 파생 구멍** — "①②를 그대로 수행"이라고 쓰는 바람에 ②(예산 잔여 0이면 ESCALATE)가 상한 밖 예약분을 막는다. `--confirm-rounds 1`에서 C1이 blocking을 내면 예산이 0이 되어 복귀 수정의 필수 재확인이 통째로 차단. 수정: 재진입 확인은 ①만 수행, ② 면제. 예약분 소비는 예산 잔여가 아니라 **복귀 사용 여부**(§0·§2i 복원 필드)로 추적함을 명시. fp-J1(복귀 우선)과 같은 축의 잔여 벡터 |
+| fp-J5 · SKILL.md §blocking score · "전환용 score가 동일 상태에서 일관되게 계산되지 않는다" · "스냅샷 시점 확정 + 수정 전 FIXED 후보·pending ESCALATE 포함 여부 명시 + 사후 재계산 금지" | high | FIXED(R3) | **fp-J3 개정(R2)의 잔여 구멍.** 지적의 실례가 이 ledger 자신이었다 — R1을 0, R2를 4로 적어 FIXED 후보 포함 여부를 라운드마다 다르게 적용했다. 수정: 스냅샷 = §2c 분류 직후·§2f 수정 전, 포함 = 수정 큐 FIXED 후보 + 미해결 ESCALATE + 기타 미판정, 제외 = 미확인 FIXED 큐·이번에 닫힌 판정·low. 사후 재계산 금지(산식 변경은 새 라운드부터, 과거 값은 산식 병기). 위 R2 항목의 소급값도 이 규정에 맞춰 정정 |
+| fp-J6 · SKILL.md §2j · "auto-rounds 경계보다 한 라운드 늦게 batch가 flush된다" · "증가 후 `적대 소진 == auto-rounds`이면 다음 리뷰 전에 flush" | medium | FIXED(R3) | §자동 모드는 batch 전환 조건 ①(auto-rounds 도달)을 규정하지만 §2j에 그 실행 지점이 없어, 다음 라운드를 돌린 뒤에야 정밀 모드에서 제시된다 → R4가 미확정 결정 위에서 수행돼 결과가 즉시 stale. 수정: §2j 증가 직후를 flush 지점으로 명시. 이번 루프는 적재분 0건이라 실해는 없었으나 규정 갭은 실재 |
+| (R3-F3) · plugin.json:5 · 릴리스 미범프 + README 3종 | high | DUPLICATE(fp-I8) | 3회차 재지목. score 밖 |
+
+- 전환용 score(신산식): R1 = 5 · R2 = 4 · **R3 = 7** (fp-J4 3 + fp-J5 3 + fp-J6 1). `s3 ≥ s2`이나 `s2 < s1`이라 2회 연속 비감소 미충족 → **전환 신호 1 미발화**. 신호 2(수정 큐 3건) · 신호 3(소진 3 < 5) 모두 미발화 → **적대 계속**.
+- 미확인 FIXED 큐 크기: 5건(R3 분류 시점) → R3 수정 후 8건.
+- 적대 비재출현(R3): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 — 참고 신호, 큐 유지.
+- 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b). 즉시군/batch ESCALATE 0건 — auto-rounds 도달 flush 대상 없음(fp-J6 규정 첫 적용).
+- 미확인 FIXED 큐(R3 수정 후): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 · fp-J4 · fp-J5 · fp-J6 (8건).
