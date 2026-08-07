@@ -1,6 +1,6 @@
 # review-loop 적대→확인 2모드 리뷰 + 런북 흡수·severity 재평가 (1+3 통합)
 
-- 상태: **review-loop(spec) 진행 중** (2026-08-07 — harden 완료 후 적대검증 R1 반영. ledger = 문서 말미 §적대검증 ledger)
+- 상태: **review-loop(spec) 진행 중** (2026-08-07 — harden 완료 후 적대검증 R4 반영. ledger = 문서 말미 §적대검증 ledger)
 - 대상: `dev-workflow` 플러그인 **기존** 스킬 `review-loop` 개정
 - 날짜: 2026-08-07 (초안 → 같은 날 harden)
 - 입력: `docs/specs/2026-08-07-review-loop-and-pipeline-improvements-brief.md` §트랙 A + §C-1·C-2 (실행 순서 1번 — **Q7 결정으로 순번 3을 이 릴리스에 흡수, 1+3 통합**)
@@ -50,7 +50,7 @@
 - **확인(중립) 모드** — 후반 라운드. 목적함수 = **"머지 가능한가 판정"**. 확인 리뷰어에게 **ledger를 입력으로 주고 임무 4종**을 지시한다:
   - ① **미확인 FIXED 큐 전체**의 소멸 확인(sR2-F1 정밀화 — 통상 직전 라운드 FIXED와 일치하나, 부분 확인·복귀·resume 재개 후에는 과거 잔여분 포함. 큐 = §3-8 resume의 미확인 FIXED 목록과 동일 실체)
   - ② 수정이 닿은 영역 주변의 회귀 확인
-  - ③ 루프가 직접 내린 판정(ACCEPTED/OUT_OF_SCOPE/**DEFERRED_TO_IMPL** — sR3-F1)의 비례성 점검(판정 감사). DEFERRED_TO_IMPL은 impl AC·테스트 연결의 존재·타당성 점검 포함
+  - ③ 루프가 직접 내린 판정(ACCEPTED/OUT_OF_SCOPE/**DEFERRED_TO_IMPL** — sR3-F1/**DUPLICATE** — R4-F2)의 비례성 점검(판정 감사). DEFERRED_TO_IMPL은 impl AC·테스트 연결의 존재·타당성 점검 포함. 루프 직접 DUPLICATE의 감사 = 원 fingerprint와의 의미적 동일성·원 disposition 확인만(오매칭 검출) — 원 기결정 자체의 재론은 금지(D9·기결정 가드 유지)
   - ④ 머지 준비도 verdict
   - **"신규 영역 발굴은 임무가 아니다. 단, 발견한 blocking은 보고한다"를 명시**(도장 찍기 / 사냥 재개 사이 균형).
 - **탈출구** — 확인 라운드에서 blocking이 나오면 적대 모드 복귀(상한 = D5).
@@ -93,8 +93,8 @@
 
 ### 3-8. 확인 생략·경계 동작 (D8~D11)
 
-- **D8 확인 생략(sR1-F1·sR3-F1 정밀화)**: 확인 라운드 필수 조건 = **미확인 FIXED 존재 OR 루프가 직접 내린 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL) 존재**. 루프 전체에서 둘 다 0건이면(예: R1 신규 blocking 0) 확인할 대상이 없으므로 **확인 라운드 없이 현행 빠른 종료 유지**(SDD 선행 R1 종결 트랙에 라운드를 추가하지 않는다). FIXED 없이 루프 판정만 있으면 확인 라운드는 임무 ③(판정 감사)·④(verdict)만 수행한다 — 잘못된 ACCEPTED/OUT_OF_SCOPE 분류·연결 없는 DEFERRED_TO_IMPL이 감사 없이 다음 단계로 넘어가는 경로를 막는다. 원 근거("확인할 대상이 없으면 생략")는 불변 — 감사할 루프 판정도 '확인할 대상'에 포함됨을 명시했을 뿐이다.
-- **D9 판정 감사 이의 처리**: 임무 ③이 기존 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL)의 비례성·연결 문제를 지적하면 루프가 스스로 번복하지 않고 해당 항목만 **ESCALATE로 사용자 재판정**. 감사 대상 = **루프가 직접 내린 판정만** — 사용자 기결정(D번호·사용자가 닫은 ESCALATE)은 감사 대상이 아님을 확인 리뷰 프롬프트에 명시(기결정 가드 규약 유지).
+- **D8 확인 생략(sR1-F1·sR3-F1·R4-F2 정밀화)**: 확인 라운드 필수 조건 = **미확인 FIXED 존재 OR 루프가 직접 내린 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 존재**. 루프 전체에서 둘 다 0건이면(예: R1 신규 blocking 0) 확인할 대상이 없으므로 **확인 라운드 없이 현행 빠른 종료 유지**(SDD 선행 R1 종결 트랙에 라운드를 추가하지 않는다). FIXED 없이 루프 판정만 있으면 확인 라운드는 임무 ③(판정 감사)·④(verdict)만 수행한다 — 잘못된 ACCEPTED/OUT_OF_SCOPE 분류·연결 없는 DEFERRED_TO_IMPL·오매칭 DUPLICATE(실제 신규 결함을 기결정 재론으로 잘못 각하)가 감사 없이 다음 단계로 넘어가는 경로를 막는다. 원 근거("확인할 대상이 없으면 생략")는 불변 — 감사할 루프 판정도 '확인할 대상'에 포함됨을 명시했을 뿐이다.
+- **D9 판정 감사 이의 처리**: 임무 ③이 기존 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE — R4-F2)의 비례성·연결·오매칭 문제를 지적하면 루프가 스스로 번복하지 않고 해당 항목만 **ESCALATE로 사용자 재판정**. 감사 대상 = **루프가 직접 내린 판정만** — 사용자 기결정(D번호·사용자가 닫은 ESCALATE)은 감사 대상이 아님을 확인 리뷰 프롬프트에 명시(기결정 가드 규약 유지). 루프 직접 DUPLICATE의 감사 범위 = 원 fingerprint 동일성·원 disposition 확인(오매칭 검출)만 — 원 기결정의 타당성 재론은 대상이 아니다.
 - **D10 ledger 기록**: spec은 **의무만 규정** — 확인 라운드마다 소멸 확인된 FIXED fingerprint 목록·신규 finding·머지 준비도 verdict를 ledger에 기록한다. 표 형식(행 추가 vs 주석)은 구현·마이크로테스트에서 확정. 현행 ledger 규약(단일 원본·fingerprint 키·severity 제외)은 불변.
 - **D11 최종 폴백(sR3-F2 일반화)**: **확인 예산(재진입 포함)이 소진됐는데 미확인 FIXED 큐가 비지 않으면 — 복귀 발동 여부와 무관하게** — ESCALATE로 사용자에게 넘기며 **현행 §2h 3택을 폴백으로 유지** — ① 다음 phase 리뷰 필수 확인 항목으로 이월, ② 새 세션 확인 라운드 1회(whole-branch 권고), ③ 배포 smoke/검증으로 대체. 분리 예산이 1차 방어, 3택은 극단 edge 안전망으로 강등.
 - **resume 정합(파생, sR1-F3 확장)**: `--resume` 복원 상태에 **현재 모드(적대/확인)·복귀 사용 여부·미확인 FIXED 목록·적대/확인 라운드 소진 카운트(잔여 예산)·보안 크리티컬 트랙 판정 상태**를 추가한다(§0·§2i 핸드오프 필드의 확장은 이 목록이 전부). 예산 카운트가 없으면 확인 도중 재개 시 예산이 초기화되어 총 상한(D2)을 넘거나 조기 소진되고, 보안 상태가 없으면 재개 후 D7 예외(score 정체 무시)가 유실된다.
@@ -144,6 +144,9 @@
 - **도구 실패(sR3-F2)**: 확인 `task` 타임아웃·부분 응답 시나리오에서 큐 불변·예산 미차감·중단 보고가 지켜지고, 예산 소진+큐 잔존이 복귀 미발동이어도 ESCALATE+3택으로 가는지 확인.
 - **resume 왕복(sR1-F3)**: 적대 중단·확인 중단·복귀 후 중단 각 지점에서 핸드오프→재개 시 모드·예산 잔여·보안 트랙 상태가 보존되는지 확인.
 - **미확인 FIXED 큐 누적(sR2-F1)**: 여러 라운드에 걸쳐 잔존한 FIXED·부분 확인·resume 재개 시나리오에서 확인 프롬프트에 큐 전체가 들어가고, 큐가 빌 때만 성공 종료되는지 확인.
+- **DUPLICATE 오판 감사(R4-F2)**: 루프 직접 DUPLICATE가 존재하는 시나리오에서 확인 라운드가 원 fingerprint와의 의미적 동일성·원 disposition을 감사하고, 오매칭(실제 신규 결함을 기결정 재론으로 잘못 각하)을 지적해 ESCALATE(D9)로 올리는지 확인. FIXED 0건 + 루프 직접 DUPLICATE만 존재해도 확인 라운드(임무 ③·④)가 생략되지 않는지 포함(D8).
+- **큐 용어 분리(R4-F3, DEFERRED_TO_IMPL)**: SKILL.md 개정 시 라운드 내 **수정 큐**(FIXED 후보 작업 큐 — 현행 §2e·§2h 용례)와 **미확인 FIXED 큐**(소멸 확인 대기 누적 — §3-1 임무 ① 대상)를 구별 명명하고, D3·D7 전환 신호의 "FIXED 큐 소진" = 수정 큐 기준(최신 적대 라운드 분류 후 신규 FIXED 후보 0건)임을 본문에 명시 — 두 해석이 갈리는 질의 시나리오로 검증.
+- **확인 응답 완전성(R4-F4, DEFERRED_TO_IMPL)**: 확인 리뷰 응답은 첨부한 미확인 FIXED 큐의 **전 fingerprint별 명시 결과(소멸/잔존/blocking 재분류)·판정 감사 결과·신규 finding·verdict**를 갖춰야 완전하며, 하나라도 누락·중복·판독 불가면 D4 부분 응답으로 처리(큐 불변·예산 미차감·중단 보고)됨을 SKILL.md에 명시 — 누락 필드 응답 픽스처로 검증(표기 형식 확정은 D10대로 구현 단계).
 
 ## 7. 미해결 질문
 
@@ -153,7 +156,7 @@
 
 **트랙 A 고유 (브리프 §완료 조건 순번 1):**
 - review-loop SKILL.md에 **적대/확인 2모드(D1) · 전환 신호(D3) · 임무 4종(D1) · 탈출구·복귀 1회(D5) · 분리 예산(D2)** 가 반영된다.
-- 베이스라인 대비 마이크로테스트로 확인: (a) 확인 라운드가 도장 찍기가 아님, (b) 확인 부채 0 종료, (c) 보안 트랙 예외 동작(D7).
+- 베이스라인 대비 마이크로테스트로 확인: (a) 확인 라운드가 도장 찍기가 아님, (b) 확인 부채 0 종료, (c) 보안 트랙 예외 동작(D7), (d) DUPLICATE 오판 감사(R4-F2), (e) 큐 용어 분리·전환 신호 기준(R4-F3), (f) 확인 응답 완전성·부분 응답 fail-closed(R4-F4).
 
 **순번 3 흡수분:**
 - **(C-1)** phase별 리뷰 입도 표·증분 base 안전조건(마지막 트랙 기준 ref 통합 필수 — 기본 main, 루프 시작 시 해소)·SDD 연계(approved 커밋 뒤, task마다 금지)·실행 팁(sed 추출)이 SKILL.md에 반영된다.
@@ -176,8 +179,8 @@
 - **D5.** 복귀 상한 1회 — 확인 2회차에서도 blocking이면 ESCALATE + whole-branch 리뷰 권고.
 - **D6.** 축 직교 — auto-rounds(ESCALATE 처리) 축 불변. 순서: 전환 신호 발화 → batch ESCALATE 일괄 제시 → 확인 모드 진입.
 - **D7.** 보안 크리티컬 = 사전 게이트 자가 판정(ESCALATE 즉시군 계열 기준) + 사용자 확인 1회. 예외 동작 = score 정체 신호 무시, FIXED 큐 소진 또는 적대 예산 소진 시에만 확인 전환.
-- **D8.** 확인 라운드 필수 조건 = 미확인 FIXED 또는 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL) 존재(sR1-F1·sR3-F1 정밀화). 둘 다 0건이면 확인 없이 현행 빠른 종료 유지. 원 취지(클린 트랙에 라운드 미추가) 불변.
-- **D9.** 판정 감사(임무 ③) 이의 = 해당 항목만 ESCALATE로 사용자 재판정. 감사 대상 = 루프가 직접 내린 판정만(사용자 기결정·D번호 제외). 루프 자체 번복 금지.
+- **D8.** 확인 라운드 필수 조건 = 미확인 FIXED 또는 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 존재(sR1-F1·sR3-F1·R4-F2 정밀화). 둘 다 0건이면 확인 없이 현행 빠른 종료 유지. 원 취지(클린 트랙에 라운드 미추가) 불변.
+- **D9.** 판정 감사(임무 ③) 이의 = 해당 항목만 ESCALATE로 사용자 재판정. 감사 대상 = 루프가 직접 내린 판정만(사용자 기결정·D번호 제외). 루프 자체 번복 금지. 루프 직접 DUPLICATE 포함 — 단 감사는 원 fingerprint 동일성·원 disposition 확인만, 원 기결정 재론 아님(R4-F2, 2026-08-07 사용자 확정).
 - **D10.** 확인 라운드 ledger 기록은 의무만 spec 규정(소멸 확인 fingerprint·신규 finding·verdict), 형식은 구현·마이크로테스트에서 확정. 현행 ledger 규약 불변.
 - **D11.** 확인 예산 소진(복귀 발동 여부 무관 — sR3-F2 일반화) 후 잔여 확인 부채 = ESCALATE + 현행 §2h 3택 폴백 유지(이월/새 세션 확인/배포 검증 대체).
 - **D12.** 릴리스 범위 = 1+3 통합(C-1 런북 흡수 + C-2 severity 재평가 포함). 다음 순번 = 2(트랙 B).
@@ -195,9 +198,9 @@
 
 ## 적대검증 ledger (spec)
 
-review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커밋). 자동 모드(auto-rounds 3).
+review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커밋). 자동 모드(auto-rounds 3) — R4부터 정밀 모드(codex 한도 중단 후 재개).
 
-**score 이력**: R1 = 7 (high 2·medium 1, 신규 3) → R2 = 4 (R1 3건 소멸 확인, 신규 high 1·medium 1 FIXED 대기, DUPLICATE 1은 score 밖) → R3 = 6 (R2 FIXED 2건 소멸 확인, 신규 high 2 FIXED 대기, DUPLICATE 1은 score 밖 — 연속 비감소 아님, 수정 루프 유지)
+**score 이력**: R1 = 7 (high 2·medium 1, 신규 3) → R2 = 4 (R1 3건 소멸 확인, 신규 high 1·medium 1 FIXED 대기, DUPLICATE 1은 score 밖) → R3 = 6 (R2 FIXED 2건 소멸 확인, 신규 high 2 FIXED 대기, DUPLICATE 1은 score 밖 — 연속 비감소 아님, 수정 루프 유지) → R4 = 3 (R3 FIXED 2건 소멸 확인, 신규 high 4 중 FIXED 대기 1(R4-F2, ESCALATE→사용자 확정)·DEFERRED_TO_IMPL 2·DUPLICATE 1은 score 밖 — 신규 blocking이 4라운드 연속 새 영역으로 유입되어 **판정 루프 전환** 적용, FIXED 추격은 사용자 결정 1건만)
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -207,9 +210,13 @@ review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커�
 | sR2-F1 · spec:임무① · "확인 리뷰가 직전 라운드 FIXED만 검증, 누적 잔여 미검증" · "전체 미확인 FIXED 큐를 프롬프트에 첨부 + 큐 빔을 종료 불변식으로" | high | FIXED(R2) | 임무 ① 대상 = 미확인 FIXED 큐 전체로 정밀화(§3-1·D1 주석), D4 프롬프트 첨부물 교체 + 성공 종료 불변식(큐 빔) 명시, §4 §2e 행·§6 누적 시나리오 반영. D1 임무 4종 구조 불변 |
 | sR2-F2 · spec:D3 · "score 상승(3→4→5)도 정체로 취급해 발굴 조기 종료" · "상승은 신호에서 제외, 신규 fingerprint 없음 조건 추가" | high | DUPLICATE(D3 재논의 금지) | harden 확정 D3("현행 신호 재활용") 번복 요구 — 신호 재정의는 불채택된 "신규 실결함 유입" 기준의 변형. 상승 시퀀스는 실측상 후반 churn 전형이며 확장 표면은 복귀(D5)·2회차 ESCALATE+whole-branch 권고·보안 D7 예외 3중 안전망이 담당. §3-3에 각하 근거 문장 보강(결정 불변) |
 | sR2-F3 · spec:C-1-2 · "최종 통합 리뷰 base가 문자 그대로 main 고정" · "트랙 기준 ref를 시작 시 해소·보존해 사용" | medium | FIXED(R2, R3 소멸 확인) | §4 C-1-2 행을 "트랙 기준 ref(기본 main, 루프 시작 시 해소해 핸드오프 base 필드 보존)"로 교체, §6 비-main 시나리오·§8 AC 동기화 |
-| sR3-F1 · spec:D8/D9/임무③ · "DEFERRED_TO_IMPL 판정이 확인 감사를 우회" · "필수 조건·감사 대상에 포함 + 연결 검증" | high | FIXED(R3) | 임무 ③·D8 필수 조건·D9 감사 대상을 '루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL)'로 통일(D9 원문구와 정합). DEFERRED 감사 = impl AC·테스트 연결 존재·타당성. §6 시나리오 추가. sR1-F1 계열 잔여 벡터 |
-| sR3-F2 · spec:D11/D4 · "확인 예산 소진+큐 잔존이 복귀 미발동 경로에서 미정의(도구 실패 교착)" · "복귀 무관 ESCALATE 조건화 + 실패 의미론" | high | FIXED(R3) | D11을 '예산 소진(복귀 발동 무관)+큐 잔존 → ESCALATE+3택'으로 일반화. D4에 도구 실패 의미론 추가: 실패·타임아웃·부분 응답 = 큐 불변·예산 미차감·중단 보고(재시도 기계장치 금지, G1·G2 준수). §6 시나리오 추가 |
+| sR3-F1 · spec:D8/D9/임무③ · "DEFERRED_TO_IMPL 판정이 확인 감사를 우회" · "필수 조건·감사 대상에 포함 + 연결 검증" | high | FIXED(R3, R4 소멸 확인) | 임무 ③·D8 필수 조건·D9 감사 대상을 '루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL)'로 통일(D9 원문구와 정합). DEFERRED 감사 = impl AC·테스트 연결 존재·타당성. §6 시나리오 추가. sR1-F1 계열 잔여 벡터 |
+| sR3-F2 · spec:D11/D4 · "확인 예산 소진+큐 잔존이 복귀 미발동 경로에서 미정의(도구 실패 교착)" · "복귀 무관 ESCALATE 조건화 + 실패 의미론" | high | FIXED(R3, R4 소멸 확인) | D11을 '예산 소진(복귀 발동 무관)+큐 잔존 → ESCALATE+3택'으로 일반화. D4에 도구 실패 의미론 추가: 실패·타임아웃·부분 응답 = 큐 불변·예산 미차감·중단 보고(재시도 기계장치 금지, G1·G2 준수). §6 시나리오 추가 |
 | sR3-F3 · spec:D2 · "--max 재정의가 기존 전체 하드캡 계약을 조용히 파괴" · "--max는 총 상한 유지, 새 인자 분리" | medium | DUPLICATE(D2 재논의 금지) | D2가 "재정의"를 명시해 사용자 확정(총 유계 9회 인지). 이 스킬 호출자 = 사용자 본인 세션(외부 자동화 계약 없음). README·description의 --max 의미 동기화는 이미 §4 개정 지도·§8 AC에 포함(고지 경로 존재) |
+| R4-F1 · spec:ledger · "미판정 high 2건(sR3-F1·F2)을 남긴 채 종료" · "R4 재확인으로 소멸 확인 후 종결" | high | DUPLICATE(sR3-F1·sR3-F2 확인 부채 재서술) | ledger가 이미 "R4 재확인 대기"로 추적하던 상태 그 자체를 지적 — 루프는 종료가 아니라 codex 한도로 중단·재개된 것이며, 본 R4가 그 확인 라운드. 두 건 모두 소멸 확인 완료로 조건 해소 |
+| R4-F2 · spec:D8/D9/임무③ · "루프 직접 DUPLICATE 오판이 확인 감사를 우회" · "확인 조건·감사 대상에 포함 + 동일성 검증" | high | ESCALATE→FIXED(R4, 사용자 확정) | 감사 우회 계열 3회차(sR1-F1→sR3-F1→R4-F2)로 규칙상 사용자 판정. 2026-08-07 사용자 선택 = 포함+R5 확인. 임무 ③·D8 필수 조건·D9 감사 대상에 루프 직접 DUPLICATE 추가 — 감사 범위는 원 fingerprint 동일성·원 disposition 확인만(기결정 재론 금지 유지). §6 시나리오·§8 AC(d) 추가. R5 소멸 확인 대기 |
+| R4-F3 · spec:D3/D7/§3-1 · "수정 큐와 미확인 FIXED 큐가 같은 이름으로 혼용되어 전환 시점 결정 불가" · "두 큐 분리 정의 + 전환 조건 명시" | high | DEFERRED_TO_IMPL | C-2 재평가: 현행 SKILL.md가 "FIXED 큐"를 라운드 수정 큐로 기정의(§2e·§2h 용례)해 실행이 문자 갭을 부분 보완 — 즉시 오구현 위험 제한적, 의미는 지금 확정. 연결 = §6 큐 용어 분리 시나리오 + §8 AC(e): 수정 큐/미확인 FIXED 큐 구별 명명, 전환 신호 = 수정 큐 기준(신규 FIXED 후보 0건) 명시·검증 |
+| R4-F4 · spec:D4/D10 · "task 출력에 검증 가능한 계약이 없어 큐를 거짓으로 비울 수 있음" · "필수 필드 계약 + fail-closed" | high | DEFERRED_TO_IMPL | fail-closed 의미론은 D4(sR3-F2)로 기확정, 표기 형식은 D10이 구현 단계로 기유예 — 완전성 기준(큐 전 fingerprint별 명시 결과·판정 감사 결과·신규 finding·verdict 필수, 누락·중복·판독 불가 = 부분 응답)을 지금 확정해 연결 = §6 확인 응답 완전성 시나리오 + §8 AC(f): 누락 응답 픽스처 마이크로테스트 |
 
-- 미판정 blocking: sR3-F1·sR3-F2의 FIXED(R3)는 R4 재확인 대기(소멸 확인 전까지 미판정 취급).
+- 미판정 blocking: R4-F2의 FIXED(R4)는 R5 재확인 대기(소멸 확인 전까지 미판정 취급). sR3-F1·F2는 R4 소멸 확인 완료.
 - low/DEFER_LOW: 없음. batch ESCALATE 적재: 없음.
