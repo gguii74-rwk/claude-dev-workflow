@@ -25,7 +25,8 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 | **수정 큐** | 이번 라운드 분류(§2c)에서 FIXED 후보로 배정되어 지금 고칠 항목들 | §2e·§2f, batch 전환 조건 ③, 전환 신호 ② |
 | **미확인 FIXED 큐** | 수정·커밋했으나 아직 소멸 확인이 **기록되지 않은** FIXED의 누적(라운드·resume 경계를 넘어 유지) | 확인 모드 임무 ①, 성공 종료 불변식, 핸드오프 필드 |
 
-- 미확인 FIXED 큐에서 빠지는 경로는 셋뿐: ① 후속 적대 리뷰의 fingerprint 대조에서 재출현하지 않아 ledger에 **'소멸 확인(R#)'을 명시 기록**, ② 확인 라운드 응답의 fingerprint별 **명시 '소멸'**, ③ blocking으로 재분류(재판정). **리뷰 출력의 침묵(언급도 기록도 없음)은 소멸 확인이 아니다** — 기록 없는 항목은 큐에 잔존한다.
+- 미확인 FIXED 큐에서 빠지는 경로는 **둘뿐**: ① 확인 라운드 응답의 fingerprint별 **명시 '소멸'**, ② blocking으로 재분류(재판정). **리뷰 출력의 침묵(언급도 기록도 없음)은 소멸 확인이 아니다** — 기록 없는 항목은 큐에 잔존한다.
+- **적대 라운드의 비재출현은 큐 제거 사유가 아니다.** ledger에 '적대 비재출현(R#)' 참고 신호로 기록하되 큐에는 그대로 둔다 — 적대 출력은 큐에 대한 완전한 체크리스트가 아니라 발굴 결과라, 단순 누락이 소멸로 오인된다(그렇게 큐가 비면 §2e 빠른 종료가 확인 라운드 자체를 건너뛴다). 따라서 **FIXED가 한 건이라도 있었던 트랙은 확인 라운드를 반드시 거친다**. FIXED도 루프 직접 판정도 없는 클린 트랙만 빠른 종료다.
 - 전환 신호의 "수정 큐 소진" = 최신 적대 라운드 분류 후 신규 FIXED 후보 0건. **미확인 FIXED 큐가 비었는지와 무관하다** — 그 큐는 확인 라운드가 처리한다.
 
 ## severity — blocking 여부
@@ -124,8 +125,11 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 
 ```bash
 ROOT=$(ls -d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/ | sort -V | tail -1)
-node "${ROOT}scripts/codex-companion.mjs" task --background "<확인 리뷰 프롬프트>"
+PROMPT="$(cat <확인 리뷰 프롬프트 파일>)"      # 프롬프트는 파일로 쓰고 변수로 읽는다
+node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 ```
+- **저장소 유래 문자열을 커맨드에 직접 보간하지 않는다.** 프롬프트에는 원 지적 원문·diff 요약이 들어가는데 거기에 `$(...)`·백틱·인용부호가 있으면 codex에 닿기 전에 셸이 해석해 **명령 실행·프롬프트 변조**가 일어난다. 반드시 파일에 쓴 뒤 `"$(cat <파일>)"`로 읽어 인자 하나로 넘긴다(변수에 담긴 내용은 재평가되지 않는다).
+- **기본은 foreground** — `task "$PROMPT"`의 출력이 곧 확인 응답이다. 변경이 커서 `--background`를 쓰면 **job id만 반환**되므로, job id를 캡처해 `status <job-id>`로 폴링하고 `result <job-id>`로 최종 결과를 회수한 뒤에 아래 응답 계약을 적용한다. **job 시작 출력 자체는 확인 응답이 아니므로 부분 응답으로 취급하지 않는다.**
 - `adversarial-review`+focus로 대체하지 않는다 — 기저 템플릿이 적대라 확인 목적함수를 누르지 못한다. `task`는 프롬프트 전체를 통제한다.
 - **프롬프트 첨부물**: ① ledger 표(루프 직접 판정 표시 포함), ② 미확인 FIXED 큐 전체 — 각 항목에 **원 지적 원문(title·body·recommendation)과 수정 커밋·diff 요약**을 함께 준다(fingerprint만 주면 불완전 수정을 못 잡는다), ③ 리뷰 기준(base ref), ④ 임무 4종 + 응답 형식(아래 계약), ⑤ "신규 영역 발굴은 임무가 아니다. 단, 발견한 blocking은 보고한다", ⑥ 감사 대상 경계(사용자 기결정 제외).
 - codex 샌드박스는 read-only — 게이트(테스트)는 현행대로 루프 세션이 실행한다.
@@ -224,7 +228,7 @@ node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <ref>
 - **확인 모드**: §확인 모드의 실행·응답 계약을 따른다(`task` 커맨드).
 
 #### 2c. 분류 · 판정(disposition) · ledger 갱신
-각 finding을 fingerprint로 ledger와 대조한다(신규/잔존/해결/중복). 미확인 FIXED 큐 항목이 재출현하지 않았으면 '소멸 확인(R#)'을 명시 기록하고 큐에서 뺀다(§두 큐 — 기록 없는 침묵은 잔존).
+각 finding을 fingerprint로 ledger와 대조한다(신규/잔존/해결/중복). 미확인 FIXED 큐 항목이 재출현하지 않았으면 ledger에 '적대 비재출현(R#)'을 참고 기록하되 **큐에서 빼지 않는다**(§두 큐 — 큐 제거는 확인 라운드의 명시 '소멸' 또는 blocking 재분류로만).
 - **기결정 가드 먼저**: 현 phase ledger뿐 아니라 **전 phase ledger와 "재논의 금지(기결정)" 블록**까지 대조한다. 이미 ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE로 닫혔거나 사용자 기결정(D번호)을 뒤집으라는 요구면 → **DUPLICATE**(비-blocking, 재수정·재논의 금지). 현 phase ledger가 비어 있어도 전 phase에서 닫힌 항목이면 신규 finding이 아니다.
 - **severity 재평가 (문자적 갭)**: LLM이 해석하는 문서(스킬·spec·plan)의 문자적 논리 갭은 **실행 영향으로 severity를 재평가한다**(문자적 갭 ≠ 즉시 high). 실행이 자동 보완하는 갭(예: 규범 문구가 명시적이라 예시의 어긋남을 덮는 경우)은 낮춰 판정하되, **닫는 수정이 저비용이면 반영한다** — 하향은 score 오염(가짜 정체·발산 신호)을 막고, 수정 반영은 갭을 실제로 없앤다. **하향의 도착지는 blocking 범위까지다(통상 medium).** 이 루프에서 닫는 수정을 반영하는 항목은 실행 영향이 낮아도 low로 내리지 않는다 — low는 `DEFER_LOW`(요약 기록만)라 수정 반영과 양립하지 않는다. 즉 이런 항목은 **medium + FIXED**로 판정해 미확인 FIXED 큐의 소멸 확인 규율을 그대로 받는다.
 - low → `DEFER_LOW`.

@@ -225,3 +225,18 @@ review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커�
 - 미판정 blocking: **없음** — R1~R4 FIXED 전건 소멸 확인 완료(R4-F2는 R5에서 확인), 잔여 신규는 전부 판정 마감. **루프 종결(R5, 2026-08-07)**.
 - low/DEFER_LOW: 없음. batch ESCALATE 적재: 없음.
 - 미확인 FIXED(확인 부채): 없음 — R5는 수정 없이 판정만 수행(§2h 이월 불요).
+
+## 적대검증 ledger (impl)
+
+대상 = `dev-workflow/skills/review-loop/SKILL.md` 개정(`4d44b6f`, `97857bc`). base = `04a9fbf`.
+주: 이 루프는 플러그인 캐시의 **0.7.1 절차**(개정 전)로 실행됐다 — 검증 대상이 자기 자신을 채점하지 않도록 하는 효과가 있으나, 종결 시 확인 부채 처리는 0.7.1 §2h 3택을 따른다.
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-I1 · SKILL.md §확인 모드 실행 · "확인 프롬프트가 셸 명령으로 실행될 수 있음" · "프롬프트를 파일/stdin으로 전달, 저장소 문자열 보간 금지" | high | FIXED(R1) | 실행 예시를 프롬프트 파일 → `PROMPT="$(cat …)"` 변수 전달로 교체. 저장소 유래 문자열(원 지적 원문·diff 요약)의 `$()`·백틱·인용부호가 셸에서 해석돼 명령 실행·프롬프트 변조가 되는 경로 차단. 절차 문구 변경만(G1·G2 준수) |
+| fp-I2 · SKILL.md §두 큐 · "적대 리뷰의 침묵만으로 확인 부채 제거 가능" · "큐 제거는 명시 확인 결과로만 허용" | high | ESCALATE→FIXED(R1, 사용자 확정) | 확인 우회 계열 4회차(sR1-F1→sR3-F1→R4-F2→fp-I2)로 규칙상 사용자 판정. 2026-08-07 사용자 선택 = **큐 이탈 경로 ① 폐지**. 적대 비재출현은 ledger 참고 신호로만 기록하고 큐 유지 → FIXED가 있었던 트랙은 확인 라운드 필수. §두 큐 28행·§2c 동기 개정. D8 빠른 종료 원 취지(클린 트랙 라운드 미추가)는 보존 |
+| fp-I3 · SKILL.md §확인 모드 실행 · "백그라운드 확인 작업의 결과 회수 절차 없음" · "foreground 또는 job id·status·result 명시" | medium | FIXED(R1) | 기본 foreground 명시(`task "$PROMPT"` 출력이 곧 확인 응답), `--background` 사용 시 job id 캡처 → `status` 폴링 → `result` 회수 절차 추가. job 시작 출력은 확인 응답이 아니므로 부분 응답 규약 미적용임을 명시 |
+
+- R1 blocking score = 7 (high 3 + high 3 + medium 1).
+- 미확인 FIXED(확인 부채): fp-I1 · fp-I2 · fp-I3 — R2에서 확인.
+- low/DEFER_LOW: 없음. batch ESCALATE 적재: 없음.
