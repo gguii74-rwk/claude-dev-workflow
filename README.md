@@ -7,7 +7,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | Tool | Kind | Invocation | Role |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | Recommended pipeline map for a new feature + tells you which step you're on (read-only, start here) |
-| review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review → adjudicate/auto-fix, repeated until zero unadjudicated critical/high findings remain |
+| review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review → adjudicate/auto-fix, then a neutral confirm round verifies the fixes and rules on merge readiness — until zero unadjudicated critical/high findings remain |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | Write multi-step implementation plans as a thin entrypoint + one file per task |
 | harden-spec | skill | `/dev-workflow:harden-spec` | Adversarially pressure a draft spec before plan/implementation to dig out missed gaps, assumptions, and invariant violations, and harden the spec in place (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (Optional, step 3.5) When a hardened spec creates or reshapes a screen: diverge non-executable HTML mockups, let the user pick, and record the UI decision in the spec as a settled decision |
@@ -78,26 +78,34 @@ Recommended order: **brainstorming → spec → harden-spec → ui-mockup (optio
 
 After each stage, commit your changes and run codex adversarial review. Findings are auto-fixed or closed with a disposition, repeating until **"zero critical/high findings remain unadjudicated."** The goal is not "zero findings" but "zero unadjudicated."
 
+The loop runs in **two modes**. It opens in **adversarial (discovery) mode** — codex `adversarial-review` digs out omissions and defects. An adversarial reviewer never returns zero findings no matter how many times you run it, so that mode alone can never end the loop. Once a transition signal fires (score plateau · fix queue drained · adversarial budget spent), the loop switches to **confirm (neutral) mode**, whose objective is *"is this mergeable?"* — it verifies that items you claimed to have fixed are actually gone, audits regressions and the proportionality of your adjudications, and issues a verdict. "No new blocking findings, fixes confirmed" becomes a legitimate output, so termination is natural.
+
 All options are optional — plain `/dev-workflow:review-loop` works.
 
 | Option | Default | Role |
 |---|---|---|
 | `--phase spec\|plan\|impl` | auto-inferred | Which stage to review. If omitted, inferred from the changes |
-| `--base <ref>` | `main` | Base branch the adversarial review diffs against |
-| `--max <n>` | `5` | Hard cap on the number of review iterations |
+| `--base <ref>` | `main` | Base branch the adversarial review diffs against. Resolved to a SHA at loop start so every round sees the same snapshot |
+| `--max <n>` | `5` | Cap on **adversarial (discovery) rounds.** Confirm rounds do not count against it |
+| `--confirm-rounds <n>` | `2` | **Confirm-round budget.** Cumulative across the whole loop; not reset on re-entry |
 | `--auto-rounds <n>` | `3` | First n rounds run in **auto mode** — auto-fix defects and batch up non-risky user decisions to ask at once. `0` = ask immediately every round; use `1` for security-sensitive work |
 | `--resume` | — | Resume an interrupted loop from the saved state (including the ledger) in `.remember/remember.md` |
 
+> **`--max` changed meaning in 0.8.0.** Through 0.7.x it was a hard cap on total iterations; it now caps **adversarial rounds only**. The total is still bounded but larger — at the defaults, **at most 9 rounds** (5 adversarial + 2 confirm + 1 returning adversarial round when confirm finds blocking + 1 re-entry confirm). To bound execution the way it used to be, lower `--max` and `--confirm-rounds` together.
+
 ```
-/dev-workflow:review-loop --phase impl                  # review the implementation (after typecheck·lint·test·build gates)
-/dev-workflow:review-loop --phase spec --auto-rounds 1  # security-sensitive → minimize auto mode
-/dev-workflow:review-loop --base develop                # diff against develop instead of main
-/dev-workflow:review-loop --resume                      # continue a loop cut off by context limits
+/dev-workflow:review-loop --phase impl                   # review the implementation (after typecheck·lint·test·build gates)
+/dev-workflow:review-loop --phase spec --auto-rounds 1   # security-sensitive → minimize auto mode
+/dev-workflow:review-loop --base develop                 # diff against develop instead of main
+/dev-workflow:review-loop --max 3 --confirm-rounds 1     # bound the round count (at most 6)
+/dev-workflow:review-loop --resume                       # continue a loop cut off by context limits
 ```
 
-**How it works** — each iteration: ① commit uncommitted changes → ② run codex adversarial review → ③ classify and adjudicate findings by fingerprint (FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE) → ④ fix FIXED items (via TDD for impl) → ⑤ re-run gates. Terminates when unadjudicated blocking findings reach zero.
+**How it works** — each adversarial round: ① commit uncommitted changes → ② run codex adversarial review → ③ classify and adjudicate findings by fingerprint (FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE) → ④ fix FIXED items (via TDD for impl) → ⑤ re-run gates. Once a transition signal fires, confirm mode takes over: ⑥ verify the entire unconfirmed-FIXED queue is gone → ⑦ audit regressions and adjudications → ⑧ issue a merge-readiness verdict. Termination requires **all three**: zero unadjudicated blocking findings, an empty unconfirmed-FIXED queue, and a passing confirm verdict.
 
 > Adversarial review looks at the **committed HEAD (branch diff)**. Running it with uncommitted changes misses your latest fixes, so the loop always enforces the order "fix → commit → review."
+>
+> **Fixing something does not close it.** A FIXED item is settled only when a confirm round explicitly records it as gone — an adversarial round not raising it again is a discovery result, not a confirmation. So any track with even one FIXED item must pass through a confirm round (only a clean track that never raised a finding terminates without one).
 
 ### 3. `writing-plans-split` — split implementation plans
 

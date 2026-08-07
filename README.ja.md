@@ -7,7 +7,7 @@
 | ツール | 種類 | 呼び出し | 役割 |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | 新機能の推奨パイプラインマップ + 現在のステップ案内（読み取り専用、ここから始める） |
-| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー → 裁定・自動修正を反復（未裁定の critical/high が 0 になるまで） |
+| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー → 裁定・自動修正を反復し、確認ラウンドが修正の消滅とマージ可否を判定（未裁定の critical/high が 0 になるまで） |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 多段階の実装プランを薄いエントリポイント + タスク別ファイルに分割して作成 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | plan・実装に進む前に spec ドラフトを敵対的に圧迫し、見逃したギャップ・前提・不変条件違反を掘り出して spec をその場で固める（project-aware） |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | （オプション、ステップ 3.5）固めた spec が画面を新設・再構成する場合: 非実行の HTML モックアップを発散させてユーザーに選ばせ、UI の決定を spec に既決事項として記録 |
@@ -78,26 +78,34 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 
 各段階の完了後に変更をコミットし、codex で敵対的レビューを回す。欠陥は自動修正するか裁定（disposition）で閉じながら、**「未裁定の critical/high が 0」**になるまで反復する。目標は「指摘 0」ではなく「未裁定 0」。
 
+ループは **2 モード**で回る。序盤は**敵対（発掘）モード** — codex `adversarial-review` で漏れ・欠陥を掘り出す。敵対的レビューアは何度回しても finding 0 を返さないため、それだけでは終われない。そこで遷移シグナル（score 停滞 · 修正キュー枯渇 · 敵対予算の消尽）が発火すると**確認（中立）モード**へ移る — 目的関数が「マージ可能か判定」なので、修正したとされる項目が本当に消えたかを確認し、リグレッションと裁定の比例性を監査したうえで verdict を出す。「新規 blocking なし、修正確認済み」が正当な出力になり、終了が自然になる。
+
 オプションはすべて任意 — `/dev-workflow:review-loop` だけでも動く。
 
 | オプション | デフォルト | 役割 |
 |---|---|---|
 | `--phase spec\|plan\|impl` | 自動推論 | どの段階を検証するか。省略時は変更内容から推論 |
-| `--base <ref>` | `main` | 敵対的レビューが比較する基準ブランチ（この diff を見る） |
-| `--max <n>` | `5` | レビュー反復回数の絶対上限 |
+| `--base <ref>` | `main` | 敵対的レビューが比較する基準ブランチ（この diff を見る）。ループ開始時に SHA へ解決され、全ラウンドが同じスナップショットを見る |
+| `--max <n>` | `5` | **敵対（発掘）ラウンドの上限。** 確認ラウンドはここに数えない |
+| `--confirm-rounds <n>` | `2` | **確認ラウンドの予算。** ループ全体の累積で、再進入時にもリセットされない |
 | `--auto-rounds <n>` | `3` | 序盤 n 回は**自動モード** — 欠陥を自動修正し、リスクのないユーザー判断はまとめて一括質問。`0`=毎ラウンド即質問、セキュリティ敏感な作業は `1` |
 | `--resume` | — | 中断したループを `.remember/remember.md` の保存状態（ledger 含む）から再開 |
 
+> **`--max` の意味が 0.8.0 で変わった。** 0.7.x までは全反復回数の絶対上限だったが、現在は**敵対ラウンドのみ**の上限。総ラウンド数は依然として有界だがより大きい — デフォルト基準で**最大 9 回**（敵対 5 + 確認 2 + 確認が blocking を見つけた場合の復帰敵対 1 + 再進入確認 1）。実行回数を以前のように抑えたい場合は `--max` と `--confirm-rounds` を一緒に下げる。
+
 ```
-/dev-workflow:review-loop --phase impl                  # 実装検証 (typecheck·lint·test·build ゲート後)
-/dev-workflow:review-loop --phase spec --auto-rounds 1  # セキュリティ敏感 → 自動モード最小化
-/dev-workflow:review-loop --base develop                # main の代わりに develop 基準の diff
-/dev-workflow:review-loop --resume                      # コンテキスト限界で切れたループの続き
+/dev-workflow:review-loop --phase impl                   # 実装検証 (typecheck·lint·test·build ゲート後)
+/dev-workflow:review-loop --phase spec --auto-rounds 1   # セキュリティ敏感 → 自動モード最小化
+/dev-workflow:review-loop --base develop                 # main の代わりに develop 基準の diff
+/dev-workflow:review-loop --max 3 --confirm-rounds 1     # ラウンド数を抑える (最大 6 回)
+/dev-workflow:review-loop --resume                       # コンテキスト限界で切れたループの続き
 ```
 
-**動作フロー** — 毎反復: ① 未コミットの変更をコミット → ② codex 敵対的レビュー実行 → ③ finding を fingerprint で分類・裁定（FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE）→ ④ FIXED は（impl なら TDD で）修正 → ⑤ ゲート再実行。未裁定の blocking が 0 になれば終了。
+**動作フロー** — 敵対ラウンドごとに: ① 未コミットの変更をコミット → ② codex 敵対的レビュー実行 → ③ finding を fingerprint で分類・裁定（FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE）→ ④ FIXED は（impl なら TDD で）修正 → ⑤ ゲート再実行。遷移シグナルが発火すると確認モードへ移り、⑥ 未確認 FIXED キュー全件の消滅確認 → ⑦ リグレッション・裁定の監査 → ⑧ マージ可否 verdict。**未裁定 blocking 0 + 未確認 FIXED キューが空 + 確認 verdict 通過**の 3 つをすべて満たして終了する。
 
 > 敵対的レビューは**コミット済みの HEAD（ブランチ diff）**を見る。未コミットのまま回すと直前の修正を見逃すため、ループは常に「修正 → コミット → レビュー」の順序を強制する。
+>
+> **修正しただけでは閉じない。** FIXED は確認ラウンドが「消滅」を明示的に記録して初めて確定する — 敵対ラウンドでその項目が再出現しなかったのは発掘の結果であって確認ではない。したがって FIXED が 1 件でもあったトラックは必ず確認ラウンドを通る（指摘が一つも出なかったクリーンなトラックのみ確認なしで即終了）。
 
 ### 3. `writing-plans-split` — 分割実装プラン
 

@@ -7,7 +7,7 @@
 | 도구 | 종류 | 호출 | 역할 |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | 새 기능의 권장 파이프라인 지도 + 현재 단계 안내 (읽기 전용, 여기서 시작) |
-| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증→판정·자동수정 반복 (판정 없이 남은 critical/high 0까지) |
+| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증→판정·자동수정 반복, 이어서 확인 라운드가 수정 소멸·머지 준비도를 판정 (판정 없이 남은 critical/high 0까지) |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (옵션, 3.5단계) 굳은 spec이 화면을 만들거나 구성을 바꿀 때: 비실행 HTML 목업을 발산해 사용자가 고르고, UI 결정을 spec에 기결정으로 기록 |
@@ -78,26 +78,34 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 
 각 단계 완료 후 변경을 커밋하고 codex로 적대검증을 돌린다. 결함은 자동수정하거나 판정(disposition)으로 닫으면서, **"판정 없이 남은 critical/high가 0"**이 될 때까지 반복한다. 목표는 "지적사항 0"이 아니라 "미판정 0"이다.
 
+루프는 **2모드**로 돈다. 초반은 **적대(발굴) 모드** — codex `adversarial-review`로 누락·결함을 캐낸다. 적대 리뷰어는 몇 번을 돌려도 finding 0을 내지 않으므로 그것만으로는 끝낼 수 없다. 그래서 전환 신호(score 정체 · 수정 큐 소진 · 적대 예산 소진)가 발화하면 **확인(중립) 모드**로 넘어간다 — 목적함수가 "머지 가능한가 판정"이라, 고쳤다고 한 항목이 정말 사라졌는지 확인하고 회귀·판정 비례성을 감사한 뒤 verdict를 낸다. "신규 blocking 없음, 수정 확인됨"이 정당한 출력이 되어 종료가 자연스러워진다.
+
 옵션은 전부 선택 — `/dev-workflow:review-loop`만 써도 동작한다.
 
 | 옵션 | 기본값 | 역할 |
 |---|---|---|
 | `--phase spec\|plan\|impl` | 자동 추론 | 어느 단계를 검증할지. 생략하면 변경 내용으로 추론 |
-| `--base <ref>` | `main` | 적대검증이 비교하는 기준 브랜치(이 diff를 본다) |
-| `--max <n>` | `5` | 리뷰 반복 횟수의 절대 상한 |
+| `--base <ref>` | `main` | 적대검증이 비교하는 기준 브랜치(이 diff를 본다). 루프 시작 시 SHA로 해소해 모든 라운드가 같은 스냅샷을 본다 |
+| `--max <n>` | `5` | **적대(발굴) 라운드 상한.** 확인 라운드는 여기서 세지 않는다 |
+| `--confirm-rounds <n>` | `2` | **확인 라운드 예산.** 루프 전체 누적이며 재진입 시 초기화되지 않는다 |
 | `--auto-rounds <n>` | `3` | 초반 n회 **자동 모드** — 결함 자동수정 + 위험 없는 사용자 결정은 모아뒀다 한 번에 질문. `0`=매 라운드 즉시 질문, 보안 민감 작업은 `1` |
 | `--resume` | — | 중단된 루프를 `.remember/remember.md`의 저장 상태(ledger 포함)에서 재개 |
 
+> **`--max`의 의미가 0.8.0에서 바뀌었다.** 0.7.x까지는 전체 반복 횟수의 절대 상한이었지만, 지금은 **적대 라운드만**의 상한이다. 총 라운드 수는 여전히 유계이되 더 크다 — 기본값 기준 **최대 9회**(적대 5 + 확인 2 + 확인이 blocking을 찾았을 때의 복귀 적대 1 + 재진입 확인 1). 실행 횟수를 예전처럼 묶고 싶으면 `--max`와 `--confirm-rounds`를 함께 낮춰라.
+
 ```
-/dev-workflow:review-loop --phase impl                  # 구현 검증 (typecheck·lint·test·build 게이트 후)
-/dev-workflow:review-loop --phase spec --auto-rounds 1  # 보안 민감 → 자동 모드 최소화
-/dev-workflow:review-loop --base develop                # main 대신 develop 기준 diff
-/dev-workflow:review-loop --resume                      # 컨텍스트 한계로 끊겼던 루프 이어가기
+/dev-workflow:review-loop --phase impl                   # 구현 검증 (typecheck·lint·test·build 게이트 후)
+/dev-workflow:review-loop --phase spec --auto-rounds 1   # 보안 민감 → 자동 모드 최소화
+/dev-workflow:review-loop --base develop                 # main 대신 develop 기준 diff
+/dev-workflow:review-loop --max 3 --confirm-rounds 1     # 라운드 수를 묶는다 (최대 6회)
+/dev-workflow:review-loop --resume                       # 컨텍스트 한계로 끊겼던 루프 이어가기
 ```
 
-**동작 흐름** — 매 반복: ① 미커밋 변경 커밋 → ② codex 적대검증 실행 → ③ finding을 fingerprint로 분류·판정(FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE) → ④ FIXED는 (impl이면 TDD로) 수정 → ⑤ 게이트 재실행. 미판정 blocking이 0이 되면 종료.
+**동작 흐름** — 적대 라운드마다: ① 미커밋 변경 커밋 → ② codex 적대검증 실행 → ③ finding을 fingerprint로 분류·판정(FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE) → ④ FIXED는 (impl이면 TDD로) 수정 → ⑤ 게이트 재실행. 전환 신호가 발화하면 확인 모드로 넘어가 ⑥ 미확인 FIXED 큐 전체의 소멸 확인 → ⑦ 회귀·판정 감사 → ⑧ 머지 준비도 verdict. **미판정 blocking 0 + 미확인 FIXED 큐 빔 + 확인 verdict 통과**를 모두 충족해야 종료한다.
 
 > 적대검증은 **커밋된 HEAD(브랜치 diff)** 를 본다. 미커밋 상태로 돌리면 직전 수정을 놓치므로, 루프는 항상 "수정→커밋→리뷰" 순서를 강제한다.
+>
+> **수정했다고 닫히지 않는다.** FIXED는 확인 라운드가 '소멸'을 명시 기록해야 확정된다 — 적대 라운드에서 그 항목이 다시 안 나온 건 발굴 결과일 뿐 확인이 아니다. 그래서 FIXED가 한 건이라도 있었던 트랙은 확인 라운드를 반드시 거친다(지적이 하나도 없던 클린 트랙만 확인 없이 즉시 종료).
 
 ### 3. `writing-plans-split` — 분할 구현 계획
 
