@@ -252,3 +252,17 @@ review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커�
 - 루프 직접 판정(확인 라운드 임무 ③ 감사 대상): fp-I7(DUPLICATE) · fp-I8(OUT_OF_SCOPE).
 - 적대 비재출현(R3): fp-I4 · fp-I5 · fp-I6 — 참고 신호, 큐 유지.
 - low/DEFER_LOW: 없음. batch ESCALATE 적재: 없음.
+
+### 확인 라운드 C1 (2026-08-07) — 응답 완전, 확인 예산 1/2 소진
+
+큐 8건 전 항목 명시 결과 + 판정 감사 + 신규 finding "없음" + verdict 수신 → 완전 응답으로 예산 차감.
+
+- **소멸 확인(5건)**: fp-I1 · fp-I2 · fp-I3 · fp-I5 · fp-I10.
+- **잔존(3건, 불완전 해소)** → §확인 모드 결과 처리에 따라 수정 큐 직접 투입 후 수정·커밋(`복귀 준비`):
+  - **fp-I4**(medium으로 잔존) — §2j 표는 적대 응답마다 `iteration++`인데 아래 불릿은 마지막 라운드에서 "그대로 둔다"로 읽혀 resume 카운터가 불일치. → 적대 응답 시 예외 없이 `iteration++`, `iteration > max`는 "적대를 더 돌리지 않는다"는 뜻일 뿐 확인 진입을 막지 않음을 명시.
+  - **fp-I6**(medium으로 잔존) — §2b는 해소한 SHA를 쓰지만 §확인 모드 프롬프트 첨부물 ③이 여전히 "base ref". → 첨부물 ③을 해소한 base SHA로 고정.
+  - **fp-I9**(high로 잔존) — 핸드오프 전 clean tree만 강제하고 §0 수신 측 대조가 worktree·index clean을 검사하지 않아 중단 중 미커밋 변경이 같은 HEAD로 통과. → §0 스냅샷 대조에 clean 검사 추가(송신·수신 양쪽 짝).
+- **판정 감사**: fp-I7(DUPLICATE)·fp-I8(OUT_OF_SCOPE) 모두 적정 — 이의 없음.
+- **신규 finding**: 없음.
+- **verdict**: 비통과(fp-I4·I6·I9 blocking 잔존).
+- **의의**: 개정한 확인 모드의 첫 실전 사용. 적대 R3이 통과시킨 3건의 불완전 해소를 확인 라운드가 잡아냄 — 확인 부채 해소 설계의 실측 근거.
