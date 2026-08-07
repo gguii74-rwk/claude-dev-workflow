@@ -344,3 +344,19 @@ D5 ESCALATE에 대한 사용자 선택 = whole-branch 리뷰 재실행. `--resum
 - 적대 비재출현(R3): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 — 참고 신호, 큐 유지.
 - 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b). 즉시군/batch ESCALATE 0건 — auto-rounds 도달 flush 대상 없음(fp-J6 규정 첫 적용).
 - 미확인 FIXED 큐(R3 수정 후): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 · fp-J4 · fp-J5 · fp-J6 (8건).
+- 루프 커밋: `44738d3`.
+
+#### 적대 라운드 R4 (정밀 모드)
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-J7 · SKILL.md §0 · "resume clean 검사가 자체 handoff 파일 때문에 실패한다" · "핸드오프 파일을 명시 허용하거나 ignore 후 tracked/index·기타 untracked를 별도 검사" | high | FIXED(R4) | 실재 — `.remember/`는 tracked도 ignore도 아니라 이 루프 내내 `?? .remember/`로 떠 있었고, §0 문구를 문자대로 읽으면 §2i가 방금 쓴 정상 핸드오프가 스스로 fail-closed를 깨 큐·예산 복원이 항상 중단된다. 수정: clean 검사 대상 = tracked 변경 + index 변경으로 한정하고, 핸드오프 파일 자신과 이 루프가 만들지 않은 untracked는 제외, 이 루프가 만든 그 외 untracked는 위반으로 명시(§2i 커밋 강제와 짝). 내용 해시 저장·대조(대안 i)는 승계 가드 G1·G2(기계 검증 장치 과설계 금지) 위반이라 불채택 |
+| fp-J8 · SKILL.md §3/§확인 모드 결과 처리 · "성공 verdict를 기록한 ledger가 커밋되지 않는다" · "모든 종료 경로에서 최종 ledger를 명시 커밋하고 clean 확인 후 종료 요약" | medium | FIXED(R4) | 커밋은 §2a가 **다음 반복 시작에** 수행하는데 종료 라운드에는 다음 반복이 없다 → 최종 검증 증거(소멸 목록·verdict)가 이 워킹트리에만 남아 다른 체크아웃·배포 브랜치에서는 큐 미종결로 보인다. 수정: §3을 "종료 전 커밋" 절차로 실체화(성공·ESCALATE 중단·상한 도달 전 경로, §2a와 동일 규칙) |
+| (R4-F1) · spec impl ledger · "자체 검증이 8건의 미확인 FIXED를 남긴 채 끝난다" · "확인 라운드 완료 후 소멸·verdict 기록하고 출하" | high | DUPLICATE(fp-I7 계열) | ledger가 이미 미확인 FIXED로 추적 중인 상태 그 자체를 지적 — 신규 결함이 아니라 루프가 아직 확인 라운드에 도달하지 않았다는 사실. 해소 경로 = 전환 신호 발화에 따른 확인 모드 진입. spec R4-F1 · impl fp-I7 · fp-I13과 동일 계열 |
+| (R4-F3) · plugin.json:5 · 릴리스 미범프 + README 3종 | high | DUPLICATE(fp-I8) | 4회차 재지목. score 밖 |
+
+- 전환용 score: R1 = 5 · R2 = 4 · R3 = 7 · **R4 = 4** (fp-J7 3 + fp-J8 1). 감소 → 전환 신호 1 미발화. 신호 2(수정 큐 2건)·신호 3(소진 4 < 5) 미발화 → **적대 계속**.
+- 미확인 FIXED 큐 크기: 8건(R4 분류 시점) → R4 수정 후 10건.
+- 적대 비재출현(R4): 큐 8건 전부 — 참고 신호, 큐 유지.
+- 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b). 정밀 모드 진입 후 첫 라운드, ESCALATE 0건.
+- 미확인 FIXED 큐(R4 수정 후): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 · fp-J4 · fp-J5 · fp-J6 · fp-J7 · fp-J8 (10건).
