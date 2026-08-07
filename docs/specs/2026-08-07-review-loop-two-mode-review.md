@@ -241,7 +241,14 @@ review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커�
 | fp-I5 · SKILL.md §확인 모드 결과 처리 · "확인에서 발견한 blocking이 수정 경로로 전달되지 않아 교착" · "수정 큐 직접 투입 후 복귀, 수정분 재확인" | high | FIXED(R2) | 복귀 전에 지목 항목을 수정 큐에 직접 넣고 §2f로 수정·게이트·커밋하도록 명시. 적대 재발견 대기 금지 근거(적대 침묵 = 해결 증거 아님) 명시. 수정분은 다시 미확인 FIXED 큐 편입. **fp-I2 개정으로 생긴 파생 구멍** — 큐 이탈 경로를 좁히자 재분류 항목의 수정 경로가 드러남 |
 | fp-I6 · SKILL.md §2b · "해소한 base SHA가 실제 리뷰 명령에 사용되지 않음" · "모든 라운드에 고정 SHA 전달" | medium | FIXED(R2) | `--base`에 해소한 SHA를 넘기도록 명시, 가변 ref 사용 금지 근거(루프 중 ref 이동 → 라운드별 diff 범위 변동 → ledger·score 이력·확인 verdict가 서로 다른 스냅샷) 추가 |
 
-- blocking score 이력: R1 = 7 · R2 = 14 (미확인 FIXED 큐 fp-I1~I3 = 7 + 신규 7). 초반 신규 영역 유입으로 상승 — 전환 신호(2회 연속 비감소)는 미발화.
+| fp-I7 · spec impl ledger · "6건의 FIXED가 아직 blocking 상태" · "확인 라운드로 소멸·verdict 기록 후 릴리스" | high | DUPLICATE(확인 부채 재서술) | ledger가 이미 fp-I1~I6을 미확인 FIXED로 추적 중인 상태 그 자체를 지적 — 신규 결함이 아니라 루프가 아직 확인 라운드를 돌지 않았다는 사실. 해소 경로 = 전환 신호 발화에 따른 확인 모드 진입. spec 루프 R4-F1과 동일 계열 판정 |
+| fp-I8 · plugin.json:5 · "0.7.1 유지 + README가 --max를 전체 절대 상한으로 안내, --confirm-rounds 누락" · "0.8.0 범프 + README 3종 동기" | high | OUT_OF_SCOPE | 이번 리뷰 대상 = SKILL.md 개정. 릴리스는 트랙의 별도 후속 단계로 이미 계획·기록됨(핸드오프 §다음 액션 2). **follow-up = 0.8.0 범프 + README en/ko/ja에 2모드·`--max` 의미 변경·`--confirm-rounds`·최대 라운드 수(기본값 기준 9) 반영** — sR3-F3을 DUPLICATE로 각하한 근거가 이 고지 경로이므로 릴리스 전 필수 |
+| fp-I9 · SKILL.md §0/§2i · "resume 스냅샷이 검증 상태를 완전히 보존하지 않음(미커밋 잔여 유입·큐 원문 유실)" · "clean tree 강제 + fingerprint별 원문·커밋·diff 보존" | high | FIXED(R3) | §2i에 ① 핸드오프 전 커밋으로 clean tree 강제(커밋 불가면 중단 보고), ② 미확인 FIXED 큐를 fingerprint별 원 지적 원문·수정 커밋 SHA·diff 요약·판정 주체로 기록 추가. G1·G2 준수로 해시 스냅샷 기계장치 대신 clean tree 강제를 택함. 실측 근거 = 이 트랙에서 확인 프롬프트 전문이 보존되지 않아 규정에서 재구성해야 했던 사례 |
+| fp-I10 · SKILL.md §2h · "--confirm-rounds 0이 새 루프에서 적용되지 않음" · "확인 진입 시점에 예산 잔여 검사" | medium | FIXED(R3) | §2h 전환 신호 처리에 확인 예산 잔여 검사 단계 추가 — 잔여 0이면 `task` 실행 전 ESCALATE. 새 루프는 시작 시 큐가 비어 §0 검사를 통과하므로 진입 시점 검사가 유일한 발동 지점임을 명시 |
+
+- blocking score 이력: R1 = 7 · R2 = 14 · **R3 = 18** (미확인 FIXED 큐 fp-I1~I6 = 14 + fp-I9 3 + fp-I10 1; fp-I7·fp-I8은 판정으로 닫혀 비-blocking). **2회 연속 비감소로 전환 신호 발화** + iteration 3 = auto-rounds 도달 → batch 정리(적재 0건) 후 **확인 모드 진입**.
 - **적대 비재출현(R2)**: fp-I1 · fp-I2 · fp-I3 — 이번 개정으로 큐 제거 사유가 아니므로 참고 신호로만 기록하고 큐에 유지.
-- 미확인 FIXED(확인 부채): fp-I1 ~ fp-I6 (6건) — 확인 라운드에서 처리.
+- 미확인 FIXED 큐: fp-I1 ~ fp-I6 · fp-I9 · fp-I10 (8건) — 확인 라운드 임무 ① 대상.
+- 루프 직접 판정(확인 라운드 임무 ③ 감사 대상): fp-I7(DUPLICATE) · fp-I8(OUT_OF_SCOPE).
+- 적대 비재출현(R3): fp-I4 · fp-I5 · fp-I6 — 참고 신호, 큐 유지.
 - low/DEFER_LOW: 없음. batch ESCALATE 적재: 없음.
