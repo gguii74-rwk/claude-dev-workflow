@@ -266,3 +266,16 @@ review-loop `--phase spec` 2026-08-07. base = `d5620be`(spec 트랙 직전 커�
 - **신규 finding**: 없음.
 - **verdict**: 비통과(fp-I4·I6·I9 blocking 잔존).
 - **의의**: 개정한 확인 모드의 첫 실전 사용. 적대 R3이 통과시킨 3건의 불완전 해소를 확인 라운드가 잡아냄 — 확인 부채 해소 설계의 실측 근거.
+
+### 복귀 적대 라운드 R4 (2026-08-07, 복귀 상한 1회 사용)
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-I11 · SKILL.md §확인 모드 결과 처리 · "확인 리뷰의 모든 blocking이 판정 없이 자동 수정된다" · "확인 finding도 §2c·§2d 재분류, FIXED 후보만 수정 큐" | high | FIXED(R4) | **fp-I5 수정의 과교정** — 잔존·회귀뿐 아니라 신규 blocking까지 곧바로 수정 큐로 보내 ESCALATE 기준(보안·데이터 트레이드오프·설계 선택지 2+·저신뢰)이 우회됐다. 확인 지목 항목도 §2c·§2d 판정을 거치고 FIXED 후보만 수정 큐로, 위험군은 즉시 ESCALATE로 교정 |
+| fp-I12 · SKILL.md §2b · "base만 고정되어 동시 커밋이 검증 없이 통과할 수 있음" · "target HEAD 기록 + 응답 후 재검증" | high | FIXED(R4) | 라운드 시작 시 target HEAD를 기록하고(ledger·프롬프트에 base·target 병기) 응답 수신 후 branch·HEAD·clean 상태를 재확인, 불일치면 응답 폐기·중단(큐 불변·예산 미차감). 이 트랙의 작업 환경이 **여러 머신 교대·워크트리 공유**라 실재 위험 |
+| fp-I13 · spec impl ledger · "브랜치 자체 확인 ledger가 아직 비통과" · "복귀 적대 + 재진입 확인 후 출하" | high | DUPLICATE(fp-I7 계열 — 확인 부채 재서술) | C1 비통과 후 루프가 **지금 수행 중인** 복귀→재진입 절차 그 자체를 지적. 신규 결함이 아니며 해소 경로는 재진입 확인 라운드 |
+| fp-I14 · SKILL.md §2j · "적대 라운드 카운터가 1만큼 어긋난다" · "소진 카운터 0 시작·`consumed < max` 분리" | medium | FIXED(R4) | 카운터 의미를 **소진 횟수(0에서 시작)**로 통일하고 실행 조건을 `적대 소진 < max`로 명시. `iteration` 용어를 §0·§2 헤더·§자동 모드·§2d·§2j 전반에서 소진 카운트로 교체 |
+
+- blocking score 이력: R1 = 7 · R2 = 14 · R3 = 18 · **R4 = 12** (큐 fp-I4·I6·I9 = 5 + 신규 7). C1 이후 첫 감소.
+- 미확인 FIXED 큐: fp-I4 · fp-I6 · fp-I9 · fp-I11 · fp-I12 · fp-I14 (6건).
+- 예산: 적대 소진 3/5(R1~R3) + 복귀 1회(R4, 상한 밖 — **복귀 소진**) / 확인 소진 1/2. 남은 경로 = **재진입 확인 1회(상한 밖)**. D5에 따라 재진입 확인에서 또 blocking이면 ESCALATE + whole-branch 리뷰 권고.

@@ -97,11 +97,11 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 
 사람 개입이 자동화의 병목이므로, 초반 `--auto-rounds`(기본 3) 라운드는 가급적 자동으로 돈다(초반은 실제 누락이 많아 수정 가치가 크다). 이 축(자동/정밀)은 적대/확인 축과 직교다.
 
-- **자동 모드(iteration ≤ auto-rounds)**: FIXED는 자동 수정. ESCALATE는 **즉시군만** 묻고 **batch군은 적재**(안 물음). 매 라운드 게이트 통과 + 커밋.
+- **자동 모드(적대 소진 < auto-rounds)**: FIXED는 자동 수정. ESCALATE는 **즉시군만** 묻고 **batch군은 적재**(안 물음). 매 라운드 게이트 통과 + 커밋.
 - **batch 전환(자동 모드 종료)** — 다음 중 하나면 모아둔 batch ESCALATE를 일괄 제시:
-  ① iteration이 auto-rounds 도달, ② blocking score 2회 연속 비감소(정체/발산) **조기 전환**, ③ 수정 큐가 비고 남은 게 batch ESCALATE뿐.
+  ① 적대 소진이 auto-rounds 도달, ② blocking score 2회 연속 비감소(정체/발산) **조기 전환**, ③ 수정 큐가 비고 남은 게 batch ESCALATE뿐.
 - **batch 제시**: 모아둔 batch ESCALATE 전부 + **round별 자동 수정 내역(커밋·diff 요약)**을 한 번에 `AskUserQuestion`. 사용자가 각 항목을 FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE로 닫고, 자동 수정도 검토·롤백할 수 있다.
-- **정밀 모드(iteration > auto-rounds)**: 현행대로 ESCALATE 즉시 처리(사람 손을 탄 마무리).
+- **정밀 모드(적대 소진 ≥ auto-rounds)**: 현행대로 ESCALATE 즉시 처리(사람 손을 탄 마무리).
 - `--auto-rounds 0`이면 자동 모드 없이 매 라운드 즉시(현행 동작).
 
 ## 확인(중립) 모드 — 임무 4종·실행·응답 계약
@@ -151,7 +151,7 @@ node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 ### 결과 처리
 
 - **큐 전 항목 소멸 확인 + 신규 blocking 0 + 감사 이상 없음 + verdict 통과** → 성공 종료(§2e 불변식 충족). 소멸 확인 fingerprint 목록·verdict를 ledger에 기록.
-- **blocking 발견**(큐 항목 잔존/재분류, 회귀, 신규 blocking) → 확인 리뷰가 지목한 항목을 **먼저 수정 큐에 직접 넣고** §2f로 수정·게이트·커밋한 뒤 **적대 모드 복귀(상한 1회)**. 복귀 시 적대 1라운드 + 확인 재진입 1라운드가 누적 상한 밖에서 추가 허용된다. **재진입 확인에서 또 blocking이 나오면 → ESCALATE**(edge 표면이 넓다는 신호 — 새 세션 whole-branch 리뷰 권고 동반).
+- **blocking 발견**(큐 항목 잔존/재분류, 회귀, 신규 blocking) → 지목 항목을 **§2c·§2d의 분류·판정을 그대로 거친 뒤**(확인 라운드라고 판정을 건너뛰지 않는다) **FIXED 후보만 수정 큐에 넣어** §2f로 수정·게이트·커밋하고 **적대 모드 복귀(상한 1회)**. critical·보안/데이터 트레이드오프·설계 선택지 2+·저신뢰는 §2d의 **즉시(IMMEDIATE) ESCALATE**이며, 자동으로 고치지 않는다 — 확인 경로가 ESCALATE 기준을 우회해 인증·권한 같은 결정을 자동 변경하는 것을 막는다. 복귀 시 적대 1라운드 + 확인 재진입 1라운드가 누적 상한 밖에서 추가 허용된다. **재진입 확인에서 또 blocking이 나오면 → ESCALATE**(edge 표면이 넓다는 신호 — 새 세션 whole-branch 리뷰 권고 동반).
   - **확인이 지목한 blocking은 적대 리뷰가 다시 찾아주기를 기다리지 않는다.** 복귀 적대 라운드는 그 수정의 회귀를 보는 것이지 항목을 재발견하는 경로가 아니다 — 적대 침묵은 해결 증거가 아니므로(§두 큐), 기다리면 그 항목은 고칠 경로 없이 미판정으로 남아 교착한다.
   - 수정한 항목은 **다시 미확인 FIXED 큐에 넣는다**(재확인 대상). 잔존 항목은 큐에 계속 남고, blocking 재분류된 항목은 재판정 후 FIXED로 고쳤다면 새로 큐에 편입된다 — 어느 경로로도 확인 없이 사라지지 않는다.
 - **판정 감사 이의**(비례성·연결 누락·DUPLICATE 오매칭 지적) → 루프가 스스로 번복하지 않는다. **해당 항목만 ESCALATE로 사용자 재판정**(기결정 가드 규약 유지).
@@ -181,8 +181,8 @@ node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 ## 절차
 
 ### 0. resume 점검
-`--resume`이거나 `.remember/remember.md`에 review-loop 미완 상태가 있으면 복원한다. 없으면 iteration=1, 빈 ledger, 적대 모드로 시작.
-- **복원 필드**: phase / 적대 라운드 소진 카운트(iteration) / 확인 라운드 소진 카운트 / 현재 모드(적대·확인) / 복귀 사용 여부 / base(해소된 ref + SHA) / branch / 중단 시 HEAD SHA / ledger(미확인 FIXED 큐 명시 포함) / score 이력 / 보안 크리티컬 트랙 판정 상태.
+`--resume`이거나 `.remember/remember.md`에 review-loop 미완 상태가 있으면 복원한다. 없으면 적대 소진=0, 확인 소진=0, 빈 ledger, 적대 모드로 시작.
+- **복원 필드**: phase / 적대 라운드 소진 카운트 / 확인 라운드 소진 카운트 / 현재 모드(적대·확인) / 복귀 사용 여부 / base(해소된 ref + SHA) / branch / 중단 시 HEAD SHA / ledger(미확인 FIXED 큐 명시 포함) / score 이력 / 보안 크리티컬 트랙 판정 상태.
 - **스냅샷 대조(fail-closed)**: 복원 전에 현재 git 상태와 대조한다 — 브랜치 동일? HEAD == 기록된 HEAD SHA? base SHA 불변? **작업 트리·index가 clean한가**(`git status --short`가 이 트랙과 무관한 untracked 외에 비어 있는가)? **하나라도 불일치(중단 중 커밋 추가·브랜치 이동·base 이동·미커밋 변경 유입)면 모드·예산·큐를 복원하지 않고 중단 보고한다.** HEAD만 대조하면 중단 사이에 생긴 미커밋 변경이 같은 HEAD로 통과해 검토되지 않은 내용이 확인 모드로 흘러든다(§2i의 핸드오프 전 clean tree 강제와 짝을 이루는 수신 측 검사). 재개 방식은 사용자 판단(통상 적대 1회 재실행 권고). 확인 모드는 신규 발굴을 하지 않으므로, 미검토 커밋이 큐 소멸·merge-ready 판정을 받는 경로를 차단하는 것이 목적이다.
 - 확인 필수 조건 성립 + 확인 예산 0이면 시작하지 않고 ESCALATE(§인자).
 
@@ -200,9 +200,9 @@ impl 게이트가 실패하면 루프를 시작하지 말고 먼저 해결한다
 - **base 해소**: 트랙 기준 ref(기본 main, 비-main 트랙은 그 ref)를 확정하고 SHA와 함께 기록한다(§인자).
 - **보안 크리티컬 자가 판정**: 변경 접촉면이 ESCALATE 즉시군 계열(권한·인증·보안 경계·데이터 손상/유실·비가역 마이그레이션)에 닿으면, 사용자에게 "보안 크리티컬 트랙으로 취급할지" **확인 1회**. 보안 트랙이면 전환 신호에서 score 정체를 무시한다(§blocking score).
 
-### 2. 반복 — 적대 라운드 (iteration = 시작값..max)
+### 2. 반복 — 적대 라운드 (적대 소진 < max인 동안)
 
-iteration은 **적대 라운드만** 센다. 확인 라운드는 `--confirm-rounds` 예산으로 별도 계수한다.
+적대 소진 카운트는 **적대 라운드만** 센다(0에서 시작, 응답을 받을 때마다 +1 — §2j). 확인 라운드는 `--confirm-rounds` 예산으로 별도 계수한다.
 
 #### 2a. 커밋 우선 — 핵심
 작업 트리에 미커밋 변경이 있으면 의미 있는 메시지로 커밋한다(AI 서명 금지).
@@ -224,6 +224,7 @@ ROOT=$(ls -d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/ | sort -V | tai
 node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <해소한 base SHA>
 ```
 - **`--base`에는 루프 시작 시 해소한 base SHA를 넘긴다** — `main` 같은 가변 ref를 그대로 넘기지 않는다. 루프가 도는 동안 ref가 움직이면 라운드마다 diff 범위가 달라져 ledger·score 이력·확인 verdict가 서로 다른 스냅샷을 가리킨다. 모든 적대·확인 라운드가 같은 SHA를 본다(§1 base 해소 · §2i 핸드오프 base 필드).
+- **target HEAD도 고정한다**: 라운드 시작 시 현재 HEAD SHA를 기록하고(ledger·프롬프트에 base·target 병기), **응답을 받은 뒤 branch·HEAD·clean 상태가 그대로인지 다시 확인**한다. 달라졌으면 그 응답을 쓰지 말고 중단 보고한다(큐 불변·예산 미차감 — §확인 모드 응답 완전성 계약과 동일 취급). 워크트리를 다른 세션과 공유하면 리뷰 중 들어온 커밋이 검증 없이 성공 판정을 받을 수 있다.
 - 변경이 크면(여러 파일/디렉터리 단위) `run_in_background: true`로 띄우고 `/codex:status`로 폴링한다. 결과 파일에서 리뷰 본문만 추출: `sed -n '/^# Codex Adversarial Review/,$p' <출력 파일>`.
 - 출력 JSON을 파싱한다: `{ verdict, summary, findings[{severity,title,body,file,line_start,line_end,confidence,recommendation}], next_steps }`.
 - 출력이 스키마와 다르면 루프를 멈추고 원문을 보고한다(추측 금지). 자동 재시도 금지 — 재실행은 사용자 판단.
@@ -242,8 +243,8 @@ node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <해�
 - 미판정 blocking score를 계산해 이력에 기록.
 
 #### 2d. ESCALATE 처리 (모드 분기)
-- **자동 모드(iteration ≤ auto-rounds)**: **즉시(IMMEDIATE)군만** `AskUserQuestion`으로 처리(각 항목: 무엇이/왜/영향/선택지). batch군은 ledger에 `ESCALATE(batch-pending)`로 적재(안 물음).
-- **batch 전환 시점 / 정밀 모드(iteration > auto-rounds)**: 모아둔 batch ESCALATE를 **일괄** `AskUserQuestion` + **round별 자동수정 내역(커밋·diff 요약)** 동반. 사용자가 각 항목을 **FIXED·ACCEPTED·DEFERRED_TO_IMPL·OUT_OF_SCOPE 중 하나로 닫거나** "지금 멈추고 직접 본다"를 택한다. 중단 선택 시 핸드오프(ledger 포함)를 쓰고 종료.
+- **자동 모드(적대 소진 < auto-rounds)**: **즉시(IMMEDIATE)군만** `AskUserQuestion`으로 처리(각 항목: 무엇이/왜/영향/선택지). batch군은 ledger에 `ESCALATE(batch-pending)`로 적재(안 물음).
+- **batch 전환 시점 / 정밀 모드(적대 소진 ≥ auto-rounds)**: 모아둔 batch ESCALATE를 **일괄** `AskUserQuestion` + **round별 자동수정 내역(커밋·diff 요약)** 동반. 사용자가 각 항목을 **FIXED·ACCEPTED·DEFERRED_TO_IMPL·OUT_OF_SCOPE 중 하나로 닫거나** "지금 멈추고 직접 본다"를 택한다. 중단 선택 시 핸드오프(ledger 포함)를 쓰고 종료.
 
 #### 2e. 종료 판정
 - **빠른 종료**: 루프 전체에서 미확인 FIXED 큐 0건 **AND** 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건 **AND** 미판정 blocking 0 → 확인 라운드 없이 즉시 성공 종료. 4번으로. (확인할 대상이 없는 클린 트랙 — 라운드를 추가하지 않는다)
@@ -277,16 +278,17 @@ phase=impl이면 §1 게이트를 다시 통과시킨다. 깨지면 그 반복�
 - **미확인 FIXED 큐는 요약이 아니라 확인 프롬프트를 재구성할 수 있는 형태로 남긴다** — fingerprint별로 **원 지적 원문(title·body·recommendation) · 수정 커밋 SHA · diff 요약 · 판정 주체(루프/사용자)**. fingerprint만 적어두면 /clear 이후 세션이 §확인 모드의 프롬프트 첨부물 계약(②)을 복원할 수 없어 확인 라운드를 돌릴 수 없다(실측: 프롬프트 전문이 보존되지 않아 규정에서 재구성해야 했던 사례).
 
 #### 2j. 다음 반복 — 모드별 카운터 갱신
-반복은 iteration이 아니라 **현재 모드**가 몬다. 2a로 돌아가기 전에 이번 라운드의 모드에 해당하는 카운터만 올린다.
+반복은 라운드 번호가 아니라 **현재 모드**가 몬다. 2a로 돌아가기 전에 이번 라운드의 모드에 해당하는 카운터만 올린다.
 
 | 이번 라운드 | 카운터 갱신 | 다음 라운드 진입 조건 |
 |---|---|---|
-| **적대** (응답 수신) | `iteration++` (적대 소진) | `iteration ≤ max` AND 전환 신호 미발화 → 적대 계속. 전환 신호 발화 또는 `iteration > max` → §2h로(확인 진입 판단) |
+| **적대** (응답 수신) | `적대 소진++` | `적대 소진 < max` AND 전환 신호 미발화 → 적대 계속. 전환 신호 발화 또는 `적대 소진 == max` → §2h로(확인 진입 판단) |
 | **확인** (응답이 **완전**) | `확인 소진++` | 결과 처리(§확인 모드)가 복귀를 지시하면 적대 1라운드(상한 밖), 아니면 확인 예산 잔여 시 확인 계속 |
 | **확인** (실패·타임아웃·부분 응답) | **갱신 없음** | 중단 보고(§응답 완전성 계약) |
 
-- **적대 응답을 받았으면 예외 없이 `iteration++`** 한다 — 그 라운드를 실제로 소진했기 때문이다. 마지막 적대 라운드도 마찬가지로 올려 `iteration == max`가 된다.
-- **확인 라운드는 `iteration`을 올리지 않으며, `iteration`이 max에 도달한 것은 확인 진입을 막지 않는다** — `--max`는 적대 상한일 뿐이다. 즉 `iteration > max`는 "적대를 더 돌리지 않는다"는 뜻이지 "루프를 끝낸다"는 뜻이 아니다(적대 예산 소진 = 전환 신호 3).
+- **카운터는 "소진 횟수"다 — 라운드 번호가 아니다.** `적대 소진`은 **0에서 시작**해 적대 응답을 받을 때마다 1씩 오른다(라운드 번호 = 소진 + 1). 실행 조건은 `적대 소진 < max`, 즉 max=5면 R1~R5를 돌고 소진 5에서 멈춘다. 핸드오프·resume가 주고받는 값도 이 소진 횟수다(§0·§2i).
+- **적대 응답을 받았으면 예외 없이 소진을 올린다** — 그 라운드를 실제로 썼기 때문이다. 마지막 라운드도 올려 `적대 소진 == max`가 된다.
+- **확인 라운드는 적대 소진을 올리지 않으며, 적대 소진이 max에 도달한 것은 확인 진입을 막지 않는다** — `--max`는 적대 상한일 뿐이다. `적대 소진 == max`는 "적대를 더 돌리지 않는다"는 뜻이지 "루프를 끝낸다"는 뜻이 아니다(적대 예산 소진 = 전환 신호 3).
 - **복귀로 추가되는 적대 1라운드와 재진입 확인 1라운드는 각 상한 밖**이며 두 카운터 어느 쪽도 올리지 않는다(§인자 `--confirm-rounds` 산법).
 - 두 카운터와 현재 모드는 매 라운드 핸드오프 필드(§2i)와 같은 값이어야 한다 — resume가 같은 지점에서 이어지려면 이 갱신이 유일한 증가 지점이어야 한다.
 
