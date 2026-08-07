@@ -313,3 +313,17 @@ D5 ESCALATE에 대한 사용자 선택 = whole-branch 리뷰 재실행. `--resum
 - blocking score: **R1 = 5** (fp-J1 high 3 + fp-I11 medium 1 + fp-I14 medium 1). DUPLICATE는 score 밖. 자동 모드(적대 소진 0 < 3) — 즉시군 ESCALATE 0건, batch 적재 0건.
 - 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b).
 - 미확인 FIXED 큐(R1 수정 후): fp-J1 · fp-I11 · fp-I14 (3건, 전부 재편입).
+- 루프 커밋: `7e8e7be`.
+
+#### 적대 라운드 R2
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-J3 · SKILL.md §blocking score · "누적 확인 부채가 정체 신호를 거짓 발화시킨다" · "전환용 score에서 미확인 FIXED 큐를 제외하고 잔존·미수정 blocking만 계산" | high | ESCALATE(즉시)→FIXED(R2, 사용자 확정) | 즉시군 ③(후속 라운드 진행의 전제가 되는 방향 결정). 유효 설계 선택지 2+ 라 루프가 자체 판단하지 않음. **2026-08-08 사용자 선택 = B(분리)**. 근거: 확인 부채는 매 라운드 서로 다른 결함을 정상 수정해도 단조 증가 → churn 아닌 국면에서 신호 1 거짓 발화 → 적대 예산 잔여 상태로 확인 전환(직전 루프 R1 7→R2 14→R3 18 전환이 실측 사례이며 그 궤적이 D5 ESCALATE로 끝났다). 수정: 전환용 score = 미수정 미판정 blocking만, 미확인 FIXED 큐는 §두 큐·확인 필수 조건·성공 불변식이 별도 수용. **fp-I2·D3 번복 아님** — 큐 이탈 경로·신호 정의 불변, 바뀐 것은 신호 입력 지표뿐. §disposition 미판정 정의에 "종료 게이트용/전환용" 구분 주석 동기 |
+| fp-J2 · SKILL.md §2h/§확인 모드 결과 처리 · "복귀 적대 라운드에서 batch ESCALATE가 재진입 확인 전에 유실될 수 있다" · "복귀 라운드를 정밀 모드로 강제하거나 재진입 확인 직전 batch 강제 flush" | medium | FIXED(R2) | **fp-I11 수정(R1)의 파생 구멍** — R1이 추가한 확인 모드 예외는 확인 라운드에서 발생한 ESCALATE만 덮고, 복귀 **적대** 라운드는 카운터 미증가로 여전히 자동 모드라 batch를 적재할 수 있는데 flush 지점이 없다. 수정: §2h에 "복귀 후 재진입 확인도 확인 진입 — ①batch 일괄 제시·②예산 검사를 그대로 수행" 추가, §확인 모드 결과 처리 복귀 문장에서 참조. 복귀 라운드 정밀 모드 강제(대안 i)는 auto/정밀 축 불변(D6)을 건드려 불채택 |
+| (R2-F2) · plugin.json:5 · 릴리스 미범프 + README 3종 | high | DUPLICATE(fp-I8) | fp-I8 2회차 재지목. 판정 완료·감사 적정. score 밖 |
+
+- blocking score: R1 = 5 · **R2 = 9** (fp-J1 3 + fp-I11 1 + fp-I14 1 + fp-J3 3 + fp-J2 1). **주의 — 이 값은 개정 전 산식(부채 포함)이다.** fp-J3 개정으로 R3부터 전환용 score는 미수정 blocking만 센다. 소급 재계산하면 R1 = 0, R2 = 4.
+- 적대 비재출현(R2): fp-J1 · fp-I11 · fp-I14 — 참고 신호, 큐 유지.
+- 응답 수신 후 branch·HEAD·clean 재확인 통과(§2b).
+- 미확인 FIXED 큐(R2 수정 후): fp-J1 · fp-I11 · fp-I14 · fp-J3 · fp-J2 (5건).
