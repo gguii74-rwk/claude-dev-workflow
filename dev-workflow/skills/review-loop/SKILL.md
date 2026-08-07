@@ -226,7 +226,7 @@ node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <ref>
 #### 2c. 분류 · 판정(disposition) · ledger 갱신
 각 finding을 fingerprint로 ledger와 대조한다(신규/잔존/해결/중복). 미확인 FIXED 큐 항목이 재출현하지 않았으면 '소멸 확인(R#)'을 명시 기록하고 큐에서 뺀다(§두 큐 — 기록 없는 침묵은 잔존).
 - **기결정 가드 먼저**: 현 phase ledger뿐 아니라 **전 phase ledger와 "재논의 금지(기결정)" 블록**까지 대조한다. 이미 ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE로 닫혔거나 사용자 기결정(D번호)을 뒤집으라는 요구면 → **DUPLICATE**(비-blocking, 재수정·재논의 금지). 현 phase ledger가 비어 있어도 전 phase에서 닫힌 항목이면 신규 finding이 아니다.
-- **severity 재평가 (문자적 갭)**: LLM이 해석하는 문서(스킬·spec·plan)의 문자적 논리 갭은 **실행 영향으로 severity를 재평가한다**(문자적 갭 ≠ 즉시 high). 실행이 자동 보완하는 갭(예: 규범 문구가 명시적이라 예시의 어긋남을 덮는 경우)은 낮춰 판정하되, **닫는 수정이 저비용이면 반영한다** — 하향은 score 오염(가짜 정체·발산 신호)을 막고, 수정 반영은 갭을 실제로 없앤다.
+- **severity 재평가 (문자적 갭)**: LLM이 해석하는 문서(스킬·spec·plan)의 문자적 논리 갭은 **실행 영향으로 severity를 재평가한다**(문자적 갭 ≠ 즉시 high). 실행이 자동 보완하는 갭(예: 규범 문구가 명시적이라 예시의 어긋남을 덮는 경우)은 낮춰 판정하되, **닫는 수정이 저비용이면 반영한다** — 하향은 score 오염(가짜 정체·발산 신호)을 막고, 수정 반영은 갭을 실제로 없앤다. **하향의 도착지는 blocking 범위까지다(통상 medium).** 이 루프에서 닫는 수정을 반영하는 항목은 실행 영향이 낮아도 low로 내리지 않는다 — low는 `DEFER_LOW`(요약 기록만)라 수정 반영과 양립하지 않는다. 즉 이런 항목은 **medium + FIXED**로 판정해 미확인 FIXED 큐의 소멸 확인 규율을 그대로 받는다.
 - low → `DEFER_LOW`.
 - 신규 blocking(critical/high/medium)에 disposition 부여(보수적):
   - **FIXED 후보**: 수정 방향이 명확 — 버그, 누락 가드, 테스트 공백, 경쟁조건/원자성, 잘못된 권한 검사 등. → 수정 큐로.
