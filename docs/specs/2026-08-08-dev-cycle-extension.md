@@ -1,6 +1,7 @@
 # dev-cycle 확장 설계 (C-6 ①②③)
 
-- 상태: **harden-spec 종결 (2026-08-08)** — 갭 대장 소진(D1~D19 확정). 다음 = `review-loop --phase spec`
+- 상태: **`review-loop --phase spec` 종결 (2026-08-08)** — 성공 종료(확인 경유): 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C1 verdict `merge-ready`. 적대 5(소진 5/5) + 확인 1(소진 1/2). ledger = §적대검증 ledger (spec)(단일 원본). 다음 = **writing-skills TDD 직접 구현**
+- 이력: harden-spec 종결 (2026-08-08) — 갭 대장 소진(D1~D19 확정)
 - 대상: `dev-workflow` 플러그인 **기존** 스킬 `dev-cycle` 개정 (기준 0.10.0). `harden-spec`은 연동 검토 결과 **무수정**(D6)
 - 날짜: 2026-08-08
 - 입력: `docs/specs/2026-08-07-review-loop-and-pipeline-improvements-brief.md` §실행 순서 5·6번 / §트랙 C C-6
@@ -282,7 +283,19 @@ dev-cycle은 0.1.0 이후 **읽기 전용 지도**로만 존재했다. ops-hub �
 | R4 | 적대 | **4** | high 1(fp-S8=3) + medium 1(fp-S9=1) · 신규 2 / 잔존 0 | 7 → **9** (fp-S8·fp-S9 추가) |
 | R5 | 적대 | **2** | medium 2(fp-S10·fp-S11=1+1) · 신규 2 / 잔존 0 | 9 → **11** (fp-S10·fp-S11 추가) |
 
+| C1 | 확인 | — | 신규 blocking 0 · 감사 이의 0 | 11 → **0** (전건 소멸 확인) |
+
 **전환 신호 3(적대 예산 소진) 발화** — 적대 소진 5 == `--max 5`. batch-pending 적재분 0건(R3에서 전건 소진)이라 flush할 것이 없다. 확인 필수 조건 성립(미확인 FIXED 큐 11건 + 루프 직접 판정 다수), 확인 예산 잔여 2 → **확인 모드 진입**.
+
+**확인 라운드 C1 (2026-08-08 · 확인 소진 1/2 · base `9cf94bc` … HEAD `ac6dfdc`)**
+
+- **응답 완전성 계약 충족** — 큐 11건 전 fingerprint별 명시 결과 + 판정 감사 7건 + 신규 finding "없음" 명시 + verdict.
+- **소멸 확인된 fingerprint (11건 전건)**: fp-S1 · fp-S2 · fp-S3 · fp-S4 · fp-S5 · fp-S6 · fp-S7 · fp-S8 · fp-S9 · fp-S10 · fp-S11.
+- **임무 ② 회귀 확인**: 없음. (D1·D4 표면 동기화가 D16과 충돌하지 않음 · D21→D20→잔여 순서가 D2·D3 계약을 보존 · D19가 D5 확인 요건과 무충돌 · D7의 §4 배치와 §6 양 경로 테스트 일치 · §3↔§4↔§6↔§7 항목 대응 확인)
+- **임무 ③ 판정 감사**: 루프 직접 판정 7건(D20 신설 · D3 하한 3종화 · D21 신설 · D1 목록 보강 · D23 신설 · D7 배치 개정 · D5 실패 경로 보강) **전건 타당**, 이의 0. G-b·D15 관점에서도 과설계 아님 — 런타임 파서·훅·전용 스위트 신설 없음, 현행 56줄에서 44줄 여유, 100줄 검사 명시.
+- **임무 ④ verdict: `merge-ready`** — writing-skills TDD 직접 구현 단계로 진행 가능.
+
+**성공 종료(확인 경유)** — 미판정 blocking 0 · 미확인 FIXED 큐 0(확인 부채 0) · 확인 verdict 통과. 복귀 미사용, 확인 예산 1 잔여.
 
 - score 산식 = 0.10.0판. R3 시점에 미해결이던 fp-S3·fp-S7은 같은 라운드 batch 제시에서 사용자 판정으로 닫혔으나, **기록한 score는 사후 재계산하지 않는다**(§blocking score).
 - **자동 모드 종료** — 적대 소진 3 == `--auto-rounds 3`. R3에서 batch flush 완료(fp-S3 + 즉시군 fp-S7 일괄 제시). R4부터 정밀 모드(ESCALATE 즉시 처리).
