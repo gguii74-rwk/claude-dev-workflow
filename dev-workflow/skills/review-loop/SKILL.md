@@ -204,10 +204,22 @@ node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 | phase | 관문 |
 |---|---|
 | spec | 목표·범위·비목표·결정사항·acceptance criteria·미해결 질문이 문서에 명시 |
-| plan | 구현 단위·파일/인터페이스 영향·테스트 계획·가정이 문서에 명시 |
+| plan | 내용 관문(구현 단위·파일/인터페이스 영향·테스트 계획·가정이 문서에 명시) + **형식 관문 4종(아래)** |
 | impl | `npm run typecheck && npm run lint && npm test && npm run build` |
 
 impl 게이트가 실패하면 루프를 시작하지 말고 먼저 해결한다(systematic-debugging). 깨진 상태로 리뷰 금지. spec/plan은 위 명시 관문을 충족하는지 확인한 뒤 진행한다.
+
+**plan 형식 관문 4종** — 루프 시작 전 검사한다. 이것은 형식 검사다 — spec 절차 준수 강제가 아니다(전 phase 루프를 돌았는지는 검사하지 않는다).
+
+- **적용 조건**: ①②④(분할 규약 관문)는 **실행 repo의 CLAUDE.md(또는 AGENTS.md)에 분할 plan 규약이 명시된 repo에서만** 적용한다. 규약 없는 repo에서는 ①②④를 스킵한다 — 정당한 단일 파일 plan(superpowers:writing-plans 표준)을 오탐하지 않는다. 규약 repo라도 **단일 task 소형 변경은 예외**로 ①②④를 스킵한다(writing-plans-split 자신이 one-task change를 단일 짧은 파일/직접 구현으로 허용). ③은 승계 ledger가 존재할 때만 적용한다(아래 부재 분기).
+- **검사 항목**:
+  - ① plan entrypoint에 **Execution contract 블록** 존재
+  - ② plan entrypoint에 **§Shared Contracts 섹션** 존재
+  - ③ **승계·참조 ledger에 fingerprint 컬럼** 존재 — 대상은 이 루프가 승계·참조할 ledger(통상 전 phase spec ledger)다. fingerprint가 없으면 기결정 가드 focus 조립·§2c DUPLICATE 대조의 원본 요건이 깨진 채 루프가 시작된다. plan 루프 자신이 새로 만들 ledger의 형식은 §finding ledger 규약이 이미 규정한다 — 게이트에서 이중 규정하지 않는다.
+  - ④ plan entrypoint task 표에 **status·outcome 컬럼** 존재 — 완료 기록 계약(writing-plans-split Execution contract ④)의 전제. 컬럼이 없으면 기입 의무가 공중에 뜬다.
+- **승계 ledger 부재 시**(전 phase 루프 미실행·빠른 종료로 ledger 미생성): ③은 **"해당 없음"으로 스킵하되, 부재 사실을 게이트 기록에 1줄 남긴다**(예: "승계 ledger 없음 — spec 루프 빠른 종료"). 부재는 관문 실패가 아니다.
+- **실패 동작 — 수위 차등 fail-closed**: 저비용 수정(Execution contract 블록 추가 · §Shared Contracts 섹션 추가 · 표/ledger 컬럼 추가)은 impl 게이트 전례대로 **루프 시작 전 해결 후 진행**한다. **구조 재작성 수준(단일 파일 plan → 분할 전환)은 ESCALATE** — 루프가 plan을 자동 재작성하지 않는다(검증 밖 대수술 금지).
+- 검사는 grep 수준 경량 확인이면 충분하다. 참고 예시 1줄(판정 기준이 아니다 — 출력 해석과 최종 판단은 문서를 직접 확인해서 한다): `grep -inE "execution contract|shared contracts|fingerprint|outcome" <plan entrypoint> <승계 ledger 문서>`
 
 추가로 루프 시작 시:
 - **base 해소**: 트랙 기준 ref(기본 main, 비-main 트랙은 그 ref)를 확정하고 SHA와 함께 기록한다(§인자).

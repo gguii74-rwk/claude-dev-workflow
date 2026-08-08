@@ -37,7 +37,7 @@ docs/plans/YYYY-MM-DD-<feature>/       # task body directory
 
 1. **Header:** Feature name, Goal (one sentence), Architecture (2–3 sentences), Tech Stack.
 2. **Execution contract (MUST)** — paste this block verbatim into the entrypoint:
-   > **For agentic workers — execution contract (MUST):** REQUIRED SUB-SKILL: `superpowers:subagent-driven-development`. This plan is split into per-task files (`<feature>/task-NN-<slug>.md`). Task bodies (Files, TDD steps, AC) are **NOT** in this entrypoint. To execute, MUST: ① read this entrypoint's §Shared Contracts → ② load exactly one target task file → ③ run its steps in order. Do not start implementing from the entrypoint alone (it has no steps). Do not load all task files at once.
+   > **For agentic workers — execution contract (MUST):** REQUIRED SUB-SKILL: `superpowers:subagent-driven-development`. This plan is split into per-task files (`<feature>/task-NN-<slug>.md`). Task bodies (Files, TDD steps, AC) are **NOT** in this entrypoint. To execute, MUST: ① read this entrypoint's §Shared Contracts → ② load exactly one target task file → ③ run its steps in order → ④ **record completion**: when the task is **confirmed complete** (reviews approved — SDD's "mark todo complete" sync point; the implementer's DONE report is NOT completion), the dispatcher (the executor itself when running without subagents) immediately — before dispatching the next task — sets that task's row in this entrypoint's task table to `[x]`, writes its one-line outcome, and **commits this entrypoint file on the spot**. **Convergence check (MUST, at all three points — before starting any task, when initializing a resumed/recovered session, and before entering the final whole-branch review):** reconcile this task table against the SDD progress ledger and git log. The authority for "complete" is an **explicit completion record in the SDD progress ledger**; git log only corroborates that a recorded commit exists and was not reverted — an implementation commit by itself is NOT completion (implementer commits exist before review approval). A task whose ledger completion record is missing or ambiguous is **incomplete (fail-closed)** — including a row already marked `[x]`: revert it to `[ ]`. A row filled in but not yet committed is also unconverged: commit it before proceeding. Do not start implementing from the entrypoint alone (it has no steps). Do not load all task files at once.
 3. **Shared Contracts:** schema / migrations, types & interfaces, key function signatures, shared constants referenced by 2+ tasks. The entrypoint is always read alongside any task file, so contracts live here **once** — this is the ONLY exception to "repeat everything." Task files point to "entrypoint §Shared Contracts" rather than re-inlining shared types.
 4. **Task table:**
 
@@ -48,8 +48,8 @@ docs/plans/YYYY-MM-DD-<feature>/       # task body directory
    | 02 | leave repository methods | [ ] | [task-02](<feature>/task-02-leave-repository.md) | 01 | |
    ```
 
-   - **status:** `[ ]` todo / `[x]` done (markdown checkbox — current convention).
-   - **outcome:** filled in one line on completion (files created, key decisions, what later tasks must know). Lightweight context accumulation in markdown — no JSON, no runner.
+   - **status:** `[ ]` todo / `[x]` done (markdown checkbox — current convention). Set per execution contract ④ — only on confirmed completion (reviews approved), never on the implementer's DONE report.
+   - **outcome:** one line (files created, key decisions, what later tasks must know). When and by whom it is written is governed by execution contract ④ — the dispatcher, at confirmed completion, before the next task starts, committed on the spot. Lightweight context accumulation in markdown — no JSON, no runner.
 5. **UI mockup contract (only when the spec has a `## UI 설계` section):** state the selected mockup path (`docs/design/<feature>/…`) and `docs/design/style-guide.md` as an **implementation contract** — the implemented screen must match the chosen mockup's visual structure. Put it in the entrypoint **and in the Prep of every UI task file**: execution subagents read one task file (plus §Shared Contracts) and never see the spec, so a path that lives only in the entrypoint header does not reach them.
 
 ## Task file `<feature>/task-NN-<slug>.md` (self-contained — target 150–400 lines)
@@ -84,6 +84,10 @@ Fix inline. No need to re-review — fix and move on.
 
 ## Execution handoff
 
-Execution uses `superpowers:subagent-driven-development`. The dispatcher reads the entrypoint, then per task loads §Shared Contracts + that one task file into the subagent prompt. The execution contract is stated in two places — the entrypoint header (above) and repo `CLAUDE.md` — to reduce reliance on any single prose instruction.
+Execution uses `superpowers:subagent-driven-development` (SDD). The dispatcher reads the entrypoint, then per task loads §Shared Contracts + that one task file into the subagent prompt. Between tasks the dispatcher also owns contract ④ — status·outcome recording + commit at confirmed completion, and the three-point convergence check; the subagent loading contract is unchanged (each subagent still gets exactly one task file + §Shared Contracts).
+
+**SDD 6.2.0 adapter:** SDD asks for `scripts/task-brief PLAN_FILE N` before dispatch — that script extracts a "Task N" section from a single plan file, which a split plan does not have (task files carry no "Task N" heading, and the entrypoint carries no task bodies). **Skip the extraction: the task file itself is the brief** — pass its full text as the brief in the dispatch (same intent: brief = the task's complete text). **Keep the SDD workspace and progress ledger keyed to the entrypoint** — `scripts/sdd-workspace <entrypoint path>` — one workspace per plan, never per task file.
+
+The execution contract is stated in two places — the entrypoint header (above) and repo `CLAUDE.md` — to reduce reliance on any single prose instruction.
 
 This is a **prose contract**, not a code-enforced loader (the dispatcher is an LLM). That is deliberate: determinism does not live in the dispatch mechanism — it lives in the **task files' full inlined code**, the same trust model single-file plans already use.
