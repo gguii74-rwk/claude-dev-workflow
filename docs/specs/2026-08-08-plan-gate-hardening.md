@@ -98,7 +98,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 **(1) 절차 준수 마이크로테스트 (writing-skills RED → GREEN)**
 
 - **RED 베이스라인 (현행 0.9.0)**: (a) task 완료 시나리오에서 표 갱신 없는 진행이 통과하는지 (b) 위반 plan(픽스처)으로 review-loop plan 루프가 관문 없이 그대로 시작되는지 재현 기록.
-- **GREEN (개정판, 5+ reps)**: D2 — task 완료 확정 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **구현자 DONE 후 리뷰 실패·fix loop 시나리오에서 조기 `[x]` 기입이 없는가(fp-C3)** · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가(fp-C2)** · **"모든 task 완료·마지막 행 미기입" 재개 시나리오에서 재개 초기화·final review 진입 전 수렴이 나오는가(fp-C4)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
+- **GREEN (개정판, 5+ reps)**: D2 — task 완료 확정 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **구현자 DONE 후 리뷰 실패·fix loop 시나리오에서 조기 `[x]` 기입이 없는가(fp-C3)** · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가(fp-C2)** · **"모든 task 완료·마지막 행 미기입" 재개 시나리오에서 재개 초기화·final review 진입 전 수렴이 나오는가(fp-C4)** · **"기입 후 커밋 전 중단" 재개 시나리오에서 수렴 검사가 기입-미커밋 상태도 수렴(해당 파일 커밋 후 진행)하는가(fp-C5 — DEFERRED_TO_IMPL 연결)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
 - 합격선: 트랙 A·B와 동일하게 **variance 0**.
 
 **(2) 위반 plan 픽스처 (마이크로테스트 입력물)**
@@ -112,7 +112,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 
 ## 8. 완료 조건 (acceptance criteria)
 
-- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점(완료 확정 직후, fp-C3)·커밋·수렴 검사 3시점(fp-C2·fp-C4) 포함), task 표 서술·§Execution handoff와 모순이 없다.
+- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점(완료 확정 직후, fp-C3)·커밋·수렴 검사 3시점(fp-C2·fp-C4) 포함), task 표 서술·§Execution handoff와 모순이 없다. 계약 문안의 수렴 검사는 미기입 행뿐 아니라 **기입-미커밋 상태**를 수렴 대상에 포함한다(fp-C5 DEFERRED_TO_IMPL — 구현 시 문안에 반영, §6 GREEN 시나리오로 검증).
 - (b) review-loop plan 사전 게이트에 형식 관문 4종(D3)이 추가되고, 적용 조건(D1)·단일 task 예외(D1)·승계 ledger 부재 분기(D11)·실패 동작(D5)·명세 수위(D7)가 명시된다.
 - (c) 게이트 체크가 grep 수준 경량 확인을 벗어나지 않는다 — 파서·스위트·훅 신설 없음, 출력 판정 기준 미규정(기결정 + D7).
 - (d) writing-skills 마이크로테스트 5+ reps variance 0(no-guidance 대조군 포함) + 위반 픽스처 3종으로 D1·D3·D5·D11 동작 재현(D9).
@@ -177,7 +177,9 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 | **fp-C3** — spec §3 D2 · 기입 트리거 "완료 보고 수신 직후"가 구현자 DONE(리뷰 전)으로 읽힘 — task review 실패·fix loop 시 미승인 task가 `[x]` 잔존 · 권고 = 트리거를 리뷰 승인 후 동기점("mark todo complete")으로 명시 | high (R2) | FIXED (R2) | 사실 실증(SDD 흐름: approved? → yes → mark todo complete). D2 근거 자체가 동기점을 "mark todo complete"로 지목 — 트리거 문구를 "완료 확정(리뷰 승인) 직후"로 정밀화(기결정 정합, 번복 아님). §3 D2 본문·보강 bullet·재논의 금지 D2 주석·§4 표·§6 GREEN·§8 (a) 반영 — **[루프 판정] 기결정 문구 정밀화 해석 포함(확인 임무 ③ 우선 감사 대상)** |
 | **fp-C4** — spec §3 D2 보강 · 마지막 task의 재개 수렴 트리거 부재(fp-C2 잔존 계열 — "task 착수 전" 검사만으론 최종 task 완료 직후 중단 시 최종 행 영구 누락) · 권고 = 재개 초기화·final review 진입 전 수렴 + 픽스처 | medium (R2) | FIXED (R2) | 수렴 검사 시점을 3점으로 완결(ⓐ task 착수 전 ⓑ 재개 초기화 ⓒ final whole-branch review 진입 전). fp-C2와 지적 내용이 다른 신규 경계 — 계열 3회째 재출현 시 판정으로 닫음(anti-churn). §3 D2 보강·§4 표·§6 GREEN·§8 (a) 반영 |
 
-**미확인 FIXED 큐**: fp-C2 (R1 수정 `0d60dac`) · fp-C3 (R2 수정) · fp-C4 (R2 수정) — 각 소멸 확인 대기
+| **fp-C5** — spec §3 D2 보강 · "기입 후 커밋 전 중단" 재개 변형 — 수렴 조건이 "미기입"만 검사해 기입-미커밋 상태가 통과, 다음 task 커밋에 혼입 위험 · 권고 = 수렴 시점에 커밋·clean 확인 추가 | medium (R3) | DEFERRED_TO_IMPL | fp-C2 계열 3회째(R1 미기입 행 → R2 마지막 task → R3 기입-미커밋) — fp-C4 행의 선기록(3회째 = 판정 마감) + R3 판정 루프 국면에 따라 설계 보강 중단. 실행 영향 낮음(수렴 규범 "기입+커밋"이 커밋 포함, dispatcher가 자연 수렴). **연결** = §8 (a) 계약 문안 요건("기입-미커밋 상태 포함") + §6 GREEN "기입 후 커밋 전 중단" 시나리오. **[루프 판정]**(확인 임무 ③ 우선 감사 대상) |
+
+**미확인 FIXED 큐**: fp-C2 (R1 수정 `0d60dac`) · fp-C3 (R2 수정 `b153e6f`) · fp-C4 (R2 수정 `b153e6f`) — 각 소멸 확인 대기
 
 **score 이력** (산식: 미판정 blocking Σweight, 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외):
 
@@ -185,5 +187,8 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 |---|---|---|---|---|
 | R1 | 적대(자동 1/3) | 4 | fp-C1 high(3, ESCALATE batch-pending) + fp-C2 medium(1, FIXED 후보) | 0 |
 | R2 | 적대(자동 2/3) | 7 | fp-C1 high(3, batch-pending 잔존) + fp-C3 high(3, FIXED 후보) + fp-C4 medium(1, FIXED 후보) | 1 |
+| R3 | 적대(자동 3/3) | 4 | fp-C1 high(3, batch-pending 잔존) + fp-C5 medium(1, DEFERRED_TO_IMPL로 즉시 판정) | 3 |
 
-**0.9.0 가드 focus 첫 실적용 관찰(spec §9)** — R1: 재지목 0건(대조군 트랙 B spec R1 재지목 1건). 기결정 역공격 없음 — 리뷰어가 finding 2건 모두에 "기결정 중복 가능성 낮다"를 자발 명시하고 D2 재론을 회피한 채 인접 갭만 지목(가드 정상 작동 신호). 주의 희석 없음 — 발굴 2건 모두 실질(사실 기반 실증됨). R2: 닫힌 항목 재지목 0건(재출현 1건은 미판정 fp-C1 — focus 억제 대상 아님, 정상). 기결정 역공격 없음 — fp-C3는 D2 재론이 아니라 근거("mark todo complete")와 문구의 어긋남 지적(가드 단서 ②의 의도된 동작). 주의 희석 없음 — 신규 2건 모두 실질.
+**전환 신호**: R3에서 신호 2(수정 큐 소진 — 신규 FIXED 후보 0건) 발화 + 적대 소진 3 = auto-rounds 도달. → batch ESCALATE 일괄 제시 후 확인 모드 진입.
+
+**0.9.0 가드 focus 첫 실적용 관찰(spec §9)** — R1: 재지목 0건(대조군 트랙 B spec R1 재지목 1건). 기결정 역공격 없음 — 리뷰어가 finding 2건 모두에 "기결정 중복 가능성 낮다"를 자발 명시하고 D2 재론을 회피한 채 인접 갭만 지목(가드 정상 작동 신호). 주의 희석 없음 — 발굴 2건 모두 실질(사실 기반 실증됨). R2: 닫힌 항목 재지목 0건(재출현 1건은 미판정 fp-C1 — focus 억제 대상 아님, 정상). 기결정 역공격 없음 — fp-C3는 D2 재론이 아니라 근거("mark todo complete")와 문구의 어긋남 지적(가드 단서 ②의 의도된 동작). 주의 희석 없음 — 신규 2건 모두 실질. R3: 닫힌 항목 재지목 0건 — R2에서 focus에 실은 [루프 판정] DUPLICATE 요약행(fp-C1 계열)이 즉효(fp-C1 재보고 소멸, 리뷰어가 fp-C2와의 의미 차이를 자발 논증하며 신규 변형만 보고). 루프 통산 재지목 1건(대조군 트랙 B: spec 1·impl 3).
