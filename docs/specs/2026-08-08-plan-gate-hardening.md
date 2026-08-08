@@ -45,9 +45,11 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 **D1. 분할 규약 관문 적용 조건 = repo 규약 명시 기준** — 실행 repo의 CLAUDE.md(또는 AGENTS.md)에 분할 plan 규약이 명시된 repo에서만 분할 규약 관문(D3 ①②④)을 적용한다. 규약 없는 repo는 관문 스킵(정당한 단일 파일 plan 오탐 0). **단일 task 소형 변경은 관문 예외**(writing-plans-split 자신이 "one-task change는 단일 파일 또는 그냥 구현"으로 허용 — 규약 repo에서도 예외임을 관문에 명시).
 - 근거: 판정 원천 실재 — ops-hub `CLAUDE.md:44`에 분할 plan 규약 문단이 이미 있다. plan 문서 형태 기준(분할 구조면 적용)은 superpowers 템플릿 유입이 바로 단일 파일 형태라 구조적으로 못 잡는다.
 
-**D2. 완료 기록 계약 = dispatcher·다음 task 착수 전** — writing-plans-split Execution contract에 ④를 신설한다: task 완료 보고 수신 직후·**다음 task 착수 전**에 실행 dispatcher(subagent 없이 직접 실행하면 실행자 자신)가 entrypoint task 표의 해당 행 status(`[x]`)·outcome(한 줄)을 기입하고 **그 자리에서 커밋**한다. subagent 로딩 계약(자기 task 파일 + §Shared Contracts만)은 불변.
+**D2. 완료 기록 계약 = dispatcher·다음 task 착수 전** — writing-plans-split Execution contract에 ④를 신설한다: task **완료 확정**(리뷰 승인·adjudication 종료 — SDD의 "mark todo complete" 동기점. 구현자 DONE 보고 시점이 아니다) 직후·**다음 task 착수 전**에 실행 dispatcher(subagent 없이 직접 실행하면 실행자 자신)가 entrypoint task 표의 해당 행 status(`[x]`)·outcome(한 줄)을 기입하고 **그 자리에서 커밋**한다. subagent 로딩 계약(자기 task 파일 + §Shared Contracts만)은 불변.
 - 근거(SDD 실측): 실행 subagent는 entrypoint를 받지 않고 task 완료 커밋을 직접 만들며, task 간 동기 지점("mark todo complete")은 dispatcher에 있다 — dispatcher가 유일하게 entrypoint를 들고 있는 시점이 기입 지점이다. 브리프 문구 "커밋 전 필수"는 "다음 task 착수 전 필수"로 정밀화(트랙 종료 시 일괄 기입은 실측 25%의 원인 — 잊힘·중단 유실).
-- **보강(spec 루프 R1, fp-C2 — 재개 수렴)**: ④의 기입 트리거는 재개 경로를 포함한다 — "완료 보고 수신 직후"뿐 아니라 **모든 task 착수 전에 이전 task 행들의 기입 여부를 확인하고, 미기입 행이 있으면 그 자리에서 수렴(기입+커밋) 후 착수**한다. SDD의 git-ignored progress ledger(재개 SSOT)와 entrypoint 표 사이에서 중단이 일어나도 계약 문면이 자체 수렴시킨다. 전 task 완료 후 whole-branch review fix wave가 outcome을 낡게 만드는 전이는 이 계약 밖 — 비목표에 명시하고 D6 백로그(검사 지점 확장)에 병기한다.
+- **보강(spec 루프 R1, fp-C2 — 재개 수렴)**: ④의 기입 트리거는 재개 경로를 포함한다 — 완료 확정 직후뿐 아니라 **모든 task 착수 전에 이전 task 행들의 기입 여부를 확인하고, 미기입 행이 있으면 그 자리에서 수렴(기입+커밋) 후 착수**한다. SDD의 git-ignored progress ledger(재개 SSOT)와 entrypoint 표 사이에서 중단이 일어나도 계약 문면이 자체 수렴시킨다. 전 task 완료 후 whole-branch review fix wave가 outcome을 낡게 만드는 전이는 이 계약 밖 — 비목표에 명시하고 D6 백로그(검사 지점 확장)에 병기한다.
+- **보강(spec 루프 R2, fp-C3 — 트리거 정밀화)**: "완료 보고 수신 직후"(브리프·harden-spec 표현)의 규범 의미 = **완료 확정 직후**. 구현자 DONE 보고 시점에 기입하면 task review 실패·fix loop 시 미승인 task가 `[x]`로 남는다 — D2 근거가 지목한 동기점("mark todo complete")이 SDD에서 리뷰 승인 후이므로, 이 정밀화는 기결정과 정합(번복 아님).
+- **보강(spec 루프 R2, fp-C4 — 수렴 검사 시점 완결)**: 수렴 검사(미기입 행 확인·기입+커밋)는 ⓐ 모든 task 착수 전 + ⓑ **재개(세션 복구) 초기화 시점** + ⓒ **final whole-branch review 진입 전**에 수행한다. ⓑⓒ가 없으면 마지막 task 완료 직후 중단 시 다음 "task 착수"가 없어 최종 행이 영구 누락된다(fp-C2 잔존 경계 종결).
 
 **D3. plan 사전 게이트 검사 항목 4종** — ① Execution contract 블록 존재 ② `§Shared Contracts` 섹션 존재 ③ **승계·참조 ledger**(D4)의 fingerprint 컬럼 존재 ④ task 표에 status·outcome 컬럼 존재. ④는 P1(D2) 계약의 전제 — 컬럼이 없으면 기입 의무가 공중에 뜬다(①②④는 D1 조건부, ③은 D4·D11 조건부).
 
@@ -72,7 +74,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 
 | 현행 위치 | 변경 방향 | 근거 결정 |
 |---|---|---|
-| writing-plans-split §Entrypoint 2 (Execution contract verbatim 블록) | ④ 완료 기록 의무 신설 — 기입 주체(dispatcher/직접 실행자)·시점(다음 task 착수 전)·커밋·재개 수렴(모든 task 착수 전 이전 행 미기입 확인) 포함. 현행 ①②③ 불변 | D2 |
+| writing-plans-split §Entrypoint 2 (Execution contract verbatim 블록) | ④ 완료 기록 의무 신설 — 기입 주체(dispatcher/직접 실행자)·시점(완료 확정 직후·다음 task 착수 전)·커밋·수렴 검사 3시점(task 착수 전/재개 초기화/final review 진입 전) 포함. 현행 ①②③ 불변 | D2 |
 | writing-plans-split §Entrypoint 4 (task 표) | outcome 서술("filled in one line on completion")을 계약(④) 참조로 연결 — 기입 시점·주체는 계약이 규정 | D2 |
 | writing-plans-split §Execution handoff | dispatcher의 task 간 의무에 완료 기록 1줄 반영(로딩 계약 불변 명시) | D2 |
 | review-loop §1 사전 게이트 plan 행 | 형식 관문 4종 추가(D3) + 적용 조건(D1)·단일 task 예외(D1)·승계 ledger 부재 분기(D11)·실패 동작(D5)·grep 예시 1줄(D7) | D1·D3·D4·D5·D7·D11 |
@@ -96,7 +98,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 **(1) 절차 준수 마이크로테스트 (writing-skills RED → GREEN)**
 
 - **RED 베이스라인 (현행 0.9.0)**: (a) task 완료 시나리오에서 표 갱신 없는 진행이 통과하는지 (b) 위반 plan(픽스처)으로 review-loop plan 루프가 관문 없이 그대로 시작되는지 재현 기록.
-- **GREEN (개정판, 5+ reps)**: D2 — task 완료 보고 수신 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가(fp-C2)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
+- **GREEN (개정판, 5+ reps)**: D2 — task 완료 확정 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **구현자 DONE 후 리뷰 실패·fix loop 시나리오에서 조기 `[x]` 기입이 없는가(fp-C3)** · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가(fp-C2)** · **"모든 task 완료·마지막 행 미기입" 재개 시나리오에서 재개 초기화·final review 진입 전 수렴이 나오는가(fp-C4)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
 - 합격선: 트랙 A·B와 동일하게 **variance 0**.
 
 **(2) 위반 plan 픽스처 (마이크로테스트 입력물)**
@@ -110,7 +112,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 
 ## 8. 완료 조건 (acceptance criteria)
 
-- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점·커밋·재개 수렴 포함, fp-C2), task 표 서술·§Execution handoff와 모순이 없다.
+- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점(완료 확정 직후, fp-C3)·커밋·수렴 검사 3시점(fp-C2·fp-C4) 포함), task 표 서술·§Execution handoff와 모순이 없다.
 - (b) review-loop plan 사전 게이트에 형식 관문 4종(D3)이 추가되고, 적용 조건(D1)·단일 task 예외(D1)·승계 ledger 부재 분기(D11)·실패 동작(D5)·명세 수위(D7)가 명시된다.
 - (c) 게이트 체크가 grep 수준 경량 확인을 벗어나지 않는다 — 파서·스위트·훅 신설 없음, 출력 판정 기준 미규정(기결정 + D7).
 - (d) writing-skills 마이크로테스트 5+ reps variance 0(no-guidance 대조군 포함) + 위반 픽스처 3종으로 D1·D3·D5·D11 동작 재현(D9).
@@ -130,7 +132,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 2026-08-08 harden-spec 세션에서 확정. 아래는 재론하지 않는다.
 
 - **D1.** 분할 규약 관문 적용 = **repo 규약 명시 기준**(CLAUDE.md/AGENTS.md에 분할 plan 규약 명시된 repo만). 규약 없는 repo 스킵(오탐 0) · 단일 task 소형 변경 예외 명시.
-- **D2.** 완료 기록 계약 = Execution contract ④ 신설 — **실행 dispatcher(직접 실행 시 실행자)가 task 완료 보고 수신 직후·다음 task 착수 전에 status·outcome 기입 + 그 자리에서 커밋**. subagent 로딩 계약 불변. "커밋 전 필수"의 정밀화 = "다음 task 착수 전 필수".
+- **D2.** 완료 기록 계약 = Execution contract ④ 신설 — **실행 dispatcher(직접 실행 시 실행자)가 task 완료 보고 수신 직후·다음 task 착수 전에 status·outcome 기입 + 그 자리에서 커밋**. subagent 로딩 계약 불변. "커밋 전 필수"의 정밀화 = "다음 task 착수 전 필수". *("완료 보고 수신 직후"의 규범 의미 = 완료 확정(리뷰 승인) 직후 — spec 루프 R2 fp-C3 정밀화. D2 근거가 지목한 "mark todo complete" 동기점과 정합, 번복 아님.)*
 - **D3.** 게이트 검사 항목 4종 = Execution contract 블록 · §Shared Contracts · 승계 ledger fingerprint 컬럼 · task 표 status·outcome 컬럼.
 - **D4.** fingerprint 관문 대상 = **이 루프가 승계·참조할 ledger**(통상 전 phase spec ledger). plan 자신의 ledger 형식은 §finding ledger 규약이 커버 — 이중 규정 금지.
 - **D5.** 실패 동작 = **수위 차등 fail-closed** — 저비용 수정(블록·섹션·컬럼 추가)은 해결 후 진행, 구조 재작성(단일→분할 전환)은 ESCALATE(자동 재작성 금지).
@@ -171,13 +173,17 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 |---|---|---|---|
 | **fp-C1** — spec §5 실측 · SDD 6.2.0 `task-brief`(단일 PLAN_FILE 전제)와 분할 entrypoint의 접점 미명시 → 완료 기록 계약이 정상 실행 경로에 못 닿을 위험 지적 · 권고 = Execution handoff에 6.2.0용 절차 어댑터 명시 | high (R1) | ESCALATE(batch-pending) | 범위 결정(C-5에 어댑터 1줄 흡수 여부) + 유효 선택지 2+. 사실 검증: task-brief 스크립트·프로즈 계약("코드 강제 로더 아님" 명시)·분할 plan 93.2% 채택 실측 병존 — "실행 불능"은 과대, 접점 미문서화는 실재 |
 | **fp-C2** — spec §3 D2 · 완료 기록 계약의 재개 수렴 갭(기입 트리거가 "완료 보고 수신"에만 묶여 중단·재개 시 미기입 행 잔존, SDD progress ledger와 불수렴) + fix wave 후 outcome 낡음 · 권고 = 멱등 수렴 절차 | medium (R1) | FIXED (R1) | ④ 트리거에 재개 경로 명시(모든 task 착수 전 이전 행 확인·수렴 — D2 "다음 task 착수 전" 기한의 정밀화, 기결정 불변). fix wave 후 재갱신은 비목표+D6 백로그 병기. §3 D2 보강·§2 비목표·§4 표·§6 GREEN·§8 (a) 반영 — **[루프 판정] 범위 획정 포함(확인 임무 ③ 우선 감사 대상)** |
+| (R2 재출현) SDD 실행 경로 미연결 — 리뷰어 스스로 "기존 fp-C1과 동일한 열린 위험" 명시 | high (R2) | DUPLICATE | 원본 = fp-C1(ESCALATE batch-pending, 미판정 유지). 닫힌 항목 재지목 아님 — 미판정 ESCALATE의 재출현(가드 focus는 닫힌 항목만 억제). **[루프 판정]** R3 focus 요약행 등재(확인 임무 ③ 우선 감사 대상) |
+| **fp-C3** — spec §3 D2 · 기입 트리거 "완료 보고 수신 직후"가 구현자 DONE(리뷰 전)으로 읽힘 — task review 실패·fix loop 시 미승인 task가 `[x]` 잔존 · 권고 = 트리거를 리뷰 승인 후 동기점("mark todo complete")으로 명시 | high (R2) | FIXED (R2) | 사실 실증(SDD 흐름: approved? → yes → mark todo complete). D2 근거 자체가 동기점을 "mark todo complete"로 지목 — 트리거 문구를 "완료 확정(리뷰 승인) 직후"로 정밀화(기결정 정합, 번복 아님). §3 D2 본문·보강 bullet·재논의 금지 D2 주석·§4 표·§6 GREEN·§8 (a) 반영 — **[루프 판정] 기결정 문구 정밀화 해석 포함(확인 임무 ③ 우선 감사 대상)** |
+| **fp-C4** — spec §3 D2 보강 · 마지막 task의 재개 수렴 트리거 부재(fp-C2 잔존 계열 — "task 착수 전" 검사만으론 최종 task 완료 직후 중단 시 최종 행 영구 누락) · 권고 = 재개 초기화·final review 진입 전 수렴 + 픽스처 | medium (R2) | FIXED (R2) | 수렴 검사 시점을 3점으로 완결(ⓐ task 착수 전 ⓑ 재개 초기화 ⓒ final whole-branch review 진입 전). fp-C2와 지적 내용이 다른 신규 경계 — 계열 3회째 재출현 시 판정으로 닫음(anti-churn). §3 D2 보강·§4 표·§6 GREEN·§8 (a) 반영 |
 
-**미확인 FIXED 큐**: fp-C2 (R1 수정, 소멸 확인 대기)
+**미확인 FIXED 큐**: fp-C2 (R1 수정 `0d60dac`) · fp-C3 (R2 수정) · fp-C4 (R2 수정) — 각 소멸 확인 대기
 
 **score 이력** (산식: 미판정 blocking Σweight, 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외):
 
 | 라운드 | 모드 | score | 구성 | 큐 크기 |
 |---|---|---|---|---|
 | R1 | 적대(자동 1/3) | 4 | fp-C1 high(3, ESCALATE batch-pending) + fp-C2 medium(1, FIXED 후보) | 0 |
+| R2 | 적대(자동 2/3) | 7 | fp-C1 high(3, batch-pending 잔존) + fp-C3 high(3, FIXED 후보) + fp-C4 medium(1, FIXED 후보) | 1 |
 
-**0.9.0 가드 focus 첫 실적용 관찰(spec §9)** — R1: 재지목 0건(대조군 트랙 B spec R1 재지목 1건). 기결정 역공격 없음 — 리뷰어가 finding 2건 모두에 "기결정 중복 가능성 낮다"를 자발 명시하고 D2 재론을 회피한 채 인접 갭만 지목(가드 정상 작동 신호). 주의 희석 없음 — 발굴 2건 모두 실질(사실 기반 실증됨).
+**0.9.0 가드 focus 첫 실적용 관찰(spec §9)** — R1: 재지목 0건(대조군 트랙 B spec R1 재지목 1건). 기결정 역공격 없음 — 리뷰어가 finding 2건 모두에 "기결정 중복 가능성 낮다"를 자발 명시하고 D2 재론을 회피한 채 인접 갭만 지목(가드 정상 작동 신호). 주의 희석 없음 — 발굴 2건 모두 실질(사실 기반 실증됨). R2: 닫힌 항목 재지목 0건(재출현 1건은 미판정 fp-C1 — focus 억제 대상 아님, 정상). 기결정 역공격 없음 — fp-C3는 D2 재론이 아니라 근거("mark todo complete")와 문구의 어긋남 지적(가드 단서 ②의 의도된 동작). 주의 희석 없음 — 신규 2건 모두 실질.
