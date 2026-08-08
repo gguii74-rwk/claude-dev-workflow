@@ -51,6 +51,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 - **보강(spec 루프 R2, fp-C3 — 트리거 정밀화)**: "완료 보고 수신 직후"(브리프·harden-spec 표현)의 규범 의미 = **완료 확정 직후**. 구현자 DONE 보고 시점에 기입하면 task review 실패·fix loop 시 미승인 task가 `[x]`로 남는다 — D2 근거가 지목한 동기점("mark todo complete")이 SDD에서 리뷰 승인 후이므로, 이 정밀화는 기결정과 정합(번복 아님).
 - **보강(spec 루프 R2, fp-C4 — 수렴 검사 시점 완결)**: 수렴 검사(미기입 행 확인·기입+커밋)는 ⓐ 모든 task 착수 전 + ⓑ **재개(세션 복구) 초기화 시점** + ⓒ **final whole-branch review 진입 전**에 수행한다. ⓑⓒ가 없으면 마지막 task 완료 직후 중단 시 다음 "task 착수"가 없어 최종 행이 영구 누락된다(fp-C2 잔존 경계 종결).
 - **보강(확인 C1, fp-C2 잔존 해소 — 3원 대조·권위)**: 수렴 검사는 단방향(미기입 행 기입)이 아니라 **3원 대조**다 — entrypoint task 표 · SDD progress ledger · git log(실제 커밋)를 대조해 어긋난 쪽을 복구한다. **완료 판정의 권위 = SDD progress ledger의 명시적 완료 기록**("Task N: complete" — 리뷰 승인 후에만 적힌다); **git log는 그 기록이 가리키는 커밋의 존재·비-revert 검증 보조 증거로 제한**한다 — 구현자 커밋은 리뷰 승인 *전에* 존재하므로 git log 단독을 완료 근거로 삼으면 리뷰 실패·fix-loop 진행 중 task를 완료로 오인한다(R4 fp-C6 교정). **완료 기록이 없거나 모호하면 fail-closed(미완료로 간주)**. 역방향 불일치(행 `[x]`인데 SDD ledger에 완료 기록 없음)도 표를 맹신하지 않고 미완료로 복원한다 — 완료 task 재실행·미완료 task 건너뜀·미승인 구현 위 후속 작업 적재 방지. 기입-미커밋 상태(fp-C5)의 커밋 확인도 이 대조에 자연 포섭된다.
+- **보강(impl 루프 R1, fp-I1 — 권위 기록 부재 경계)**: 위 fail-closed는 **ledger가 존재하는 상태**를 전제한다. SDD workspace는 git-ignored이고 final review 통과 후 `rm -rf <workspace>`로 삭제되며(SDD 6.2.0 §Finish), `git clean -fdx`로도 파괴된다(SDD 자신의 복구 지침 = git log). 게다가 이 repo README는 **SDD 없는 대체 실행을 명시 지원**한다(하드 의존 아님) — 이 3경로에서는 권위 기록이 아예 없어, 문면대로면 완료 행이 **일괄 되돌려져 완료 task가 재dispatch**된다(중복 마이그레이션·외부 부작용 재실행). 따라서 **ledger 전체 부재**와 **ledger 내 해당 task 기록 부재**를 구분한다: 전자에서는 권위가 **커밋된 entrypoint 표 자체**로 폴백하고(계약 ④가 완료 확정 시점에만 기입·커밋하므로 리뷰 승인된 완료의 영속 기록이다) git log는 각 `[x]` 행 커밋의 존재·비-revert 확인 보조에 머문다. **ledger 부재를 이유로 표를 일괄 되돌리지 않는다** — git log가 반증하는 행만 되돌리고, 표 자체가 판독 불가면 재dispatch 대신 사람에게 확인을 요청한다. fp-C6의 의미(구현자 커밋 ≠ 완료)는 그대로 보존된다.
 
 **D3. plan 사전 게이트 검사 항목 4종** — ① Execution contract 블록 존재 ② `§Shared Contracts` 섹션 존재 ③ **승계·참조 ledger**(D4)의 fingerprint 컬럼 존재 ④ task 표에 status·outcome 컬럼 존재. ④는 P1(D2) 계약의 전제 — 컬럼이 없으면 기입 의무가 공중에 뜬다(①②④는 D1 조건부, ③은 D4·D11 조건부).
 
@@ -100,7 +101,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 **(1) 절차 준수 마이크로테스트 (writing-skills RED → GREEN)**
 
 - **RED 베이스라인 (현행 0.9.0)**: (a) task 완료 시나리오에서 표 갱신 없는 진행이 통과하는지 (b) 위반 plan(픽스처)으로 review-loop plan 루프가 관문 없이 그대로 시작되는지 재현 기록.
-- **GREEN (개정판, 5+ reps)**: D2 — task 완료 확정 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **구현자 DONE 후 리뷰 실패·fix loop 시나리오에서 조기 `[x]` 기입이 없는가(fp-C3)** · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가 · 역방향 시나리오(행 `[x]`인데 SDD ledger에 완료 기록 없음)에서 3원 대조로 미완료 복원하는가(fp-C2) · **"구현 커밋 존재 + 리뷰 실패/ledger mid-loop" 재개 시나리오에서 git log를 완료 근거로 삼지 않고 미완료로 유지하는가(fp-C6)** · **"모든 task 완료·마지막 행 미기입" 재개 시나리오에서 재개 초기화·final review 진입 전 수렴이 나오는가(fp-C4)** · **"기입 후 커밋 전 중단" 재개 시나리오에서 수렴 검사가 기입-미커밋 상태도 수렴(해당 파일 커밋 후 진행)하는가(fp-C5 — DEFERRED_TO_IMPL 연결)** / **fp-C1 — §Execution handoff 개정 문안이 분할 plan에서 task 파일을 brief로 쓰고(task-brief 추출 생략) SDD workspace를 entrypoint 기준으로 유지하도록 안내하는가(어댑터 접점)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
+- **GREEN (개정판, 5+ reps)**: D2 — task 완료 확정 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **구현자 DONE 후 리뷰 실패·fix loop 시나리오에서 조기 `[x]` 기입이 없는가(fp-C3)** · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가 · 역방향 시나리오(행 `[x]`인데 SDD ledger에 완료 기록 없음)에서 3원 대조로 미완료 복원하는가(fp-C2) · **"구현 커밋 존재 + 리뷰 실패/ledger mid-loop" 재개 시나리오에서 git log를 완료 근거로 삼지 않고 미완료로 유지하는가(fp-C6)** · **"모든 task 완료·마지막 행 미기입" 재개 시나리오에서 재개 초기화·final review 진입 전 수렴이 나오는가(fp-C4)** · **"기입 후 커밋 전 중단" 재개 시나리오에서 수렴 검사가 기입-미커밋 상태도 수렴(해당 파일 커밋 후 진행)하는가(fp-C5 — DEFERRED_TO_IMPL 연결)** / **"SDD workspace 부재(정상 cleanup 후 재개 · `git clean -fdx` 후 · SDD 없이 직접 실행)" 시나리오에서 표를 일괄 되돌리지 않고 커밋된 표를 권위로 폴백하는가(fp-I1 — impl 루프 R1 추가분, GREEN 미실행. 실행 여부는 impl 루프 batch 판정)** / **fp-C1 — §Execution handoff 개정 문안이 분할 plan에서 task 파일을 brief로 쓰고(task-brief 추출 생략) SDD workspace를 entrypoint 기준으로 유지하도록 안내하는가(어댑터 접점)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
 - 합격선: 트랙 A·B와 동일하게 **variance 0**.
 
 **(2) 위반 plan 픽스처 (마이크로테스트 입력물)**
@@ -114,7 +115,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 
 ## 8. 완료 조건 (acceptance criteria)
 
-- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점(완료 확정 직후, fp-C3)·커밋·수렴 검사 3시점·3원 대조(완료 권위 = SDD ledger 완료 기록, git log는 보조 검증, 부재 시 fail-closed)(fp-C2·fp-C4·fp-C6) 포함), task 표 서술·§Execution handoff와 모순이 없다. 계약 문안의 수렴 검사는 미기입 행뿐 아니라 **기입-미커밋 상태**를 수렴 대상에 포함한다(fp-C5 DEFERRED_TO_IMPL — 구현 시 문안에 반영, §6 GREEN 시나리오로 검증). §Execution handoff에는 SDD 6.2.0 task-brief 접점 어댑터 1줄이 들어간다(fp-C1 — §4 표).
+- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점(완료 확정 직후, fp-C3)·커밋·수렴 검사 3시점·3원 대조(완료 권위 = SDD ledger 완료 기록, git log는 보조 검증, 부재 시 fail-closed)(fp-C2·fp-C4·fp-C6) 포함), task 표 서술·§Execution handoff와 모순이 없다. 계약 문안의 수렴 검사는 미기입 행뿐 아니라 **기입-미커밋 상태**를 수렴 대상에 포함한다(fp-C5 DEFERRED_TO_IMPL — 구현 시 문안에 반영, §6 GREEN 시나리오로 검증). 또한 fail-closed 되돌림은 **ledger 존재를 전제**하고, ledger 전체 부재(cleanup·`git clean -fdx`·SDD 없는 실행) 시에는 커밋된 표를 권위로 폴백해 **일괄 되돌림을 금지**한다(fp-I1). §Execution handoff에는 SDD 6.2.0 task-brief 접점 어댑터 1줄이 들어간다(fp-C1 — §4 표).
 - (b) review-loop plan 사전 게이트에 형식 관문 4종(D3)이 추가되고, 적용 조건(D1)·단일 task 예외(D1)·승계 ledger 부재 분기(D11)·실패 동작(D5)·명세 수위(D7)가 명시된다.
 - (c) 게이트 체크가 grep 수준 경량 확인을 벗어나지 않는다 — 파서·스위트·훅 신설 없음, 출력 판정 기준 미규정(기결정 + D7).
 - (d) writing-skills 마이크로테스트 5+ reps variance 0(no-guidance 대조군 포함) + 위반 픽스처 3종으로 D1·D3·D5·D11 동작 재현(D9).
@@ -206,3 +207,25 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 **0.9.0 가드 focus 첫 실적용 관찰(spec §9)** — R1: 재지목 0건(대조군 트랙 B spec R1 재지목 1건). 기결정 역공격 없음 — 리뷰어가 finding 2건 모두에 "기결정 중복 가능성 낮다"를 자발 명시하고 D2 재론을 회피한 채 인접 갭만 지목(가드 정상 작동 신호). 주의 희석 없음 — 발굴 2건 모두 실질(사실 기반 실증됨). R2: 닫힌 항목 재지목 0건(재출현 1건은 미판정 fp-C1 — focus 억제 대상 아님, 정상). 기결정 역공격 없음 — fp-C3는 D2 재론이 아니라 근거("mark todo complete")와 문구의 어긋남 지적(가드 단서 ②의 의도된 동작). 주의 희석 없음 — 신규 2건 모두 실질. R3: 닫힌 항목 재지목 0건 — R2에서 focus에 실은 [루프 판정] DUPLICATE 요약행(fp-C1 계열)이 즉효(fp-C1 재보고 소멸, 리뷰어가 fp-C2와의 의미 차이를 자발 논증하며 신규 변형만 보고). R4(복귀): 재지목 0건 — focus에 fp-C1(사용자 FIXED)·fp-C5(DTI) 요약행 2건 탑재, 리뷰어는 C1 잔존 해소 수정의 신규 회귀(fp-C6)만 지목(복귀 라운드 목적에 정확히 부합). 루프 통산 재지목 1건(대조군 트랙 B: spec 1·impl 3).
 
 **종결 집계(§9 관찰 최종)**: 총 라운드 = 적대 4(소진 3/5 + 복귀 1) · 확인 2(소진 1/2 + 재진입 1). 전환 신호 = R3에서 신호 2(수정 큐 소진)와 적대 소진 3=auto-rounds 도달 동시 발화. disposition 집계 = FIXED 5(fp-C1 사용자·fp-C2·C3·C4·C6) / DEFERRED_TO_IMPL 1(fp-C5) / DUPLICATE 1(R2 재출현) / ESCALATE 1(fp-C1 — batch에서 사용자 FIXED로 종결) / ACCEPTED·OUT_OF_SCOPE·low 0. 0.9.0 focus 주입 관찰 결론 — ① 재지목: 통산 1건(트랙 B spec+impl 4건 대비 감소, 그마저 미판정 ESCALATE 재출현이라 focus 억제 범위 밖·R3 focus 등재 후 소멸) ② 기결정 역공격: 0건(전 라운드에서 리뷰어가 기결정 재론 회피를 자발 명시) ③ 주의 희석: 0건(전 라운드 발굴이 실질 — 특히 R4가 focus 2행을 실은 채 신규 회귀 fp-C6을 정확히 지목).
+
+## 적대검증 ledger (impl)
+
+review-loop `--phase impl` (2026-08-08 시작). base = `7171c73` (main 트랙, 0.9.0 릴리스 커밋 — spec 루프와 동일 스냅샷, whole-branch). 리뷰 대상 = 구현 커밋 `0c08e5b`(스킬 2종 개정: writing-plans-split 계약 ④·task 표 연결·SDD 6.2.0 어댑터 / review-loop §1 plan 형식 관문 4종). 이 표가 이 루프의 단일 원본이다 — 다른 문서는 참조만.
+
+**사전 게이트(impl)**: npm 프로젝트 아님(`package.json` 부재) → 트랙 B impl 전례대로 **writing-skills TDD GREEN 기록으로 갈음** — 10 시나리오 × 5 reps = 50 runs, 전건 variance 0 (`.remember/tdd-plan-gate.md`). 보안 크리티컬 자가 판정 = **일반 트랙**(접촉면 = 스킬 산문, 권한·인증·보안 경계·데이터 손상·비가역 마이그레이션 무접촉).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| **fp-I1** — writing-plans-split 계약 ④ · 완료 권위를 수명주기가 맞지 않는 SDD ledger에만 둠 — ledger 전체 부재 시 fail-closed가 완료 행을 일괄 되돌려 완료 task 재dispatch(중복 마이그레이션·외부 부작용 재실행) · 권고 = "ledger 존재하나 기록 없음"과 "ledger 자체 부재"를 구분하고 영속 권위 지정 + 재개 경로 마이크로테스트 추가 | high (R1) | FIXED (R1) | 사실 3건 독립 검증: ① SDD 6.2.0 workspace = git-ignored·final review 후 `rm -rf` 삭제(SKILL.md:123·419) ② `git clean -fdx` 파괴 시 SDD 자신의 복구 지침 = git log(SKILL.md:139) — 그런데 fp-C6 교정이 git log를 보조로 강등해 SDD의 유일한 복구 경로를 계약이 막음 ③ 이 repo README.ko.md:75가 **SDD 없는 대체 실행 명시 지원**("하드 의존 아님") → 권위 기록이 아예 없는 실행 경로 실재. fp-C6과 **지적 내용이 다른 신규 경계**(리뷰 전 구현 커밋 오인 ≠ 권위 파일의 정상 삭제·부재) — 리뷰어도 겹침 가능성을 자발 명시했고 대조 결과 DUPLICATE 아님. 기결정 번복 아님(D2는 권위 출처 무규정, fp-C6 의미 보존). 수정 = 계약 ④에 부재 분기 추가(ledger 부재 시 권위 = 커밋된 entrypoint 표 — ④가 완료 확정 시점에만 기입·커밋하므로 리뷰 승인된 영속 기록, git log는 커밋 존재·비-revert 보조 / 일괄 되돌림 금지 / 판독 불가 시 사람 확인). 리뷰어 2안 중 "cleanup 전 tracked completion snapshot"은 **승계 가드 G1·G2(기계 검증 장치 신설 금지) 저촉**이라 채택하지 않음 — 산문 분기만. spec §3 D2 보강·§6 GREEN·§8 (a) 동기 반영 |
+
+**미확인 FIXED 큐**: fp-I1 (R1 수정, 소멸 확인 전).
+
+**batch 적재(진행 중)**: **D9 재검증 범위** — fp-I1 수정이 스킬 계약 문면을 바꿨으므로 브리프 §0-2 규약("스킬 문구 변경은 writing-skills TDD 필수")상 신규 시나리오(SDD workspace 부재 재개 · SDD 없는 직접 실행)의 GREEN 마이크로테스트가 필요하다. 이번 세션에서는 하네스가 휘발됐고 실행에 별도 에이전트 디스패치가 필요해 미실행 — **"지금 재검증 / 릴리스 전 별도 세션 / 문면 신뢰로 생략" 중 사용자 판정**을 batch flush에서 받는다. finding이 아니라 FIXED 조치에서 파생된 결정이라 fingerprint를 부여하지 않는다.
+
+**focus 조립 기록 (R1)**: 재논의 금지(기결정) 블록 전문(D1~D11 + 승계 가드)만 부착. **닫힌 ledger 요약행은 의도적으로 0행** — spec ledger의 닫힌 항목 중 fp-C1·C2·C3·C4·C6은 disposition이 FIXED로 focus 요약행 입도 규격(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE)에 없고, fp-C5(DEFERRED_TO_IMPL)와 R2 DUPLICATE는 **도착지·원본이 바로 이 impl 단계**라 억제하면 "구현이 그 요건을 실제로 담았는가"라는 impl 리뷰 본무를 막는다. 미확인 FIXED 큐 0건이라 진행 상태 한 줄도 생략. **[루프 판정]** — 확인 임무 ③ 우선 감사 대상.
+
+**score 이력** (산식: 미판정 blocking Σweight, 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외):
+
+| 라운드 | 모드 | score | 구성 | 큐 크기 |
+|---|---|---|---|---|
+| R1 | 적대(자동 1/3) | 3 | fp-I1 high(3, FIXED 후보) | 0 |
