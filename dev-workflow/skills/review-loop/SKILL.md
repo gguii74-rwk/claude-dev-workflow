@@ -213,7 +213,7 @@ impl 게이트가 실패하면 루프를 시작하지 말고 먼저 해결한다
 
 - **적용 조건**: ①②④(분할 규약 관문)는 **실행 repo의 CLAUDE.md(또는 AGENTS.md)에 분할 plan 규약이 명시된 repo에서만** 적용한다. 규약 없는 repo에서는 ①②④를 스킵한다 — 정당한 단일 파일 plan(superpowers:writing-plans 표준)을 오탐하지 않는다. 규약 repo라도 **단일 task 소형 변경은 예외**로 ①②④를 스킵한다(writing-plans-split 자신이 one-task change를 단일 짧은 파일/직접 구현으로 허용). ③은 승계 ledger가 존재할 때만 적용한다(아래 부재 분기).
 - **검사 항목**:
-  - ① plan entrypoint에 **Execution contract 블록** 존재 — 존재만이 아니라 **현행 계약인지**(④ 완료 기록 절 포함)까지 본다. 구버전 플러그인·미갱신 머신이 만든 블록이 형식상 통과하면 이번 관문이 지키려는 완료 기록 계약이 통째로 빠진 채 승인된다. ④ 절이 없는 구버전 블록은 저비용 수정(블록 교체)이므로 아래 실패 동작대로 교체 후 진행한다. 대상은 **이번 루프가 리뷰할 plan뿐**이다(기존 plan 소급 일괄 교체 아님 — 게이트는 루프 진입 시점 검사다).
+  - ① plan entrypoint에 **Execution contract 블록** 존재 — 존재만이 아니라 **설치된 `writing-plans-split`의 canonical 블록(§Entrypoint 2의 verbatim 블록)과 대조해 현행판인지**까지 본다. 특정 절(예: ④ 완료 기록)의 유무만 보면 그 절은 있으나 이후 보강이 빠진 **중간 버전**이 통과해, 재개 시 승인 완료 task를 되돌리거나 재실행할 수 있다. 스킬 문서가 원본이므로 별도 버전 표식·파서는 두지 않는다 — 두 문면을 나란히 읽어 판단한다. 어긋난 블록은 저비용 수정(블록 교체)이므로 아래 실패 동작대로 교체 후 진행한다. 대상은 **이번 루프가 리뷰할 plan뿐**이다(기존 plan 소급 일괄 교체 아님 — 게이트는 루프 진입 시점 검사다).
   - ② plan entrypoint에 **§Shared Contracts 섹션** 존재
   - ③ **승계·참조 ledger에 fingerprint 컬럼** 존재 — 대상은 이 루프가 승계·참조할 ledger(통상 전 phase spec ledger)다. fingerprint가 없으면 기결정 가드 focus 조립·§2c DUPLICATE 대조의 원본 요건이 깨진 채 루프가 시작된다. plan 루프 자신이 새로 만들 ledger의 형식은 §finding ledger 규약이 이미 규정한다 — 게이트에서 이중 규정하지 않는다.
   - ④ plan entrypoint task 표에 **status·outcome 컬럼** 존재 — 완료 기록 계약(writing-plans-split Execution contract ④)의 전제. 컬럼이 없으면 기입 의무가 공중에 뜬다.
