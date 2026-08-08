@@ -7,8 +7,8 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | Tool | Kind | Invocation | Role |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | Recommended pipeline map for a new feature + tells you which step you're on (read-only, start here) |
-| review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review (settled-decisions guard auto-injected to suppress re-flags) → adjudicate/auto-fix, then a neutral confirm round verifies the fixes and rules on merge readiness — until zero unadjudicated critical/high findings remain |
-| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | Write multi-step implementation plans as a thin entrypoint + one file per task |
+| review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review (settled-decisions guard auto-injected to suppress re-flags) → adjudicate/auto-fix, then a neutral confirm round verifies the fixes and rules on merge readiness — until zero unadjudicated critical/high findings remain. Plan-stage loops clear a four-item format gate before starting |
+| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | Write multi-step implementation plans as a thin entrypoint + one file per task, with completion recording as a committed contract step |
 | harden-spec | skill | `/dev-workflow:harden-spec` | Adversarially pressure a draft spec before plan/implementation to dig out missed gaps, assumptions, and invariant violations, and harden the spec in place (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (Optional, step 3.5) When a hardened spec creates or reshapes a screen: diverge non-executable HTML mockups, let the user pick, and record the UI decision in the spec as a settled decision |
 | setup | skill | `/dev-workflow:setup` | (On explicit request) idempotently insert a pipeline-convention pointer into this repo's CLAUDE.md |
@@ -82,6 +82,8 @@ The loop runs in **two modes**. It opens in **adversarial (discovery) mode** —
 
 Since 0.9.0, **every adversarial round auto-injects the settled-decisions guard as review focus** — the full settled-decision block plus one-line summaries of closed ledger items, reassembled right before each round and attached to the review command, suppressing re-flags of already-closed items at the source (measured: even with the guard sitting in the diff, the same finding was re-raised five rounds in a row). Adjudications the loop made on its own are priority-audited by the confirm round, preserving the path to revisit a wrong call.
 
+Since 0.10.0, a plan-stage loop clears a **four-item format gate** before its first round: the entrypoint carries the current `writing-plans-split` execution contract (compared against the installed skill's canonical block — presence alone is not enough, since a stale block can drop the very protection the gate exists for), a §Shared Contracts section, a fingerprint column in the inherited ledger, and `status`/`outcome` columns in the task table. Cheap fixes — replacing the block, adding the section or column — are resolved before the loop starts; a structural rewrite (a single-file plan that would have to be split) escalates to you instead of the loop performing surgery outside review. The gate applies only in repos whose `CLAUDE.md` mandates split plans, and skips single-task changes.
+
 All options are optional — plain `/dev-workflow:review-loop` works.
 
 | Option | Default | Role |
@@ -128,6 +130,8 @@ docs/plans/YYYY-MM-DD-<feature>/       # task bodies
 ```
 
 Execute with `superpowers:subagent-driven-development` — the dispatcher hands each subagent the entrypoint's Shared Contracts plus one task at a time.
+
+Since 0.10.0 the entrypoint's execution contract also makes **recording completion** a step rather than a habit. Once reviews have approved a task — an implementer's DONE report is not completion — the dispatcher marks its row `[x]`, writes the one-line outcome, and commits the entrypoint on the spot, before dispatching the next task. On resume it reconciles the task table against the SDD progress ledger and git log: a task with no ledger completion record is treated as incomplete, because an implementation commit exists before review approval. That rule presumes a live ledger, so when the ledger is gone or was recreated empty — a workspace lost to `git clean -fdx`, or cleaned up after the final review — authority falls back to the committed table instead of mass-reverting rows that git log does not contradict, and the rebuilt ledger is flagged as restoring completion state only.
 
 ### 4. `harden-spec` — spec hardening
 

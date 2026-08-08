@@ -7,8 +7,8 @@
 | 도구 | 종류 | 호출 | 역할 |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | 새 기능의 권장 파이프라인 지도 + 현재 단계 안내 (읽기 전용, 여기서 시작) |
-| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증(기결정 가드 자동 주입으로 재지목 억제)→판정·자동수정 반복, 이어서 확인 라운드가 수정 소멸·머지 준비도를 판정 (판정 없이 남은 critical/high 0까지) |
-| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 |
+| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증(기결정 가드 자동 주입으로 재지목 억제)→판정·자동수정 반복, 이어서 확인 라운드가 수정 소멸·머지 준비도를 판정 (판정 없이 남은 critical/high 0까지). plan 단계 루프는 시작 전에 형식 관문 4종을 통과시킨다 |
+| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 — 완료 기록을 커밋 단계로 계약화 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (옵션, 3.5단계) 굳은 spec이 화면을 만들거나 구성을 바꿀 때: 비실행 HTML 목업을 발산해 사용자가 고르고, UI 결정을 spec에 기결정으로 기록 |
 | setup | skill | `/dev-workflow:setup` | (명시 요청 시) 이 repo의 CLAUDE.md에 파이프라인 규약 포인터를 멱등 삽입 |
@@ -82,6 +82,8 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 
 0.9.0부터 **적대 라운드마다 기결정 가드를 리뷰 focus로 자동 주입**한다 — 재논의 금지 블록 전문 + 닫힌 ledger 항목 요약행을 매 라운드 직전 재조립해 리뷰 커맨드에 부착, 이미 닫힌 항목의 재지목을 원천에서 억제한다(실측: 가드가 diff 안에 있어도 동일 항목이 5라운드 연속 재지목됐다). 루프가 직접 내린 판정은 확인 라운드가 우선 감사해 오판정 재검토 경로를 보존한다.
 
+0.10.0부터 **plan 단계 루프는 첫 라운드 전에 형식 관문 4종**을 통과시킨다 — 엔트리포인트의 현행 `writing-plans-split` 실행 계약 블록(존재만이 아니라 설치된 스킬의 canonical 블록과 대조한다. 낡은 블록은 이 관문이 지키려는 보호를 그대로 빠뜨린 채 통과할 수 있다), §Shared Contracts 섹션, 승계 ledger의 fingerprint 컬럼, 태스크 표의 `status`·`outcome` 컬럼. 저비용 수정(블록 교체·섹션·컬럼 추가)은 루프 시작 전에 해결하고, 구조 재작성(단일 파일 plan을 분할로 바꿔야 하는 경우)은 루프가 검증 밖에서 대수술하지 않고 사용자 판정으로 올린다. 관문은 `CLAUDE.md`에 분할 plan 규약이 명시된 repo에서만 적용하며 단일 task 소형 변경은 예외다.
+
 옵션은 전부 선택 — `/dev-workflow:review-loop`만 써도 동작한다.
 
 | 옵션 | 기본값 | 역할 |
@@ -128,6 +130,8 @@ docs/plans/YYYY-MM-DD-<feature>/       # 태스크 본문
 ```
 
 실행은 `superpowers:subagent-driven-development`로 — 디스패처가 엔트리포인트의 Shared Contracts + 태스크 1개씩을 서브에이전트에 넘긴다.
+
+0.10.0부터 엔트리포인트의 실행 계약은 **완료 기록**도 관행이 아니라 단계로 못박는다. 리뷰가 태스크를 승인한 뒤에야 — 구현자의 DONE 보고는 완료가 아니다 — 디스패처가 그 행을 `[x]`로 바꾸고 outcome 한 줄을 채워 **그 자리에서 엔트리포인트를 커밋**하고, 그다음에 다음 태스크를 디스패치한다. 재개 시에는 태스크 표를 SDD progress ledger·git log와 대조한다: ledger에 완료 기록이 없는 태스크는 미완료로 취급한다 — 구현 커밋은 리뷰 승인 전에도 존재하기 때문이다. 이 규칙은 살아 있는 ledger를 전제하므로, ledger가 사라졌거나 빈 채로 재생성된 상태(`git clean -fdx`로 유실된 워크스페이스, final review 후 정리된 경우)에서는 git log가 반박하지 않는 행을 일괄 되돌리지 않고 커밋된 표를 권위로 삼으며, 재구성한 ledger가 완료 상태만 복원한다는 사실을 함께 알린다.
 
 ### 4. `harden-spec` — spec 굳히기
 

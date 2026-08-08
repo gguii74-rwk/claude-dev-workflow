@@ -7,8 +7,8 @@
 | ツール | 種類 | 呼び出し | 役割 |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | 新機能の推奨パイプラインマップ + 現在のステップ案内（読み取り専用、ここから始める） |
-| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー（既決事項ガードの自動注入で再指摘を抑止）→ 裁定・自動修正を反復し、確認ラウンドが修正の消滅とマージ可否を判定（未裁定の critical/high が 0 になるまで） |
-| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 多段階の実装プランを薄いエントリポイント + タスク別ファイルに分割して作成 |
+| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー（既決事項ガードの自動注入で再指摘を抑止）→ 裁定・自動修正を反復し、確認ラウンドが修正の消滅とマージ可否を判定（未裁定の critical/high が 0 になるまで）。plan 段階のループは開始前に形式ゲート 4 種を通過させる |
+| writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 多段階の実装プランを薄いエントリポイント + タスク別ファイルに分割して作成 — 完了記録をコミット段階として契約化 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | plan・実装に進む前に spec ドラフトを敵対的に圧迫し、見逃したギャップ・前提・不変条件違反を掘り出して spec をその場で固める（project-aware） |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | （オプション、ステップ 3.5）固めた spec が画面を新設・再構成する場合: 非実行の HTML モックアップを発散させてユーザーに選ばせ、UI の決定を spec に既決事項として記録 |
 | setup | skill | `/dev-workflow:setup` | （明示的な依頼時のみ）このリポジトリの CLAUDE.md にパイプライン規約へのポインタを冪等に挿入 |
@@ -82,6 +82,8 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 
 0.9.0 からは**敵対ラウンドごとに既決事項ガードをレビュー focus として自動注入**する — 再議論禁止ブロック全文 + 閉じた ledger 項目の要約行を毎ラウンド直前に再組み立てしてレビューコマンドに添付し、すでに閉じた項目の再指摘を源から抑止する（実測: ガードが diff 内にあっても同一項目が 5 ラウンド連続で再指摘された）。ループが直接下した裁定は確認ラウンドが優先監査し、誤裁定を見直す経路を保存する。
 
+0.10.0 からは **plan 段階のループが最初のラウンドの前に形式ゲート 4 種**を通過する — エントリポイントの現行 `writing-plans-split` 実行契約ブロック（存在するかだけでなく、インストール済みスキルの canonical ブロックと突き合わせる。古いブロックはこのゲートが守ろうとしている保護そのものを欠いたまま通過しうる）、§Shared Contracts セクション、継承 ledger の fingerprint 列、タスク表の `status`・`outcome` 列。低コストな修正（ブロック置換・セクションや列の追加）はループ開始前に解消し、構造の書き直し（単一ファイル plan を分割へ組み替える必要がある場合）はループが検証外で大手術をせずユーザー判断に上げる。ゲートは `CLAUDE.md` に分割 plan 規約が明記された repo でのみ適用し、単一タスクの小規模変更は例外とする。
+
 オプションはすべて任意 — `/dev-workflow:review-loop` だけでも動く。
 
 | オプション | デフォルト | 役割 |
@@ -128,6 +130,8 @@ docs/plans/YYYY-MM-DD-<feature>/       # タスク本体
 ```
 
 実行は `superpowers:subagent-driven-development` で — ディスパッチャがエントリポイントの Shared Contracts + タスク 1 件ずつをサブエージェントに渡す。
+
+0.10.0 からはエントリポイントの実行契約が**完了記録**も慣行ではなく手順として固定する。レビューがタスクを承認した後にのみ — 実装者の DONE 報告は完了ではない — ディスパッチャがその行を `[x]` にし、outcome を 1 行書いて**その場でエントリポイントをコミット**し、それから次のタスクをディスパッチする。再開時にはタスク表を SDD progress ledger と git log に突き合わせる: ledger に完了記録がないタスクは未完了として扱う — 実装コミットはレビュー承認より前にも存在するからだ。この規則は生きた ledger を前提とするため、ledger が失われた、または空のまま再生成された状態（`git clean -fdx` で失われたワークスペース、final review 後にクリーンアップされた場合）では、git log が矛盾を示さない行を一括で巻き戻さずコミット済みの表を権威とし、再構成した ledger が完了状態のみを復元する事実も併せて伝える。
 
 ### 4. `harden-spec` — spec硬化
 
