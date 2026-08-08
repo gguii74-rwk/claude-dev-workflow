@@ -226,3 +226,29 @@
 - **R1 (적대·자동) 2026-08-08** — target `89d3aea`, findings 2(high 1·medium 1, 전건 신규·재지목 0). fp-B1 즉시 ESCALATE → 사용자 FIXED(D14 신설), fp-B2 루프 FIXED. 수정 커밋 `fefe7e1`. batch-pending 0. low 0.
 - **R2 (적대·자동) 2026-08-08** — target `1e8e656`, findings 1(high 1) = fp-B1 계열 재지목 → DUPLICATE 각하(확인 임무 ③ 우선 감사 대상 지정). 신규 FIXED 후보 0 → **전환 신호 2(수정 큐 소진) 발화**. batch-pending 0(flush 대상 없음) → 확인 모드 진입. §9 대조군 관찰: 이 루프 재지목 누계 1건(fp-B1 계열, D14 커밋 직후 라운드에서 재출현 — fp-I8 패턴 재현).
 - **C1 (확인·중립) 2026-08-08** — target `78b968a`, task 커맨드(프롬프트 파일 경유). 응답 완전(전 항목 충족): **fp-B1 소멸·fp-B2 소멸**(전 큐 항목 명시 확인) / 회귀 이상 없음(D14↔D2·D3·D11, D10↔D6·D7 정합) / 판정 감사 — **R2 DUPLICATE 각하 적정**(트리 밖 원본 요구 = 사용자 불채택안 재론, 스키마·재확인은 구제책 변형, resume 각도는 §0 fail-closed가 수신) / 신규 finding 없음 / **verdict merge-ready**. → 성공 종료 불변식 충족(미판정 0 · 큐 0 · verdict 통과). 확인 소진 1/2, 복귀 미사용.
+
+## 적대검증 ledger (impl)
+
+- 루프: `review-loop --phase impl` · 시작 2026-08-08 · **base = `226636cf0a28badc2520a07cacce5cdf4db58184`**(트랙 기준, spec 루프와 동일 — whole-branch) · 리뷰 대상 = 스킬 개정 `5713960` + D5 강화 `898a747` + spec 문서 · 규정 = dev-workflow 0.8.0(2모드, focus 주입 개정 전 — §9 대조군 마지막 루프, 문서 내 가드·§2c 대조만)
+- 예산: 적대 `--max` 5 · 확인 `--confirm-rounds` 2 · `--auto-rounds` 3 · 보안 크리티컬 트랙 아님(spec 루프 §1 자가 판정 승계 — 스킬 문서 개정, 권한·인증·데이터 접촉 없음)
+- 게이트: npm 프로젝트 아님 → writing-skills 마이크로테스트 GREEN 기록으로 갈음(총 50 runs · S1 강화형 반영본 재실행 5/5 · variance 0 — `.remember/tdd-review-loop-guard-focus.md`)
+
+### finding 표 (impl)
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-I1 · SKILL.md §기결정 가드/§2b · 비신뢰 브랜치 문서가 리뷰 억제 focus로 승격 — 트리 밖 세션 원본·스키마 직렬화·이스케이프 요구 | high | **DUPLICATE** [루프 판정 · 확인 임무 ③ 우선 감사 대상] | 원 fp-B1(spec R1 ESCALATE → **사용자 판정 FIXED = D14** 절차 수준 provenance, 트리 밖 원본 권고 **명시 불채택**) + fp-B1 재출현(spec R2 DUPLICATE, spec C1 감사 적정)의 **3회째 재론**. 하위 각도 매핑: 트리 밖 세션 보관·스키마 직렬화 = 불채택 권고안 그대로 / resume 문서 재구성 = §0 스냅샷 fail-closed·D7 기결정 / 원문 이스케이프 = 구제책 변형 |
+| fp-I2 · plugin.json·README 3종 · 0.9.0 릴리스 변경(D13)이 branch diff에 없음 | high | **OUT_OF_SCOPE** [루프 판정 · 확인 임무 ③ 감사 대상] | 릴리스는 브리프 §실행 순서(사용자 기결정)·핸드오프 순서상 **impl 루프 종결 후 단계**(spec §8 AC (f) 릴리스 / (g) impl 종결 분리 명시). follow-up = 핸드오프 task "릴리스 0.9.0(plugin.json + README 3종)". 참고: 트랙 A fp-I8 계열 재지목 관찰 +1(§9 대조군) |
+| fp-I3 · SKILL.md §기결정 가드 · 전 phase 루프 판정(DEFERRED_TO_IMPL·DUPLICATE)이 승계 블록 열거 범위 밖이라 cross-phase focus에서 유실 | medium | **OUT_OF_SCOPE** [루프 판정 · 확인 임무 ③ 감사 대상] | D11 기결정이 조립 원본 경계 확정 + **C-3(impl ledger 위치·구조) 순번 7 명시 유예** — 권고(승계 확대·전 phase ledger 직접 읽기)는 순번 7 계열 작업. 실행 영향 낮음: §2c 사후 대조(전 phase ledger 전체 대상)는 불변(이중 방어 2층 수신) · 전 phase DEFERRED_TO_IMPL은 impl 재검토가 의도된 항목이라 focus 억제가 오히려 유해 · 이 트랙은 spec/impl ledger 동일 문서라 유실 미발생. follow-up = 순번 7 백로그에 "승계 블록 열거 범위 vs D2 focus 범위 불일치" 각도 추가 |
+
+### score 이력 (impl · 산식: §2c 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외)
+
+| 라운드 | 모드 | base→target | c/h/m (신규·잔존) | score | 미확인 FIXED 큐(스냅샷 시점) |
+|---|---|---|---|---|---|
+| R1 | 적대(자동) | `226636c`→`898a747` | 0/2/1 (전건 신규 지목 → 전건 당라운드 판정 종결) | 0 | 0 |
+
+### 미확인 FIXED 큐 (impl) — **비었음** (이 루프 FIXED 0건)
+
+### 라운드 기록 (impl)
+
+- **R1 (적대·자동) 2026-08-08** — target `898a747`, verdict needs-attention(적대 verdict는 보고 항목 — 게이트는 확인 라운드 verdict), findings 3(high 2·medium 1). fp-I1 DUPLICATE(기결정 가드 대조 일치 — fp-B1 계열 3회째) · fp-I2 OUT_OF_SCOPE(릴리스 순서) · fp-I3 OUT_OF_SCOPE(순번 7 유예). 신규 FIXED 후보 0 → **전환 신호 2(수정 큐 소진) 발화**. batch-pending 0(flush 대상 없음) → 확인 필수 조건(루프 직접 판정 3건) 성립 → 확인 모드 진입(**임무 ③·④만** — 미확인 FIXED 큐 0). low 0.
