@@ -77,9 +77,9 @@ spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시
 3. spec이 굳었고 **spec이 새 화면을 만들거나 기존 화면 구성을 바꾸는데**, spec에 **`## UI 설계` 섹션이 없고** 목업 생략 기록도 없다 → **3.5 ui-mockup**.
    - 완료 판정 기준은 **spec의 `## UI 설계` 섹션**이다 — `docs/design/<feature>/` 존재만으로 완료로 보지 않는다. 섹션이 있으면 적힌 목업 경로가 **실재하는지 확인**하고, 불일치면 완료가 아니라 ui-mockup의 재개 경로로 보낸다.
 4. `## 적대검증 ledger`가 미종결이고 3.5가 비대상·완료·생략 기록됨 → **4 review-loop(spec)**. 3.5 직후의 다음은 항상 4다 — **5 직행이나 3 회귀가 아니다.**
-5. ledger가 종결됐고 `docs/plans/<feature>`가 없다 → **5 writing-plans-split → 6 review-loop(plan)**.
+5. ledger가 종결됐고 `docs/plans/<feature>`가 없다 → **5 writing-plans-split → 6 review-loop(plan)**. plan은 있으나 **plan의 적대검증 ledger가 없거나 미종결**이면 → **6**(②의 생략 기록이 있으면 건너뛴다).
 6. 구현이 미완이다 → **7**. plan이 있으면 subagent-driven-development, **plan을 생략한 트랙이면 직접 구현(TDD)** 이다 — plan 파일을 요구하는 SDD로 보내지 않는다.
-7. 구현 완료 + impl ledger 종결 → **9 통합·후속 검증**. 완료 판정은 PR merged + 그 repo 규약이 요구하는 후속(배포·실측)이고, repo 밖 사실이라 불명확하면 사용자에게 확인한다.
+7. 구현 완료 + impl ledger 종결 → **9 통합·후속 검증**. 완료 판정은 PR merged + 그 repo 규약이 요구하는 후속(배포·실측)이고, repo 밖 사실이라 불명확하면 사용자에게 확인한다. **그 후속까지 끝났으면 안내할 잔여 단계가 없다 — "트랙 완료"로 답하고 9단계를 다시 권하지 않는다.**
 
 git 브랜치명·`docs/specs`·`docs/plans`·`docs/design`·ledger 상태를 신호로 쓴다. 애매하면 사용자에게 현재 위치를 확인한다.
 
