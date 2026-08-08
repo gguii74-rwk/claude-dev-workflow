@@ -1,6 +1,6 @@
 # plan 게이트 강화 설계 (C-5)
 
-- 상태: **review-loop spec 종결** (2026-08-08 — 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C2 verdict merge-ready. 다음 = 새 세션에서 writing-skills TDD 구현. ledger = 이 문서 §적대검증 ledger (spec))
+- 상태: **review-loop impl 종결** (2026-08-08 — 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C2 verdict 통과. 다음 = **0.10.0 릴리스**(plugin.json + README 3종) + 그 전에 신규 시나리오 GREEN 재검증. ledger = 이 문서 §적대검증 ledger (impl)). spec 단계는 2026-08-08 종결(§적대검증 ledger (spec))
 - 대상: `dev-workflow` 플러그인 **기존** 스킬 `writing-plans-split` · `review-loop` 개정 (기준 0.9.0)
 - 날짜: 2026-08-08
 - 입력: `docs/specs/2026-08-07-review-loop-and-pipeline-improvements-brief.md` §실행 순서 4번 / §트랙 C C-5
@@ -228,7 +228,7 @@ review-loop `--phase impl` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 | **fp-I5** — review-loop §1 관문 ① · ④가 **있는** 구형(중간 버전) 계약을 현행으로 오인 — 기준이 "④ 절 포함"이라 `0c08e5b` 형태(④는 있으나 ledger 유실 폴백·복원 범위 한정 없음)가 통과, 재개 시 승인 완료 task를 되돌리거나 재실행 · 권고 = canonical verbatim 블록 전체와 대조 + 중간 버전 픽스처 추가 | high (R4 복귀) | FIXED (R4) | fp-I3와 인접하나 지적 내용이 다름(**④ 자체 부재** ≠ **④는 있으나 최신 보호 결여** — 리뷰어도 이 경계를 자발 명시). 루프 자신의 R2 수정이 만든 version-skew 표면. 수정 = ①의 판정 기준을 절 유무 → **설치된 writing-plans-split canonical 블록과의 대조**로 교체(버전 중립 — 스킬 문서가 원본이라 버전 표식·파서 불요, D7·G1·G2 준수). 항목 수 4종 불변 |
 | **fp-I6** — writing-plans-split 계약 ④ · SDD를 `REQUIRED SUB-SKILL`로 선언하면서 'Without SDD' 모드를 규정해 자기모순 + non-SDD 모드의 완료 확정 동기점 미정의(실행자가 중단하거나 미검증 자기승인을 완료로 커밋) · 권고 = 2모드 명시 분기 | medium (R4 복귀) | **ESCALATE → FIXED (사용자 판정, 즉시)** | 정밀 모드(적대 소진 3 = auto-rounds)라 즉시 제시. 유효 선택지 2+ · "완료 확정이 무엇인가"라는 후속 전제 → ESCALATE 기준 (c)·즉시군 ③ 해당. 사실: D2 기결정 표현은 "**subagent 없이** 직접 실행"(SDD 안)이고 계약 첫 문장이 SDD를 REQUIRED로 두므로, **R1이 넣은 non-SDD 다리가 범위 확대**였음이 확인됨. 사용자 채택 = **non-SDD 분기 제거**(SDD REQUIRED 유지, 블록 축소). 리뷰어 권고(2모드 분기 + 직접 모드 완료 동기점 신설)는 D2 범위 밖 신규 규정이라 미채택. 판정 주체 = 사용자 |
 
-**미확인 FIXED 큐**: **fp-I1**(확인 C1에서 blocking 재분류 → R4 재수정) · **fp-I5** · **fp-I6** — 재확인 대상. fp-I2·fp-I3·fp-I4는 확인 C1에서 소멸 확인(큐 제거).
+**미확인 FIXED 큐**: **비어 있음 (종결)** — fp-I2·fp-I3·fp-I4는 확인 C1에서, fp-I1·fp-I5·fp-I6은 재진입 확인 C2에서 소멸 확인(fingerprint별 명시). 확인 부채 0.
 
 **확인 C1 (2026-08-08, base `7171c73` → target `c1617cc`)**: 응답 완전(계약 충족 — 큐 4건 전건 명시·회귀·감사·신규 finding "없음" 명시·verdict). ① 큐 소멸 확인 — **fp-I2 소멸 · fp-I3 소멸 · fp-I4 소멸** / **fp-I1 blocking 재분류**(non-SDD 직접 실행에서 수렴 불가: 첫 완료는 표 폴백으로 ledger 복원 → 이후 ④는 표만 갱신 → 부분 ledger가 "live"로 판정돼 새 완료 행마다 되돌려짐. R2의 "복원" 지시와 non-SDD 경로의 충돌). ② 회귀 — task 표 서술·§Execution handoff·SDD 어댑터·관문 4종 문면 상호 정합 확인, 단 위 fp-I1 회귀는 지목. ③ 판정 감사 — **[루프 판정] focus 요약행 0행 = 적정**(impl ledger에 동일 fingerprint 재지목 낭비 없음 확인 + 실었다면 fp-C5·DUPLICATE 계열의 실제 구현 검증을 결함 재론으로 오인 억제할 위험 지적). ④ verdict **비통과**(fp-I1 귀속). 신규 finding 0. → fp-I1 §2c 재판정 = **FIXED 후보**(리뷰어 대안 ②는 범위 저촉으로 유효 선택지 1개 → ESCALATE 아님) → R4 수정 반영 → **적대 복귀 발동(1/1 소진, 상한 밖)** → 재진입 확인 C2 예약(상한 밖, 예산 검사 면제).
 
@@ -247,5 +247,16 @@ review-loop `--phase impl` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 | R3 | 적대(자동 3/3) | 3 | fp-I4 high(3, ESCALATE 미해결 — batch 제시로 종결) | 3 |
 | C1 | 확인(소진 1/2) | — | 큐 4건 중 소멸 3(fp-I2·I3·I4)·재분류 1(fp-I1 → R4 재수정) · 감사 1건 적정 · 신규 0 · verdict 비통과 | 4→1 |
 | R4 | 적대(복귀, 상한 밖 — 소진 3 유지) | 4 | fp-I5 high(3, FIXED 후보) + fp-I6 medium(1, ESCALATE 즉시 — 사용자 FIXED로 종결) | 1 |
+| C2 | 확인(재진입, 상한 밖 — 소진 1 유지) | — | 큐 3건(fp-I1·I5·I6) 전부 소멸 확인 · 감사 대상 없음 · 신규 0 · **verdict 통과(머지 가능)** | 3→0 |
+
+**재진입 확인 C2 (2026-08-08, base `7171c73` → target `ca809a7`)**: 응답 완전. ① 큐 3건 전건 소멸 — fp-I1(live ledger 한정 권위 + fresh/유실 시 표 폴백 + 복원으로 C1의 부분 ledger 수렴 실패 경로 제거) · fp-I5(canonical verbatim 블록 대조로 중간 버전 false-pass 경로 폐쇄, grep은 참고 예시임이 명시적) · fp-I6(`Without SDD`·`execution without SDD` 참조가 두 스킬에서 모두 제거, 잔존 "without subagents"는 D2 원문이라 매달린 참조 아님). ② 회귀 없음 — task 표 서술·§Execution handoff·SDD 어댑터·관문 4종 문면 상호 정합, 6회 누적 개정된 ④ 블록도 순서대로 판독 가능·상호모순 없음 확인. ③ 감사 대상 없음(루프 직접 판정 0건, C1에서 종결된 focus 판정은 이후 무변경). ④ verdict **통과**. 신규 finding 0.
+
+**성공 종료 (2026-08-08, 확인 경유)**: 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C2 verdict 통과 — 불변식 3종 충족. 복귀 1/1 소진, 재진입 blocking 재발 없음(ESCALATE·whole-branch 권고 경로 미발동).
+
+**릴리스 전 blocking 체크(확인 부채 아님)**: 이번 루프가 추가한 문면(fp-I1·I2·I3·I4·I5·I6)의 신규 시나리오 GREEN은 사용자 판정으로 **0.10.0 릴리스 전 별도 세션**에 이월됐다 — §6 GREEN 목록에 시나리오가 기재돼 있다. C2도 "이월 항목은 이번 머지의 blocking으로 재분류할 근거 없음"으로 판정했다.
+
+**0.9.0 가드 focus 관찰 (spec §9 — impl 2차 데이터)**: 닫힌 항목·기결정 재지목 **0건**(전 라운드). 기결정 역공격 **0건** — 오히려 리뷰어가 매 라운드 인접 기결정과의 경계를 자발 논증했다(R1 "fp-C6과 권위 주제가 겹칠 수 있으나 lifecycle 결함이라 별개" · R2 "D3의 항목 수 재론이 아니라 stale-version false-pass" · R4 "fp-I3의 '④ 자체 부재'와 달리 '④는 있으나 최신 보호 결여'"). 주의 희석 **0건** — 발굴 6건 전부 사실 검증을 통과한 실질. **진행 상태 한 줄의 효과 실측**: R2 리뷰어가 "이는 미확인 FIXED 큐가 열려 있다는 지적이 아니라 fp-I1 수정이 실제 SDD 초기화 순서에서 동작하지 않는다는 구체적 잔존 경로"라고 자발 구분 — 계열 B 오지적을 억제하면서 실질 잔존 보고는 통과시킨 설계 의도대로 작동. **닫힌 요약행 0행 결정도 유효**했다(C1 감사 적정 + 재지목 낭비 미발생).
+
+**이 루프의 특징(다음 트랙 참고)**: 발굴 6건 중 **4건(fp-I2·I4·I5·I6)이 루프 자신의 직전 수정이 만든 회귀·범위 확대**였다. 산문 계약을 한 블록 안에서 연쇄 수정할 때 나타나는 패턴으로, 적대 라운드가 자기 수정의 회귀를 잡는 경로가 실제로 작동함을 보여준다(spec 루프 fp-C6 1건 → impl 4건). 특히 fp-I6은 **루프가 앞서 넣은 범위 확대를 사용자 판정으로 되돌린** 첫 사례다 — 계약 블록이 커질 때 "추가"가 아니라 "철회"가 정답인 경우가 있음을 기록해 둔다.
 
 **전환 신호**: R3에서 **신호 2(수정 큐 소진 — 신규 FIXED 후보 0건)** 발화 + 적대 소진 3 = auto-rounds 도달. 신호 1은 미발화(score 3→4→3, 2회 연속 비감소 아님). → batch 일괄 제시 후 확인 모드 진입.
