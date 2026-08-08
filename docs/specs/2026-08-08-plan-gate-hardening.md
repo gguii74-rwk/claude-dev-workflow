@@ -1,6 +1,6 @@
 # plan 게이트 강화 설계 (C-5)
 
-- 상태: **harden-spec 종결** (2026-08-08 D1~D11 확정 — 미해결 질문 0. 다음 = 새 세션에서 `review-loop --phase spec`)
+- 상태: **review-loop spec 종결** (2026-08-08 — 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C2 verdict merge-ready. 다음 = 새 세션에서 writing-skills TDD 구현. ledger = 이 문서 §적대검증 ledger (spec))
 - 대상: `dev-workflow` 플러그인 **기존** 스킬 `writing-plans-split` · `review-loop` 개정 (기준 0.9.0)
 - 날짜: 2026-08-08
 - 입력: `docs/specs/2026-08-07-review-loop-and-pipeline-improvements-brief.md` §실행 순서 4번 / §트랙 C C-5
@@ -182,7 +182,7 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 | **fp-C5** — spec §3 D2 보강 · "기입 후 커밋 전 중단" 재개 변형 — 수렴 조건이 "미기입"만 검사해 기입-미커밋 상태가 통과, 다음 task 커밋에 혼입 위험 · 권고 = 수렴 시점에 커밋·clean 확인 추가 | medium (R3) | DEFERRED_TO_IMPL | fp-C2 계열 3회째(R1 미기입 행 → R2 마지막 task → R3 기입-미커밋) — fp-C4 행의 선기록(3회째 = 판정 마감) + R3 판정 루프 국면에 따라 설계 보강 중단. 실행 영향 낮음(수렴 규범 "기입+커밋"이 커밋 포함, dispatcher가 자연 수렴). **연결** = §8 (a) 계약 문안 요건("기입-미커밋 상태 포함") + §6 GREEN "기입 후 커밋 전 중단" 시나리오. **[루프 판정]**(확인 임무 ③ 우선 감사 대상) — 확인 C1 감사: 적정 |
 | **fp-C6** — spec §3 D2 보강(C1 잔존 해소분) · 권위 순서 "git log 최상위"가 결함 — 구현자 커밋은 리뷰 승인 전에 존재하므로 git log를 완료 권위로 삼으면 리뷰 실패·fix-loop 중 task를 `[x]`로 복구, 미승인 구현 위에 후속 작업 적재 · 권고 = SDD ledger 완료 기록을 권위로, git log는 보조 검증, 부재 시 fail-closed | high (R4 복귀) | FIXED (R4) | 루프가 C1 잔존 해소에서 도입한 오류의 교정(anti-churn 대상 아님 — 신규 경계 추격이 아니라 자기 수정 회귀). 리뷰어 권고가 D2 "완료 확정 = 리뷰 승인 후"와 정합하는 유일한 의미론. §3 D2 보강 bullet 권위 교체·§6 GREEN(mid-loop 시나리오)·§8 (a) 반영 |
 
-**미확인 FIXED 큐**: fp-C1 (C1 잔존 → 재수정 `432d024`, 사용자 판정) · fp-C2 (C1 잔존 → 재수정 `432d024` + fp-C6 교정, 루프 판정) · fp-C6 (R4 수정, 루프 판정) — 각 소멸 확인 대기. ~~fp-C3 · fp-C4~~ — **확인 C1에서 소멸 확인(큐 제거)**.
+**미확인 FIXED 큐**: **비어 있음 (종결)** — fp-C3·fp-C4는 확인 C1에서, fp-C1·fp-C2·fp-C6은 재진입 확인 C2에서 소멸 확인(fingerprint별 명시). 확인 부채 0.
 
 **batch flush (2026-08-08, 적대 소진 3 = auto-rounds 도달 + 전환 신호 2)**: batch ESCALATE 1건(fp-C1) 사용자 제시 → FIXED(C-5 흡수)로 종결. 자동 수정 3건(R1 `0d60dac` · R2 `b153e6f` · R3 `692cdfd` 판정) 전부 승인. → 확인 모드 진입(확인 필수 조건 성립: 큐 4건 + 루프 직접 판정 2건(DUPLICATE·DEFERRED_TO_IMPL), 확인 예산 2/2 잔여).
 
@@ -197,7 +197,12 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 | R3 | 적대(자동 3/3) | 4 | fp-C1 high(3, batch-pending 잔존) + fp-C5 medium(1, DEFERRED_TO_IMPL로 즉시 판정) | 3 |
 | C1 | 확인(소진 1/2) | — | 큐 4건 중 소멸 2(fp-C3·C4)·잔존 2(fp-C1·C2 → R4 재수정) · 감사 4 적정 · 신규 0 · verdict not-ready | 4→2 |
 | R4 | 적대(복귀, 상한 밖 — 소진 3 유지) | 3 | fp-C6 high(3, FIXED 후보 — C1 잔존 해소분의 권위 순서 오류 교정) | 2 |
+| C2 | 확인(재진입, 상한 밖 — 소진 1 유지) | — | 큐 3건(fp-C1·C2·C6) 전부 소멸 확인 · 감사 해당 없음 · 신규 0 · **verdict merge-ready** | 3→0 |
+
+**성공 종료 (2026-08-08, 확인 경유)**: 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C2 verdict merge-ready — 불변식 3종 충족. 재진입 확인 C2(base `7171c73` → target `927f675`)의 소멸 확인 fingerprint = fp-C1·fp-C2·fp-C6(각 근거 명시). 복귀 1/1 소진, 재진입 blocking 재발 없음(ESCALATE 경로 미발동).
 
 **전환 신호**: R3에서 신호 2(수정 큐 소진 — 신규 FIXED 후보 0건) 발화 + 적대 소진 3 = auto-rounds 도달. → batch ESCALATE 일괄 제시 후 확인 모드 진입.
 
 **0.9.0 가드 focus 첫 실적용 관찰(spec §9)** — R1: 재지목 0건(대조군 트랙 B spec R1 재지목 1건). 기결정 역공격 없음 — 리뷰어가 finding 2건 모두에 "기결정 중복 가능성 낮다"를 자발 명시하고 D2 재론을 회피한 채 인접 갭만 지목(가드 정상 작동 신호). 주의 희석 없음 — 발굴 2건 모두 실질(사실 기반 실증됨). R2: 닫힌 항목 재지목 0건(재출현 1건은 미판정 fp-C1 — focus 억제 대상 아님, 정상). 기결정 역공격 없음 — fp-C3는 D2 재론이 아니라 근거("mark todo complete")와 문구의 어긋남 지적(가드 단서 ②의 의도된 동작). 주의 희석 없음 — 신규 2건 모두 실질. R3: 닫힌 항목 재지목 0건 — R2에서 focus에 실은 [루프 판정] DUPLICATE 요약행(fp-C1 계열)이 즉효(fp-C1 재보고 소멸, 리뷰어가 fp-C2와의 의미 차이를 자발 논증하며 신규 변형만 보고). R4(복귀): 재지목 0건 — focus에 fp-C1(사용자 FIXED)·fp-C5(DTI) 요약행 2건 탑재, 리뷰어는 C1 잔존 해소 수정의 신규 회귀(fp-C6)만 지목(복귀 라운드 목적에 정확히 부합). 루프 통산 재지목 1건(대조군 트랙 B: spec 1·impl 3).
+
+**종결 집계(§9 관찰 최종)**: 총 라운드 = 적대 4(소진 3/5 + 복귀 1) · 확인 2(소진 1/2 + 재진입 1). 전환 신호 = R3에서 신호 2(수정 큐 소진)와 적대 소진 3=auto-rounds 도달 동시 발화. disposition 집계 = FIXED 5(fp-C1 사용자·fp-C2·C3·C4·C6) / DEFERRED_TO_IMPL 1(fp-C5) / DUPLICATE 1(R2 재출현) / ESCALATE 1(fp-C1 — batch에서 사용자 FIXED로 종결) / ACCEPTED·OUT_OF_SCOPE·low 0. 0.9.0 focus 주입 관찰 결론 — ① 재지목: 통산 1건(트랙 B spec+impl 4건 대비 감소, 그마저 미판정 ESCALATE 재출현이라 focus 억제 범위 밖·R3 focus 등재 후 소멸) ② 기결정 역공격: 0건(전 라운드에서 리뷰어가 기결정 재론 회피를 자발 명시) ③ 주의 희석: 0건(전 라운드 발굴이 실질 — 특히 R4가 focus 2행을 실은 채 신규 회귀 fp-C6을 정확히 지목).
