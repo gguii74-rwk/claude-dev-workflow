@@ -7,7 +7,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | Tool | Kind | Invocation | Role |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | Recommended pipeline map for a new feature + tells you which step you're on (read-only, start here) |
-| review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review → adjudicate/auto-fix, then a neutral confirm round verifies the fixes and rules on merge readiness — until zero unadjudicated critical/high findings remain |
+| review-loop | skill | `/dev-workflow:review-loop` | After each spec/plan/impl stage: commit → codex adversarial review (settled-decisions guard auto-injected to suppress re-flags) → adjudicate/auto-fix, then a neutral confirm round verifies the fixes and rules on merge readiness — until zero unadjudicated critical/high findings remain |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | Write multi-step implementation plans as a thin entrypoint + one file per task |
 | harden-spec | skill | `/dev-workflow:harden-spec` | Adversarially pressure a draft spec before plan/implementation to dig out missed gaps, assumptions, and invariant violations, and harden the spec in place (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (Optional, step 3.5) When a hardened spec creates or reshapes a screen: diverge non-executable HTML mockups, let the user pick, and record the UI decision in the spec as a settled decision |
@@ -79,6 +79,8 @@ Recommended order: **brainstorming → spec → harden-spec → ui-mockup (optio
 After each stage, commit your changes and run codex adversarial review. Findings are auto-fixed or closed with a disposition, repeating until **"zero critical/high findings remain unadjudicated."** The goal is not "zero findings" but "zero unadjudicated."
 
 The loop runs in **two modes**. It opens in **adversarial (discovery) mode** — codex `adversarial-review` digs out omissions and defects. An adversarial reviewer never returns zero findings no matter how many times you run it, so that mode alone can never end the loop. Once a transition signal fires (score plateau · fix queue drained · adversarial budget spent), the loop switches to **confirm (neutral) mode**, whose objective is *"is this mergeable?"* — it verifies that items you claimed to have fixed are actually gone, audits regressions and the proportionality of your adjudications, and issues a verdict. "No new blocking findings, fixes confirmed" becomes a legitimate output, so termination is natural.
+
+Since 0.9.0, **every adversarial round auto-injects the settled-decisions guard as review focus** — the full settled-decision block plus one-line summaries of closed ledger items, reassembled right before each round and attached to the review command, suppressing re-flags of already-closed items at the source (measured: even with the guard sitting in the diff, the same finding was re-raised five rounds in a row). Adjudications the loop made on its own are priority-audited by the confirm round, preserving the path to revisit a wrong call.
 
 All options are optional — plain `/dev-workflow:review-loop` works.
 

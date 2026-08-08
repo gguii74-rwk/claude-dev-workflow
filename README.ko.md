@@ -7,7 +7,7 @@
 | 도구 | 종류 | 호출 | 역할 |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | 새 기능의 권장 파이프라인 지도 + 현재 단계 안내 (읽기 전용, 여기서 시작) |
-| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증→판정·자동수정 반복, 이어서 확인 라운드가 수정 소멸·머지 준비도를 판정 (판정 없이 남은 critical/high 0까지) |
+| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증(기결정 가드 자동 주입으로 재지목 억제)→판정·자동수정 반복, 이어서 확인 라운드가 수정 소멸·머지 준비도를 판정 (판정 없이 남은 critical/high 0까지) |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (옵션, 3.5단계) 굳은 spec이 화면을 만들거나 구성을 바꿀 때: 비실행 HTML 목업을 발산해 사용자가 고르고, UI 결정을 spec에 기결정으로 기록 |
@@ -79,6 +79,8 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 각 단계 완료 후 변경을 커밋하고 codex로 적대검증을 돌린다. 결함은 자동수정하거나 판정(disposition)으로 닫으면서, **"판정 없이 남은 critical/high가 0"**이 될 때까지 반복한다. 목표는 "지적사항 0"이 아니라 "미판정 0"이다.
 
 루프는 **2모드**로 돈다. 초반은 **적대(발굴) 모드** — codex `adversarial-review`로 누락·결함을 캐낸다. 적대 리뷰어는 몇 번을 돌려도 finding 0을 내지 않으므로 그것만으로는 끝낼 수 없다. 그래서 전환 신호(score 정체 · 수정 큐 소진 · 적대 예산 소진)가 발화하면 **확인(중립) 모드**로 넘어간다 — 목적함수가 "머지 가능한가 판정"이라, 고쳤다고 한 항목이 정말 사라졌는지 확인하고 회귀·판정 비례성을 감사한 뒤 verdict를 낸다. "신규 blocking 없음, 수정 확인됨"이 정당한 출력이 되어 종료가 자연스러워진다.
+
+0.9.0부터 **적대 라운드마다 기결정 가드를 리뷰 focus로 자동 주입**한다 — 재논의 금지 블록 전문 + 닫힌 ledger 항목 요약행을 매 라운드 직전 재조립해 리뷰 커맨드에 부착, 이미 닫힌 항목의 재지목을 원천에서 억제한다(실측: 가드가 diff 안에 있어도 동일 항목이 5라운드 연속 재지목됐다). 루프가 직접 내린 판정은 확인 라운드가 우선 감사해 오판정 재검토 경로를 보존한다.
 
 옵션은 전부 선택 — `/dev-workflow:review-loop`만 써도 동작한다.
 

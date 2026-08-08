@@ -7,7 +7,7 @@
 | ツール | 種類 | 呼び出し | 役割 |
 |---|---|---|---|
 | dev-cycle | skill | `/dev-workflow:dev-cycle` | 新機能の推奨パイプラインマップ + 現在のステップ案内（読み取り専用、ここから始める） |
-| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー → 裁定・自動修正を反復し、確認ラウンドが修正の消滅とマージ可否を判定（未裁定の critical/high が 0 になるまで） |
+| review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー（既決事項ガードの自動注入で再指摘を抑止）→ 裁定・自動修正を反復し、確認ラウンドが修正の消滅とマージ可否を判定（未裁定の critical/high が 0 になるまで） |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 多段階の実装プランを薄いエントリポイント + タスク別ファイルに分割して作成 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | plan・実装に進む前に spec ドラフトを敵対的に圧迫し、見逃したギャップ・前提・不変条件違反を掘り出して spec をその場で固める（project-aware） |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | （オプション、ステップ 3.5）固めた spec が画面を新設・再構成する場合: 非実行の HTML モックアップを発散させてユーザーに選ばせ、UI の決定を spec に既決事項として記録 |
@@ -79,6 +79,8 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 各段階の完了後に変更をコミットし、codex で敵対的レビューを回す。欠陥は自動修正するか裁定（disposition）で閉じながら、**「未裁定の critical/high が 0」**になるまで反復する。目標は「指摘 0」ではなく「未裁定 0」。
 
 ループは **2 モード**で回る。序盤は**敵対（発掘）モード** — codex `adversarial-review` で漏れ・欠陥を掘り出す。敵対的レビューアは何度回しても finding 0 を返さないため、それだけでは終われない。そこで遷移シグナル（score 停滞 · 修正キュー枯渇 · 敵対予算の消尽）が発火すると**確認（中立）モード**へ移る — 目的関数が「マージ可能か判定」なので、修正したとされる項目が本当に消えたかを確認し、リグレッションと裁定の比例性を監査したうえで verdict を出す。「新規 blocking なし、修正確認済み」が正当な出力になり、終了が自然になる。
+
+0.9.0 からは**敵対ラウンドごとに既決事項ガードをレビュー focus として自動注入**する — 再議論禁止ブロック全文 + 閉じた ledger 項目の要約行を毎ラウンド直前に再組み立てしてレビューコマンドに添付し、すでに閉じた項目の再指摘を源から抑止する（実測: ガードが diff 内にあっても同一項目が 5 ラウンド連続で再指摘された）。ループが直接下した裁定は確認ラウンドが優先監査し、誤裁定を見直す経路を保存する。
 
 オプションはすべて任意 — `/dev-workflow:review-loop` だけでも動く。
 
