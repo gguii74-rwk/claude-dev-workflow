@@ -1,0 +1,5 @@
+.playwright-mcp
+
+# 세션 핸드오프는 private repo claude-memories 로 분리했다(여기는 공개 repo).
+# 끝에 슬래시를 붙이지 말 것 — macOS symlink 는 디렉터리 전용 패턴에 안 걸린다.
+.remember
