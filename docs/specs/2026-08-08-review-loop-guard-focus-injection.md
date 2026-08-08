@@ -241,6 +241,8 @@
 | fp-I2 · plugin.json·README 3종 · 0.9.0 릴리스 변경(D13)이 branch diff에 없음 | high | **OUT_OF_SCOPE** [루프 판정 · 확인 임무 ③ 감사 대상] | 릴리스는 브리프 §실행 순서(사용자 기결정)·핸드오프 순서상 **impl 루프 종결 후 단계**(spec §8 AC (f) 릴리스 / (g) impl 종결 분리 명시). follow-up = 핸드오프 task "릴리스 0.9.0(plugin.json + README 3종)". 참고: 트랙 A fp-I8 계열 재지목 관찰 +1(§9 대조군) |
 | fp-I3 · SKILL.md §기결정 가드 · 전 phase 루프 판정(DEFERRED_TO_IMPL·DUPLICATE)이 승계 블록 열거 범위 밖이라 cross-phase focus에서 유실 | medium | **OUT_OF_SCOPE** [루프 판정 · C1 감사: 비례성 적정 + 기록 요건 이의 → **사용자 재판정: OUT_OF_SCOPE 유지 + 기록 보완** (2026-08-08)] | D11 기결정이 조립 원본 경계 확정 + **C-3(impl ledger 위치·구조) 순번 7 명시 유예** — 권고(승계 확대·전 phase ledger 직접 읽기)는 순번 7 계열 작업. 실행 영향 낮음: §2c 사후 대조(전 phase ledger 전체 대상)는 불변(이중 방어 2층 수신) · 전 phase DEFERRED_TO_IMPL은 impl 재검토가 의도된 항목이라 focus 억제가 오히려 유해 · 이 트랙은 spec/impl ledger 동일 문서라 유실 미발생. follow-up = **핸드오프 §다음 액션 5에 실기록 완료**(fp-I4 수정, 2026-08-08) |
 | fp-I4 · `.remember/remember.md` · fp-I3의 OUT_OF_SCOPE 필수 요건인 follow-up 기록이 ledger 행에만 있고 실제 핸드오프 백로그에 부재 (C1 지목) | medium | **FIXED** [판정 주체: 사용자 — C1 감사 이의 ESCALATE(즉시) → "감사 수용·기록 보완" 선택] | 핸드오프 §다음 액션 5 신설 — 순번 7(C-3) 백로그에 "승계 블록 열거 범위 vs D2 focus 범위 불일치" 각도 실기록 + fp-I3 행 follow-up 참조 갱신. 미확인 FIXED 큐 편입(재확인 대상) |
+| fp-I1 재출현(복귀R) · "검증되지 않은 브랜치 문구도 억제 focus에 그대로 주입" — provenance 미확인 항목 완전 제외·트리 밖 세션 상태·allowlist 검증·구분자 이스케이프 요구 | high | **DUPLICATE** [루프 판정 · C2 감사 대상] | 원 fp-I1(= fp-B1 계열, 사용자 판정 FIXED=D14) — **계열 4회째**. 하위 각도 매핑: 트리 밖 원본 = 사용자 명시 불채택 권고안 / allowlist·이스케이프 = 스키마 직렬화 구제책 변형(spec C1 감사 이력 동일) / "[루프 판정] 강등 항목의 focus 포함을 제외로 바꿔라" = D14 설계(강등 + 확인 임무 ③ 감사 유지) 자체의 재론 |
+| fp-I2 재출현(복귀R) · plugin.json 0.8.0 잔존·README 미동기 — 기존 설치가 변경을 받지 못함 | medium(high→m 흔들림) | **DUPLICATE** [루프 판정 · C2 감사 대상] | 원 fp-I2(OUT_OF_SCOPE — 릴리스는 impl 루프 종결 후 단계, C1 감사 적정). 동일 fingerprint 계열(severity는 key 제외) |
 
 ### score 이력 (impl · 산식: §2c 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외)
 
@@ -248,6 +250,7 @@
 |---|---|---|---|---|---|
 | R1 | 적대(자동) | `226636c`→`898a747` | 0/2/1 (전건 신규 지목 → 전건 당라운드 판정 종결) | 0 | 0 |
 | C1 | 확인(중립) | `226636c`→`cf3d643` | 0/0/1 (신규 1 = fp-I4, ESCALATE 즉시 → 사용자 FIXED) | 1 | 0 |
+| 복귀R | 적대(상한 밖) | `226636c`→`0693038` | 0/1/1 (신규 0 · 재지목 2 → 전건 DUPLICATE) | 0 | 1 (fp-I4) |
 
 ### 미확인 FIXED 큐 (impl) — 1건 (fp-I4, C2 재확인 대기)
 
@@ -257,3 +260,4 @@
 
 - **R1 (적대·자동) 2026-08-08** — target `898a747`, verdict needs-attention(적대 verdict는 보고 항목 — 게이트는 확인 라운드 verdict), findings 3(high 2·medium 1). fp-I1 DUPLICATE(기결정 가드 대조 일치 — fp-B1 계열 3회째) · fp-I2 OUT_OF_SCOPE(릴리스 순서) · fp-I3 OUT_OF_SCOPE(순번 7 유예). 신규 FIXED 후보 0 → **전환 신호 2(수정 큐 소진) 발화**. batch-pending 0(flush 대상 없음) → 확인 필수 조건(루프 직접 판정 3건) 성립 → 확인 모드 진입(**임무 ③·④만** — 미확인 FIXED 큐 0). low 0.
 - **C1 (확인·중립) 2026-08-08** — target `cf3d643`, task 커맨드(프롬프트 파일 경유). 응답 완전(큐 0건 확인 / 감사 3건 전건 / 신규 목록 / verdict): fp-I1 감사 **적정**(fp-B1 계열 의미적 동일·환원 불가능한 신규 각도 없음 — 오매칭 아님) · fp-I2 감사 **적정**(릴리스/impl 분리 AC·핸드오프 follow-up 존재 확인) · fp-I3 감사 **이의**(비례성 적정, 단 OUT_OF_SCOPE 필수 요건인 follow-up 실기록 부재) + 신규 finding 1(fp-I4 medium) / **verdict not-ready**(사유 = fp-I4 단건). 처리: 감사 이의 규정에 따라 루프 자체 처리 없이 **fp-I3 항목 ESCALATE(즉시) → 사용자 재판정 "감사 수용·기록 보완"** — fp-I3 = OUT_OF_SCOPE 유지 + fp-I4 = 사용자 FIXED(핸드오프 §다음 액션 5 실기록). fp-I4 미확인 FIXED 큐 편입 → **적대 모드 복귀 발동(상한 1회, 이후 재진입 확인 1 예약)**. 확인 소진 1/2.
+- **복귀R (적대·상한 밖) 2026-08-08** — target `0693038`, verdict needs-attention(보고 항목), findings 2 = 전건 기닫힘 항목 재지목 → DUPLICATE 각하(fp-I1 계열 4회째 · fp-I2 재출현). **fp-I4 수정 주변 회귀 지적 없음**(복귀 목적 관점 이상 없음). 신규 FIXED 후보 0 · batch-pending 0(재진입 직전 flush 대상 없음) · 두 카운터 불변(상한 밖). → 재진입 확인 C2(예약분 — 예산 잔여 검사 면제) 진입. §9 대조군 관찰: 이 루프 재지목 누계 3건(fp-I1 계열 2 + fp-I2 계열 1). low 0.
