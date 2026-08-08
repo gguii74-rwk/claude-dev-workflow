@@ -1,6 +1,6 @@
 ---
 name: dev-cycle
-description: Use when starting a new feature or multi-step change, or when unsure which development step to do next, and you want this repo's recommended end-to-end pipeline (design → spec → harden → review → plan → review → implement → review). 트리거 예 — "새 기능 시작", "어디서부터 시작해", "개발 사이클", "다음 단계 뭐야", "how do I run this feature end to end".
+description: Use when starting a new feature or multi-step change, when a small single-step change needs a path decision before touching code, or when unsure which development step to do next, and you want this repo's recommended end-to-end pipeline (design → spec → harden → review → plan → review → implement → review → integrate). 트리거 예 — "새 기능 시작", "어디서부터 시작해", "개발 사이클", "다음 단계 뭐야", "작은 변경인데 어떤 절차로 가야 해", "정식으로 갈까 경량으로 갈까", "how do I run this feature end to end".
 ---
 
 # dev-cycle
@@ -13,7 +13,7 @@ description: Use when starting a new feature or multi-step change, or when unsur
 
 **한 세션에서 전 과정을 자동으로 돌리지 않는다.** 단계 경계마다 새 세션 + `/clear`가 필요하고(아래), Claude는 자가 `/clear`를 못 한다. 그러니 **현재 단계 하나만 수행하고, 다음 단계는 핸드오프로 넘긴다.**
 
-## 권장 파이프라인 (8단계 + 옵션 3.5)
+## 권장 파이프라인 (9단계 + 옵션 3.5)
 
 | # | 단계 | 스킬 | 소속 |
 |---|---|---|---|
@@ -25,32 +25,71 @@ description: Use when starting a new feature or multi-step change, or when unsur
 | 6 | plan 적대검증 | review-loop `--phase plan` | dev-workflow |
 | 7 | 구현 | subagent-driven-development | superpowers |
 | 8 | impl 적대검증 | review-loop `--phase impl` | dev-workflow |
+| 9 | 통합·후속 검증 (PR·머지·배포·실측) | finishing-a-development-branch + 그 repo 규약 | superpowers + repo |
 
 - 1–2단계 후 brainstorming의 기본 종착점(writing-plans)으로 바로 가지 말고 **3–4(harden-spec → review-loop)로 spec을 굳힌 뒤** 5로 간다.
 - **3.5는 옵션**이다 — spec이 새 화면을 만들거나 기존 화면 구성을 바꿀 때만 3과 4 사이에 넣는다(문구·색 같은 경미 변경은 건너뜀). 화면 결정을 굳힌 *뒤* 4를 돌려야 목업발 spec 변경도 적대검증 안에 들어온다.
-- **superpowers 미설치 시**: 1·7단계는 자체 브레인스토밍/구현으로 대체 가능하다. 3–6·8단계(dev-workflow 자체 스킬)만으로도 spec–plan–검증 골격은 완결된다.
+- **8단계 게이트가 npm이 아닌 repo**(Python·Go·Rust 등) — review-loop의 impl 게이트는 npm 4종 고정이므로, **그 repo의 검증 명령**(`make check`·`go test ./...` 등)이나 **writing-skills TDD GREEN 기록**으로 갈음해 8단계에 들어간다. **경량·정식 어느 경로에도 적용된다.**
+- **9단계는 포인터만**이다 — PR·머지·배포·후속 실측의 절차 내용은 그 repo의 CLAUDE.md/AGENTS.md에 있다. 여기에 체크 항목을 복제하지 않는다. 배포 대상이 없는 repo(플러그인 등)에서는 릴리스 + 설치 갱신 안내가 그 자리를 대신한다.
+- **superpowers 미설치 시**: 1·7·9단계는 자체 브레인스토밍·구현·종료 절차로 대체 가능하다. 3–6·8단계(dev-workflow 자체 스킬)만으로도 spec–plan–검증 골격은 완결된다.
 
 ## 단계 경계 = 새 세션 + `/clear`
 
-spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시작**한다(review-loop 규약). 한 세션에서 여러 phase를 강행하지 않는다 — 컨텍스트가 커지고 phase가 섞인다. review-loop의 컨텍스트 40% 핸드오프 넛지가 이를 돕는다.
+spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시작**한다(review-loop 규약). 한 세션에서 여러 phase를 강행하지 않는다 — 컨텍스트가 커지고 phase가 섞인다. review-loop의 컨텍스트 40% 핸드오프 넛지가 이를 돕는다. **경량 경로도 이 경계 규약을 바꾸지 않는다.**
+
+## 경량 경로 (작은 변경)
+
+**분기 축은 접촉 표면·가역성이고 규모가 아니다.** 아래에 닿으면 **정식**이다 — 스키마·마이그레이션·권한·**인증·보안 경계**·외부 연동·**데이터 손상/유실**·비가역 작업. task 수·파일 수는 기준이 아니다(12 task 문구 정리는 경량, 1 task 컬럼 삭제는 정식).
+
+- **판정 = 지도 1차 + 사용자 확인 1회.** 접촉 표면 신호로 1차 판정하고 확인을 받는다. **승인했을 때만 경량으로 진입한다** — 거절·무응답·모호한 답은 승인이 아니므로 **정식을 유지**한다.
+- **하한 3종은 어떤 경량 트랙도 생략하지 못한다** — ① **spec 문서**(review-loop spec 게이트 6항목 = 목표·범위·비목표·결정사항·acceptance criteria·미해결 질문 + `## 재논의 금지(기결정)` 블록) ② **3 harden-spec**(D블록을 손으로 쓴 것으로 갈음되지 않는다) ③ **8 impl 적대검증**.
+- **생략은 단계별 선택**이다 — 하한 위의 단계(4 spec 적대검증 · 5 plan · 6 plan 적대검증)를 각각 생략할 수 있고, **생략할 때마다 spec의 재논의 금지 블록에 D번호로 근거를 남긴다.** 정해진 생략 패키지는 없다.
+- **승격은 즉시** — 진행 중 위 접촉 표면이 새로 드러나면 그 자리에서 정식으로 올리고 사유를 spec에 적는다. 아직 수행하지 않은 단계의 생략 기록은 그때 **철회**한다. task 증식·라운드 초과 같은 진행 신호는 승격 트리거가 아니다.
+- **3.5는 경량 판정을 이유로 자동 생략하지 않는다** — 화면을 만들거나 바꾸면 경량이어도 3.5를 돌린다(화면 변경 자체가 정식 승격을 부르지는 않는다 — 3.5만 붙는다). 사용자가 진입 확인에서 **명시적으로 생략을 택하고 기록한 경우는 유효**하다.
+- **plan을 생략한 트랙의 impl ledger 위치 = spec 문서 말미**(`## 적대검증 ledger (impl)`).
+- **9단계는 경로 무관 공통**이다 — 경량은 설계·검증 단계를 줄이는 것이고 통합·배포를 면제하지 않는다.
+
+## 착수 브리프
+
+트랙 착수 시 **1회**, 아래 5항목을 **화면에 출력**한다. 파일은 만들지 않는다 — 저장 여부·위치는 사용자가 정한다.
+
+**설계 결론 · 실측 근거 · 변경 대상 파일 · 검증 방법 · 완료 조건(9단계까지)**
+
+단계 경계의 인계는 브리프가 아니라 **review-loop 핸드오프** 소관이다 — 브리프는 착수용(설계 결론), 핸드오프는 재개용(루프 상태)이다.
 
 ## 지금 어느 단계인가 (판별)
 
-현 작업의 산출물로 추론해 **해당 단계만** 안내한다:
+**순서를 지킨다: ① 하한 이행 확인 → ② 생략 기록 대조 → ③ 잔여 단계 판별.** 신호는 문서 조회 수준으로 본다.
 
-1. 대응하는 `docs/specs/<feature>`가 없다 → **1–2** (brainstorming으로 spec 초안).
-2. spec은 있으나 **harden 미실시**(`## 재논의 금지(기결정)` 블록 없음) → **3 harden-spec**.
-3. spec이 굳었고(재논의 금지 블록 존재) **spec이 새 화면을 만들거나 기존 화면 구성을 바꾸는데**, spec에 **`## UI 설계` 섹션이 없고** 재논의 금지 블록에 목업 생략 기록도 없다 → **3.5 ui-mockup**.
-   - 완료 판정 기준은 **spec의 `## UI 설계` 섹션**이다 — `docs/design/<feature>/` 디렉터리 존재만으로 완료로 보지 않는다.
-   - 섹션이 있으면 거기 적힌 목업 경로가 **실재하는지 확인**한다. 불일치면 완료가 아니라 ui-mockup의 재개 경로로 보낸다.
-4. spec이 굳었고 `## 적대검증 ledger`가 미종결이며, **3.5 비대상**(화면을 만들거나 바꾸지 않음·경미 변경)이거나 3.5가 완료(`## UI 설계` 기록)됐거나 생략 기록이 있다 → **4 review-loop(spec)**. 3.5 직후의 다음 단계는 항상 4다 — **5(plan) 직행이나 3(harden-spec) 회귀가 아니다.**
+**① 하한 이행 확인** — 증명되지 않으면 통과시키지 않는다(fail-closed).
+
+- spec 게이트 6항목이 **내용으로** 있는지 본다 — **표제 문자열 일치가 아니다.** 표제는 문서마다 다르게 붙는다(범위가 §범위가 아니라 §목표·§접점 표에, 미해결 질문이 §잔여 리스크에 있을 수 있다). grep은 후보 찾기용이고 판정은 그 절을 읽어서 한다. 내용이 실제로 없으면 **1–2 또는 3**으로 되돌린다.
+- `## 재논의 금지(기결정)` 블록이 있고 **그 안에 D번호 결정과 근거가 실재**하는지 본다. 비었거나 harden 실행 여부가 불명확하면 **사용자에게 1회 확인**한다 — 확인 없이 통과시키지 않는다.
+- 구현이 완료됐는데 `## 적대검증 ledger (impl)`이 없거나 미종결이면 **9가 아니라 8**이다. plan을 생략한 트랙은 **spec 문서 말미**에서 그 ledger를 찾는다(plan 파일 부재를 ledger 부재로 오인하지 않는다).
+- **하한에 붙은 생략 기록은 무효다** — D번호로 "harden 생략"·"impl 적대검증 생략"이라 적혀 있어도 인정하지 않는다.
+
+**② 생략 기록 대조** — 산출물 부재(ledger 없음·plan 없음)를 미완으로 읽기 **전에** 재논의 금지 블록의 생략 기록을 본다. 기록이 있으면 그 단계는 미완이 아니라 **해당 없음**이므로 되돌리지 않고 다음으로 보낸다. 단 **기록 없는 부재는 종전대로 미완**이고(경량이었다고 사후 추정하지 않는다), **철회된 기록은 인정하지 않는다.**
+
+**③ 잔여 단계** — 현 작업의 산출물로 추론해 **해당 단계만** 안내한다.
+
+1. 대응하는 `docs/specs/<feature>`가 없다 → **1–2**(brainstorming으로 spec 초안). 착수 브리프도 이때 낸다.
+2. spec은 있으나 **harden 미실시**(재논의 금지 블록 없음) → **3 harden-spec**.
+3. spec이 굳었고 **spec이 새 화면을 만들거나 기존 화면 구성을 바꾸는데**, spec에 **`## UI 설계` 섹션이 없고** 목업 생략 기록도 없다 → **3.5 ui-mockup**.
+   - 완료 판정 기준은 **spec의 `## UI 설계` 섹션**이다 — `docs/design/<feature>/` 존재만으로 완료로 보지 않는다. 섹션이 있으면 적힌 목업 경로가 **실재하는지 확인**하고, 불일치면 완료가 아니라 ui-mockup의 재개 경로로 보낸다.
+4. `## 적대검증 ledger`가 미종결이고 3.5가 비대상·완료·생략 기록됨 → **4 review-loop(spec)**. 3.5 직후의 다음은 항상 4다 — **5 직행이나 3 회귀가 아니다.**
 5. ledger가 종결됐고 `docs/plans/<feature>`가 없다 → **5 writing-plans-split → 6 review-loop(plan)**.
-6. plan이 있고 구현이 미완이다 → **7 subagent-driven-development → 8 review-loop(impl)**.
+6. 구현이 미완이다 → **7**. plan이 있으면 subagent-driven-development, **plan을 생략한 트랙이면 직접 구현(TDD)** 이다 — plan 파일을 요구하는 SDD로 보내지 않는다.
+7. 구현 완료 + impl ledger 종결 → **9 통합·후속 검증**. 완료 판정은 PR merged + 그 repo 규약이 요구하는 후속(배포·실측)이고, repo 밖 사실이라 불명확하면 사용자에게 확인한다.
 
 git 브랜치명·`docs/specs`·`docs/plans`·`docs/design`·ledger 상태를 신호로 쓴다. 애매하면 사용자에게 현재 위치를 확인한다.
+
+**되돌림 직전 확인(비소급)** — ①②의 규칙으로 **진행 중 트랙을 이전 단계로 되돌리려 할 때는**, 그 트랙이 이 규격 이전에 착수한 것인지 사용자에게 **1회 확인**한다. 기존 트랙이면 종전 판별을 적용하고 새 하한 가드·생략 기록 규칙을 소급하지 않는다. 종전 판별에도 8은 들어 있으므로 **비소급이 8 impl 적대검증을 건너뛰는 근거가 되지는 않는다.**
 
 ## 하지 말 것
 
 - 한 세션에서 여러 phase 강행 → 경계에서 멈추고 `/clear` 넛지.
-- 지도를 이유로 파일 수정 → dev-cycle은 읽기 전용. CLAUDE.md 채택은 `setup`, spec 수정은 `harden-spec`, plan/impl 수정은 각 단계 스킬이 한다.
+- 지도를 이유로 파일 수정 → dev-cycle은 읽기 전용. **착수 브리프도 화면 출력만**이다. CLAUDE.md 채택은 `setup`, spec 수정은 `harden-spec`, plan/impl 수정은 각 단계 스킬이 한다.
+- 접촉 표면에 닿는 트랙을 경량으로 → 규모가 작아도, 시간이 없어도, 사용자가 경량을 요청해도 스키마·권한·인증·보안 경계·데이터 손상/유실·비가역에 닿으면 정식이다.
+- 규모가 크다는 이유로 정식 판정 → 접촉 표면이 없으면 task가 12개여도 경량이다.
+- 9단계 절차를 지도에 복제 → 그 repo 규약을 가리킨다.
 - superpowers 없다고 중단 → 느슨한 참조이므로 대체 안내로 진행한다.
