@@ -76,7 +76,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 |---|---|---|
 | writing-plans-split §Entrypoint 2 (Execution contract verbatim 블록) | ④ 완료 기록 의무 신설 — 기입 주체(dispatcher/직접 실행자)·시점(완료 확정 직후·다음 task 착수 전)·커밋·수렴 검사 3시점(task 착수 전/재개 초기화/final review 진입 전) 포함. 현행 ①②③ 불변 | D2 |
 | writing-plans-split §Entrypoint 4 (task 표) | outcome 서술("filled in one line on completion")을 계약(④) 참조로 연결 — 기입 시점·주체는 계약이 규정 | D2 |
-| writing-plans-split §Execution handoff | dispatcher의 task 간 의무에 완료 기록 1줄 반영(로딩 계약 불변 명시) | D2 |
+| writing-plans-split §Execution handoff | dispatcher의 task 간 의무에 완료 기록 1줄 반영(로딩 계약 불변 명시) + **SDD 6.2.0 접점 어댑터 1줄 신설 — `scripts/task-brief`는 entrypoint가 아닌 해당 task 파일에 적용한다(그 task에 한해 task 파일이 PLAN_FILE 역할; §Shared Contracts는 기존 계약대로 dispatch 프롬프트로 주입)** | D2 · fp-C1(사용자 판정 FIXED) |
 | review-loop §1 사전 게이트 plan 행 | 형식 관문 4종 추가(D3) + 적용 조건(D1)·단일 task 예외(D1)·승계 ledger 부재 분기(D11)·실패 동작(D5)·grep 예시 1줄(D7) | D1·D3·D4·D5·D7·D11 |
 | review-loop §finding ledger | **변경 없음** — plan 루프 자신의 ledger 형식은 기존 규약이 커버(게이트 이중 규정 금지) | D4 |
 | README 3종(en/ko/ja) | plan 게이트 강화 반영(개요 표 + 해당 절) | D10 |
@@ -85,6 +85,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 
 - **writing-plans-split**: Execution contract 블록은 실행 절차 ①(§Shared Contracts 읽기)→②(task 파일 1개 로드)→③(순서 실행)만 규정 — 완료 기록 없음. outcome 정의는 task 표 항목 서술로만 존재.
 - **SDD(superpowers 6.2.0) 실측**: 실행 subagent는 entrypoint를 받지 않는다(dispatcher가 §Shared Contracts + task 파일만 프롬프트에 넣음). task 완료 커밋은 subagent가 만들고, dispatcher는 자체 SDD ledger에 완료를 기록한다("Append completion to ledger, mark todo complete") — **plan entrypoint task 표 갱신은 어느 쪽 규정에도 없다**(25%의 구조적 원인). task 간 동기 지점은 dispatcher에 있어 D2의 기입 지점과 일치한다.
+- **SDD 6.2.0 task-brief 접점(spec 루프 fp-C1, 사용자 판정으로 흡수)**: 6.2.0은 dispatch 전 `scripts/task-brief PLAN_FILE N` 실행을 요구하고, 스크립트는 단일 PLAN_FILE의 "Task N" 제목에서 본문을 추출한다 — 분할 entrypoint에는 본문이 없어 그대로 돌리면 실패한다(exit 3 실증). 실행 자체는 프로즈 계약(Execution contract ②)을 읽은 dispatcher가 적응해 성립해 왔으나(분할 plan 93.2% 채택), 접점이 미문서화라 dispatcher별 우회가 갈릴 수 있다 → §Execution handoff에 어댑터 1줄을 명시한다(§4 표). SDD 자체는 불변.
 - **review-loop §1 plan 관문**: 내용 명시 확인만("구현 단위·파일/인터페이스 영향·테스트 계획·가정"). impl 관문만 실행 게이트를 가진다.
 - **ops-hub `CLAUDE.md:44`**: "다단계 구현 계획은 … `dev-workflow:writing-plans-split` 스킬로 작성한다" 규약 문단 실재 — D1 판정 원천.
 - **ops-hub 재조사**: Execution contract 없는 plan 엔트리포인트 20/88. fingerprint 문자열 없는 ledger 문서 17건(plans 6·specs 10·runbook 1) — 대부분 06-22~07-23 legacy, 08월 plan에는 없음. 08-05 모범 트랙(report-weekly-meeting-view)의 outcome은 "커밋 SHA + 리뷰 상태" 한 줄 형식으로 전량 채움 — 규약 문서 변경 없이 관행 수렴(ops-hub CLAUDE.md에 outcome 규약 부재), D2가 이를 계약으로 승격한다.
@@ -98,7 +99,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 **(1) 절차 준수 마이크로테스트 (writing-skills RED → GREEN)**
 
 - **RED 베이스라인 (현행 0.9.0)**: (a) task 완료 시나리오에서 표 갱신 없는 진행이 통과하는지 (b) 위반 plan(픽스처)으로 review-loop plan 루프가 관문 없이 그대로 시작되는지 재현 기록.
-- **GREEN (개정판, 5+ reps)**: D2 — task 완료 확정 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **구현자 DONE 후 리뷰 실패·fix loop 시나리오에서 조기 `[x]` 기입이 없는가(fp-C3)** · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가(fp-C2)** · **"모든 task 완료·마지막 행 미기입" 재개 시나리오에서 재개 초기화·final review 진입 전 수렴이 나오는가(fp-C4)** · **"기입 후 커밋 전 중단" 재개 시나리오에서 수렴 검사가 기입-미커밋 상태도 수렴(해당 파일 커밋 후 진행)하는가(fp-C5 — DEFERRED_TO_IMPL 연결)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
+- **GREEN (개정판, 5+ reps)**: D2 — task 완료 확정 후 다음 task 착수 전에 status·outcome 기입+커밋이 나오는가 · **구현자 DONE 후 리뷰 실패·fix loop 시나리오에서 조기 `[x]` 기입이 없는가(fp-C3)** · **재개 시나리오(이전 task 행 미기입 상태에서 착수)에서 수렴 기입이 먼저 나오는가(fp-C2)** · **"모든 task 완료·마지막 행 미기입" 재개 시나리오에서 재개 초기화·final review 진입 전 수렴이 나오는가(fp-C4)** · **"기입 후 커밋 전 중단" 재개 시나리오에서 수렴 검사가 기입-미커밋 상태도 수렴(해당 파일 커밋 후 진행)하는가(fp-C5 — DEFERRED_TO_IMPL 연결)** / **fp-C1 — §Execution handoff 개정 문안이 task-brief를 해당 task 파일에 적용하도록 안내하는가(어댑터 접점)** / D1 — 규약 명시 repo에서만 분할 관문을 적용하고 규약 없는 repo·단일 task 예외에서 스킵하는가 / D3 — 4종 항목을 검사하는가 / D5 — 저비용 위반은 해결 후 진행, 구조 재작성은 ESCALATE로 가는가 / D11 — 승계 ledger 부재를 "해당 없음 + 기록"으로 처리하는가 / D7 — 예시 커맨드를 판정 규정으로 오용하지 않는가. **no-guidance 대조군 포함**(순진 프롬프트가 자발 수행하는 부분과 스킬 기여분 분리).
 - 합격선: 트랙 A·B와 동일하게 **variance 0**.
 
 **(2) 위반 plan 픽스처 (마이크로테스트 입력물)**
@@ -112,7 +113,7 @@ ops-hub 전수 점검(2026-08-07, 브리프 §1·§트랙 C C-5 행)에서 plan 
 
 ## 8. 완료 조건 (acceptance criteria)
 
-- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점(완료 확정 직후, fp-C3)·커밋·수렴 검사 3시점(fp-C2·fp-C4) 포함), task 표 서술·§Execution handoff와 모순이 없다. 계약 문안의 수렴 검사는 미기입 행뿐 아니라 **기입-미커밋 상태**를 수렴 대상에 포함한다(fp-C5 DEFERRED_TO_IMPL — 구현 시 문안에 반영, §6 GREEN 시나리오로 검증).
+- (a) writing-plans-split Execution contract에 완료 기록 의무 ④가 계약 문면으로 들어가고(D2 — 주체·시점(완료 확정 직후, fp-C3)·커밋·수렴 검사 3시점(fp-C2·fp-C4) 포함), task 표 서술·§Execution handoff와 모순이 없다. 계약 문안의 수렴 검사는 미기입 행뿐 아니라 **기입-미커밋 상태**를 수렴 대상에 포함한다(fp-C5 DEFERRED_TO_IMPL — 구현 시 문안에 반영, §6 GREEN 시나리오로 검증). §Execution handoff에는 SDD 6.2.0 task-brief 접점 어댑터 1줄이 들어간다(fp-C1 — §4 표).
 - (b) review-loop plan 사전 게이트에 형식 관문 4종(D3)이 추가되고, 적용 조건(D1)·단일 task 예외(D1)·승계 ledger 부재 분기(D11)·실패 동작(D5)·명세 수위(D7)가 명시된다.
 - (c) 게이트 체크가 grep 수준 경량 확인을 벗어나지 않는다 — 파서·스위트·훅 신설 없음, 출력 판정 기준 미규정(기결정 + D7).
 - (d) writing-skills 마이크로테스트 5+ reps variance 0(no-guidance 대조군 포함) + 위반 픽스처 3종으로 D1·D3·D5·D11 동작 재현(D9).
@@ -171,7 +172,7 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
-| **fp-C1** — spec §5 실측 · SDD 6.2.0 `task-brief`(단일 PLAN_FILE 전제)와 분할 entrypoint의 접점 미명시 → 완료 기록 계약이 정상 실행 경로에 못 닿을 위험 지적 · 권고 = Execution handoff에 6.2.0용 절차 어댑터 명시 | high (R1) | ESCALATE(batch-pending) | 범위 결정(C-5에 어댑터 1줄 흡수 여부) + 유효 선택지 2+. 사실 검증: task-brief 스크립트·프로즈 계약("코드 강제 로더 아님" 명시)·분할 plan 93.2% 채택 실측 병존 — "실행 불능"은 과대, 접점 미문서화는 실재 |
+| **fp-C1** — spec §5 실측 · SDD 6.2.0 `task-brief`(단일 PLAN_FILE 전제)와 분할 entrypoint의 접점 미명시 → 완료 기록 계약이 정상 실행 경로에 못 닿을 위험 지적 · 권고 = Execution handoff에 6.2.0용 절차 어댑터 명시 | high (R1) | ESCALATE → **FIXED (사용자 판정, batch flush 2026-08-08)** | batch 제시 선택지 중 "C-5에 흡수" 채택 — §4 표(handoff 어댑터 1줄: task-brief를 해당 task 파일에 적용)·§5 실측 정밀화·§6 GREEN 확인 항목·§8 (a) 반영. 사실 검증: task-brief 스크립트·프로즈 계약·93.2% 채택 실측 병존 — "실행 불능"은 과대, 접점 미문서화는 실재. 판정 주체 = 사용자 |
 | **fp-C2** — spec §3 D2 · 완료 기록 계약의 재개 수렴 갭(기입 트리거가 "완료 보고 수신"에만 묶여 중단·재개 시 미기입 행 잔존, SDD progress ledger와 불수렴) + fix wave 후 outcome 낡음 · 권고 = 멱등 수렴 절차 | medium (R1) | FIXED (R1) | ④ 트리거에 재개 경로 명시(모든 task 착수 전 이전 행 확인·수렴 — D2 "다음 task 착수 전" 기한의 정밀화, 기결정 불변). fix wave 후 재갱신은 비목표+D6 백로그 병기. §3 D2 보강·§2 비목표·§4 표·§6 GREEN·§8 (a) 반영 — **[루프 판정] 범위 획정 포함(확인 임무 ③ 우선 감사 대상)** |
 | (R2 재출현) SDD 실행 경로 미연결 — 리뷰어 스스로 "기존 fp-C1과 동일한 열린 위험" 명시 | high (R2) | DUPLICATE | 원본 = fp-C1(ESCALATE batch-pending, 미판정 유지). 닫힌 항목 재지목 아님 — 미판정 ESCALATE의 재출현(가드 focus는 닫힌 항목만 억제). **[루프 판정]** R3 focus 요약행 등재(확인 임무 ③ 우선 감사 대상) |
 | **fp-C3** — spec §3 D2 · 기입 트리거 "완료 보고 수신 직후"가 구현자 DONE(리뷰 전)으로 읽힘 — task review 실패·fix loop 시 미승인 task가 `[x]` 잔존 · 권고 = 트리거를 리뷰 승인 후 동기점("mark todo complete")으로 명시 | high (R2) | FIXED (R2) | 사실 실증(SDD 흐름: approved? → yes → mark todo complete). D2 근거 자체가 동기점을 "mark todo complete"로 지목 — 트리거 문구를 "완료 확정(리뷰 승인) 직후"로 정밀화(기결정 정합, 번복 아님). §3 D2 본문·보강 bullet·재논의 금지 D2 주석·§4 표·§6 GREEN·§8 (a) 반영 — **[루프 판정] 기결정 문구 정밀화 해석 포함(확인 임무 ③ 우선 감사 대상)** |
@@ -179,7 +180,9 @@ review-loop `--phase spec` (2026-08-08 시작). base = `7171c73` (main 트랙, 0
 
 | **fp-C5** — spec §3 D2 보강 · "기입 후 커밋 전 중단" 재개 변형 — 수렴 조건이 "미기입"만 검사해 기입-미커밋 상태가 통과, 다음 task 커밋에 혼입 위험 · 권고 = 수렴 시점에 커밋·clean 확인 추가 | medium (R3) | DEFERRED_TO_IMPL | fp-C2 계열 3회째(R1 미기입 행 → R2 마지막 task → R3 기입-미커밋) — fp-C4 행의 선기록(3회째 = 판정 마감) + R3 판정 루프 국면에 따라 설계 보강 중단. 실행 영향 낮음(수렴 규범 "기입+커밋"이 커밋 포함, dispatcher가 자연 수렴). **연결** = §8 (a) 계약 문안 요건("기입-미커밋 상태 포함") + §6 GREEN "기입 후 커밋 전 중단" 시나리오. **[루프 판정]**(확인 임무 ③ 우선 감사 대상) |
 
-**미확인 FIXED 큐**: fp-C2 (R1 수정 `0d60dac`) · fp-C3 (R2 수정 `b153e6f`) · fp-C4 (R2 수정 `b153e6f`) — 각 소멸 확인 대기
+**미확인 FIXED 큐**: fp-C2 (R1 수정 `0d60dac`, 루프 판정) · fp-C3 (R2 수정 `b153e6f`, 루프 판정) · fp-C4 (R2 수정 `b153e6f`, 루프 판정) · fp-C1 (batch 후 수정, 사용자 판정) — 각 소멸 확인 대기
+
+**batch flush (2026-08-08, 적대 소진 3 = auto-rounds 도달 + 전환 신호 2)**: batch ESCALATE 1건(fp-C1) 사용자 제시 → FIXED(C-5 흡수)로 종결. 자동 수정 3건(R1 `0d60dac` · R2 `b153e6f` · R3 `692cdfd` 판정) 전부 승인. → 확인 모드 진입(확인 필수 조건 성립: 큐 4건 + 루프 직접 판정 2건(DUPLICATE·DEFERRED_TO_IMPL), 확인 예산 2/2 잔여).
 
 **score 이력** (산식: 미판정 blocking Σweight, 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외):
 
