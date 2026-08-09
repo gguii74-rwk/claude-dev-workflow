@@ -6,7 +6,7 @@
 
 | ツール | 種類 | 呼び出し | 役割 |
 |---|---|---|---|
-| dev-cycle | skill | `/dev-workflow:dev-cycle` | 新機能の推奨パイプラインマップ + 現在のステップ案内（読み取り専用、ここから始める） |
+| dev-cycle | skill | `/dev-workflow:dev-cycle` | 新機能の推奨パイプラインマップ（着手〜統合の全区間）+ 現在のステップ案内・小さな変更の軽量/正式パス判定（読み取り専用、ここから始める） |
 | review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl の各段階完了後、コミット → codex 敵対的レビュー（既決事項ガードの自動注入で再指摘を抑止）→ 裁定・自動修正を反復し、確認ラウンドが修正の消滅とマージ可否を判定（未裁定の critical/high が 0 になるまで）。plan 段階のループは開始前に形式ゲート 4 種を通過させる |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 多段階の実装プランを薄いエントリポイント + タスク別ファイルに分割して作成 — 完了記録をコミット段階として契約化 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | plan・実装に進む前に spec ドラフトを敵対的に圧迫し、見逃したギャップ・前提・不変条件違反を掘り出して spec をその場で固める（project-aware） |
@@ -72,7 +72,9 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 /dev-workflow:dev-cycle
 ```
 
-推奨順序: **brainstorming → spec → harden-spec → ui-mockup（オプション — 画面が変わる場合のみ）→ review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**。段階境界（spec→plan、plan→impl）は新しいセッション + `/clear` が規約のため、dev-cycle は**現在のステップだけを案内し、次へはナッジ**する（1 セッションでのオートパイロットではない）。ステップ 1・7（brainstorming・subagent-driven-development）は `superpowers` プラグインを推奨 — なければ独自の設計/実装プロセスで代替可能（ハード依存ではない）。
+推奨順序: **brainstorming → spec → harden-spec → ui-mockup（オプション — 画面が変わる場合のみ）→ review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl) → 統合・後続検証**。段階境界（spec→plan、plan→impl）は新しいセッション + `/clear` が規約のため、dev-cycle は**現在のステップだけを案内し、次へはナッジ**する（1 セッションでのオートパイロットではない）。ステップ 1・7・9（brainstorming・subagent-driven-development・finishing-a-development-branch）は `superpowers` プラグインを推奨 — なければ独自の設計/実装/終了プロセスで代替可能（ハード依存ではない）。
+
+0.11.0 から、マップは**着手から終了までの全区間**を覆う。**ステップ 9 — 統合・後続検証（PR・マージ・デプロイ・実測）** はチェック項目をここに複製せず、**そのリポジトリの規約を指すポインタ**である（デプロイ対象のないリポジトリ — プラグインなど — では、リリース + インストール更新の案内がその位置を占める）。着手時には **5 項目のブリーフ**（設計結論・実測根拠・変更対象ファイル・検証方法・ステップ 9 までの完了条件）を一度だけ**画面に出力するだけ**で、ファイルは作らない。さらに **軽量パス（fast lane）** が「全部かゼロか」の二分法を置き換える: 分岐軸は**接触面と可逆性であって規模ではない** — スキーマ・マイグレーション・権限・認証・セキュリティ境界・外部連携・データ破損/消失・不可逆な作業は、どれだけ小さくても正式パスだ（12 タスクの文言整理は軽量、1 タスクのカラム削除は正式）。どの軽量トラックも省略できない**下限 3 種 = spec ドキュメント・ステップ 3 harden-spec・ステップ 8 impl 敵対的レビュー**。その上のステップは**一つずつ個別に**省略し、**省略のたびに spec の既決事項ブロックに根拠を残す**。「いまどのステップか」の判別はその記録を読んでから答える — 記録のない不在は依然として未完だ。軽量パスの承認は**そのセッション限り**有効 — `/clear` 後は推定せず改めて確認し、未確認のデフォルトは正式パスである。
 
 ### 2. `review-loop` — 敵対的レビューの反復ループ
 

@@ -6,7 +6,7 @@
 
 | 도구 | 종류 | 호출 | 역할 |
 |---|---|---|---|
-| dev-cycle | skill | `/dev-workflow:dev-cycle` | 새 기능의 권장 파이프라인 지도 + 현재 단계 안내 (읽기 전용, 여기서 시작) |
+| dev-cycle | skill | `/dev-workflow:dev-cycle` | 새 기능의 권장 파이프라인 지도(착수~통합 전 구간) + 현재 단계 안내 · 작은 변경의 경량/정식 경로 판정 (읽기 전용, 여기서 시작) |
 | review-loop | skill | `/dev-workflow:review-loop` | spec/plan/impl 완료 후 커밋→codex 적대검증(기결정 가드 자동 주입으로 재지목 억제)→판정·자동수정 반복, 이어서 확인 라운드가 수정 소멸·머지 준비도를 판정 (판정 없이 남은 critical/high 0까지). plan 단계 루프는 시작 전에 형식 관문 4종을 통과시킨다 |
 | writing-plans-split | skill | `/dev-workflow:writing-plans-split` | 다단계 구현 계획을 얇은 엔트리포인트 + 태스크별 파일로 분할 작성 — 완료 기록을 커밋 단계로 계약화 |
 | harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
@@ -72,7 +72,9 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 /dev-workflow:dev-cycle
 ```
 
-권장 순서: **brainstorming → 스펙 → harden-spec → ui-mockup(옵션 — 화면이 바뀔 때만) → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl)**. 단계 경계(spec→plan, plan→impl)는 새 세션 + `/clear`가 규약이라, dev-cycle은 **현재 단계만 안내하고 다음은 넛지**한다(한 세션 오토파일럿 아님). 1·7단계(brainstorming·subagent-driven-development)는 `superpowers` 플러그인 권장 — 없으면 자체 설계/구현으로 대체 가능(하드 의존 아님).
+권장 순서: **brainstorming → 스펙 → harden-spec → ui-mockup(옵션 — 화면이 바뀔 때만) → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl) → 통합·후속 검증**. 단계 경계(spec→plan, plan→impl)는 새 세션 + `/clear`가 규약이라, dev-cycle은 **현재 단계만 안내하고 다음은 넛지**한다(한 세션 오토파일럿 아님). 1·7·9단계(brainstorming·subagent-driven-development·finishing-a-development-branch)는 `superpowers` 플러그인 권장 — 없으면 자체 설계/구현/종료 절차로 대체 가능(하드 의존 아님).
+
+0.11.0부터 지도가 **착수부터 종료까지 전 구간**을 덮는다. **9단계 — 통합·후속 검증(PR·머지·배포·실측)** 은 여기에 체크 항목을 복제하지 않고 **그 repo 규약을 가리키는 포인터**다(배포 대상이 없는 repo — 플러그인 등 — 에서는 릴리스 + 설치 갱신 안내가 그 자리를 대신한다). 착수 시에는 **5항목 브리프**(설계 결론·실측 근거·변경 대상 파일·검증 방법·9단계까지의 완료 조건)를 1회 **화면에만 출력**한다 — 파일은 만들지 않는다. 그리고 **경량 경로**가 "전부 아니면 무(無)" 이분법을 대체한다: 분기 축은 **접촉 표면·가역성이고 규모가 아니다** — 스키마·마이그레이션·권한·인증·보안 경계·외부 연동·데이터 손상/유실·비가역은 아무리 작아도 정식이다(12 task 문구 정리는 경량, 1 task 컬럼 삭제는 정식). 어떤 경량 트랙도 생략하지 못하는 **하한 3종 = spec 문서 · 3단계 harden-spec · 8단계 impl 적대검증**. 그 위의 단계는 **하나씩 개별로** 생략하고 **생략할 때마다 spec의 재논의 금지 블록에 근거를 남기며**, "지금 어느 단계인가" 판별은 그 기록을 읽은 뒤에 답한다 — 기록 없는 부재는 여전히 미완이다. 경량 승인은 **그 세션에서만 유효**하다 — `/clear` 이후에는 추정하지 않고 다시 묻고, 미확인의 기본값은 정식이다.
 
 ### 2. `review-loop` — 적대검증 반복 루프
 
