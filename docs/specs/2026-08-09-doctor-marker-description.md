@@ -1,6 +1,6 @@
 # 순번 7b 설계 — doctor 점검 신설 · setup 마커 문구 · dev-cycle description (C-9 · C-6 D11 · fp-I3)
 
-- 상태: **3단계 harden-spec 종결 (2026-08-09)** — 갭 대장 21건 소진(DEFERRED 0, 검증 필요 1). 다음 = **4 `review-loop --phase spec`**. §3의 결정에 **D1~D21 부여 완료**.
+- 상태: **4단계 `review-loop --phase spec` 진행 중 (2026-08-09)** — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D1~D21 부여 완료**. 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
 - 이력: 7a 트랙 종결(0.12.0, `3267b82`)에서 이 트랙을 다음 순번으로 지목
 - 대상: `dev-workflow` 플러그인 (기준 0.12.0) — **신설** `skills/doctor/SKILL.md` · **개정** `skills/setup/SKILL.md`(마커 문구) · `skills/dev-cycle/SKILL.md`(description) · `.claude-plugin/plugin.json` · README 3종
 - 날짜: 2026-08-09
@@ -72,7 +72,7 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 | 1 | 설치본 버전 | `installed_plugins.json`의 **전 스코프**(user + project) → 스코프별 `gitCommitSha` 확보 | 마켓플레이스보다 뒤처짐 · 미설치 · **스코프 간 드리프트** |
 | 2 | 마켓플레이스 최신 | 마켓플레이스 clone `fetch` → `git log <설치sha>..origin/main -- dev-workflow/` (**경로 한정**, D5) | 결과가 비어 있지 않으면 뒤처짐 · fetch 실패 = **"판정 불가"** · clone 없음 = **"마켓플레이스 미등록"**(D19) |
 | 3 | codex | `codex login status` + CLI 존재 + companion 스크립트 존재 — **이 3종까지만**(D15) | 미로그인 · CLI 없음 · companion 없음. **3종이 전부 정상인데도 문제가 있으면 `codex doctor`로 위임** |
-| 4 | `CLAUDE_CTX_LIMIT` | **실제 환경변수 값** + settings.json 3곳(글로벌·프로젝트·로컬) **병행**(D10) + **현재 모델 대조** | 200k 모델인데 미설정 또는 1M 설정 = 넛지 미발화 |
+| 4 | `CLAUDE_CTX_LIMIT` | **실제 환경변수 값** + settings.json 3곳(글로벌·프로젝트·로컬) **병행**(D10) + **현재 모델 대조** | **모델↔유효 limit 불일치를 양방향으로 본다** — ① 200k 모델인데 미설정·1M 설정 = 과소평가로 **넛지 미발화** ② 1M 모델인데 200k 설정 = 과대평가로 **조기 넛지** |
 
 **판정 규칙 5건**
 
@@ -84,7 +84,8 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
   - **근거(실측).** `installed_plugins.json`에 `gitCommitSha`가 아예 없는 엔트리가 **5건**(claude-md-management · security-guidance · ralph-loop · kotlin-lsp · swift-lsp), `version: "unknown"`이 **3건** 있다. dev-workflow 자신은 현재 둘 다 있지만 구조적으로 보장되지 않는다. version 문자열로 폴백하면 (a)가 막은 "버전 같은데 내용 다름"이 다시 새어 들어온다.
 - **(c) 마켓플레이스 clone 부재는 "미등록"으로 별도 표시한다**(D19). 네트워크 실패와 **원인도 조치도 다르다** — 전자는 기다림, 후자는 `/plugin marketplace add gguii74-rwk/claude-dev-workflow` → `/plugin install`이다(setup 마커 블록의 기존 문구 재사용). 브리프 `:149`의 "그램 최초 install 백로그 잔존"이 정확히 이 케이스다.
 - **(d) `CLAUDE_CTX_LIMIT`은 실제 환경변수 값을 먼저 본다**(D10). 훅이 실제로 읽는 것은 `env.CLAUDE_CTX_LIMIT` — **프로세스 환경변수**다(`context-threshold-hook.mjs:45`). 셸 프로필 등 다른 경로로 주입되면 settings.json grep만으로는 "미설정" 오탐이 난다. settings.json 3곳은 **"어디서 왔는가 / 어디에 넣으면 되는가"**를 밝혀 조치 안내를 붙이는 용도로 병행 조회한다.
-- **(e) 모델 대조는 doctor만 할 수 있다.** 훅은 런타임에 윈도를 모르지만 **스킬은 Claude 자신이 자기 모델을 안다.** 훅이 구조적으로 못 하는 검사를 메우는 것이며, setup과 중복이 아니다 — setup은 값을 **묻고 쓰는** 쪽, doctor는 **현재 모델과 맞는지 판정하는** 쪽이다.
+- **(e) 모델 대조는 doctor만 할 수 있고, 불일치는 양방향으로 판정한다.** 훅은 런타임에 윈도를 모르지만 **스킬은 Claude 자신이 자기 모델을 안다.** 훅이 구조적으로 못 하는 검사를 메우는 것이며, setup과 중복이 아니다 — setup은 값을 **묻고 쓰는** 쪽, doctor는 **현재 모델과 맞는지 판정하는** 쪽이다.
+  - **양방향인 이유(실측).** 훅은 설정된 양수 값을 **검증 없이 그대로** 쓴다(`context-threshold-hook.mjs:52` — `Number.isFinite(envLimit) && envLimit > 0 ? envLimit : DEFAULT_LIMIT`). 그래서 **1M 모델에 200k가 설정된 역방향**도 실패한다: 실제 8% 사용 시점을 40%로 계산해 멀쩡한 작업에 조기 넛지가 뜬다. 훅 자신이 그 방향을 *"과대평가가 더 해롭다 — 1M 세션에 200k를 가정하면 실제 8% 사용 시점에 40% 임계로 오판해 멀쩡한 작업을 조기 종료시킨다"*(`:50~51`)고 적어 뒀다. 한 방향만 규정한 진단은 **훅이 스스로 더 해롭다고 적은 쪽을 못 잡는다.**
 
 **버전 대조 범위 = dev-workflow 하나뿐이다**(D12). codex는 점검 3의 **존재·인증만** 보고 플러그인 버전은 대조하지 않는다 — 비목표 "다른 머신 진단 안 함"과 같은 결의 범위 제한이며, 상류 마켓플레이스(`openai/codex-plugin-cc`) fetch를 추가하지 않아 산출물을 `SKILL.md` 1개로 유지한다.
 
@@ -150,16 +151,19 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 - **양성 = `new` 5/5 절대기준.** 증상 문장 4종 각각에서 doctor가 뜬다. 미달이면 description 어휘를 고쳐 재측정한다.
 - **음성 = 잠식 0.** `new`에서 setup·dev-cycle·review-loop가 떠야 할 문장, 그리고 D14가 제외한 막연한 실패 문장에 doctor가 뜬 횟수 **0/10**. **1건이라도 뜨면 GREEN이 아니다** — 오발동은 이 스킬의 주된 위험이라 양성보다 엄격하게 본다.
 - **fp-I3 회귀 = 5/5 유지.** 미달이면 제거를 철회하고 유지로 판정한다(§3 조건부 결정).
-- **진단 정확도 = 실측 1회 전항 일치**(D18). 아래 참조.
+- **진단 정확도 = 대조표 전항 일치**(D18). 아래 참조.
 
-**D18 — 진단 정확도 실측 1회를 GREEN 조건에 넣는다.** TDD 4계열은 전부 *"doctor가 뜨는가"*만 측정하고 **프로브가 내린 판정이 맞는지는 아무도 보지 않는다.** 초안 그대로면 틀린 판정을 내는 doctor도 GREEN으로 릴리스된다 — 실제로 D5가 고친 sha 오탐이 초안·brainstorming을 통과해 harden-spec까지 살아온 것이 반례다. 그래서 구현 후 **doctor를 이 머신에서 실제 1회 돌려** 아래 4항이 전부 일치하는지 확인하고 결과를 impl ledger에 적는다. TDD 런 수는 80 그대로이고 수동 실측 1회만 늘어 경량 경로와 정합하며, 기계 장치를 만들지 않으므로 G1·G2에도 저촉하지 않는다.
+**D18 — 진단 정확도 실측을 GREEN 조건에 넣는다.** TDD 4계열은 전부 *"doctor가 뜨는가"*만 측정하고 **프로브가 내린 판정이 맞는지는 아무도 보지 않는다.** 초안 그대로면 틀린 판정을 내는 doctor도 GREEN으로 릴리스된다 — 실제로 D5가 고친 sha 오탐이 초안·brainstorming을 통과해 harden-spec까지 살아온 것이 반례다. 그래서 구현 후 **doctor를 이 머신에서 실제로 돌려** 아래 대조표가 전부 일치하는지 확인하고 결과를 impl ledger에 적는다. TDD 런 수는 80 그대로이고 수동 실측 **2회**(기본 1회 + `CLAUDE_CTX_LIMIT` 주입 1회)만 늘어 경량 경로와 정합하며, 기계 장치를 만들지 않으므로 G1·G2에도 저촉하지 않는다.
 
 | 대조 항목 | 기대 판정 |
 |---|---|
 | user-scope (`a117486`) | **최신** — sha가 origin/main과 달라도 `dev-workflow/` 변경 0건 |
 | project-scope (`d57bfe9`, 0.11.0) | **뒤처짐** — 경로 변경 3건 |
-| `CLAUDE_CTX_LIMIT` | **이상** — 실제 환경변수·settings.json 3곳 모두 미설정 |
+| `CLAUDE_CTX_LIMIT` (과소평가 방향) | **이상** — 실제 환경변수·settings.json 3곳 모두 미설정 |
+| `CLAUDE_CTX_LIMIT` (**과대평가 방향**) | **이상** — 1M 모델 세션에서 `CLAUDE_CTX_LIMIT=200000`을 **1회 주입해** 실행하면 "조기 넛지" 쪽 이상으로 판정 |
 | codex | **정상** — `Logged in using ChatGPT`(exit 0), companion 존재 |
+
+역방향 1행만 자연 픽스처가 없다 — 실행 1회에 환경변수를 앞에 붙이는 것으로 충분하고(`CLAUDE_CTX_LIMIT=200000 <실행>`), 파일을 쓰지 않으므로 가역·무해다(D9 범위 유지). 판정 규칙 (e)를 양방향으로 고쳤으므로 검증도 양방향이어야 한다 — 새 규칙에 D18의 취지(*"프로브가 내린 판정이 맞는지 아무도 보지 않는다"*)가 미치지 않으면 고친 의미가 없다.
 
 **픽스처** — 발견성·오발동 계열은 사용자 발화만 주면 되므로 환경을 망가뜨릴 필요가 없다(7a보다 부담이 작다). 진단 정확도(D18) 쪽은 이 머신이 **이상 상태 2종을 자연 픽스처로 갖고 있다** — ops-hub project-scope 0.11.0 고정 · `CLAUDE_CTX_LIMIT` 미설정. 조작 없이 실측된다.
 
@@ -173,16 +177,16 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 
 ## 6. 완료 조건 (acceptance criteria)
 
-1. `skills/doctor/SKILL.md` 신설 — 진단 전용(D9 범위) · 프로브 4종 명시 · **판정 규칙 5건**(경로 한정 비교 · 근거 없으면 판정 불가 · 마켓플레이스 미등록 · CTX_LIMIT 실값 우선 · 모델 대조) · 출력 규격(**항상 표**) · 오발동 경계 4종 + **D14 증상 어휘 목록과 제외 문장** · frontmatter에 model/effort 오버라이드 **없음**.
+1. `skills/doctor/SKILL.md` 신설 — 진단 전용(D9 범위) · 프로브 4종 명시 · **판정 규칙 5건**(경로 한정 비교 · 근거 없으면 판정 불가 · 마켓플레이스 미등록 · CTX_LIMIT 실값 우선 · **모델↔limit 양방향 대조**) · 출력 규격(**항상 표**) · 오발동 경계 4종 + **D14 증상 어휘 목록과 제외 문장** · frontmatter에 model/effort 오버라이드 **없음**.
 2. setup 마커 문구가 dev-cycle 트리거와 정합(C-6 D11).
 3. dev-cycle description — fp-I3 조건부 판정이 TDD 결과로 닫히고 근거가 D번호로 기록됨. **본문은 미변경**(D20).
 4. `plugin.json` **0.13.0** 범프 + description에 doctor 반영.
 5. **`marketplace.json`** plugin description에 doctor 반영.
 6. README 3종 동기 갱신 — 사용법 섹션 · 목차 · 상단 스킬 표 · 트러블슈팅 상호참조.
 7. writing-skills TDD **GREEN** — 4계열 80런. **양성 = `new` 5/5 절대기준**, **음성 = 잠식 0/10**(1건이라도 뜨면 실패), **fp-I3 = 5/5 유지**. 기준 상세는 §5.
-8. **진단 정확도 실측 GREEN**(D18) — doctor 1회 실행으로 4항 대조표가 전부 일치하고 결과가 impl ledger에 기록됨. TDD GREEN만으로는 이 AC를 대신할 수 없다.
+8. **진단 정확도 실측 GREEN**(D18) — **5항 대조표**가 전부 일치하고 결과가 impl ledger에 기록됨. 기본 실행 1회로 4항을 보고, `CLAUDE_CTX_LIMIT` 과대평가 방향 1항만 **환경변수를 주입한 실행 1회**를 더한다. TDD GREEN만으로는 이 AC를 대신할 수 없다.
 9. `review-loop --phase spec` · `--phase impl` **미판정 blocking 0**으로 종결.
-10. 9단계 — 릴리스 0.13.0 origin 반영 + 각 머신 `/plugin update` 안내 + **마커 삽입 repo의 setup 재실행 안내**(D13). 종료 보고에 **다음 순번 = 7c(C-4)** 명시.
+10. 9단계 — 릴리스 0.13.0 origin 반영 + 각 머신 `/plugin update` 안내 + **마커 삽입 repo의 setup 재실행 안내**(D13) + **V-7b-1 잔여분**(project-scope가 0.13.0까지 도달하는지 릴리스 후 확인). 종료 보고에 **다음 순번 = 7c(C-4)** 명시.
 
 ## 7. 초안 미해결 질문 — 전건 해소 (harden-spec 2026-08-09)
 
@@ -237,7 +241,7 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 | **D15** | codex 위임 = **신호 3종까지만**. 그 이상은 `codex doctor` | harden-spec |
 | **D16** | 출력 = **항상 4항목 표**. 조치 안내만 이상 항목에 | harden-spec |
 | **D17** | 양성 arm = **`new` 단독 절대기준**. cur 대비 분리는 신설 스킬에서 검증력 0이므로 폐기, 남는 20런은 음성 arm으로 재배분 | harden-spec |
-| **D18** | **진단 정확도 실측 1회**를 GREEN 조건에 포함. TDD GREEN으로 대신할 수 없다 | harden-spec |
+| **D18** | **진단 정확도 실측**을 GREEN 조건에 포함. TDD GREEN으로 대신할 수 없다 (실행 횟수는 대조표 항목 수에 따르는 구현 세부라 결정 내용이 아니다) | harden-spec |
 | **D19** | 마켓플레이스 clone 부재 = **"미등록"** 별도 상태 + `marketplace add` 안내 | harden-spec |
 | **D20** | dev-cycle **본문에 doctor 상호참조를 넣지 않는다**(D1의 2경로 유지) | harden-spec |
 | **D21** | doctor frontmatter에 **`model`·`effort` 오버라이드 없음** — 세션 모델을 쓴다 | harden-spec |
@@ -250,4 +254,26 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 
 | # | 항목 | 왜 지금 못 닫나 | 언제 닫나 |
 |---|---|---|---|
-| V-7b-1 | **project-scope 캐시가 실제로 갱신되는 명령** | 설치 기전(repo `.claude/settings.json` 트리거)은 조회로 확인했으나, `/plugin update`는 슬래시 커맨드라 CLI로 실행·관측할 수 없다. "그 repo 안에서 실행하면 project-scope 캐시가 갱신된다"는 구조적 추론이며 미실측이다 | **D18 진단 정확도 실측 때** — ops-hub에서 안내대로 실행해 project-scope가 0.11.0→0.13.0으로 바뀌는지 확인한다. 다르면 조치 안내 문구를 고친다 |
+| V-7b-1 | **project-scope 캐시가 실제로 갱신되는 명령** | 설치 기전(repo `.claude/settings.json` 트리거)은 조회로 확인했으나, `/plugin update`는 슬래시 커맨드라 CLI로 실행·관측할 수 없다. "그 repo 안에서 실행하면 project-scope 캐시가 갱신된다"는 구조적 추론이며 미실측이다 | **D18 대조표 확인 직후** — 검증 대상은 *"그 repo 안에서 돌리면 project-scope 캐시가 갱신되는가"*이지 특정 버전 도달이 아니므로, **그 시점에 이미 origin/main에 있는 배포본(0.12.0)으로 갱신되는지**를 본다. 갱신되지 않거나 다른 위치를 요구하면 조치 안내 문구를 고친다 |
+
+**V-7b-1의 실행 순서 — 릴리스보다 앞설 수 없는 부분을 분리했다.** 0.13.0은 8단계 GREEN·impl 리뷰를 거쳐 **9단계에서야** origin에 올라가므로(§상단 경로 순서), "0.11.0→0.13.0" 확인은 사전 게이트에서 원리적으로 불가능하다 — `/plugin update`가 가져올 0.13.0이 아직 원격에 없다. 그래서 **명령의 유효성(0.12.0으로 갱신)은 D18에서 사전 검증**하고, **0.13.0 도달 확인은 9단계 릴리스 후 안내**(AC 10)에 붙인다. 또 이 갱신은 D18 대조표 2행의 자연 픽스처(project-scope `d57bfe9` 0.11.0 = 뒤처짐)를 **소모**하므로, 반드시 **대조표를 먼저 기록한 뒤** 실행한다.
+
+## 적대검증 ledger (spec)
+
+- 기준: base `3267b82`(트랙 시작 직전) → target HEAD. 적대 라운드 상한 5 · 확인 라운드 예산 2 · 자동 모드 3라운드.
+- **이 표가 단일 원본이다** — 다른 문서로 복제하지 말고 참조만 한다.
+
+| fp | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 · 상태 |
+|---|---|---|---|---|
+| **fp-S1** | 이 spec · *D14를 위반하는 양성 arm이 오발동을 GREEN으로 만든다* · 양성 문장을 dev-workflow에 명시 귀속시키고 타 제품 문맥을 음성 arm에 추가 | medium | **ESCALATE(batch-pending)** | R1 지목. 발견성(증상 트리거의 값어치) vs 잠식(오발동 = 주된 위험) 트레이드오프이고 유효 선택지가 2+라 루프가 닫지 않는다. 자동 모드 즉시군(critical·보안·방향전제) 아님 → batch 적재 |
+| **fp-S2** | 이 spec · *CTX_LIMIT의 역방향 불일치를 정상으로 통과시킨다* · 모델↔유효 limit 불일치를 양방향으로 정의하고 실측에 반영 | medium | **FIXED** (R1) | 훅이 설정 양수 값을 검증 없이 사용(`context-threshold-hook.mjs:52`)하고 주석 `:50~51`이 그 방향을 *"과대평가가 더 해롭다"*고 명시 → 실재 갭. §3 점검표 4번 · 판정 규칙 (e) · §5 D18 대조표(5행) · AC 1 · AC 8 반영. **미확인 FIXED 큐 잔존** |
+| **fp-S3** | 이 spec · *0.13 project-scope 갱신 검증이 릴리스 전에 실행될 수 없다* · 사전 검증 가능한 형태로 재배치하거나 post-release 게이트로 이동 | medium | **FIXED** (R1) | 0.13.0은 9단계에서야 origin에 오르므로 D18 시점에 `/plugin update`가 가져올 대상이 없다 → 실행 불가 확인. 검증 명제를 "명령 유효성(0.12.0 갱신)"과 "0.13.0 도달"로 분리해 전자는 D18, 후자는 AC 10으로 배치. 픽스처 소모 순서도 명시. **미확인 FIXED 큐 잔존** |
+
+**라운드 기록**
+
+| 라운드 | 모드 | verdict | 신규 finding | score(수정 전) | 미확인 FIXED 큐 |
+|---|---|---|---|---|---|
+| R1 | 적대 | needs-attention | medium 3 (critical/high/low 0) | **3** | 2 (fp-S2 · fp-S3) |
+
+- score 산식 = `critical4·high3·medium1`, 스냅샷은 §2c 분류 직후·수정 전(FIXED 후보 + 미해결 ESCALATE 포함, 미확인 FIXED 큐 제외).
+- 기결정 가드 대조 결과: R1 3건 모두 D1~D21·승계 기결정의 **재론이 아니라 문면·검증계획 내부 모순** 지적이라 DUPLICATE 해당 없음. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) **0건**.
