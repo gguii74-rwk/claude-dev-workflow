@@ -22,7 +22,7 @@ description: Use ONLY when the user explicitly asks to adopt, set up, or pin the
 <!-- dev-workflow:pipeline -->
 ## 개발 워크플로 (dev-workflow)
 
-이 repo의 다단계 기능 개발은 dev-workflow 파이프라인을 따른다 — 새 기능·큰 변경을 시작하면 `/dev-workflow:dev-cycle`(또는 "개발 사이클")로 전체 순서와 현재 단계를 확인한다.
+이 repo의 기능 개발·코드 변경은 dev-workflow 파이프라인을 따른다 — **새 기능이든 한 단계짜리 작은 변경이든, 코드를 건드리기 전에** `/dev-workflow:dev-cycle`(또는 "개발 사이클")로 **경로(정식·경량)와 현재 단계**를 확인한다. **이 repo에서는 경로 판정이 항상 필요하다** — 규모는 기준이 아니고, 무엇을 생략할지는 지도가 판정한다.
 
 플러그인 미설치 시: `/plugin marketplace add gguii74-rwk/claude-dev-workflow` → `/plugin install dev-workflow@claude-dev-workflow`.
 <!-- /dev-workflow:pipeline -->

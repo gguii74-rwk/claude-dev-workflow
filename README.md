@@ -12,6 +12,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | harden-spec | skill | `/dev-workflow:harden-spec` | Adversarially pressure a draft spec before plan/implementation to dig out missed gaps, assumptions, and invariant violations, and harden the spec in place (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (Optional, step 3.5) When a hardened spec creates or reshapes a screen: diverge non-executable HTML mockups, let the user pick, and record the UI decision in the spec as a settled decision |
 | setup | skill | `/dev-workflow:setup` | (On explicit request) idempotently insert a pipeline-convention pointer into this repo's CLAUDE.md |
+| doctor | skill | `/dev-workflow:doctor` | Read-only diagnosis of four environment items (installed version · marketplace freshness · codex · context window); every fix is delegated to the existing path |
 | Context-threshold nudge | Stop hook | (automatic) | Past a threshold (default 40%), nudges to write a handoff + `/clear` — and again every 15pp band after it (40 → 55 → 70 → 85%, no cap) |
 
 ## Table of Contents
@@ -25,7 +26,8 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
   - [harden-spec](#4-harden-spec--spec-hardening)
   - [ui-mockup](#5-ui-mockup--ui-mockup-selection)
   - [setup](#6-setup--adopt-the-pipeline-in-a-repo)
-  - [Context-threshold handoff hook](#7-context-threshold-handoff-hook-automatic)
+  - [doctor](#7-doctor--diagnose-the-environment)
+  - [Context-threshold handoff hook](#8-context-threshold-handoff-hook-automatic)
 - [Auto-prompting the plugin when a repo is cloned](#auto-prompting-the-plugin-when-a-repo-is-cloned)
 - [Troubleshooting](#troubleshooting)
 - [Caveats](#caveats)
@@ -167,7 +169,21 @@ It then asks for the **context window size** used by the threshold hook (`CLAUDE
 
 Runs only on explicit request and never touches content outside the marker block. Collaborators and non-plugin users can learn the convention and how to install just by reading CLAUDE.md.
 
-### 7. Context-threshold handoff hook (automatic)
+### 7. `doctor` — diagnose the environment
+
+Call this when the pipeline environment may be **silently wrong**. It is read-only and never writes your work or settings — every problem it finds is delegated to the existing path (`/plugin update` · `/codex:setup` · `/dev-workflow:setup`).
+
+```
+/dev-workflow:doctor
+```
+
+Besides the explicit call, it also fires on **symptom sentences** ("the nudge never shows up", "codex won't run", "is the plugin up to date", "is the version right"). It checks four things — (1) installed version (enumerating the whole entry array so `user`, `project` and `local` scopes are all seen), (2) marketplace freshness, (3) codex (CLI presence, auth, companion — and nothing deeper; that goes to `codex doctor`), (4) `CLAUDE_CTX_LIMIT` against **the current model** (the hook cannot know the window size at runtime, so it cannot make this check).
+
+**Staleness is judged by comparing the `dev-workflow/` subtree.** A raw sha comparison cries wolf on every docs-only commit, and a `git log` based judgment reports staleness even when the tree is identical after a revert. With no evidence (network failure, missing `gitCommitSha`) it says **"cannot determine"** and never says "up to date". The four-row table is **always printed**, healthy or not, and a failing probe does not stop the rest — so you never end up with no information at the exact moment the environment is most broken.
+
+A codex failure *inside* a running review-loop belongs to `review-loop`, so doctor stays out of it; it also stays out of vague failure sentences ("why doesn't it work") and of the same words about **another product** ("is the playwright plugin up to date").
+
+### 8. Context-threshold handoff hook (automatic)
 
 Works immediately after installation; no configuration. When conversation context usage crosses a threshold (default 40%), it nudges you to write a handoff and `/clear` before stalling — helping you hand over before context blows up mid-task. Since 0.12.0 the nudge is **not once-only**: it fires again on every 15-percentage-point band above the threshold (40 → 55 → 70 → 85%, with no upper cap), so ignoring the first one no longer means silence until auto-compact hits. Re-nudges add the facts (you were told before, here is the current %) without escalating the instruction. If usage drops two bands or more — auto-compact keeps the same session id — the hook treats it as a new cycle and starts nudging from the threshold again.
 
@@ -204,6 +220,7 @@ Declaring `openai-codex` alongside lets the cross-marketplace dependency (codex)
 
 ## Troubleshooting
 
+- **You do not know what is wrong** — `/dev-workflow:doctor` checks all four environment items at once (installed version · marketplace freshness · codex · context window). The entries below are the fixes its result points to.
 - **SSH authentication failure on `marketplace add openai/codex-plugin-cc`** (`Permission denied (publickey)`) — if you already use codex, the codex marketplace is already registered as `openai-codex` and this line is unnecessary. If `claude plugin marketplace list` shows `openai-codex`, skip it. On machines without SSH keys the slash command may try SSH and fail — but you didn't need to run it anyway.
 - **`dependency-unsatisfied` or codex not installed** — the `openai-codex` marketplace isn't registered. Run `/plugin marketplace add openai/codex-plugin-cc`, then `/plugin install dev-workflow@claude-dev-workflow` again to resolve the dependency.
 - **`review-loop` stalls at the codex step** — the codex CLI is not installed/authenticated. Set it up with `/codex:setup`.
@@ -221,7 +238,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # marketplace catalog (repo root)
 ├── dev-workflow/                     # the plugin
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies (codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── README.md                         # English (default)
 └── README.ko.md / README.ja.md       # Korean / Japanese

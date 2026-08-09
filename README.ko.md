@@ -12,6 +12,7 @@
 | harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (옵션, 3.5단계) 굳은 spec이 화면을 만들거나 구성을 바꿀 때: 비실행 HTML 목업을 발산해 사용자가 고르고, UI 결정을 spec에 기결정으로 기록 |
 | setup | skill | `/dev-workflow:setup` | (명시 요청 시) 이 repo의 CLAUDE.md에 파이프라인 규약 포인터를 멱등 삽입 |
+| doctor | skill | `/dev-workflow:doctor` | 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 컨텍스트 윈도)을 읽기 전용으로 일괄 진단하고, 조치는 기존 경로로 위임 |
 | 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%)를 넘으면 핸드오프 작성 + `/clear` 안내를 넛지하고, 이후 **15%p 구간마다 재넛지**(40 → 55 → 70 → 85%, 상한 없음) |
 
 ## 목차
@@ -25,7 +26,8 @@
   - [harden-spec](#4-harden-spec--spec-굳히기)
   - [ui-mockup](#5-ui-mockup--ui-목업-선택)
   - [setup](#6-setup--repo에-파이프라인-채택)
-  - [컨텍스트 임계 핸드오프 훅](#7-컨텍스트-임계-핸드오프-훅-자동)
+  - [doctor](#7-doctor--환경-진단)
+  - [컨텍스트 임계 핸드오프 훅](#8-컨텍스트-임계-핸드오프-훅-자동)
 - [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
 - [트러블슈팅](#트러블슈팅)
 - [주의](#주의)
@@ -167,7 +169,21 @@ brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에*
 
 명시 요청 시에만 동작하며 마커 블록 밖 내용은 건드리지 않는다. 협업자·플러그인 미설치자도 CLAUDE.md만 보고 규약과 설치법을 알 수 있다.
 
-### 7. 컨텍스트 임계 핸드오프 훅 (자동)
+### 7. `doctor` — 환경 진단
+
+파이프라인 환경이 **조용히 틀린 상태**인지 확인할 때 호출한다. 읽기 전용이고 사용자 작업물·설정을 쓰지 않는다 — 발견한 이상은 기존 경로(`/plugin update` · `/codex:setup` · `/dev-workflow:setup`)로 위임한다.
+
+```
+/dev-workflow:doctor
+```
+
+명시 호출 외에 **증상 문장**("넛지가 안 떠", "codex가 안 돌아", "플러그인 최신인가", "버전 맞나")에서도 뜬다. 점검은 4항목이다 — ① 설치본 버전(엔트리 배열을 전부 열거해 user·project·local 스코프를 빠짐없이 본다) ② 마켓플레이스 최신 여부 ③ codex(CLI 존재·인증·companion 3종까지만, 그 이상은 `codex doctor`로 위임) ④ `CLAUDE_CTX_LIMIT`과 **현재 모델**의 대조(훅은 윈도 크기를 런타임에 알 수 없어 이 검사를 못 한다).
+
+**버전 판정은 `dev-workflow/` subtree 비교로 한다.** 단순 sha 비교는 docs 커밋만 있어도 거짓 경보를 내고, `git log` 기반 판정은 되돌린 이력에서 트리가 같은데도 뒤처짐이라 답한다. 근거가 없으면(네트워크 실패·`gitCommitSha` 결측) **"판정 불가"**로 적고 "최신"이라 말하지 않는다. 정상이든 아니든 **4항목 표를 항상 출력**하고, 프로브 하나가 실패해도 나머지를 계속해 표 4행을 유지한다 — 환경이 가장 망가진 순간에 아무 정보도 못 얻는 일이 없게.
+
+루프 실행 중의 codex 실패는 `review-loop` 소관이라 doctor가 끼지 않고, "왜 안 돼" 같은 막연한 실패 문장이나 **다른 제품 문맥**("playwright 플러그인 최신인가")에도 뜨지 않는다.
+
+### 8. 컨텍스트 임계 핸드오프 훅 (자동)
 
 설치하면 바로 동작한다. 설정 불필요. 대화 컨텍스트 사용량이 임계(기본 40%)를 넘으면, 멈추기 전에 핸드오프를 작성하고 `/clear` 하라고 안내한다 — 컨텍스트가 터져 작업이 끊기기 전에 인계하도록 돕는다. 0.12.0부터 이 넛지는 **1회로 끝나지 않는다**: 임계 위로 **15%p 구간마다 재발화**한다(40 → 55 → 70 → 85%, 상한 없음). 첫 넛지를 흘려도 auto-compact가 걸릴 때까지 무경고로 남지 않는다. 재넛지는 지시 내용을 그대로 두고 사실만 더한다(이전에 안내했고 지금 몇 %인지). 사용률이 두 구간 이상 떨어지면 — auto-compact는 session id를 유지한다 — 새 주기로 보고 임계부터 다시 넛지한다.
 
@@ -204,6 +220,7 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 
 ## 트러블슈팅
 
+- **무엇이 문제인지 모르겠을 때** — `/dev-workflow:doctor`가 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 컨텍스트 윈도)을 한 번에 대조해 준다. 아래 항목들은 그 결과가 가리키는 조치다.
 - **`marketplace add openai/codex-plugin-cc` 에서 SSH 인증 실패** (`Permission denied (publickey)`) — codex를 이미 쓰고 있다면 codex 마켓플레이스가 이미 `openai-codex`로 등록돼 있어 이 줄 자체가 불필요하다. `claude plugin marketplace list`로 `openai-codex`가 보이면 건너뛰면 된다. SSH 키가 없는 환경이면 슬래시 커맨드가 SSH를 시도하다 실패할 수 있는데, 어차피 안 해도 되는 작업이다.
 - **`dependency-unsatisfied` 또는 codex가 안 깔림** — `openai-codex` 마켓플레이스가 등록 안 된 상태다. `/plugin marketplace add openai/codex-plugin-cc` 후 `/plugin install dev-workflow@claude-dev-workflow`를 다시 실행하면 의존이 해결된다.
 - **`review-loop`가 codex 단계에서 멈춤** — codex CLI 미설치/미인증이다. `/codex:setup`으로 설정한다.
@@ -221,7 +238,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # 마켓플레이스 카탈로그(repo 루트)
 ├── dev-workflow/                     # 플러그인
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── README.md                         # 영어(기본)
 └── README.ko.md / README.ja.md       # 한국어 / 일본어

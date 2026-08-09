@@ -12,6 +12,7 @@
 | harden-spec | skill | `/dev-workflow:harden-spec` | plan・実装に進む前に spec ドラフトを敵対的に圧迫し、見逃したギャップ・前提・不変条件違反を掘り出して spec をその場で固める（project-aware） |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | （オプション、ステップ 3.5）固めた spec が画面を新設・再構成する場合: 非実行の HTML モックアップを発散させてユーザーに選ばせ、UI の決定を spec に既決事項として記録 |
 | setup | skill | `/dev-workflow:setup` | （明示的な依頼時のみ）このリポジトリの CLAUDE.md にパイプライン規約へのポインタを冪等に挿入 |
+| doctor | skill | `/dev-workflow:doctor` | 環境4項目（インストール版・マーケットプレイス最新・codex・コンテキストウィンドウ）を読み取り専用で一括診断し、対処は既存の経路に委譲 |
 | コンテキスト閾値ナッジ | Stop hook | （自動） | コンテキスト使用量が閾値（デフォルト 40%）を超えたらハンドオフ作成 + `/clear` を促し、以降は **15%p 区間ごとに再ナッジ**（40 → 55 → 70 → 85%、上限なし） |
 
 ## 目次
@@ -25,7 +26,8 @@
   - [harden-spec](#4-harden-spec--spec硬化)
   - [ui-mockup](#5-ui-mockup--ui-モックアップ選択)
   - [setup](#6-setup--リポジトリへのパイプライン導入)
-  - [コンテキスト閾値ハンドオフフック](#7-コンテキスト閾値ハンドオフフック自動)
+  - [doctor](#7-doctor--環境診断)
+  - [コンテキスト閾値ハンドオフフック](#8-コンテキスト閾値ハンドオフフック自動)
 - [リポジトリ clone 時の自動適用](#リポジトリ-clone-時の自動適用)
 - [トラブルシューティング](#トラブルシューティング)
 - [注意](#注意)
@@ -167,7 +169,21 @@ brainstorming で得た **spec ドラフトを plan・実装に渡す前に**敵
 
 明示的な依頼時のみ動作し、マーカーブロック外の内容には触れない。コラボレーターやプラグイン未インストールのユーザーも、CLAUDE.md を読むだけで規約とインストール方法が分かる。
 
-### 7. コンテキスト閾値ハンドオフフック（自動）
+### 7. `doctor` — 環境診断
+
+パイプラインの環境が**静かに壊れていないか**を確認するときに呼ぶ。読み取り専用で、ユーザーの成果物や設定は書き換えない — 見つかった異常はすべて既存の経路（`/plugin update`・`/codex:setup`・`/dev-workflow:setup`）に委譲する。
+
+```
+/dev-workflow:doctor
+```
+
+明示的な呼び出しに加えて、**症状の発話**（「ナッジが出ない」「codex が動かない」「プラグインは最新か」「バージョン合ってる?」）でも起動する。点検は4項目 — ① インストール版（エントリ配列を全列挙し `user`・`project`・`local` の全スコープを漏らさず見る）② マーケットプレイスの最新性 ③ codex（CLI の有無・認証・companion の3点まで。それ以上は `codex doctor` に委譲）④ `CLAUDE_CTX_LIMIT` と**現在のモデル**の照合（フックは実行時にウィンドウサイズを知れないためこの検査ができない）。
+
+**バージョン判定は `dev-workflow/` の subtree 比較で行う。** 単純な sha 比較は docs だけのコミットでも誤警報を出し、`git log` ベースの判定は revert 済みの履歴でツリーが同一でも「遅れている」と答える。根拠がない場合（ネットワーク失敗・`gitCommitSha` 欠落）は**「判定不可」**と記し、「最新」とは言わない。正常でもそうでなくても**4項目の表を必ず出力**し、プローブが1つ失敗しても残りを続けて4行を維持する — 環境が最も壊れている瞬間に何の情報も得られない、という事態を避けるためだ。
+
+実行中の review-loop 内での codex 失敗は `review-loop` の管轄なので doctor は介入しない。「なぜ動かないの」のような漠然とした失敗文や、**他製品を主語にした**同じ語彙（「playwright プラグインは最新か」）にも反応しない。
+
+### 8. コンテキスト閾値ハンドオフフック（自動）
 
 インストールすればすぐ動く。設定不要。会話コンテキストの使用量が閾値（デフォルト 40%）を超えると、止まる前にハンドオフを書いて `/clear` するよう案内する — コンテキストが溢れて作業が切れる前の引き継ぎを助ける。0.12.0 からこのナッジは**一度きりではない**: 閾値より上では **15 パーセントポイントの区間ごとに再発火**する（40 → 55 → 70 → 85%、上限なし）。最初のナッジを流しても、auto-compact が走るまで無警告のままにはならない。再ナッジは指示内容を変えず事実だけを添える（以前に案内したこと、現在が何 % か）。使用率が 2 区間以上下がった場合 — auto-compact はセッション id を維持する — 新しいサイクルとみなし、閾値から再びナッジする。
 
@@ -204,6 +220,7 @@ CLAUDE_CTX_LIMIT=200000     # コンテキストトークン上限を直接指�
 
 ## トラブルシューティング
 
+- **何が問題か分からないとき** — `/dev-workflow:doctor` が環境4項目（インストール版・マーケットプレイス最新・codex・コンテキストウィンドウ）を一度に照合する。以下の項目はその結果が指す対処である。
 - **`marketplace add openai/codex-plugin-cc` で SSH 認証失敗**（`Permission denied (publickey)`）— すでに codex を使っているなら codex マーケットプレイスは `openai-codex` として登録済みで、この行自体が不要。`claude plugin marketplace list` で `openai-codex` が見えればスキップしてよい。SSH キーのない環境ではスラッシュコマンドが SSH を試みて失敗することがあるが、そもそも実行不要な作業。
 - **`dependency-unsatisfied` または codex が入らない** — `openai-codex` マーケットプレイスが未登録の状態。`/plugin marketplace add openai/codex-plugin-cc` の後に `/plugin install dev-workflow@claude-dev-workflow` を再実行すれば依存が解決される。
 - **`review-loop` が codex の段階で止まる** — codex CLI が未インストール/未認証。`/codex:setup` で設定する。
@@ -221,7 +238,7 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # マーケットプレイスカタログ（repo ルート）
 ├── dev-workflow/                     # プラグイン
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor}/SKILL.md
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── README.md                         # 英語（デフォルト）
 └── README.ko.md / README.ja.md       # 韓国語 / 日本語
