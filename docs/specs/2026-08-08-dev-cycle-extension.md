@@ -1,7 +1,8 @@
 # dev-cycle 확장 설계 (C-6 ①②③)
 
-- 상태: **8단계 종결 (2026-08-09)** — `review-loop --phase impl` **성공 종료**(미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C2 verdict `merge-ready`, HEAD `810c6de`). 구현은 `f7dc0b1`에서 종결(SKILL.md 56→95줄). ledger = §적대검증 ledger (impl). **다음 = 9단계 통합·후속 검증**(릴리스 0.11.0 + README 3종 + 각 머신 `/plugin update`)
-- 이력: harden-spec 종결 `e3bdf04` → spec 루프 종결 `b40ee0e` → 구현 종결 `f7dc0b1` → impl 루프 종결 `810c6de`
+- 상태: **9단계 종결 — 트랙 완료 (2026-08-09)**. 릴리스 **0.11.0**(`784e416` — plugin.json 범프 + README 3종 동기 갱신)을 origin/main에 반영 완료. 잔여 후속은 각 머신 `/plugin update`(맥북·OMEN·그램)뿐이며 repo 밖 사실이다. **다음 순번 = 7**(C-3·C-4·C-7·C-8·C-9), 그다음 **순번 8 = C-10**(2026-08-09 배치 결정)
+- 이력: harden-spec 종결 `e3bdf04` → spec 루프 종결 `b40ee0e` → 구현 종결 `f7dc0b1` → impl 루프 종결 `db16a75` → 릴리스 0.11.0 `784e416`
+- 이력: **8단계 종결 (2026-08-09)** — `review-loop --phase impl` **성공 종료**(미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C2 verdict `merge-ready`). 구현은 `f7dc0b1`에서 종결(SKILL.md 56→95줄). ledger = §적대검증 ledger (impl)
 - 이력: `review-loop --phase spec` 종결 (2026-08-08) — 성공 종료(확인 경유): 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 C1 verdict `merge-ready`. 적대 5(소진 5/5) + 확인 1(소진 1/2). ledger = §적대검증 ledger (spec)(단일 원본)
 - 이력: harden-spec 종결 (2026-08-08) — 갭 대장 소진(D1~D19 확정)
 - 대상: `dev-workflow` 플러그인 **기존** 스킬 `dev-cycle` 개정 (기준 0.10.0). `harden-spec`은 연동 검토 결과 **무수정**(D6)
