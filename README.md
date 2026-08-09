@@ -12,7 +12,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | harden-spec | skill | `/dev-workflow:harden-spec` | Adversarially pressure a draft spec before plan/implementation to dig out missed gaps, assumptions, and invariant violations, and harden the spec in place (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (Optional, step 3.5) When a hardened spec creates or reshapes a screen: diverge non-executable HTML mockups, let the user pick, and record the UI decision in the spec as a settled decision |
 | setup | skill | `/dev-workflow:setup` | (On explicit request) idempotently insert a pipeline-convention pointer into this repo's CLAUDE.md |
-| Context-threshold nudge | Stop hook | (automatic) | When context usage exceeds a threshold (default 40%), nudges once to write a handoff + `/clear` |
+| Context-threshold nudge | Stop hook | (automatic) | Past a threshold (default 40%), nudges to write a handoff + `/clear` — and again every 15pp band after it (40 → 55 → 70 → 85%, no cap) |
 
 ## Table of Contents
 
@@ -169,7 +169,7 @@ Runs only on explicit request and never touches content outside the marker block
 
 ### 7. Context-threshold handoff hook (automatic)
 
-Works immediately after installation; no configuration. When conversation context usage crosses a threshold (default 40%), it nudges once to write a handoff and `/clear` before stalling — helping you hand over before context blows up mid-task.
+Works immediately after installation; no configuration. When conversation context usage crosses a threshold (default 40%), it nudges you to write a handoff and `/clear` before stalling — helping you hand over before context blows up mid-task. Since 0.12.0 the nudge is **not once-only**: it fires again on every 15-percentage-point band above the threshold (40 → 55 → 70 → 85%, with no upper cap), so ignoring the first one no longer means silence until auto-compact hits. Re-nudges add the facts (you were told before, here is the current %) without escalating the instruction. If usage drops two bands or more — auto-compact keeps the same session id — the hook treats it as a new cycle and starts nudging from the threshold again.
 
 Tune via environment variables (optional):
 
