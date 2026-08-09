@@ -80,7 +80,18 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 - **fingerprint** = `file` + 정규화 `title` + 정규화 `recommendation`(또는 body 핵심 문장). `line`은 보조 참고. **severity는 key에서 제외**(같은 결함이 high↔medium으로 흔들림).
 - 각 행: fingerprint · severity · disposition · 근거(ACCEPTED 이유·보완 / DEFERRED 연결 AC·task / DUPLICATE 원본 / OUT_OF_SCOPE follow-up).
 - **같은 fingerprint 계열이 2회 이상 반복되면 더 고치지 말고 사용자/설계 결정으로 판정한다**(ESCALATE 또는 ACCEPTED/DEFERRED).
-- **위치·단일 원본**: ledger는 해당 phase 산출물 문서 말미의 고정 섹션 `## 적대검증 ledger (<phase>)`에 둔다. 같은 finding 표를 두 문서에 복제하지 말 것 — 다른 문서에서는 참조만 한다(예: plan 헤더에 "ledger = spec §10b"). 복제본은 반드시 어긋난다(실측: 통합 요약본에서 2건 누락 사고).
+- **위치**: ledger는 아래 문서 말미의 고정 섹션 `## 적대검증 ledger (<phase>)`에 둔다.
+
+| phase | ledger 위치 |
+|---|---|
+| spec | spec 문서 말미 |
+| plan | **plan 엔트리포인트 말미**(`docs/plans/YYYY-MM-DD-<feature>.md`) — **task 파일이 아니다** |
+| impl | **plan 엔트리포인트 말미** (plan ledger와 같은 문서, 섹션만 다름) — **plan을 생략한 트랙은 spec 문서 말미** |
+
+  - impl에는 자체 산출물 문서가 없다(산출물이 코드다). 그래서 **"impl의 phase 산출물 문서 = plan 엔트리포인트"** 로 못 박는다 — 판단을 트랙마다 떠넘기면 같은 규정에서 위치가 갈린다.
+  - **진행 중 승격으로 plan이 생겨도 impl ledger는 spec 말미에 그대로 둔다** — 옮기지 않는다. 새 plan 엔트리포인트에서는 참조만 한다(진행 중 이동은 복제·유실 위험을 만든다).
+  - **비소급**: 이 위치 규정은 규정 도입 이후 착수한 트랙부터 적용한다. 그 이전 트랙의 ledger가 다른 위치에 있어도 **그대로 인정하고, 루프가 결함으로 지적하거나 진입을 막지 않는다.**
+- **단일 원본**: 같은 finding 표를 두 문서에 복제하지 말 것 — 다른 문서에서는 참조만 한다(예: plan 헤더에 "ledger = spec §10b"). 복제본은 반드시 어긋난다(실측: 통합 요약본에서 2건 누락 사고).
 - **확인 라운드 기록 의무**: 확인 라운드마다 소멸 확인된 FIXED fingerprint 목록·신규 finding·머지 준비도 verdict를 ledger에 기록한다.
 - ledger는 종료 시 핸드오프와 **단계 산출물 문서**(plan의 후속/AC 섹션 등)에 명시한다.
 
