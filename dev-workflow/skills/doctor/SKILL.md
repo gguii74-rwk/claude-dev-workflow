@@ -72,10 +72,10 @@ C="$P/marketplaces/$MP"
 export GIT_TERMINAL_PROMPT=0         # 자격증명 프롬프트로 매달리지 않는다
 
 # 원격 기본 브랜치를 원격에 직접 묻는다
-HB="$(git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 -C "$C" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/{print $2; exit}')"
+HB="$(perl -e 'alarm shift; exec @ARGV' 20 git -C "$C" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/{print $2; exit}')"
 [ -n "$HB" ] || echo "판정 불가: 원격 HEAD 미확인"   # 못 읽으면 여기서 끝낸다 (main으로 추정하지 않는다)
 
-git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 -C "$C" fetch -q origin "$HB"
+perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q origin "$HB"
 git -C "$C" rev-parse "FETCH_HEAD:dev-workflow"    # 최신 subtree id — 엔트리 전체에 1회
 ```
 
@@ -83,7 +83,15 @@ git -C "$C" rev-parse "FETCH_HEAD:dev-workflow"    # 최신 subtree id — 엔�
 
 **기본 브랜치를 로컬에서 유도하지 않는다.** clone의 fetch refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라(실측), 평범한 `git fetch origin`은 **`origin/HEAD`를 갱신하지도, 다른 브랜치를 가져오지도 않는다**. 원격 기본 브랜치가 바뀌면 로컬 `origin/HEAD`는 옛 `origin/main`을 계속 가리키고, 낡은 기준과 비교한 결과가 **"최신"으로 오판**된다. 그래서 `ls-remote --symref`로 **원격에 직접 묻고** 그 브랜치를 지목해 fetch한 뒤 `FETCH_HEAD`에서 subtree를 읽는다 — 새 remote-tracking ref를 만들지 않으므로 clone에 남는 상태가 늘지 않는다. 원격 HEAD를 못 읽으면 **`main`으로 추정하지 말고 판정 불가**다((b)).
 
-**네트워크 호출은 매달리지 않게 감싼다.** `git fetch`는 자격증명 프롬프트나 blackhole에서 **실패로 돌아오지 않고 그대로 멈출 수 있다** — 그러면 뒤의 codex·CTX 프로브와 **표 4행 출력에 아예 도달하지 못한다**. 이것은 아래 §출력의 "부분 실패에도 계속"이 받는 경우가 아니다: 실패로 전환되지 않기 때문이다. `GIT_TERMINAL_PROMPT=0`으로 프롬프트를 끄고 `http.lowSpeedLimit`/`http.lowSpeedTime`으로 정체를 끊는다(실측한 마켓플레이스 clone 3종이 모두 https다). **외부 `timeout(1)`을 쓰지 않는다** — macOS 기본 설치에는 `timeout`도 `gtimeout`도 없어(실측) 명령 부재로 프로브가 통째로 깨진다. 끊긴 경우는 마켓플레이스 **판정 불가**로 적고 나머지 프로브와 4행 출력을 계속한다.
+**네트워크 호출은 매달리지 않게 감싼다.** `git ls-remote`·`git fetch`는 자격증명 프롬프트나 blackhole에서 **실패로 돌아오지 않고 그대로 멈출 수 있다** — 그러면 뒤의 codex·CTX 프로브와 **표 4행 출력에 아예 도달하지 못한다**. 이것은 아래 §출력의 "부분 실패에도 계속"이 받는 경우가 아니다: 실패로 전환되지 않기 때문이다.
+
+- `GIT_TERMINAL_PROMPT=0` — 자격증명 프롬프트를 끄고 즉시 실패시킨다.
+- `perl -e 'alarm shift; exec @ARGV' <초> <명령>` — **wall-clock 상한**. `alarm` 타이머는 `exec`을 넘어 유지되므로 git이 SIGALRM으로 죽는다(실측: 5초 제한이 30초 sleep을 5.011초에 exit 142로 끊고, 정상 명령은 그대로 통과).
+- **`http.lowSpeedLimit`류 전송 옵션에 기대지 않는다** — 전송 **속도**만 감시해서 DNS·TCP·TLS **연결 단계 정지에는 걸리지 않는다**. wall-clock 상한이라야 정지 유형과 무관하게 닫힌다.
+- **외부 `timeout(1)`을 쓰지 않는다** — macOS 기본 설치에는 `timeout`도 `gtimeout`도 없어(실측) 명령 부재로 프로브가 통째로 깨진다. `perl`은 macOS·Linux·git-bash 모두 기본으로 있다.
+- **`2>&1`로 stderr를 파이프에 합치지 않는다.** SIGALRM은 `git`만 죽이고 git이 띄운 전송 헬퍼(`git-remote-https`)는 남는데, 그 헬퍼가 **합쳐진 파이프를 계속 붙들어** 상한이 실효된다(실측: 5초 상한인데 파이프가 75초 동안 열려 있었다 — curl의 connect 한계까지). 위처럼 **stderr는 `2>/dev/null`로 버린다**. 그러면 파이프를 써도 상한대로 끊긴다(실측 5초).
+
+상한에 걸린 경우는 마켓플레이스 **판정 불가**로 적고 나머지 프로브와 4행 출력을 계속한다.
 
 그다음 **1번이 낸 엔트리마다** 설치본 subtree id를 낸다(엔트리가 여럿이면 각각 돌린다 — 한 번만 돌리면 나머지 스코프가 판정 없이 남는다):
 
@@ -219,6 +227,8 @@ for (const f of process.argv.slice(1)) {
 | CTX_LIMIT 이상 | `/dev-workflow:setup`이 값을 묻고 settings.json에 쓴다. **doctor가 직접 쓰지 않는다.** 반영은 Claude Code 재시작 후. 단 **값의 출처가 환경변수면 settings.json에 써도 환경변수가 이긴다** — 그 경우 주입 지점(셸 프로필 등)을 함께 안내한다 |
 
 **스코프 행은 사용자가 갱신할 수 있는 3종까지다.** 그 밖의 스코프(예: `managed`)가 열거되면 조치를 지어내지 말고 **판정과 근거만 보고**한다 — 진단 전용이라는 원칙이 그대로 적용된다.
+
+**`version`이 같은데 subtree가 다르면 일반 갱신이 듣지 않을 수 있다.** 설치본은 version 디렉터리로 캐시되므로(`cache/<marketplace>/<plugin>/<version>/`), 범프 없이 내용만 바뀐 경우 갱신이 "이미 그 버전"이라 보고 넘어갈 수 있다. 그때 필요한 것은 사용자의 재실행이 아니라 **maintainer의 version bump**다 — 단서를 주지 않으면 사용자가 같은 명령을 반복하며 표의 뒤처짐이 사라지지 않는 상태에 갇힌다. (a)의 subtree 판정이 이 상태를 **탐지할 수 있는 유일한 경로**이므로, 뒤처짐 조치를 안내할 때 version 동일 여부를 함께 보고 이 단서를 붙인다.
 
 ## 하지 말 것
 
