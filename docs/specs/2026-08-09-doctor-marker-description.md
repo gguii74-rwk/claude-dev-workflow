@@ -1,6 +1,6 @@
 # 순번 7b 설계 — doctor 점검 신설 · setup 마커 문구 · dev-cycle description (C-9 · C-6 D11 · fp-I3)
 
-- 상태: **7단계 구현 종결 (2026-08-10)** — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항 전건 일치**. 다음 = **8단계 `review-loop --phase impl`**. TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D번호 부여 완료** — 확정 결정의 범위는 §재논의 금지(기결정)의 표가 원본이다. 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
+- 상태: **8단계 `review-loop --phase impl` 종결 (2026-08-10)** — 적대 6(복귀 1 포함) + 확인 3, finding **16건 전건 FIXED**, 미판정 blocking 0 · 확인 부채 0 · verdict `pass`. 다음 = **9단계 릴리스**(V-7b-1 + D18 과소평가 항 재실측 동반). — 7단계 구현 종결(2026-08-10) — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항**(그중 '과소평가' 1항은 impl 루프 R6에서 거짓 일치로 정정, §D18 참조). TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D번호 부여 완료** — 확정 결정의 범위는 §재논의 금지(기결정)의 표가 원본이다. 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
 - 이력: 7a 트랙 종결(0.12.0, `3267b82`)에서 이 트랙을 다음 순번으로 지목
 - 대상: `dev-workflow` 플러그인 (기준 0.12.0) — **신설** `skills/doctor/SKILL.md` · **개정** `skills/setup/SKILL.md`(마커 문구) · `skills/dev-cycle/SKILL.md`(description) · `.claude-plugin/plugin.json` · README 3종
 - 날짜: 2026-08-09
@@ -450,8 +450,8 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | 6. README 3종 동기 갱신(사용법 · 목차 · 상단 표 · 트러블슈팅 상호참조) | **충족** — 3파일 모두 5개 지점 반영 확인 |
 | 7. TDD **GREEN** 4계열 90런 | **충족** — 위 표 |
 | 8. 진단 정확도 실측 GREEN(6항 + 모델 기록 + degraded 분기별 처리) | **충족** — 위 |
-| 9. `review-loop --phase spec` · `--phase impl` 미판정 blocking 0 | spec **종결** · impl **진행 중**(아래 finding ledger) |
-| 10. 9단계 릴리스·안내 | 미실행(9단계) — **V-7b-1 잔여분 포함** |
+| 9. `review-loop --phase spec` · `--phase impl` 미판정 blocking 0 | **둘 다 종결** — impl은 적대 6 + 확인 3, finding 16건 전건 FIXED, 확인 부채 0, verdict `pass` |
+| 10. 9단계 릴리스·안내 | 미실행(9단계) — **V-7b-1 + D18 과소평가 항 재실측** 포함 |
 
 ### finding ledger — 적대검증 라운드
 
@@ -509,6 +509,35 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | C1 | **확인(중립)** | **fail** | **없음** | — | **13건 소멸 확인** · fp-7b-I12 **잔존** → **1** |
 | R6 | 적대 (**복귀 — 상한 밖**) | needs-attention | medium 2 신규 (critical/high/low 0) | **2** | 1 → **3** (+ fp-7b-I15 · I16) |
 | C2 | **확인(중립) — 재진입, 상한 밖** | **fail** | **없음** | — | fp-7b-I12 · I15 소멸 확인 · fp-7b-I16 **잔존** → **1** |
+| C3 | **확인(중립)** | **pass** | **없음** | — | **1건 소멸 확인 → 0** |
+
+**확인 라운드 C3 (2026-08-10) — 루프 종결.** C2의 ESCALATE에 대해 사용자가 *"남은 확인 예산 1회로 C3 실행"*을 선택(2026-08-10). 응답 완전성 계약 충족.
+
+- **소멸 확인 1건**: `fp-7b-I16` — 원문 `node -e` 블록에서 `argv[2]`가 현재 repo 경로를 받아 project/local 엔트리를 활성으로 판정함을 확인. 6분기 + `MISSING`·`managed`/`local` 회귀 + 판정 매핑 전건 통과. → **미확인 FIXED 큐 0**.
+- 회귀 확인: **없음**. 판정 감사: 해당 없음(루프 직접 판정 0건). 신규 finding: **없음**.
+- **verdict: `pass`** — *"잔존 FIXED 큐가 소멸했고 blocking 회귀나 신규 finding이 없다."*
+- **성공 종료 불변식 3종 충족**: 미판정 blocking 0 · 미확인 FIXED 큐 빔 · 확인 verdict 통과.
+
+### 종결 집계
+
+| 항목 | 값 |
+|---|---|
+| 라운드 | 적대 **6**(R1~R5 + 복귀 R6) · 확인 **3**(C1 · C2 재진입 · C3) |
+| 예산 소진 | 적대 **5/5** · 확인 **2/2** · 복귀 **1/1** |
+| finding | **16건** — **high 1**(fp-7b-I5) · medium 15 · critical 0 · low 0 |
+| disposition | **FIXED 16** (루프 직접 12 · 사용자가 닫은 ESCALATE 4 → fp-7b-I3·I9·I10·I13) |
+| ACCEPTED / DEFERRED_TO_IMPL / OUT_OF_SCOPE / DUPLICATE | **각 0건** — 다음 단계로 넘길 미해결 판정이 없다 |
+| 확인 부채 | **0** (폴백 3택 이월 없음) |
+| 최종 verdict | **pass** (C3) |
+| 커밋 | `f529414` · `e2a5c88` · `e3c4d95` · `02fd3c6` · `2d44004` · `e5d9936` · `0eba3dc` · `8e0525b` · `dd37134` (9건) |
+
+**score 추세** — `4 → 6 → 3 → 2 → 2 → 2`(R1~R6). 전환은 신호 ①(정체)이 아니라 **신호 ③(적대 예산 소진)**으로 일어났다. 보안 트랙 전환으로 신호 ①을 무시했기 때문이고, 실제로 R4·R5·R6이 각각 새 결함을 냈으므로 조기 전환했다면 놓쳤을 것이다.
+
+**이 루프가 남긴 실측 교훈 3건** (다음 트랙이 쓸 것):
+
+1. **문면에 박힌 실행 사양은 문서에서 추출해 그대로 돌린다.** R6 게이트에서 손으로 옮겨 적은 변형(`argv[2]`)을 실행해 통과시켰고, 문서의 실제 코드(`argv[3]`)는 틀린 채 남아 C2가 잡았다. 검증 대상과 검증 실행체가 갈리면 게이트가 무의미하다. `node -e` 블록은 `node -e "$(cat …)"`로 돌린다 — 파일로 저장해 `node <파일>`로 돌리면 **argv가 한 칸 밀려** 잘못된 결론이 난다.
+2. **적대 리뷰의 사실 주장은 반드시 1차 근거로 확인한다.** 이번 16건은 전부 Claude Code 내부 동작 주장이었고, 바이너리·CLI·레지스트리 실측으로 **확정 11건 · 부분 정정 3건 · 전제 불성립 2건**으로 갈렸다(예: fp-7b-I9의 `timeout(1)` 권고는 macOS에 부재, fp-7b-I14의 재현 시나리오는 셋 중 하나만 성립). 원문 권고를 그대로 반영했다면 새 결함이 들어갔다.
+3. **직전 라운드 수정이 다음 라운드 finding을 만든다** — fp-7b-I6→I8(회귀) · I7→I9(불완전) · I6·I9→I14(상호작용) · I16→C2 잔존. spec 루프와 같은 패턴이며, **수정 직후 그 수정 자체를 검증 대상에 넣어야** 한다.
 
 **확인 라운드 C1 (2026-08-10)** — 응답 완전성 계약 충족(큐 14건 전 항목 명시 결과 + 판정 감사 + 신규 finding + verdict). 확인 소진 1/2.
 
