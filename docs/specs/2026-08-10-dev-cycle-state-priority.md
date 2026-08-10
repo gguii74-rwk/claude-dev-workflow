@@ -254,3 +254,8 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 - **score 이력**: R1 = 2 → R2 = 2 → R3 = 2 (fp-I17 지속 1 + fp-I19 신규 1 — 2회 연속 비감소, 전환 신호 1 발화. FIXED 후보 0 = 수정 큐 소진, 신호 2 동시 성립)
 - **미확인 FIXED 큐**: fp-I15·fp-I16(`aa9ebf7`) + fp-I18(`ac9ec8c`) — 3건 불변 (fp-I19는 fp-I18의 재지적이 아니라 잔존 불일치 신규 지적 — 큐 소멸 판정은 확인 라운드 소관)
 - **batch 제시**: fp-I17 + fp-I19 (2026-08-11, 적대 소진 3 도달 시점)
+
+**batch 판정 (2026-08-11, 적대 소진 3 시점 일괄 제시 — 사용자)**
+
+- **fp-I17 → OUT_OF_SCOPE(사용자 판정)**: review-loop 계약 보강(무-finding 빠른 종료에도 1줄 종결 ledger 커밋)을 **후속 트랙으로 이월**. dev-cycle 문면은 현행 유지(거울면 금지·G-b 부합). follow-up은 §4 종료 보고와 `.remember/remember.md` 백로그에 기재 의무.
+- **fp-I19 → FIXED(사용자 판정 = 문구 정렬+포인터)**: 7행을 canonical 수렴 규칙에 정렬 — entrypoint 표 완료 기록 + **live SDD 진행 ledger 실재·상충 시 ledger 권위(최종 whole-branch 리뷰 미종결 포함 = 7 미완·SDD 재개)** + ledger 부재·유실 시 커밋된 표 폴백. 신규 arm X11(R-sddfinal — 전 task [x]+.gitignore된 live ledger가 final review PENDING 표시, 기대 7) RED 디스패치됨(r1~r4, 결과 회수 대기). **문면 수정은 미적용 — 재개 세션이 RED 회수 후 적용·검증한다.**
