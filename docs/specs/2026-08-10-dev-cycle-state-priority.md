@@ -1,6 +1,6 @@
 # dev-cycle 판별 구조 재검토 — 상태 계층 분리 + 단일 우선순위 규칙 (순번 8 · C-10)
 
-- 단계: **4 review-loop(spec) 종결 (2026-08-10, 확인 부채 0·verdict pass) — 다음 = 7 직접 구현(TDD)** (새 세션, plan 생략 트랙 — C-10 D6). 종결 시 이 줄을 갱신할 것.
+- 단계: **7 직접 구현(TDD) 완료 (2026-08-11, GREEN — AC1~AC7 전건 충족, 유효 235런·REFACTOR 5회, 기록 = `.remember/tdd-8-c10.md`) — 다음 = 8 review-loop(impl)** (새 세션, ledger = 이 문서 말미 — C-6 D17). 종결 시 이 줄을 갱신할 것.
 - 브리프: `2026-08-07-review-loop-and-pipeline-improvements-brief.md` §실행 순서 순번 8(C-10). **프로그램의 마지막 트랙.**
 - 입력: C-6 impl ledger(`2026-08-08-dev-cycle-extension.md` 말미) · 준비 자료 `.remember/prep-8-c10.md`
 - 대상: `dev-workflow/skills/dev-cycle/SKILL.md` (0.14.0 기준 95줄) — 판별 절 + 경량 경로 절
