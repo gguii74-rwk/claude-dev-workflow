@@ -266,3 +266,11 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 - **수정**: 위 합의 문구 그대로 7행 적용(96줄 유지 — D15 상한 내), 하네스 사본 동기.
 - **GREEN**: X11 파일럿 r5 + 본배치 r6~r10 **6/6 전건 정답**(전건 7 미완·SDD 재개 — ledger 권위 적용. r10 가드 2 비소급 질문 1회는 신규칙이 종전 판별과 결과가 갈리는 지점의 정당 발동·fail-closed 관찰) · 영향권 재실행 **15/15 무회귀**: X10 5/5(표 폴백 권위 유지, r20 가드 2 질문 1회) · M4 5/5(ledger 부재 폴백 → 8, r18 가드 1 질문 1회 — 픽스처 [x] 선행 커밋 특이점의 fail-closed 확인) · X4 5/5(9 유지 — 신설 폴백 문구 비간섭). 오염 검사 4종 porcelain clean · AC1 이탈 0 유지 · 유효 25런(RED 4+파일럿 1+본배치 20)·폐기 0.
 - **미확인 FIXED 큐 편입**: fp-I19(`2cea98c`) — 큐 4건(fp-I15·fp-I16(`aa9ebf7`) + fp-I18(`ac9ec8c`) + fp-I19(`2cea98c`)). 수정 큐 소진 — 확인 모드 진입.
+
+**확인 C1 (2026-08-11, target `33eba48` — 완전한 응답)**
+
+- **소멸 확인 = fp-I15·fp-I16·fp-I18·fp-I19 (4건 전건)** — fp-I15: 가드 1이 수기 D블록을 harden 갈음으로 인정하지 않음·재감사 금지 유지 / fp-I16: 3.5행 표지 요건·표지 없는 기록 무효 명시 / fp-I18: 승인 전 구현 커밋 불인정이 fp-I19 정렬 후에도 보존 / fp-I19: live ledger 권위·표 폴백이 canonical과 정렬.
+- 회귀 없음(가드 1 기존 트리거·3.5 비대상 경로·4·5·6 생략 계약 비확장·planless 직접 구현 경로·첫 미완 규칙 전건 유지) · 신규 finding 없음 · **판정 감사 이상 없음**(fp-I15 재평가·fp-I18 medium 유지 모두 §2c 비례 판정 승인) · 머지 준비도 verdict **pass**.
+- **미확인 FIXED 큐: 0건 — 확인 부채 0으로 성공 종료.**
+
+**루프 종결 (2026-08-11)**: 적대 3(R1~R3) / 확인 1(C1). disposition 집계 = **FIXED 4**(fp-I15·I16·I18·I19 — 전건 소멸 확인) · **OUT_OF_SCOPE 1**(fp-I17 — 사용자 판정, follow-up = review-loop 계약 보강 트랙: 무-finding 빠른 종료에도 1줄 종결 ledger 커밋) · **ESCALATE 2**(fp-I17·fp-I19 — 전건 사용자 batch 판정으로 귀결) · ACCEPTED/DEFERRED_TO_IMPL/DUPLICATE/DEFER_LOW 0. score 이력 R1 = 2 → R2 = 2 → R3 = 2(전환 신호 1 → batch → 확인). 다음 단계로 이월하는 blocking 없음.
