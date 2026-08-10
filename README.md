@@ -97,7 +97,7 @@ All options are optional — plain `/dev-workflow:review-loop` works.
 | `--max <n>` | `5` | Cap on **adversarial (discovery) rounds.** Confirm rounds do not count against it |
 | `--confirm-rounds <n>` | `2` | **Confirm-round budget.** Cumulative across the whole loop; not reset on re-entry |
 | `--auto-rounds <n>` | `3` | First n rounds run in **auto mode** — auto-fix defects and batch up non-risky user decisions to ask at once. `0` = ask immediately every round; use `1` for security-sensitive work |
-| `--resume` | — | Resume an interrupted loop from the saved state (including the ledger) in `.remember/remember.md` |
+| `--resume` | — | Resume an interrupted loop from the saved state (including the ledger) in `.remember/loop-*.md` |
 
 > **`--max` changed meaning in 0.8.0.** Through 0.7.x it was a hard cap on total iterations; it now caps **adversarial rounds only**. The total is still bounded but larger — at the defaults, **at most 10 rounds** (5 adversarial + 2 confirm + 1 returning adversarial round when confirm finds blocking + 1 re-entry confirm + 1 fallback-② confirm run in a fresh session). To bound execution the way it used to be, lower `--max` and `--confirm-rounds` together.
 
