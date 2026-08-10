@@ -1,6 +1,6 @@
 # dev-cycle 판별 구조 재검토 — 상태 계층 분리 + 단일 우선순위 규칙 (순번 8 · C-10)
 
-- 단계: **3 harden-spec 완료 (2026-08-10) — 다음 = 4 review-loop --phase spec** (새 세션). 종결 시 이 줄을 갱신할 것.
+- 단계: **4 review-loop(spec) 종결 (2026-08-10, 확인 부채 0·verdict pass) — 다음 = 7 직접 구현(TDD)** (새 세션, plan 생략 트랙 — C-10 D6). 종결 시 이 줄을 갱신할 것.
 - 브리프: `2026-08-07-review-loop-and-pipeline-improvements-brief.md` §실행 순서 순번 8(C-10). **프로그램의 마지막 트랙.**
 - 입력: C-6 impl ledger(`2026-08-08-dev-cycle-extension.md` 말미) · 준비 자료 `.remember/prep-8-c10.md`
 - 대상: `dev-workflow/skills/dev-cycle/SKILL.md` (0.14.0 기준 95줄) — 판별 절 + 경량 경로 절
@@ -213,5 +213,7 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 
 - **score 이력**: R1 = 2 (medium 2, 전부 신규) → R2 = 4 (high 1·medium 1, 전부 신규 — 비감소 1회째) → R3 = 1 (medium 1, 신규 — 감소) → R4 = 4 (high 1·medium 1, 전부 신규) → R5 = 1 (medium 1, 신규 — 감소) → C1 지목 = 1 (fp-S2 잔존 medium) → R6(복귀) = 4 (high 1·medium 1, 전부 신규)
 - **확인 C1 (2026-08-10, 적대 예산 소진 후 진입)**: 소멸 확인 = **fp-S1·S3·S4·S5·S6·S7·S8 (7건)**. **fp-S2 잔존**(medium — AC4·§5 "D14 분기 arm"·V1행 "(D7)" 무접두 3곳, 그중 D14 표기는 R1 수정이 재도입) → FIXED 재수정 커밋 `7ebacf9`(지목 3곳 + C-6 D17 참조 명시·ledger 산문 정비) 후 재큐. 신규 finding 없음 · 판정 감사 해당 없음(루프 직접 판정 0건) · verdict **fail**(fp-S2 잔존 사유) → **적대 복귀 1회(상한 밖) + 재진입 확인** 경로.
-- **미확인 FIXED 큐**: fp-S2 (C1 재수정 `7ebacf9`) · fp-S9 · fp-S10 (R6 복귀 수정 `6d1cf27`) — 재진입 확인 대기
-- **루프 직접 판정**: 없음 (fp-S6는 사용자 판정)
+- **확인 C2 (2026-08-10, 복귀 재진입 — 예산 밖 예약분)**: 소멸 확인 = **fp-S2·S9·S10 (3건 전건)**. 회귀 없음 · 신규 finding 없음 · 판정 감사 해당 없음 · 머지 준비도 verdict **pass**(7 직접 구현 TDD 진행 가능).
+- **미확인 FIXED 큐**: **0건** — C1에서 7건(fp-S1·S3~S8) + C2에서 3건(fp-S2·S9·S10) 전건 소멸 확인. **확인 부채 0으로 성공 종료.**
+- **루프 직접 판정**: 없음 (fp-S6는 사용자 판정 — C-10 D17)
+- **루프 종결(2026-08-10)**: 적대 5 + 복귀 적대 1 / 확인 2(예산 소진 1 + 재진입 예약분 1). disposition 집계 = FIXED 10(전건 소멸 확인) · ESCALATE 1(fp-S6 → 사용자 판정 C-10 D17로 FIXED 귀결) · ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/DEFER_LOW 0. 다음 단계로 이월하는 blocking 없음.
