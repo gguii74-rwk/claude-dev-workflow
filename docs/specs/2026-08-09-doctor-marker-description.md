@@ -472,6 +472,9 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 
 | **fp-7b-I10** | 이 spec · *결정 범위 표기가 4곳에 흩어져 결정 추가마다 수동 동기화가 필요하다* · 범위 표기를 없애고 표를 단일 원본으로 일반화하라 | medium | **FIXED** (batch 판정) | 루프 자체 발견(적대 지목 아님) — `fp-S13` **계열 2회차**다(D24·D25에서 닫았는데 D26에서 재발). **사용자 판정 = "범위 표기 제거·일반화"**(2026-08-10). 상태줄·§3 제목·D번호 표기 규칙·확정 결정 헤더 4곳에서 `D1~D26`류 표기를 제거하고 "§재논의 금지의 표가 단일 원본"으로 대체. 결정이 늘어도 동기화할 곳이 없어 계열이 원천 차단된다 |
 
+| **fp-7b-I11** | `doctor/SKILL.md` · *활성 seed 마켓플레이스를 미등록으로 오진한다* · `known_marketplaces.json`의 `installLocation`으로 실제 clone을 찾고 seed-managed 여부를 판별하라 | medium | **FIXED** (R4) | fp-7b-I1(`CLAUDE_CODE_PLUGIN_CACHE_DIR`)과 같은 *경로 해석* 영역이나 **다른 기전**(레지스트리가 알려주는 설치 위치)이라 별개. **이 머신에 살아 있는 반례로 실증**: `claude-plugins-official`은 `installLocation`이 정상 등록돼 있는데 그 아래 `.git`이 없다 → 현행 문면이면 `미등록`으로 찍고 **정상 배포에 대고 `marketplace add`를 시킨다**. 위치 조회를 `installLocation` 기준으로 바꾸고 4분기표(등록됨/판정 불가/미등록/판정 불가)로 교체. **seed 전용 문구는 만들지 않았다** — `CLAUDE_CODE_PLUGIN_SEED_DIR`가 이 머신에 미설정이라 재현 불가라서, D24 전례대로 검증 가능한 부분(installLocation·비-git 위치)만 반영하고 seed는 근거 서술로 갈음했다. 검증: 등록됨·판정 불가·`UNREGISTERED` 3분기 실행 확인 |
+| **fp-7b-I12** | `doctor/SKILL.md` · *손상된 레지스트리를 미설치로 확정한다* · 예외 처리로 sentinel을 내고 판정 불가로 매핑하며 빈 배열·명령 실패도 구분하라 | medium | **FIXED** (R4) | D24(계속 수행 여부) 재론이 아니라 *실패를 확정 부재로 잘못 분류*하는 별개 결함. `JSON.parse(readFileSync(...))`가 무방비라, 권한 문제·부분 기록이면 node가 **출력 없이 죽고** 바로 아래 규칙이 그걸 "미설치"로 확정한다 — 레지스트리 장애 **하나가 "미설치" + "companion 없음" 두 확정 오진과 잘못된 재설치 안내로 번진다**. 프로브 1·3의 파싱을 `try`로 감싸 `REGISTRY_UNREADABLE`을 내고, 판정을 **4분기표**(부재→미설치 / 0줄→미설치 / 읽기 실패→판정 불가 / 비정상 종료→판정 불가)로 명문화. 부수로 CTX 프로브(fp-7b-I5)만 예외 처리를 갖던 내부 불일치도 해소. 검증: 4분기 전건 실행 확인(손상 JSON이 이전엔 빈 출력, 이제 sentinel) |
+
 **batch flush (2026-08-10, 적대 소진 3 = `--auto-rounds` 도달)** — 적재분 2건 + 루프 발견 1건 + 트랙 판정 1건을 자동 수정 내역(커밋 `f529414`·`e2a5c88`·`e3c4d95`)과 함께 일괄 제시했고 사용자가 전건을 닫았다. 자동 수정 롤백 없음.
 
 | 항목 | 사용자 판정 | 결과 |
@@ -492,6 +495,8 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | R1 | 적대 | needs-attention | medium 4 (critical/high/low 0) | **4** | 0 → **3** (fp-7b-I1 · I2 · I4) |
 | R2 | 적대 | needs-attention | **high 1** + medium 2 (critical/low 0) | **6** | 3 → **6** (+ fp-7b-I5 · I6 · I7) |
 | R3 | 적대 | needs-attention | medium 2 (critical/high/low 0) | **3** | 6 → **7** (+ fp-7b-I8) |
+| — | **batch flush** | — | (적재 2 + 루프 발견 1 + 트랙 판정 1) | — | 7 → **10** (+ fp-7b-I3 · I9 · I10) |
+| R4 | 적대 (정밀 모드) | needs-attention | medium 2 (critical/high/low 0) | **2** | 10 → **12** (+ fp-7b-I11 · I12) |
 
 - score 산식 = `critical4·high3·medium1`, 스냅샷은 §2c 분류 직후·수정 전(FIXED 후보 + 미해결 ESCALATE 포함, 미확인 FIXED 큐 제외).
 - 기결정 가드 대조 결과: R1 4건 모두 D1~D26·승계 기결정의 **재론이 아니다**(리뷰어 스스로 fp-S10·D5·D15와의 겹침 가능성을 단서 ③대로 명시했고, 대조 결과 전부 별개 지적). **루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건.**

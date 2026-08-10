@@ -50,14 +50,25 @@ node -e '
 const fs=require("fs"),p=require("path");
 const f=p.join(process.argv[1],"installed_plugins.json");
 if (!fs.existsSync(f)) { console.log("REGISTRY_MISSING"); process.exit(0); }
-const d=JSON.parse(fs.readFileSync(f,"utf8"));
+let d;
+try { d=JSON.parse(fs.readFileSync(f,"utf8")); }
+catch (e) { console.log("REGISTRY_UNREADABLE"); process.exit(0); }
 for (const [key, entries] of Object.entries(d.plugins||{})) {
   if (!key.startsWith("dev-workflow@")) continue;
   for (const e of entries||[]) console.log([key, e.scope, e.projectPath||"-", e.version||"-", e.gitCommitSha||"-"].join("\t"));
 }' "$P"
 ```
 
-**출력이 `REGISTRY_MISSING`이거나 한 줄도 없으면 "미설치"다** — (b)의 "판정 불가"가 아니다. 레지스트리 파일 부재·엔트리 0건은 *조회가 실패한 것*이 아니라 **이 프로필에 설치 이력이 없다는 확정 사실**이다. (b)가 다루는 것은 *엔트리는 있는데* 근거 필드가 없거나 object 조회가 실패한 경우다.
+**네 결과를 구분한다 — 부재·읽기 실패·빈 목록은 같은 것이 아니다.**
+
+| 출력 | 판정 |
+|---|---|
+| `REGISTRY_MISSING` | **미설치** — 파일이 없다는 확정 사실이다 |
+| 정상 종료 + 엔트리 0줄 | **미설치** — 이 프로필에 설치 이력이 없다 |
+| `REGISTRY_UNREADABLE` | **판정 불가** — 파일은 있는데 권한·부분 기록으로 읽거나 파싱하지 못했다. **설치본이 없다는 증거가 아니다** |
+| 명령 자체가 비정상 종료 | **판정 불가** |
+
+읽기·파싱 실패를 "출력이 없다"로 뭉뚱그리면 **레지스트리 장애 하나가 "미설치"와 "companion 없음" 두 확정 오진으로 번지고**, 멀쩡한 설치본에 재설치를 안내하게 된다. 그래서 두 레지스트리 조회 모두 파싱을 `try`로 감싸 sentinel을 낸다. (b)가 다루는 나머지 경우는 *엔트리는 있는데* 근거 필드가 없거나 object 조회가 실패한 것이다.
 
 **스코프 이름을 하드코딩하지 않는다.** 설치 스코프는 `claude plugin install -s <scope>` 기준 `user`·`project`·`local` 3종이고, `claude plugin update -s <scope>`는 여기에 `managed`를 더한 4종을 받는다. 엔트리는 **배열**이다. 두 종만 열거하면 **stale한 local 설치가 활성인 repo에서 그 설치를 못 보고 "최신"이라 보고**한다. 배열 전체를 돌고 스코프 이름은 **출력에 그대로 옮긴다**(새 스코프가 생겨도 자동으로 덮인다).
 
@@ -66,8 +77,17 @@ for (const [key, entries] of Object.entries(d.plugins||{})) {
 ```bash
 KEY=<1번 출력 1열>                 # `dev-workflow@<marketplace>`
 MP="${KEY#*@}"
-C="$P/marketplaces/$MP"
-[ -d "$C/.git" ] || echo "미등록"     # 미등록이면 여기서 이 프로브를 끝낸다 (아래를 돌리지 않는다)
+# clone 위치는 조립하지 않고 레지스트리에 묻는다
+C="$(node -e '
+const fs=require("fs"),p=require("path");
+const f=p.join(process.argv[1],"known_marketplaces.json");
+if (!fs.existsSync(f)) { console.log("MARKETPLACES_MISSING"); process.exit(0); }
+let d;
+try { d=JSON.parse(fs.readFileSync(f,"utf8")); }
+catch (e) { console.log("MARKETPLACES_UNREADABLE"); process.exit(0); }
+const m=(d.marketplaces||d)[process.argv[2]];
+console.log(m && m.installLocation ? m.installLocation : "UNREGISTERED");
+' "$P" "$MP")"
 
 export GIT_TERMINAL_PROMPT=0         # 자격증명 프롬프트로 매달리지 않는다
 
@@ -79,7 +99,18 @@ perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q origin "$HB"
 git -C "$C" rev-parse "FETCH_HEAD:dev-workflow"    # 최신 subtree id — 엔트리 전체에 1회
 ```
 
-**미등록이면 거기서 끝낸다.** `.git`이 없는데 `fetch`·`rev-parse`를 이어 돌리면 fatal만 쌓이고 판정은 이미 "미등록"으로 확정돼 있다. **1번이 엔트리를 0건 냈을 때도 `KEY`가 없으므로 같다** — 그때는 `ls -1 "$P/marketplaces" 2>/dev/null`로 clone 유무만 보고(glob을 쓰지 않는다 — 점검 3 참조), 없으면 "미등록"·있으면 "판정 불가"(대조할 설치 sha가 없다)로 적는다.
+`$C`의 값에 따라 넷으로 갈린다. **아래 fetch·대조는 첫 줄에서만 이어 돌린다** — 나머지는 판정이 이미 확정돼 있고, 계속 돌리면 fatal만 쌓인다.
+
+| `$C` | 판정 | 조치 |
+|---|---|---|
+| 경로 + 그 아래 `.git` 있음 | **등록됨** | 아래를 계속한다 |
+| 경로인데 `.git` 없음 | **판정 불가** | 여기서 끝낸다. **`marketplace add`를 안내하지 않는다** — 등록은 돼 있고 doctor가 git으로 대조하지 못할 뿐이다 |
+| `UNREGISTERED` · `MARKETPLACES_MISSING` | **미등록** | 여기서 끝낸다 + `marketplace add` 안내 |
+| `MARKETPLACES_UNREADABLE` | **판정 불가** | 여기서 끝낸다 |
+
+**경로를 조립하지 않는다.** `$P/marketplaces/<name>`은 통상값일 뿐이고 실제 위치는 `known_marketplaces.json`의 **`installLocation`**이 정한다(읽기 전용 seed 배포 등은 다른 곳을 쓸 수 있다 — 런타임에 `CLAUDE_CODE_PLUGIN_SEED_DIR`가 있다). **`.git` 부재를 미등록으로 읽지도 않는다** — 이 머신에도 `installLocation`은 정상인데 `.git`이 없는 마켓플레이스가 실재한다(`claude-plugins-official`). 그걸 "미등록"이라 부르면 **정상 배포에 대고 `marketplace add`를 시키는** 잘못된 조치가 나간다.
+
+**1번이 엔트리를 0건 냈을 때는 `KEY`가 없어 `MP`를 모른다** — 그때는 위 조회를 돌리지 말고 `known_marketplaces.json`의 **키 목록만** 읽어 등록 여부를 적고, 대조할 설치 sha가 없으므로 **판정 불가**로 남긴다.
 
 **기본 브랜치를 로컬에서 유도하지 않는다.** clone의 fetch refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라(실측), 평범한 `git fetch origin`은 **`origin/HEAD`를 갱신하지도, 다른 브랜치를 가져오지도 않는다**. 원격 기본 브랜치가 바뀌면 로컬 `origin/HEAD`는 옛 `origin/main`을 계속 가리키고, 낡은 기준과 비교한 결과가 **"최신"으로 오판**된다. 그래서 `ls-remote --symref`로 **원격에 직접 묻고** 그 브랜치를 지목해 fetch한 뒤 `FETCH_HEAD`에서 subtree를 읽는다 — 새 remote-tracking ref를 만들지 않으므로 clone에 남는 상태가 늘지 않는다. 원격 HEAD를 못 읽으면 **`main`으로 추정하지 말고 판정 불가**다((b)).
 
@@ -120,7 +151,9 @@ node -e '
 const fs=require("fs"),p=require("path");
 const f=p.join(process.argv[1],"installed_plugins.json");
 if (!fs.existsSync(f)) { console.log("REGISTRY_MISSING"); process.exit(0); }
-const d=JSON.parse(fs.readFileSync(f,"utf8"));
+let d;
+try { d=JSON.parse(fs.readFileSync(f,"utf8")); }
+catch (e) { console.log("REGISTRY_UNREADABLE"); process.exit(0); }
 for (const e of (d.plugins||{})["codex@openai-codex"]||[]) {
   const c = e.installPath ? p.join(e.installPath,"scripts","codex-companion.mjs") : null;
   console.log([e.scope, e.installPath||"-", (c && fs.existsSync(c)) ? "OK" : "MISSING"].join("\t"));
