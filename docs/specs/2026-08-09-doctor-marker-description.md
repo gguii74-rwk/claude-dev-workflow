@@ -1,6 +1,6 @@
 # 순번 7b 설계 — doctor 점검 신설 · setup 마커 문구 · dev-cycle description (C-9 · C-6 D11 · fp-I3)
 
-- 상태: **8단계 `review-loop --phase impl` 종결 (2026-08-10)** — 적대 6(복귀 1 포함) + 확인 3, finding **16건 전건 FIXED**, 미판정 blocking 0 · 확인 부채 0 · verdict `pass`. 다음 = **9단계 릴리스**(V-7b-1 + D18 과소평가 항 재실측 동반). — 7단계 구현 종결(2026-08-10) — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항**(그중 '과소평가' 1항은 impl 루프 R6에서 거짓 일치로 정정, §D18 참조). TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D번호 부여 완료** — 확정 결정의 범위는 §재논의 금지(기결정)의 표가 원본이다. 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
+- 상태: **9단계 진행 중 (2026-08-10)** — 릴리스 **0.13.0**을 `origin/main`에 반영 완료(`4593052`), **D18 과소평가 항 재실측 = 일치**(Haiku 4.5 세션, oracle 독립성 복구 — §D18). 잔여는 **repo 밖 사실뿐**: 각 머신 `/plugin update`(맥북 user-scope 포함)와 **V-7b-1**(ops-hub project-scope 0.13.0 도달 확인). 다음 순번 = **7c(C-4 핸드오프 표준화)**. — 이력: **8단계 `review-loop --phase impl` 종결 (2026-08-10)** — 적대 6(복귀 1 포함) + 확인 3, finding **16건 전건 FIXED**, 미판정 blocking 0 · 확인 부채 0 · verdict `pass`. — 7단계 구현 종결(2026-08-10) — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항**(그중 '과소평가' 1항은 impl 루프 R6에서 거짓 일치로 정정, §D18 참조). TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D번호 부여 완료** — 확정 결정의 범위는 §재논의 금지(기결정)의 표가 원본이다. 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
 - 이력: 7a 트랙 종결(0.12.0, `3267b82`)에서 이 트랙을 다음 순번으로 지목
 - 대상: `dev-workflow` 플러그인 (기준 0.12.0) — **신설** `skills/doctor/SKILL.md` · **개정** `skills/setup/SKILL.md`(마커 문구) · `skills/dev-cycle/SKILL.md`(description) · `.claude-plugin/plugin.json` · README 3종
 - 날짜: 2026-08-09
@@ -296,7 +296,9 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 |---|---|---|---|
 | V-7b-1 | **project-scope 캐시가 실제로 갱신되는 명령** | 설치 기전(repo `.claude/settings.json` 트리거)은 조회로 확인했으나, `/plugin update`는 슬래시 커맨드라 CLI로 실행·관측할 수 없다. "그 repo 안에서 실행하면 project-scope 캐시가 갱신된다"는 구조적 추론이며 미실측이다 | **D18 대조표 확인 직후** — 검증 대상은 *"그 repo 안에서 돌리면 project-scope 캐시가 갱신되는가"*이지 특정 버전 도달이 아니므로, **그 시점에 이미 origin/main에 있는 배포본(0.12.0)으로 갱신되는지**를 본다. 갱신되지 않거나 다른 위치를 요구하면 조치 안내 문구를 고친다 |
 
-> **V-7b-1 진행 상태 (2026-08-10)** — **미실행, 9단계로 이월.** D18 대조표는 먼저 기록했으므로 자연 픽스처(project-scope 0.11.0 = 뒤처짐) 소모 순서 요구는 지켰다. 실행하지 않은 이유는 둘이다: ① `/plugin update`는 슬래시 커맨드라 에이전트가 실행·관측할 수 없다 ② 사용자의 ops-hub 설치본을 바꾸는 행위라 사용자가 그 repo에서 직접 돌려야 한다. **9단계 릴리스 안내에 "ops-hub에서 `/plugin update` 실행 → project-scope가 실제로 갱신되는지 확인"을 포함**한다(AC 10의 잔여분과 같은 자리).
+> **V-7b-1 진행 상태 (2026-08-10, 9단계) — 릴리스 완료로 실행 조건 충족.** 0.13.0이 `origin/main`(`4593052`)에 올라갔으므로 이제 ops-hub에서 `/plugin update --scope project`를 그 repo 안에서 실행해 **project-scope 캐시가 0.11.0 → 0.13.0으로 갱신되는지** 확인하면 닫힌다. 실행 주체는 사용자다(아래 이유 ①②는 그대로 유효). 갱신되지 않거나 다른 위치를 요구하면 doctor의 조치 안내 문구를 고친다.
+>
+> > **직전 기록 (2026-08-10, 8단계)** — **미실행, 9단계로 이월.** D18 대조표는 먼저 기록했으므로 자연 픽스처(project-scope 0.11.0 = 뒤처짐) 소모 순서 요구는 지켰다. 실행하지 않은 이유는 둘이다: ① `/plugin update`는 슬래시 커맨드라 에이전트가 실행·관측할 수 없다 ② 사용자의 ops-hub 설치본을 바꾸는 행위라 사용자가 그 repo에서 직접 돌려야 한다. **9단계 릴리스 안내에 "ops-hub에서 `/plugin update` 실행 → project-scope가 실제로 갱신되는지 확인"을 포함**한다(AC 10의 잔여분과 같은 자리).
 
 **V-7b-1의 실행 순서 — 릴리스보다 앞설 수 없는 부분을 분리했다.** 0.13.0은 8단계 GREEN·impl 리뷰를 거쳐 **9단계에서야** origin에 올라가므로(§상단 경로 순서), "0.11.0→0.13.0" 확인은 사전 게이트에서 원리적으로 불가능하다 — `/plugin update`가 가져올 0.13.0이 아직 원격에 없다. 그래서 **명령의 유효성(0.12.0으로 갱신)은 D18에서 사전 검증**하고, **0.13.0 도달 확인은 9단계 릴리스 후 안내**(AC 10)에 붙인다. 또 이 갱신은 D18 대조표 2행의 자연 픽스처(project-scope `d57bfe9` 0.11.0 = 뒤처짐)를 **소모**하므로, 반드시 **대조표를 먼저 기록한 뒤** 실행한다.
 
@@ -416,6 +418,18 @@ doctor SKILL.md를 서브에이전트에게 **그대로 실행**시켜 측정했
 
 > **정정 (impl 루프 R6, 2026-08-10) — 위 6항 중 "과소평가" 1항은 틀린 전제 위에서 측정됐다.** 그 실행은 *Sonnet 5의 윈도가 200k*라는 당시 규칙 (e)를 참으로 두고 "미설정 → 과소평가"를 기대값으로 삼았다. 그러나 Claude Code 2.1.226 바이너리 실측 결과 **`claude-sonnet-5`·`claude-opus-5`·`claude-fable-5`가 모두 `context:{window:1e6, native_1m:true}`**이고, `[1m]`은 Opus의 선택 접미사(`supports_1m_suffix`)일 뿐이다. 따라서 **Sonnet 5 + 미설정은 `정상`이 옳고**, 그 실행이 "일치"로 기록된 것은 doctor와 oracle이 **같은 오류를 공유**했기 때문이다(oracle 독립성이 이 항에서만 깨졌다). 나머지 5항은 영향 없다 — 과대평가 방향(Opus 5 `[1m]` + `CLAUDE_CTX_LIMIT=200000` → 유효 200k < 윈도 1M)은 정정된 규칙에서도 그대로 성립한다. 규칙 (e)는 `fp-7b-I15`로 고쳤고, **과소평가 상태 자체는 사라지지 않았다**(200k 모델 + 미설정, 또는 200k 모델에 1M 주입). **재실측은 9단계로 이월한다** — 200k 모델(Haiku 4.5) 세션이 필요하고, 이 항 하나 때문에 8단계를 되돌리는 것보다 릴리스 안내에 붙이는 편이 낫다(V-7b-1과 같은 자리).
 
+> **9단계 재실측 (2026-08-10) — 과소평가 항 `일치`. D18 6항 전건 복구.** 위 정정이 이월한 1항을 릴리스 직후 다시 측정했다. 측정자는 **Haiku 4.5 서브에이전트**(`claude-haiku-4-5-20251001`)이고, `doctor/SKILL.md`를 문면 그대로 실행시켜 4항목 표를 받았다 — **기대값은 알리지 않았다**(하네스 결함 교훈: 에이전트가 읽는 것에 정답을 두지 않는다).
+>
+> | 항목 | doctor 판정 | oracle(독립) | 일치 |
+> |---|---|---|---|
+> | CTX_LIMIT 과소평가 | `과소평가` — 모델 `claude-haiku-4-5-20251001` · 윈도 200,000 · 유효 limit 1,000,000 · 출처 훅 기본값 | 윈도 = Claude Code 2.1.226 바이너리 레코드 `context:{window:200000,supports_1m_suffix:!0}`(offset 246137715) / 유효 limit = `hooks/scripts/context-threshold-hook.mjs:14` `DEFAULT_LIMIT = 1_000_000` / env·settings 3곳 무값 | **예** |
+>
+> **oracle 독립성 복구.** R6가 지적한 실패는 doctor와 oracle이 *같은 규칙*을 공유한 것이었다. 이번 oracle은 스킬 문면이 아니라 **1차 근거 2종**(바이너리 모델 메타데이터 · 훅 소스의 기본값 상수)에서 직접 왔고, 측정자(Haiku 서브에이전트)와 판정자(호출자)가 분리돼 있다.
+>
+> **부수 확인 — `[1m]` 접미사는 Haiku의 윈도를 바꾸지 않는다.** Haiku 4.5 레코드에 `supports_1m_suffix:!0`가 있어 규칙 (e)의 "Haiku 4.5 = 200,000"이 `claude-haiku-4-5[1m]`에서 깨지는지 점검했다. 1M 판정 게이트는 `Kmf(e){return BT(wa(e))?.context?.native_1m===!0||…}`이고 Haiku 레코드에는 `native_1m`이 **없다** → 접미사가 붙어도 1M이 아니다(`supports_1m_suffix`는 `qce()`의 표시 라벨 `" (1M context)"` 전용). **규칙 (e) 수정 불요.**
+>
+> 부수 관측: 이 실행의 표 1행이 user-scope를 **뒤처짐**으로 보고했다(설치본 0.12.0 subtree `52b0878` < 마켓플레이스 `91f7f13`) — 0.13.0 push 직후의 정상 상태이며, 아래 9단계 안내의 `/plugin update`가 그 해소 절차다.
+
 **오탐 케이스** — ① "sha는 다른데 트리는 같은 쌍"은 **자연 발생**해 실측했다(user-scope `a117486` vs `origin/main` `3267b82`). ② "되돌린 이력으로 로그만 남은 쌍"은 이 repo 이력에 없어 **문면 확인으로 갈음**했다.
 
 **degraded 분기(D24) — 분기별 처리**: 빈 설정 루트를 `CLAUDE_CONFIG_DIR`로 지정해 **조작 없이** 재현했다(파일 미기록, D9 유지).
@@ -451,7 +465,7 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | 7. TDD **GREEN** 4계열 90런 | **충족** — 위 표 |
 | 8. 진단 정확도 실측 GREEN(6항 + 모델 기록 + degraded 분기별 처리) | **충족** — 위 |
 | 9. `review-loop --phase spec` · `--phase impl` 미판정 blocking 0 | **둘 다 종결** — impl은 적대 6 + 확인 3, finding 16건 전건 FIXED, 확인 부채 0, verdict `pass` |
-| 10. 9단계 릴리스·안내 | 미실행(9단계) — **V-7b-1 + D18 과소평가 항 재실측** 포함 |
+| 10. 9단계 릴리스·안내 | **진행 중 (2026-08-10)** — 릴리스 0.13.0 `origin/main` 반영 완료(`4593052`) · **D18 과소평가 항 재실측 = 일치**(§D18의 9단계 재실측) · D13 마커 재실행 안내 = 맥북 `~/workspace`에 마커 삽입 repo **0건**. 잔여는 repo 밖 사실뿐 — 각 머신 `/plugin update`와 **V-7b-1**(ops-hub project-scope 도달 확인) |
 
 ### finding ledger — 적대검증 라운드
 
