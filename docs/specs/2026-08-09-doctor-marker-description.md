@@ -463,6 +463,10 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | **fp-7b-I3** | `doctor/SKILL.md` · *동일 version의 stale 설치는 탐지해도 갱신할 수 없다* · 원격 manifest version을 읽어 `릴리스 메타데이터 불일치`로 분리하고 version bump를 안내하라 | medium | **ESCALATE(batch-pending)** | D5(subtree 판정) 재론이 아니라 *그 판정이 새로 식별하는 상태에 조치가 없다*는 별개 지적. 캐시가 version 디렉터리로 키잉되는 것은 실측 확인(`cache/<mkt>/<plugin>/<version>/`)했으나 **"version이 같으면 `/plugin update`를 건너뛴다"는 행동 주장은 미실증**이라 저신뢰이고, 조치 설계도 선택지 2+(상태 신설 · 문구 보강 · 수용). 자동 모드 batch군(critical·보안·방향전제 아님) |
 | **fp-7b-I4** | `doctor/SKILL.md` · *고아 캐시의 companion이 활성 설치 결함을 숨긴다* · 레지스트리의 활성 `installPath` 아래 companion만 확인하라 | medium | **FIXED** (R1) | D15(신호 3종) 재론 아님 — 신호 수가 아니라 *정해진 신호가 활성 설치를 안 본다*는 지적. 실증: 이 머신 캐시에 `dev-workflow` 6개 버전이 남아 있고 활성은 2개(`supabase`도 2개) → `find … -print -quit`는 고아 버전을 집을 수 있다. 레지스트리 엔트리에 **`installPath`가 실재**함을 확인하고 프로브 3의 companion 조회를 그 경로 기준으로 교체(스코프·경로·OK/MISSING 출력). 실행 검증 완료 |
 
+| **fp-7b-I5** | `doctor/SKILL.md` · *CTX 설정 조회가 같은 줄의 비밀값까지 노출한다* · JSON을 파싱해 `env.CLAUDE_CTX_LIMIT`만 출력하고 실패 시에도 원문·인접 필드를 내지 말라 | **high** | **FIXED** (R2) | D10(어느 파일을 볼지) 재론이 아니라 *출력 방식*의 정보노출 결함. **재현 확인**: minified `{"env":{"CLAUDE_CTX_LIMIT":…,"ANTHROPIC_AUTH_TOKEN":"sk-ant-…","GH_TOKEN":"ghp_…"}}`에 `grep -Hn`을 걸면 토큰까지 그대로 출력된다(이 머신 실제 settings.json은 178줄이라 현재 노출 없음 — 스킬은 임의 머신에서 돈다). 프로브 4를 JSON 필드 투영으로 교체. 검증: 유출 픽스처 → `200000`만 · 비-JSON 파손 파일 → `읽기·파싱 실패`만 |
+| **fp-7b-I6** | `doctor/SKILL.md` · *로컬 origin/HEAD를 최신 원격 기본 브랜치로 오인한다* · `ls-remote --symref`로 원격 HEAD를 조회해 그 ref를 fetch하고, 확보 못 하면 판정 불가로 처리하라 | medium | **FIXED** (R2) | D3/D5(비교 정책) 재론이 아니라 *비교 기준 ref 선택* 결함. 실측: clone의 refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라 `fetch origin`이 `origin/HEAD`를 갱신하지 않는다 → 기존 문면("원격 HEAD에서 유도")과 실제 명령(로컬 symbolic-ref 조회)이 **어긋나 있었다**. `ls-remote --symref` → 해당 브랜치 fetch → `FETCH_HEAD:dev-workflow`로 교체하고 미확인 시 판정 불가로 확정. **새 remote-tracking ref를 만들지 않음을 확인**(refs/remotes 목록 불변) |
+| **fp-7b-I7** | `doctor/SKILL.md` · *멈춘 fetch가 4행 출력 보장을 무기한 차단한다* · 비대화형 + 시간 상한을 걸고 초과 시 판정 불가로 기록한 뒤 나머지를 계속하라 | medium | **FIXED** (R2) | D24("부분 실패에도 계속")가 받는 경우가 아니다 — 실패로 **전환되지 않고 매달리는** 별개 경로다. `GIT_TERMINAL_PROMPT=0` + `http.lowSpeedLimit`/`lowSpeedTime`으로 반영. **권고안 `timeout(1)`은 채택하지 않았다** — 이 머신에 `timeout`·`gtimeout`이 **둘 다 없어**(실측) 그대로 쓰면 명령 부재로 프로브가 통째로 깨진다. 마켓플레이스 clone 3종이 모두 https임을 확인하고 git 내장 옵션으로 대체했으며, 그 근거를 문면에 남겼다 |
+
 **부수 정정 1건 (루프 자체 발견 — 적대 지목 아님)** — `fp-S13` 계열(결정 범위 표기 미동기화)이 **D26 추가로 재발**했다. 7단계가 D26을 표에 넣으면서 범위 표기 4곳(`:3` 상태줄 · `:50` §3 제목 · `:248` D번호 표기 규칙 · `:258` 확정 결정 헤더)이 D25에 멈춰 있었다. 저비용이라 정정했으나 **계열 2회차**이고 근본 원인이 구조적(결정 1건 추가마다 4곳 수동 동기화)이라, 표기 방식 일반화 여부를 **batch ESCALATE로 함께 올린다**.
 
 **라운드 기록**
@@ -470,7 +474,10 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | 라운드 | 모드 | verdict | 신규 finding | score(수정 전) | 미확인 FIXED 큐 |
 |---|---|---|---|---|---|
 | R1 | 적대 | needs-attention | medium 4 (critical/high/low 0) | **4** | 0 → **3** (fp-7b-I1 · I2 · I4) |
+| R2 | 적대 | needs-attention | **high 1** + medium 2 (critical/low 0) | **6** | 3 → **6** (+ fp-7b-I5 · I6 · I7) |
 
 - score 산식 = `critical4·high3·medium1`, 스냅샷은 §2c 분류 직후·수정 전(FIXED 후보 + 미해결 ESCALATE 포함, 미확인 FIXED 큐 제외).
 - 기결정 가드 대조 결과: R1 4건 모두 D1~D26·승계 기결정의 **재론이 아니다**(리뷰어 스스로 fp-S10·D5·D15와의 겹침 가능성을 단서 ③대로 명시했고, 대조 결과 전부 별개 지적). **루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건.**
-- 8단계 게이트 갈음(비-npm repo) — 이번 라운드 수정은 **본문만이고 description은 불변**이라 발견성 TDD 90런이 그대로 유효하다(7단계 REFACTOR와 같은 근거). 추가로 개정 프로브 3종을 **실제 실행**해 정상 루트·빈 override degraded 양쪽에서 기대 출력을 확인했다.
+- **R2 기결정 가드 대조**: 3건 모두 리뷰어가 단서 ③대로 겹침 가능성을 명시했고(D10 · D3/D5 · D24), 대조 결과 **전부 별개 지적**이다 — 각각 *어느 파일을 보나*가 아닌 *출력 방식*, *비교 정책*이 아닌 *기준 ref 선택*, *실패 후 계속*이 아닌 *실패로 전환되지 않는 정지*. DUPLICATE 0건, **루프 직접 판정 누적 0건 유지**.
+- **R1 3건은 R2에서 재출현하지 않았다** — ledger에 `적대 비재출현(R2)`로 참고 기록하되 **미확인 FIXED 큐에서 빼지 않는다**(적대 침묵은 소멸 증거가 아니다). 소멸 확인은 확인 라운드 임무 ①.
+- 8단계 게이트 갈음(비-npm repo) — 두 라운드의 수정 모두 **본문만이고 description은 불변**이라 발견성 TDD 90런이 그대로 유효하다(7단계 REFACTOR와 같은 근거). 추가로 **개정된 4항목 프로브를 문면 그대로 연속 실행**해 D18 대조표를 재현했다: user-scope 최신(subtree 동일) · project-scope 뒤처짐(ops-hub 0.11.0) · 스코프 간 드리프트 검출 · codex 정상 · CTX 정상(1M 모델 + 미설정). degraded 쪽은 빈 플러그인 루트 override(→ `REGISTRY_MISSING`·미등록)와 비-JSON settings(→ 원문 미출력)로 확인했다.

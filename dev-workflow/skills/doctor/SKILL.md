@@ -68,14 +68,22 @@ KEY=<1번 출력 1열>                 # `dev-workflow@<marketplace>`
 MP="${KEY#*@}"
 C="$P/marketplaces/$MP"
 [ -d "$C/.git" ] || echo "미등록"     # 미등록이면 여기서 이 프로브를 끝낸다 (아래를 돌리지 않는다)
-git -C "$C" fetch -q origin
-REF="$(git -C "$C" symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)"
-git -C "$C" rev-parse "$REF:dev-workflow"          # 최신 subtree id — 엔트리 전체에 1회
+
+export GIT_TERMINAL_PROMPT=0         # 자격증명 프롬프트로 매달리지 않는다
+
+# 원격 기본 브랜치를 원격에 직접 묻는다
+HB="$(git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 -C "$C" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/{print $2; exit}')"
+[ -n "$HB" ] || echo "판정 불가: 원격 HEAD 미확인"   # 못 읽으면 여기서 끝낸다 (main으로 추정하지 않는다)
+
+git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 -C "$C" fetch -q origin "$HB"
+git -C "$C" rev-parse "FETCH_HEAD:dev-workflow"    # 최신 subtree id — 엔트리 전체에 1회
 ```
 
 **미등록이면 거기서 끝낸다.** `.git`이 없는데 `fetch`·`rev-parse`를 이어 돌리면 fatal만 쌓이고 판정은 이미 "미등록"으로 확정돼 있다. **1번이 엔트리를 0건 냈을 때도 `KEY`가 없으므로 같다** — 그때는 `ls -1 "$P/marketplaces" 2>/dev/null`로 clone 유무만 보고(glob을 쓰지 않는다 — 점검 3 참조), 없으면 "미등록"·있으면 "판정 불가"(대조할 설치 sha가 없다)로 적는다.
 
-**기본 브랜치를 `main`으로 가정하지 않는다** — 원격 HEAD에서 유도하고 실패할 때만 `origin/main`으로 떨어진다.
+**기본 브랜치를 로컬에서 유도하지 않는다.** clone의 fetch refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라(실측), 평범한 `git fetch origin`은 **`origin/HEAD`를 갱신하지도, 다른 브랜치를 가져오지도 않는다**. 원격 기본 브랜치가 바뀌면 로컬 `origin/HEAD`는 옛 `origin/main`을 계속 가리키고, 낡은 기준과 비교한 결과가 **"최신"으로 오판**된다. 그래서 `ls-remote --symref`로 **원격에 직접 묻고** 그 브랜치를 지목해 fetch한 뒤 `FETCH_HEAD`에서 subtree를 읽는다 — 새 remote-tracking ref를 만들지 않으므로 clone에 남는 상태가 늘지 않는다. 원격 HEAD를 못 읽으면 **`main`으로 추정하지 말고 판정 불가**다((b)).
+
+**네트워크 호출은 매달리지 않게 감싼다.** `git fetch`는 자격증명 프롬프트나 blackhole에서 **실패로 돌아오지 않고 그대로 멈출 수 있다** — 그러면 뒤의 codex·CTX 프로브와 **표 4행 출력에 아예 도달하지 못한다**. 이것은 아래 §출력의 "부분 실패에도 계속"이 받는 경우가 아니다: 실패로 전환되지 않기 때문이다. `GIT_TERMINAL_PROMPT=0`으로 프롬프트를 끄고 `http.lowSpeedLimit`/`http.lowSpeedTime`으로 정체를 끊는다(실측한 마켓플레이스 clone 3종이 모두 https다). **외부 `timeout(1)`을 쓰지 않는다** — macOS 기본 설치에는 `timeout`도 `gtimeout`도 없어(실측) 명령 부재로 프로브가 통째로 깨진다. 끊긴 경우는 마켓플레이스 **판정 불가**로 적고 나머지 프로브와 4행 출력을 계속한다.
 
 그다음 **1번이 낸 엔트리마다** 설치본 subtree id를 낸다(엔트리가 여럿이면 각각 돌린다 — 한 번만 돌리면 나머지 스코프가 판정 없이 남는다):
 
@@ -121,10 +129,23 @@ for (const e of (d.plugins||{})["codex@openai-codex"]||[]) {
 
 ```bash
 echo "env: ${CLAUDE_CTX_LIMIT:-<미설정>}"
-grep -Hn CLAUDE_CTX_LIMIT "$R/settings.json" .claude/settings.json .claude/settings.local.json 2>/dev/null
 ```
 
-`.claude/…` 두 곳은 **현재 repo** 기준이다(프로젝트 스코프 설정이라 그게 맞다) — project-scope 설치가 다른 repo에 있어도 그 repo의 settings를 뒤지지 않는다. 상대경로이므로 **repo 루트에서 돌린다**(cwd가 repo 밖이면 조용히 "값 없음"이 된다). `grep`의 **종료코드는 보지 않는다**: 무매치와 파일 부재를 구분할 필요가 없다(둘 다 "이 파일에 값 없음"이다).
+```bash
+# settings 3곳 — 원문 줄을 찍지 않고 값 하나만 투영한다
+node -e '
+const fs=require("fs");
+for (const f of process.argv.slice(1)) {
+  let v;
+  try { v = (JSON.parse(fs.readFileSync(f,"utf8")).env||{}).CLAUDE_CTX_LIMIT; }
+  catch (e) { console.log([f, fs.existsSync(f) ? "읽기·파싱 실패" : "없음"].join("\t")); continue; }
+  console.log([f, v === undefined ? "값 없음" : String(v)].join("\t"));
+}' "$R/settings.json" .claude/settings.json .claude/settings.local.json
+```
+
+`.claude/…` 두 곳은 **현재 repo** 기준이다(프로젝트 스코프 설정이라 그게 맞다) — project-scope 설치가 다른 repo에 있어도 그 repo의 settings를 뒤지지 않는다. 상대경로이므로 **repo 루트에서 돌린다**(cwd가 repo 밖이면 조용히 "값 없음"이 된다).
+
+**`grep`으로 훑지 않는다 — 값 하나만 투영한다.** `grep`은 필드가 아니라 **일치한 줄 전체**를 출력한다. settings.json이 한 줄로 minify돼 있거나 `env` 객체가 한 줄이면, 같은 줄에 있던 **API 토큰·자격증명이 통째로 도구 출력과 세션 기록에 남는다**(합성 픽스처로 재현 확인). 그래서 파싱해 `env.CLAUDE_CTX_LIMIT` 하나만 찍고, **읽기·파싱이 실패해도 원문이나 인접 필드를 출력하지 않는다** — 실패는 파일명 + 상태로만 적는다. 파일 부재와 값 없음은 구분할 필요가 없으므로(둘 다 "이 파일에 값 없음") 종료코드도 보지 않는다.
 
 훅이 실제로 읽는 것은 **프로세스 환경변수**다(`hooks/scripts/context-threshold-hook.mjs`). 셸 프로필 등 다른 경로로 주입되면 settings.json grep만으로는 "미설정" 오탐이 난다. settings.json 3곳은 **"어디서 왔는가 / 어디에 넣으면 되는가"**를 밝혀 조치 안내를 붙이는 용도로 병행 조회한다.
 
