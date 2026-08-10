@@ -467,6 +467,9 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | **fp-7b-I6** | `doctor/SKILL.md` · *로컬 origin/HEAD를 최신 원격 기본 브랜치로 오인한다* · `ls-remote --symref`로 원격 HEAD를 조회해 그 ref를 fetch하고, 확보 못 하면 판정 불가로 처리하라 | medium | **FIXED** (R2) | D3/D5(비교 정책) 재론이 아니라 *비교 기준 ref 선택* 결함. 실측: clone의 refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라 `fetch origin`이 `origin/HEAD`를 갱신하지 않는다 → 기존 문면("원격 HEAD에서 유도")과 실제 명령(로컬 symbolic-ref 조회)이 **어긋나 있었다**. `ls-remote --symref` → 해당 브랜치 fetch → `FETCH_HEAD:dev-workflow`로 교체하고 미확인 시 판정 불가로 확정. **새 remote-tracking ref를 만들지 않음을 확인**(refs/remotes 목록 불변) |
 | **fp-7b-I7** | `doctor/SKILL.md` · *멈춘 fetch가 4행 출력 보장을 무기한 차단한다* · 비대화형 + 시간 상한을 걸고 초과 시 판정 불가로 기록한 뒤 나머지를 계속하라 | medium | **FIXED** (R2) | D24("부분 실패에도 계속")가 받는 경우가 아니다 — 실패로 **전환되지 않고 매달리는** 별개 경로다. `GIT_TERMINAL_PROMPT=0` + `http.lowSpeedLimit`/`lowSpeedTime`으로 반영. **권고안 `timeout(1)`은 채택하지 않았다** — 이 머신에 `timeout`·`gtimeout`이 **둘 다 없어**(실측) 그대로 쓰면 명령 부재로 프로브가 통째로 깨진다. 마켓플레이스 clone 3종이 모두 https임을 확인하고 git 내장 옵션으로 대체했으며, 그 근거를 문면에 남겼다 |
 
+| **fp-7b-I8** | `doctor/SKILL.md` · *변경 내역 조회가 정의되지 않은 `$REF` 때문에 최신 FETCH_HEAD를 사용하지 않는다* · 범위를 `"$SHA..FETCH_HEAD"`로 고정하라 | medium | **FIXED** (R3) | **fp-7b-I6 수정이 만든 회귀 — 루프 자신의 결함이다.** R2에서 `REF=` 정의를 없애고 보조 로그의 사용처를 남겨, `"$SHA.."`가 되어 우변이 **로컬 HEAD**로 채워지고 있었다. 실측: 이 clone의 로컬 HEAD(`a117486`)는 origin/main(`3267b82`)보다 **1커밋 뒤처져 있다**(fetch는 체크아웃 브랜치를 전진시키지 않는다). 오늘은 그 1커밋이 docs-only라 두 범위 결과가 우연히 일치했으나, `dev-workflow/`를 건드린 커밋이었다면 근거에서 통째로 빠졌다. `FETCH_HEAD`로 고정 + 프로브 2와 같은 실행에서 이어 돌리라는 단서 추가 |
+| **fp-7b-I9** | `doctor/SKILL.md` · *저속 제한은 DNS·TCP·TLS 연결 정지를 차단하지 못한다* · 전송 상태와 무관한 휴대 가능한 wall-clock 제한을 두 git 호출에 적용하라 | medium | **ESCALATE(batch-pending)** | 지적 자체는 타당하다 — `http.lowSpeedLimit`/`lowSpeedTime`은 **전송 속도만** 보고 connect 단계에는 걸리지 않는다. 그러나 이는 **fp-7b-I7과 같은 계열의 2회차**(둘 다 "fetch가 매달려 표 4행에 도달 못 함")라 §ledger 규약에 따라 더 고치지 않고 판정으로 올린다. 대안은 실증해 뒀다: `perl -e 'alarm shift; exec @ARGV' <초> <명령>` — `/usr/bin/perl`이 macOS 기본이고, 5초 제한이 30초 sleep을 **5.011초에 SIGALRM(exit 142)**으로 끊으며 정상 명령은 그대로 통과한다. 채택 여부는 **git·node만 쓰던 스킬에 perl 의존을 추가할지**의 판단이라 사용자 결정 |
+
 **부수 정정 1건 (루프 자체 발견 — 적대 지목 아님)** — `fp-S13` 계열(결정 범위 표기 미동기화)이 **D26 추가로 재발**했다. 7단계가 D26을 표에 넣으면서 범위 표기 4곳(`:3` 상태줄 · `:50` §3 제목 · `:248` D번호 표기 규칙 · `:258` 확정 결정 헤더)이 D25에 멈춰 있었다. 저비용이라 정정했으나 **계열 2회차**이고 근본 원인이 구조적(결정 1건 추가마다 4곳 수동 동기화)이라, 표기 방식 일반화 여부를 **batch ESCALATE로 함께 올린다**.
 
 **라운드 기록**
@@ -475,9 +478,12 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 |---|---|---|---|---|---|
 | R1 | 적대 | needs-attention | medium 4 (critical/high/low 0) | **4** | 0 → **3** (fp-7b-I1 · I2 · I4) |
 | R2 | 적대 | needs-attention | **high 1** + medium 2 (critical/low 0) | **6** | 3 → **6** (+ fp-7b-I5 · I6 · I7) |
+| R3 | 적대 | needs-attention | medium 2 (critical/high/low 0) | **3** | 6 → **7** (+ fp-7b-I8) |
 
 - score 산식 = `critical4·high3·medium1`, 스냅샷은 §2c 분류 직후·수정 전(FIXED 후보 + 미해결 ESCALATE 포함, 미확인 FIXED 큐 제외).
 - 기결정 가드 대조 결과: R1 4건 모두 D1~D26·승계 기결정의 **재론이 아니다**(리뷰어 스스로 fp-S10·D5·D15와의 겹침 가능성을 단서 ③대로 명시했고, 대조 결과 전부 별개 지적). **루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건.**
 - **R2 기결정 가드 대조**: 3건 모두 리뷰어가 단서 ③대로 겹침 가능성을 명시했고(D10 · D3/D5 · D24), 대조 결과 **전부 별개 지적**이다 — 각각 *어느 파일을 보나*가 아닌 *출력 방식*, *비교 정책*이 아닌 *기준 ref 선택*, *실패 후 계속*이 아닌 *실패로 전환되지 않는 정지*. DUPLICATE 0건, **루프 직접 판정 누적 0건 유지**.
-- **R1 3건은 R2에서 재출현하지 않았다** — ledger에 `적대 비재출현(R2)`로 참고 기록하되 **미확인 FIXED 큐에서 빼지 않는다**(적대 침묵은 소멸 증거가 아니다). 소멸 확인은 확인 라운드 임무 ①.
+- **R1 3건은 R2에서, R1·R2 6건은 R3에서 재출현하지 않았다** — ledger에 `적대 비재출현(R2)`·`적대 비재출현(R3)`으로 참고 기록하되 **미확인 FIXED 큐에서 빼지 않는다**(적대 침묵은 소멸 증거가 아니다). 소멸 확인은 확인 라운드 임무 ①.
+- **R2·R3의 지목은 모두 직전 라운드 수정이 파생시킨 것이다**(fp-7b-I6 → fp-7b-I8 회귀, fp-7b-I7 → fp-7b-I9 불완전 수정). spec 루프에서 관측된 것과 같은 패턴이며(fp-S2→fp-S4, fp-S5→fp-S7), 계열 2회차인 fp-7b-I9를 판정으로 올리는 근거다.
+- **자동 모드 종료** — R3 응답으로 **적대 소진 3 = `--auto-rounds` 도달**. §2j에 따라 다음 리뷰 전에 batch를 flush한다.
 - 8단계 게이트 갈음(비-npm repo) — 두 라운드의 수정 모두 **본문만이고 description은 불변**이라 발견성 TDD 90런이 그대로 유효하다(7단계 REFACTOR와 같은 근거). 추가로 **개정된 4항목 프로브를 문면 그대로 연속 실행**해 D18 대조표를 재현했다: user-scope 최신(subtree 동일) · project-scope 뒤처짐(ops-hub 0.11.0) · 스코프 간 드리프트 검출 · codex 정상 · CTX 정상(1M 모델 + 미설정). degraded 쪽은 빈 플러그인 루트 override(→ `REGISTRY_MISSING`·미등록)와 비-JSON settings(→ 원문 미출력)로 확인했다.

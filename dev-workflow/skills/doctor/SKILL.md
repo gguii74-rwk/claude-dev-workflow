@@ -94,8 +94,10 @@ git -C "$C" rev-parse "$SHA:dev-workflow"          # SHA = 그 엔트리의 gitC
 어떤 엔트리든 최신 id와 **다를 때만** 무엇이 달라졌는지 보조 근거를 붙인다:
 
 ```bash
-git -C "$C" log --oneline "$SHA..$REF" -- dev-workflow/
+git -C "$C" log --oneline "$SHA..FETCH_HEAD" -- dev-workflow/
 ```
+
+**우변을 비워 두지 않는다.** `"$SHA.."`처럼 우변이 없으면 git이 **로컬 `HEAD`**로 채우는데, clone의 로컬 HEAD는 방금 받은 원격 최신과 다를 수 있다(이 머신에서도 달랐다) — 그러면 원격의 최신 변경이 로그에서 통째로 빠지거나 근거가 빈칸으로 나온다. 기준은 위에서 subtree를 읽은 것과 **같은 `FETCH_HEAD`**여야 한다. 그래서 이 로그는 **프로브 2의 fetch와 같은 실행에서 이어서** 돌린다(`FETCH_HEAD`는 마지막 fetch 결과라 프로브 2를 건너뛰면 낡은 값이다).
 
 ### 3. codex — 신호 3종까지만
 
