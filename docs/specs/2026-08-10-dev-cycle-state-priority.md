@@ -190,3 +190,17 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 |---|---|---|
 | V1 | (C-6 V1 승계) 경량 경로의 우회 감소 실효 — 이 트랙 비목표(D7) | 0.15.0 이후 ops-hub 재조사 |
 | V2 | 프로그램 종결 보고의 ops-hub 실측 대조 3항목 — 확인 부채 발생률 · 재지목 건수 · outcome 채움률 | 순번 8 종료 보고(§7) |
+
+## 적대검증 ledger (spec)
+
+- 루프: `review-loop --phase spec` · base = main@`08866bc8d2f30d7b3d7a472cb53fdb113e5d6f1a` · 예산 max 5 / confirm 2 / auto 3
+- score 산식: Σ weight(§2c 분류 직후·수정 전 미판정 blocking), weight = critical 4 · high 3 · medium 1 · low 0. 미확인 FIXED 큐 제외.
+
+| fingerprint | 발생 | severity | disposition | 근거·수정 |
+|---|---|---|---|---|
+| fp-S1 · spec §3b · 첫 미완 규칙이 6항목 부분 결손을 1–2로 오배정(표 초안이 C-10 D14 분기를 구현 불능으로 만듦) · rec: 1–2=골격/3=내용 완전성 분담+검증 arm | R1 | medium | FIXED(R1) | 표 1–2·3행 완료 신호를 D14 분기로 분담 재정의 + D14 분기 arm 2런을 §5·AC4에 추가. 커밋 `bb5f2eb` |
+| fp-S2 · spec 전반 · C-10 결정 참조가 표기 선언상 C-6 네임스페이스로 해석(D6·D9~D16 충돌) · rec: C-10 D<n> 전수 명시 | R1 | medium | FIXED(R1) | 본문·재논의 블록 산문의 C-10 결정 참조 전수에 `C-10` 접두 부여 + 표기 선언 개정. 커밋 `bb5f2eb` |
+
+- **score 이력**: R1 = 2 (medium 2, 전부 신규)
+- **미확인 FIXED 큐**: fp-S1 · fp-S2 (R1 수정, 소멸 확인 대기)
+- **루프 직접 판정**: 없음
