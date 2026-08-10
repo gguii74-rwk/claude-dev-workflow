@@ -1,6 +1,6 @@
 # dev-cycle 판별 구조 재검토 — 상태 계층 분리 + 단일 우선순위 규칙 (순번 8 · C-10)
 
-- 단계: **7 직접 구현(TDD) 완료 (2026-08-11, GREEN — AC1~AC7 전건 충족, 유효 235런·REFACTOR 5회, 기록 = `.remember/tdd-8-c10.md`) — 다음 = 8 review-loop(impl)** (새 세션, ledger = 이 문서 말미 — C-6 D17). 종결 시 이 줄을 갱신할 것.
+- 단계: **트랙 종결 — 9단계 완료 (2026-08-11)** — 릴리스 **0.15.0** `origin/main` 반영(`eb5026d`), README 3종 최종 대조 = 무변경 확인, **AC 7건 전건 충족**. 잔여는 **세 머신 `/plugin update` 안내뿐**(설치본은 아직 0.14.0). **프로그램 종결 — 이 트랙(순번 8)이 마지막**: 후속 관찰 지표 = ops-hub 실측 대조 3항목(§9단계), 후속 백로그 = fp-I17 review-loop 계약 보강(`.remember/remember.md` §백로그, 순번 미배치). — 이력: 7 직접 구현(TDD) 완료(2026-08-11, GREEN — AC1~AC7 전건 충족, 유효 235런·REFACTOR 5회, 기록 = `.remember/tdd-8-c10.md`) → 8 review-loop(impl) 종결(2026-08-11, verdict pass — ledger = 이 문서 말미)
 - 브리프: `2026-08-07-review-loop-and-pipeline-improvements-brief.md` §실행 순서 순번 8(C-10). **프로그램의 마지막 트랙.**
 - 입력: C-6 impl ledger(`2026-08-08-dev-cycle-extension.md` 말미) · 준비 자료 `.remember/prep-8-c10.md`
 - 대상: `dev-workflow/skills/dev-cycle/SKILL.md` (0.14.0 기준 95줄) — 판별 절 + 경량 경로 절
@@ -274,3 +274,36 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 - **미확인 FIXED 큐: 0건 — 확인 부채 0으로 성공 종료.**
 
 **루프 종결 (2026-08-11)**: 적대 3(R1~R3) / 확인 1(C1). disposition 집계 = **FIXED 4**(fp-I15·I16·I18·I19 — 전건 소멸 확인) · **OUT_OF_SCOPE 1**(fp-I17 — 사용자 판정, follow-up = review-loop 계약 보강 트랙: 무-finding 빠른 종료에도 1줄 종결 ledger 커밋) · **ESCALATE 2**(fp-I17·fp-I19 — 전건 사용자 batch 판정으로 귀결) · ACCEPTED/DEFERRED_TO_IMPL/DUPLICATE/DEFER_LOW 0. score 이력 R1 = 2 → R2 = 2 → R3 = 2(전환 신호 1 → batch → 확인). 다음 단계로 이월하는 blocking 없음.
+
+## 9단계 — 릴리스 0.15.0 (2026-08-11)
+
+**`origin/main` 반영 완료 — `08866bc..eb5026d`(27 커밋, fast-forward).** 릴리스 커밋 = `eb5026d`(`plugin.json` 0.14.0 → **0.15.0**). `plugin.json`·`marketplace.json`의 description은 **무변경** — 이 트랙은 스킬을 신설·제거하지 않았고 기존 문장이 그대로 성립한다(marketplace.json은 버전 필드 자체가 없음 — 0.14.0 전례 동일).
+
+**README 3종 최종 대조 = 무변경 확인**(0.14.0 전례 동일). 이 트랙의 변경은 dev-cycle SKILL.md 판별 절의 **구조·표현**뿐이고(C-10 D1 — 내용 불변), README는 기능 수준 기술이라 어긋남 0을 확인했다:
+
+| 대조 항목 | 3종 상태 |
+|---|---|
+| fast-lane 문단(`:79`) — 분기 축·하한 3종·단계별 생략+D기록·"기록을 읽은 뒤 판별"·세션 한정 승인 | **무변경 유지가 정답** — 전부 C-10이 내용 불변으로 승계한 결정(D1~D5·D20·D21·계열 A)만 기술, 새 표 구조에서도 전 문장 참 |
+| ui-mockup 3.5 서술(`:13`·`:152`) — "harden-spec 직후·review-loop(spec) 직전" | 파이프라인 **위치** 서술이라 D12 ②의 판별 의미 변경(3.5 완료+4 생략 기록 → 5)과 무관 — 여전히 참 |
+| dev-cycle 표·§1(`:9`·`:69~77`) — 읽기 전용 지도·현재 단계 안내·경량/정식 판정 | 표면 동작 불변(G-g·AC6) — 무변경 |
+
+### AC 최종 대조 (7건)
+
+| AC | 판정 |
+|---|---|
+| AC1 검증 생략 방향 이탈 0 | **충족** — 7단계 235런 + impl 수정 사이클 85런(R1 60·batch 25) 전 배치 이탈 0 |
+| AC2 R-skip4 이탈률 < 1/6 | **충족** — 0/10 (R1 사이클 재측정 포함, 기준선 1/6 대비 소멸) |
+| AC3 회귀 arm 전건 무회귀 | **충족** — C-6 회귀 12종 + 경량 판정 축, impl 사이클 영향권 재실행 포함 전건 GREEN |
+| AC4 신규 arm 10종 전건 + 본배치 5런 하한 | **충족** — D12·D14·승격·위치·3.5·6 자동 해당없음 계열 전건 정답, 시나리오당 파일럿 제외 5런 이상 |
+| AC5 이식 표 전 항목 거처 + 거울면 0 | **충족** — 4단계 spec 루프가 표로 감사(verdict pass, finding 10건 전건 소멸) |
+| AC6 G-g·G-b 유지 | **충족** — 판별 rep 파일 생성·수정 0건, 기계장치 0 |
+| AC7 none 대조군 변이 제거 서술 | **충족** — `.remember/tdd-8-c10.md` §none 대조군(보고 요건) |
+
+### 프로그램 종결 (브리프 §완료 기준)
+
+순번 1~8 전 트랙 릴리스 완료 — **이 릴리스로 브리프 프로그램이 종결된다.** 후속 관찰 지표(ops-hub 실측 대조 3항목, 브리프 V2): **확인 부채 발생률 · 재지목 건수 · outcome 채움률**. 후속 백로그: **fp-I17 → review-loop 계약 보강 트랙**(무-finding 빠른 종료에도 1줄 종결 ledger 커밋 — writing-skills TDD 필수, 순번 미배치, 원문 = `.remember/remember.md` §백로그).
+
+### 잔여 — 설치 갱신 안내
+
+- **세 머신(오멘·그램·맥북) 모두 설치본이 0.14.0**이다. 릴리스는 origin 반영으로 끝나고, 각 머신의 `/plugin update dev-workflow@claude-dev-workflow` 실행은 사용자 몫이다.
+- 개정 발효 시점은 각 머신의 설치 갱신 이후다 — 갱신 전에 시작한 판별은 0.14.0 문면으로 돈다(비소급 가드 2의 "종전(0.10.0) 판별" 기준선은 문면에 명시돼 있어 갱신 시점과 무관하게 동작).
