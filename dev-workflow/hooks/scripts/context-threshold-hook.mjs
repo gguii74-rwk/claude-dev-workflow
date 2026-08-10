@@ -81,9 +81,11 @@ export function decideNudge({ ratio, threshold, stopHookActive, lastNudgeStep })
   const head = renudge
     ? `컨텍스트 사용량이 약 ${pct}%입니다. 임계(${thr}%)에서 한 번 안내했고 그 뒤로 더 늘었습니다.`
     : `컨텍스트 사용량이 약 ${pct}%로 임계(${thr}%)를 넘었습니다.`;
+  // review-loop 세션은 진행 중 상태를 공유 remember.md가 아니라 자기 루프 파일에 쓴다.
+  // 단서가 없으면 이 넛지가 그 규정을 덮어써 공유 파일의 트랙 인계가 유실된다.
   const handoff = renudge
-    ? `(1) .remember/remember.md에 현재 작업 상태(무엇을 하던 중인지·다음 할 일·미해결 항목)를 핸드오프로 작성하세요 — 이미 작성했다면 그 뒤의 진행분을 반영해 갱신하세요. `
-    : `(1) .remember/remember.md에 현재 작업 상태(무엇을 하던 중인지·다음 할 일·미해결 항목)를 핸드오프로 작성하세요. `;
+    ? `(1) .remember/remember.md에 현재 작업 상태(무엇을 하던 중인지·다음 할 일·미해결 항목)를 핸드오프로 작성하세요 — 이미 작성했다면 그 뒤의 진행분을 반영해 갱신하세요. review-loop 실행 중이면 그 스킬의 핸드오프 규정을 따르세요. `
+    : `(1) .remember/remember.md에 현재 작업 상태(무엇을 하던 중인지·다음 할 일·미해결 항목)를 핸드오프로 작성하세요. review-loop 실행 중이면 그 스킬의 핸드오프 규정을 따르세요. `;
   return {
     shouldNudge: true,
     nextStep: current,

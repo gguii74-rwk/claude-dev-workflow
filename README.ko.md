@@ -99,13 +99,13 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 | `--auto-rounds <n>` | `3` | 초반 n회 **자동 모드** — 결함 자동수정 + 위험 없는 사용자 결정은 모아뒀다 한 번에 질문. `0`=매 라운드 즉시 질문, 보안 민감 작업은 `1` |
 | `--resume` | — | 중단된 루프를 `.remember/remember.md`의 저장 상태(ledger 포함)에서 재개 |
 
-> **`--max`의 의미가 0.8.0에서 바뀌었다.** 0.7.x까지는 전체 반복 횟수의 절대 상한이었지만, 지금은 **적대 라운드만**의 상한이다. 총 라운드 수는 여전히 유계이되 더 크다 — 기본값 기준 **최대 9회**(적대 5 + 확인 2 + 확인이 blocking을 찾았을 때의 복귀 적대 1 + 재진입 확인 1). 실행 횟수를 예전처럼 묶고 싶으면 `--max`와 `--confirm-rounds`를 함께 낮춰라.
+> **`--max`의 의미가 0.8.0에서 바뀌었다.** 0.7.x까지는 전체 반복 횟수의 절대 상한이었지만, 지금은 **적대 라운드만**의 상한이다. 총 라운드 수는 여전히 유계이되 더 크다 — 기본값 기준 **최대 10회**(적대 5 + 확인 2 + 확인이 blocking을 찾았을 때의 복귀 적대 1 + 재진입 확인 1 + 새 세션에서 도는 폴백② 확인 1). 실행 횟수를 예전처럼 묶고 싶으면 `--max`와 `--confirm-rounds`를 함께 낮춰라.
 
 ```
 /dev-workflow:review-loop --phase impl                   # 구현 검증 (typecheck·lint·test·build 게이트 후)
 /dev-workflow:review-loop --phase spec --auto-rounds 1   # 보안 민감 → 자동 모드 최소화
 /dev-workflow:review-loop --base develop                 # main 대신 develop 기준 diff
-/dev-workflow:review-loop --max 3 --confirm-rounds 1     # 라운드 수를 묶는다 (최대 6회)
+/dev-workflow:review-loop --max 3 --confirm-rounds 1     # 라운드 수를 묶는다 (최대 7회)
 /dev-workflow:review-loop --resume                       # 컨텍스트 한계로 끊겼던 루프 이어가기
 ```
 

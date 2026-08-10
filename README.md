@@ -99,13 +99,13 @@ All options are optional — plain `/dev-workflow:review-loop` works.
 | `--auto-rounds <n>` | `3` | First n rounds run in **auto mode** — auto-fix defects and batch up non-risky user decisions to ask at once. `0` = ask immediately every round; use `1` for security-sensitive work |
 | `--resume` | — | Resume an interrupted loop from the saved state (including the ledger) in `.remember/remember.md` |
 
-> **`--max` changed meaning in 0.8.0.** Through 0.7.x it was a hard cap on total iterations; it now caps **adversarial rounds only**. The total is still bounded but larger — at the defaults, **at most 9 rounds** (5 adversarial + 2 confirm + 1 returning adversarial round when confirm finds blocking + 1 re-entry confirm). To bound execution the way it used to be, lower `--max` and `--confirm-rounds` together.
+> **`--max` changed meaning in 0.8.0.** Through 0.7.x it was a hard cap on total iterations; it now caps **adversarial rounds only**. The total is still bounded but larger — at the defaults, **at most 10 rounds** (5 adversarial + 2 confirm + 1 returning adversarial round when confirm finds blocking + 1 re-entry confirm + 1 fallback-② confirm run in a fresh session). To bound execution the way it used to be, lower `--max` and `--confirm-rounds` together.
 
 ```
 /dev-workflow:review-loop --phase impl                   # review the implementation (after typecheck·lint·test·build gates)
 /dev-workflow:review-loop --phase spec --auto-rounds 1   # security-sensitive → minimize auto mode
 /dev-workflow:review-loop --base develop                 # diff against develop instead of main
-/dev-workflow:review-loop --max 3 --confirm-rounds 1     # bound the round count (at most 6)
+/dev-workflow:review-loop --max 3 --confirm-rounds 1     # bound the round count (at most 7)
 /dev-workflow:review-loop --resume                       # continue a loop cut off by context limits
 ```
 

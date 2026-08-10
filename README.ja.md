@@ -99,13 +99,13 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 | `--auto-rounds <n>` | `3` | 序盤 n 回は**自動モード** — 欠陥を自動修正し、リスクのないユーザー判断はまとめて一括質問。`0`=毎ラウンド即質問、セキュリティ敏感な作業は `1` |
 | `--resume` | — | 中断したループを `.remember/remember.md` の保存状態（ledger 含む）から再開 |
 
-> **`--max` の意味が 0.8.0 で変わった。** 0.7.x までは全反復回数の絶対上限だったが、現在は**敵対ラウンドのみ**の上限。総ラウンド数は依然として有界だがより大きい — デフォルト基準で**最大 9 回**（敵対 5 + 確認 2 + 確認が blocking を見つけた場合の復帰敵対 1 + 再進入確認 1）。実行回数を以前のように抑えたい場合は `--max` と `--confirm-rounds` を一緒に下げる。
+> **`--max` の意味が 0.8.0 で変わった。** 0.7.x までは全反復回数の絶対上限だったが、現在は**敵対ラウンドのみ**の上限。総ラウンド数は依然として有界だがより大きい — デフォルト基準で**最大 10 回**（敵対 5 + 確認 2 + 確認が blocking を見つけた場合の復帰敵対 1 + 再進入確認 1 + 新セッションで回るフォールバック② 確認 1）。実行回数を以前のように抑えたい場合は `--max` と `--confirm-rounds` を一緒に下げる。
 
 ```
 /dev-workflow:review-loop --phase impl                   # 実装検証 (typecheck·lint·test·build ゲート後)
 /dev-workflow:review-loop --phase spec --auto-rounds 1   # セキュリティ敏感 → 自動モード最小化
 /dev-workflow:review-loop --base develop                 # main の代わりに develop 基準の diff
-/dev-workflow:review-loop --max 3 --confirm-rounds 1     # ラウンド数を抑える (最大 6 回)
+/dev-workflow:review-loop --max 3 --confirm-rounds 1     # ラウンド数を抑える (最大 7 回)
 /dev-workflow:review-loop --resume                       # コンテキスト限界で切れたループの続き
 ```
 
