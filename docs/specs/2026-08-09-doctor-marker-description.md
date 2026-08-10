@@ -501,6 +501,16 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | — | **batch flush** | — | (적재 2 + 루프 발견 1 + 트랙 판정 1) | — | 7 → **10** (+ fp-7b-I3 · I9 · I10) |
 | R4 | 적대 (정밀 모드) | needs-attention | medium 2 (critical/high/low 0) | **2** | 10 → **12** (+ fp-7b-I11 · I12) |
 | R5 | 적대 (정밀 모드) | needs-attention | medium 2 (critical/high/low 0) | **2** | 12 → **14** (+ fp-7b-I13 · I14) |
+| C1 | **확인(중립)** | **fail** | **없음** | — | **13건 소멸 확인** · fp-7b-I12 **잔존** → **1** |
+
+**확인 라운드 C1 (2026-08-10)** — 응답 완전성 계약 충족(큐 14건 전 항목 명시 결과 + 판정 감사 + 신규 finding + verdict). 확인 소진 1/2.
+
+- **소멸 확인 13건**: `fp-7b-I1` · `I2` · `I3` · `I4` · `I5` · `I6` · `I7` · `I8` · `I9` · `I10` · `I11` · `I13` · `I14`.
+- **잔존 1건**: `fp-7b-I12` — 프로브 3의 companion 조회는 `REGISTRY_UNREADABLE`을 내는데 **판정 매핑과 출력 표 3행에 `판정 불가` 상태가 없어** 손상 레지스트리의 최종 상태가 미정의였다. 매핑 문장이 `MISSING`·0건·`REGISTRY_MISSING`만 다뤄, 남은 sentinel이 사실상 `companion 없음`으로 접힐 수 있었다 — **fp-7b-I12가 점검 1에서 막은 오진이 codex 행으로 그대로 새어 드는 경로**다. 판정 매핑을 5분기표로 교체하고 출력 표 3행·조치표 codex 행에 `판정 불가`를 명시해 재수정, 큐에 재편입.
+- **판정 감사**: 해당 없음(루프 직접 ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE 0건).
+- **신규 finding**: **없음**.
+- **verdict**: **fail** — "손상된 레지스트리에서 codex companion 상태를 판정 불가로 출력하는 계약이 완결되지 않아 FIXED 큐 1건이 남아 있다".
+- 처리: blocking이 지목됐으므로 §확인 모드 결과 처리에 따라 fp-7b-I12를 재판정(FIXED)해 수정하고 **적대 모드 복귀(상한 1회)**를 발동한다. 복귀 적대 1라운드 + 재진입 확인 1라운드는 각 상한 밖 예약분이라 두 카운터를 올리지 않는다.
 
 - score 산식 = `critical4·high3·medium1`, 스냅샷은 §2c 분류 직후·수정 전(FIXED 후보 + 미해결 ESCALATE 포함, 미확인 FIXED 큐 제외).
 - 기결정 가드 대조 결과: R1 4건 모두 D1~D26·승계 기결정의 **재론이 아니다**(리뷰어 스스로 fp-S10·D5·D15와의 겹침 가능성을 단서 ③대로 명시했고, 대조 결과 전부 별개 지적). **루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건.**

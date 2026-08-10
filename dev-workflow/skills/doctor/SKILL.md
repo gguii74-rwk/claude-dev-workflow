@@ -172,7 +172,19 @@ for (const e of (d.plugins||{})["codex@openai-codex"]||[]) {
 
 **glob으로 존재를 확인하지 않는다.** `ls -d …/*/…`는 무매치일 때 셸에 따라(zsh 기본 `nomatch`) **`ls`가 실행되기도 전에** 셸이 에러를 내고 `2>/dev/null`도 이를 막지 못한다. 위 조회가 셸 glob 대신 레지스트리를 읽는 이유이기도 하다.
 
-**판정 매핑** — `command -v codex`가 빈 출력이면 `CLI 없음`, `codex login status`가 비정상 종료하거나 로그인 상태가 아니라고 답하면 `미로그인`, companion 조회가 `MISSING`을 내거나 엔트리를 **0건**(또는 `REGISTRY_MISSING`) 내면 `companion 없음`, 셋 다 정상이면 `정상`이다. **둘 이상이 동시에 실패하면 전부 적는다**(`CLI 없음 · companion 없음`) — 하나만 골라 적으면 나머지가 조용히 사라진다.
+**판정 매핑**
+
+| 신호 | 결과 |
+|---|---|
+| `command -v codex`가 빈 출력 | `CLI 없음` |
+| `codex login status`가 비정상 종료하거나 로그인 상태가 아니라고 답함 | `미로그인` |
+| companion 조회가 `MISSING` · 엔트리 **0건** · `REGISTRY_MISSING` | `companion 없음` |
+| companion 조회가 **`REGISTRY_UNREADABLE`** | **`판정 불가`** — `companion 없음`이 **아니다** |
+| 셋 다 정상 | `정상` |
+
+**`REGISTRY_UNREADABLE`을 `companion 없음`으로 접지 않는다.** 레지스트리를 못 읽은 것은 companion이 없다는 증거가 아니다 — 그렇게 접으면 점검 1의 4분기표가 막은 오진(레지스트리 장애 하나가 확정 진단 둘로 번지는 것)이 **codex 행으로 그대로 새어 든다**. 원인은 하나인데 표에는 "미설치"와 "companion 없음"이 나란히 찍히고, 조치도 재설치와 `/codex:setup` 둘로 갈린다.
+
+**둘 이상이 동시에 실패하면 전부 적는다**(`CLI 없음 · companion 없음`) — 하나만 골라 적으면 나머지가 조용히 사라진다.
 
 **이 3종이 전부다.** 3종이 정상인데도 문제가 있으면 `codex doctor`로 위임한다 — 깊은 진단을 여기서 재구현하지 않는다. codex의 **플러그인 버전은 대조하지 않는다**(버전 대조 범위는 dev-workflow 하나뿐이다).
 
@@ -245,7 +257,7 @@ for (const f of process.argv.slice(1)) {
 |---|---|---|---|
 | 1 | 설치본 | **엔트리마다** 최신 / 뒤처짐 / 판정 불가 / 미설치 + **스코프 간 드리프트 유무** | 엔트리별 scope(·projectPath) · version · sha(짧게) · subtree id |
 | 2 | 마켓플레이스 | 등록됨 / 미등록 / 판정 불가 | clone 경로 · 최신 subtree id(비교 기준을 확보했는가) |
-| 3 | codex | 정상 / CLI 없음 / 미로그인 / companion 없음 | **3종 각각의 결과** — CLI 경로 · `login status` 출력 · companion 경로 |
+| 3 | codex | 정상 / CLI 없음 / 미로그인 / companion 없음 / **판정 불가** | **3종 각각의 결과** — CLI 경로 · `login status` 출력 · companion 경로(또는 판정 불가 사유) |
 | 4 | `CLAUDE_CTX_LIMIT` | 정상 / 과소평가 / 과대평가 / 판정 불가 | 현재 모델 · 모델 윈도 · 유효 limit · 출처 |
 
 **근거 칸에 적을 것이 없으면 `해당 없음`으로 적고 빈칸으로 두지 않는다.** 엔트리 0건일 때의 스코프 간 드리프트, 어디에도 값이 없을 때의 CTX_LIMIT 출처가 그렇다 — 후자는 "출처 없음 = **유효 limit이 훅 기본값**"이라는 뜻이므로 그렇게 적는다.
@@ -264,7 +276,7 @@ for (const f of process.argv.slice(1)) {
 | 미등록 · **미설치** | `/plugin marketplace add gguii74-rwk/claude-dev-workflow` → `/plugin install dev-workflow@claude-dev-workflow` (설치 경로가 같다) |
 | **스코프 간 드리프트** | 뒤처진 스코프의 안내를 따른다 — 드리프트는 그 갱신으로 해소된다. **모든 스코프가 최신인데 드리프트가 남으면** 근거를 다시 본다((b)의 판정 불가일 수 있다) |
 | 판정 불가 | 원인(네트워크·필드 결측)을 밝히고 재시도를 안내한다. **"최신"이라는 단어를 쓰지 않는다** |
-| codex 이상 | `/codex:setup`. 3종이 정상인데도 문제면 `codex doctor` |
+| codex 이상 | `/codex:setup`. 3종이 정상인데도 문제면 `codex doctor`. **단 `판정 불가`에는 `/codex:setup`을 안내하지 않는다** — codex가 아니라 레지스트리를 못 읽은 것이라 아래 `판정 불가` 행을 따른다 |
 | CTX_LIMIT 이상 | `/dev-workflow:setup`이 값을 묻고 settings.json에 쓴다. **doctor가 직접 쓰지 않는다.** 반영은 Claude Code 재시작 후. 단 **값의 출처가 환경변수면 settings.json에 써도 환경변수가 이긴다** — 그 경우 주입 지점(셸 프로필 등)을 함께 안내한다 |
 
 **스코프 행은 사용자가 갱신할 수 있는 3종까지다.** 그 밖의 스코프(예: `managed`)가 열거되면 조치를 지어내지 말고 **판정과 근거만 보고**한다 — 진단 전용이라는 원칙이 그대로 적용된다.
