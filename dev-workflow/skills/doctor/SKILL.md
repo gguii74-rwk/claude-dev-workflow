@@ -92,11 +92,15 @@ console.log(m && m.installLocation ? m.installLocation : "UNREGISTERED");
 export GIT_TERMINAL_PROMPT=0         # 자격증명 프롬프트로 매달리지 않는다
 
 # 원격 기본 브랜치를 원격에 직접 묻는다
-HB="$(perl -e 'alarm shift; exec @ARGV' 20 git -C "$C" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/{print $2; exit}')"
-[ -n "$HB" ] || echo "판정 불가: 원격 HEAD 미확인"   # 못 읽으면 여기서 끝낸다 (main으로 추정하지 않는다)
+# 원격 기본 브랜치와 그 OID를 한 번에 확정한다
+LS="$(perl -e 'alarm shift; exec @ARGV' 20 git -C "$C" ls-remote --symref origin HEAD 2>/dev/null)"
+HB="$(printf '%s\n' "$LS" | awk '/^ref:/{print $2; exit}')"
+OID="$(printf '%s\n' "$LS" | awk '$2=="HEAD" && $1 ~ /^[0-9a-f]{40}$/ {print $1; exit}')"
+[ -n "$HB" ] && [ -n "$OID" ] || echo "판정 불가: 원격 HEAD 미확인"   # 못 읽으면 여기서 끝낸다 (main으로 추정하지 않는다)
 
 perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q origin "$HB"
-git -C "$C" rev-parse "FETCH_HEAD:dev-workflow"    # 최신 subtree id — 엔트리 전체에 1회
+[ "$(git -C "$C" rev-parse FETCH_HEAD 2>/dev/null)" = "$OID" ] || echo "판정 불가: fetch가 원격 OID에 도달하지 못했다"   # 여기서 끝낸다
+git -C "$C" rev-parse "$OID:dev-workflow"          # 최신 subtree id — 엔트리 전체에 1회
 ```
 
 `$C`의 값에 따라 넷으로 갈린다. **아래 fetch·대조는 첫 줄에서만 이어 돌린다** — 나머지는 판정이 이미 확정돼 있고, 계속 돌리면 fatal만 쌓인다.
@@ -111,6 +115,10 @@ git -C "$C" rev-parse "FETCH_HEAD:dev-workflow"    # 최신 subtree id — 엔�
 **경로를 조립하지 않는다.** `$P/marketplaces/<name>`은 통상값일 뿐이고 실제 위치는 `known_marketplaces.json`의 **`installLocation`**이 정한다(읽기 전용 seed 배포 등은 다른 곳을 쓸 수 있다 — 런타임에 `CLAUDE_CODE_PLUGIN_SEED_DIR`가 있다). **`.git` 부재를 미등록으로 읽지도 않는다** — 이 머신에도 `installLocation`은 정상인데 `.git`이 없는 마켓플레이스가 실재한다(`claude-plugins-official`). 그걸 "미등록"이라 부르면 **정상 배포에 대고 `marketplace add`를 시키는** 잘못된 조치가 나간다.
 
 **1번이 엔트리를 0건 냈을 때는 `KEY`가 없어 `MP`를 모른다** — 그때는 위 조회를 돌리지 말고 `known_marketplaces.json`의 **키 목록만** 읽어 등록 여부를 적고, 대조할 설치 sha가 없으므로 **판정 불가**로 남긴다.
+
+**`dev-workflow@` 키가 둘 이상이면 한 기준을 나머지에 돌려 쓰지 않는다.** 1번 출력 1열에 서로 다른 마켓플레이스가 섞여 있으면(본가 + fork 등) 위 절차는 **그중 한 키에 대해서만** 유효하다. 나머지 키의 엔트리는 **`판정 불가`(다른 마켓플레이스 — 대조 기준 미확보)** 로 남기고, 근거 칸에 **어느 마켓플레이스가 대조되지 않았는지** 적는다. 한 clone의 최신 id를 다른 마켓플레이스의 sha와 맞대면, 이력이 갈린 경우엔 sha를 못 찾아 판정 불가가 되지만 **이력을 공유하는 fork라면 거짓 "최신"이 나온다** — 뒤쪽이 (b) 위반이라 안전한 쪽으로 이탈한다.
+
+**fetch 종료코드에 기대지 않는다 — 원격 OID와 대조한다.** `ls-remote --symref`는 ref 이름과 **그 OID를 함께** 준다. 이게 필요한 이유는 실패가 조용하기 때문이다: `$HB`가 비어 있으면 `git fetch -q origin ""`가 **exit 0으로 아무 것도 하지 않고 지나가고 낡은 `FETCH_HEAD`가 그대로 남는다**(실측). 그 값을 최신 기준으로 삼으면 **뒤처진 설치본이 "최신"으로 보고**되는데, 그건 규칙 (b)가 막으려던 바로 그 오답이다. 그래서 fetch 뒤 `FETCH_HEAD`가 **`ls-remote`가 준 OID와 같은지** 확인하고 다르면 판정 불가로 끝낸다. 이후 subtree 비교와 보조 로그는 `FETCH_HEAD`가 아니라 **고정한 `$OID`**를 쓴다 — 동시에 다른 fetch가 끼어들어도 기준이 흔들리지 않는다.
 
 **기본 브랜치를 로컬에서 유도하지 않는다.** clone의 fetch refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라(실측), 평범한 `git fetch origin`은 **`origin/HEAD`를 갱신하지도, 다른 브랜치를 가져오지도 않는다**. 원격 기본 브랜치가 바뀌면 로컬 `origin/HEAD`는 옛 `origin/main`을 계속 가리키고, 낡은 기준과 비교한 결과가 **"최신"으로 오판**된다. 그래서 `ls-remote --symref`로 **원격에 직접 묻고** 그 브랜치를 지목해 fetch한 뒤 `FETCH_HEAD`에서 subtree를 읽는다 — 새 remote-tracking ref를 만들지 않으므로 clone에 남는 상태가 늘지 않는다. 원격 HEAD를 못 읽으면 **`main`으로 추정하지 말고 판정 불가**다((b)).
 
@@ -133,10 +141,10 @@ git -C "$C" rev-parse "$SHA:dev-workflow"          # SHA = 그 엔트리의 gitC
 어떤 엔트리든 최신 id와 **다를 때만** 무엇이 달라졌는지 보조 근거를 붙인다:
 
 ```bash
-git -C "$C" log --oneline "$SHA..FETCH_HEAD" -- dev-workflow/
+git -C "$C" log --oneline "$SHA..$OID" -- dev-workflow/
 ```
 
-**우변을 비워 두지 않는다.** `"$SHA.."`처럼 우변이 없으면 git이 **로컬 `HEAD`**로 채우는데, clone의 로컬 HEAD는 방금 받은 원격 최신과 다를 수 있다(이 머신에서도 달랐다) — 그러면 원격의 최신 변경이 로그에서 통째로 빠지거나 근거가 빈칸으로 나온다. 기준은 위에서 subtree를 읽은 것과 **같은 `FETCH_HEAD`**여야 한다. 그래서 이 로그는 **프로브 2의 fetch와 같은 실행에서 이어서** 돌린다(`FETCH_HEAD`는 마지막 fetch 결과라 프로브 2를 건너뛰면 낡은 값이다).
+**우변을 비워 두지 않는다.** `"$SHA.."`처럼 우변이 없으면 git이 **로컬 `HEAD`**로 채우는데, clone의 로컬 HEAD는 방금 받은 원격 최신과 다를 수 있다(이 머신에서도 1커밋 뒤처져 있었다 — fetch는 체크아웃 브랜치를 전진시키지 않는다). 그러면 원격의 최신 변경이 로그에서 통째로 빠지거나 근거가 빈칸으로 나온다. 기준은 위에서 subtree를 읽은 것과 **같은 `$OID`**여야 한다.
 
 ### 3. codex — 신호 3종까지만
 
