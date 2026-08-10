@@ -162,7 +162,7 @@ if (!fs.existsSync(f)) { console.log("REGISTRY_MISSING"); process.exit(0); }
 let d;
 try { d=JSON.parse(fs.readFileSync(f,"utf8")); }
 catch (e) { console.log("REGISTRY_UNREADABLE"); process.exit(0); }
-const CWD=process.argv[3];
+const CWD=process.argv[2];
 const all=(d.plugins||{})["codex@openai-codex"]||[];
 const active=all.filter(e => e.scope==="user" || e.scope==="managed" || e.projectPath===CWD);
 if (!active.length) { console.log(all.length ? "NO_ACTIVE_ENTRY" : "NO_ENTRY"); process.exit(0); }
