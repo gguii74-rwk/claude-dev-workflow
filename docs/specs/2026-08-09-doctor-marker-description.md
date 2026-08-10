@@ -1,6 +1,6 @@
 # 순번 7b 설계 — doctor 점검 신설 · setup 마커 문구 · dev-cycle description (C-9 · C-6 D11 · fp-I3)
 
-- 상태: **9단계 진행 중 (2026-08-10)** — 릴리스 **0.13.0**을 `origin/main`에 반영 완료(`4593052`), **D18 과소평가 항 재실측 = 일치**(Haiku 4.5 세션, oracle 독립성 복구 — §D18). 잔여는 **repo 밖 사실뿐**: 각 머신 `/plugin update`(맥북 user-scope 포함)와 **V-7b-1**(ops-hub project-scope 0.13.0 도달 확인). 다음 순번 = **7c(C-4 핸드오프 표준화)**. — 이력: **8단계 `review-loop --phase impl` 종결 (2026-08-10)** — 적대 6(복귀 1 포함) + 확인 3, finding **16건 전건 FIXED**, 미판정 blocking 0 · 확인 부채 0 · verdict `pass`. — 7단계 구현 종결(2026-08-10) — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항**(그중 '과소평가' 1항은 impl 루프 R6에서 거짓 일치로 정정, §D18 참조). TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D번호 부여 완료** — 확정 결정의 범위는 §재논의 금지(기결정)의 표가 원본이다. 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
+- 상태: **트랙 종결 — 9단계 완료 (2026-08-10)** — 릴리스 **0.13.0** `origin/main` 반영(`4593052`), **V-7b-1 종결**(ops-hub project-scope `d57bfe9` 0.11.0 → `46e9b7e` 0.13.0 실측 갱신), 맥북 user-scope도 0.13.0 도달로 **스코프 간 드리프트 0**(양쪽 subtree `91f7f13`). **D18 과소평가 항 재실측 = 일치**(Haiku 4.5 세션, oracle 독립성 복구 — §D18). **AC 10건 전건 충족.** 잔여는 **원격 머신 안내뿐**(OMEN·그램 `/plugin update` — 진단 대상 아님, D3). 다음 순번 = **7c(C-4 핸드오프 표준화)**. — 이력: **9단계 진행 중 (2026-08-10)** — 릴리스 반영·D18 재실측 완료, V-7b-1 미실행. — 이력: **8단계 `review-loop --phase impl` 종결 (2026-08-10)** — 적대 6(복귀 1 포함) + 확인 3, finding **16건 전건 FIXED**, 미판정 blocking 0 · 확인 부채 0 · verdict `pass`. — 7단계 구현 종결(2026-08-10) — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항**(그중 '과소평가' 1항은 impl 루프 R6에서 거짓 일치로 정정, §D18 참조). TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D번호 부여 완료** — 확정 결정의 범위는 §재논의 금지(기결정)의 표가 원본이다. 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
 - 이력: 7a 트랙 종결(0.12.0, `3267b82`)에서 이 트랙을 다음 순번으로 지목
 - 대상: `dev-workflow` 플러그인 (기준 0.12.0) — **신설** `skills/doctor/SKILL.md` · **개정** `skills/setup/SKILL.md`(마커 문구) · `skills/dev-cycle/SKILL.md`(description) · `.claude-plugin/plugin.json` · README 3종
 - 날짜: 2026-08-09
@@ -294,9 +294,11 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 
 | # | 항목 | 왜 지금 못 닫나 | 언제 닫나 |
 |---|---|---|---|
-| V-7b-1 | **project-scope 캐시가 실제로 갱신되는 명령** | 설치 기전(repo `.claude/settings.json` 트리거)은 조회로 확인했으나, `/plugin update`는 슬래시 커맨드라 CLI로 실행·관측할 수 없다. "그 repo 안에서 실행하면 project-scope 캐시가 갱신된다"는 구조적 추론이며 미실측이다 | **D18 대조표 확인 직후** — 검증 대상은 *"그 repo 안에서 돌리면 project-scope 캐시가 갱신되는가"*이지 특정 버전 도달이 아니므로, **그 시점에 이미 origin/main에 있는 배포본(0.12.0)으로 갱신되는지**를 본다. 갱신되지 않거나 다른 위치를 요구하면 조치 안내 문구를 고친다 |
+| V-7b-1 **(종결 — 아래 블록)** | **project-scope 캐시가 실제로 갱신되는 명령** | 설치 기전(repo `.claude/settings.json` 트리거)은 조회로 확인했으나, `/plugin update`는 슬래시 커맨드라 CLI로 실행·관측할 수 없다. "그 repo 안에서 실행하면 project-scope 캐시가 갱신된다"는 구조적 추론이며 미실측이다 | **D18 대조표 확인 직후** — 검증 대상은 *"그 repo 안에서 돌리면 project-scope 캐시가 갱신되는가"*이지 특정 버전 도달이 아니므로, **그 시점에 이미 origin/main에 있는 배포본(0.12.0)으로 갱신되는지**를 본다. 갱신되지 않거나 다른 위치를 요구하면 조치 안내 문구를 고친다 |
 
-> **V-7b-1 진행 상태 (2026-08-10, 9단계) — 릴리스 완료로 실행 조건 충족.** 0.13.0이 `origin/main`(`4593052`)에 올라갔으므로 이제 ops-hub에서 `/plugin update --scope project`를 그 repo 안에서 실행해 **project-scope 캐시가 0.11.0 → 0.13.0으로 갱신되는지** 확인하면 닫힌다. 실행 주체는 사용자다(아래 이유 ①②는 그대로 유효). 갱신되지 않거나 다른 위치를 요구하면 doctor의 조치 안내 문구를 고친다.
+> **V-7b-1 종결 (2026-08-10, 9단계) — 실측으로 닫혔다.** ops-hub 안에서 `claude plugin update dev-workflow@claude-dev-workflow --scope project`를 실행해 **project-scope 캐시가 0.11.0(`d57bfe9`) → 0.13.0(`46e9b7e`)으로 갱신**되는 것을 `installed_plugins.json`에서 확인했다(해당 엔트리 `lastUpdated` = `2026-08-10T04:11:52Z`, `projectPath` 유지). 구조적 추론이 실측으로 대체됐고 **doctor의 조치 안내 문구는 수정 불요**다 — 안내가 요구하는 "그 repo 안에서 실행"·"`--scope` 명시"가 실제 조건과 일치했다(`--scope` 기본값은 `user`). 갱신 후 두 스코프의 `dev-workflow/` subtree가 모두 `91f7f13`(= 마켓플레이스 `origin/main`)으로 일치해 **스코프 간 드리프트 0**이다.
+>
+> > **실행 주체 정정.** 이월 당시 이유 ①(*"`/plugin update`는 슬래시 커맨드라 에이전트가 실행·관측할 수 없다"*)은 **CLI `claude plugin update <plugin> --scope <scope>`가 존재해 성립하지 않는다** — 슬래시 커맨드는 CLI의 래퍼였다. 남은 이유 ②(사용자 설치본을 바꾸는 행위)는 유효하므로 **사용자 승인을 받은 뒤 에이전트가 실행**했다(2026-08-10). 자연 픽스처 소모 순서 요구(D18 대조표 선기록)는 8단계에서 이미 충족돼 있었다.
 >
 > > **직전 기록 (2026-08-10, 8단계)** — **미실행, 9단계로 이월.** D18 대조표는 먼저 기록했으므로 자연 픽스처(project-scope 0.11.0 = 뒤처짐) 소모 순서 요구는 지켰다. 실행하지 않은 이유는 둘이다: ① `/plugin update`는 슬래시 커맨드라 에이전트가 실행·관측할 수 없다 ② 사용자의 ops-hub 설치본을 바꾸는 행위라 사용자가 그 repo에서 직접 돌려야 한다. **9단계 릴리스 안내에 "ops-hub에서 `/plugin update` 실행 → project-scope가 실제로 갱신되는지 확인"을 포함**한다(AC 10의 잔여분과 같은 자리).
 
@@ -465,7 +467,7 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | 7. TDD **GREEN** 4계열 90런 | **충족** — 위 표 |
 | 8. 진단 정확도 실측 GREEN(6항 + 모델 기록 + degraded 분기별 처리) | **충족** — 위 |
 | 9. `review-loop --phase spec` · `--phase impl` 미판정 blocking 0 | **둘 다 종결** — impl은 적대 6 + 확인 3, finding 16건 전건 FIXED, 확인 부채 0, verdict `pass` |
-| 10. 9단계 릴리스·안내 | **진행 중 (2026-08-10)** — 릴리스 0.13.0 `origin/main` 반영 완료(`4593052`) · **D18 과소평가 항 재실측 = 일치**(§D18의 9단계 재실측) · D13 마커 재실행 안내 = 맥북 `~/workspace`에 마커 삽입 repo **0건**. 잔여는 repo 밖 사실뿐 — 각 머신 `/plugin update`와 **V-7b-1**(ops-hub project-scope 도달 확인) |
+| 10. 9단계 릴리스·안내 | **충족 (2026-08-10)** — 릴리스 0.13.0 `origin/main` 반영(`4593052`) · **D18 과소평가 항 재실측 = 일치**(§D18의 9단계 재실측) · **V-7b-1 종결**(ops-hub project-scope 0.11.0 → 0.13.0 실측, §검증 필요) · 맥북 user-scope 0.13.0 도달(`46e9b7e`, 스코프 드리프트 0) · D13 마커 재실행 안내 = 맥북 `~/workspace`에 **실 대상 0건**(grep 적중 2건은 전부 7b TDD 픽스처 `harness-7b/fix/repo-{a,b}/CLAUDE.md`) · 종료 보고에 **다음 순번 = 7c(C-4)** 명시. 잔여는 **OMEN·그램 `/plugin update` 안내뿐**(원격 머신은 진단 대상 아님 — D3) |
 
 ### finding ledger — 적대검증 라운드
 
