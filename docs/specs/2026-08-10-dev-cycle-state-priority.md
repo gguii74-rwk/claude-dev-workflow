@@ -232,3 +232,14 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 - **미확인 FIXED 큐**: fp-I15 · fp-I16 (2건 — 수정 커밋 `aa9ebf7`, 소멸 확인 대기)
 - **루프 직접 판정**: disposition 없음. 단 **fp-I15 severity 재평가(high→medium)와 그 잔존 경계 논거는 루프 판단**이므로 확인 임무 ③ **우선 감사 대상**으로 기록.
 - 게이트: TDD GREEN 기록 갱신(임팩트 사이클 유효 60런·폐기 1런 — `.remember/tdd-8-c10.md` §impl R1, 채점 상세 = scores8.md·harness-8 백업). 96줄(D15 상한 내).
+
+**R2 (target `3d95f32`, 2026-08-11)**
+
+| fingerprint | 발생 | severity | disposition | 근거·수정 |
+|---|---|---|---|---|
+| fp-I17 · SKILL.md 4·6·8행 완료 신호 · 빠른 종료(무-finding) 시 review-loop가 ledger를 남기지 않을 수 있는데(review-loop §1 승계 ledger 부재 분기가 자인) 판별은 종결 ledger만 완료 신호로 읽어 같은 리뷰를 영구 재권고(교착 — 깨끗한 트랙이 9 도달 불가) · rec: 생산자 계약 정합 또는 빠른 종료 표지 신설 + 회귀 arm 3종 | R2 | medium | **ESCALATE(batch-pending)** | fail-closed 방향(재검증 반복 — 검증 생략 아님, AC1 무관). 해법이 갈림: ⓐ review-loop 계약 보강(빠른 종료도 1줄 종결 ledger 기록 — **C-10 범위 밖**, 후속 트랙) ⓑ dev-cycle 판독 정책 확장(루프 실행 정황·주장 vs ledger 부재 괴리를 가드 1 불명 신호로 편입 + arm) ⓒ 병행. batch 시점 일괄 제시 예정 |
+| fp-I18 · SKILL.md 7행 · 완료 신호 "task 종결·구현 커밋"이 writing-plans-split 완료 기록 계약(entrypoint status·outcome이 권위, 승인 전 구현 커밋은 완료 근거 아님)과 어긋나 미승인 task를 7 완료로 오인해 8로 통과 가능 · rec: 경로별 완료 신호 분리 + arm | R2 | medium | FIXED(R2) | 7행을 "plan 트랙 = entrypoint task 표의 완료 기록 전건이 권위(승인 전 구현 커밋만으로 완료 아님), planless·표 없는 plan = task 종결·구현 커밋"으로 분리(96줄 유지). RED X10(R-sddopen — task03 구현 커밋 실재·entrypoint 미갱신) **4/4 정답** — 문자 갭이나 실행이 표를 권위로 읽어 보완(fp-I15 동형, §2c 저비용 수정 반영 규칙). GREEN 파일럿+본배치 6/6(r8 비소급 질문 1회 fail-closed 관찰) + 재실행 M4·M5·X4·S6 20/20 무회귀. 픽스처 v1의 baseline 코드 잔재는 스토리 정합 재구축 후 측정(X4 유출 전례). 수정 커밋 `ac9ec8c` |
+
+- **score 이력**: R1 = 2 → R2 = 2 (medium 2 — fp-I17 미판정 + fp-I18 수정 전. 비감소 1회째)
+- **미확인 FIXED 큐**: fp-I15·fp-I16(`aa9ebf7`) + fp-I18(`ac9ec8c`) — 3건
+- **batch-pending**: fp-I17 1건 (auto-rounds 도달 시 일괄 제시)
