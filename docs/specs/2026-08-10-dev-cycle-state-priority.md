@@ -243,3 +243,14 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 - **score 이력**: R1 = 2 → R2 = 2 (medium 2 — fp-I17 미판정 + fp-I18 수정 전. 비감소 1회째)
 - **미확인 FIXED 큐**: fp-I15·fp-I16(`aa9ebf7`) + fp-I18(`ac9ec8c`) — 3건
 - **batch-pending**: fp-I17 1건 (auto-rounds 도달 시 일괄 제시)
+
+**R3 (target `49575ab`, 2026-08-11) — 전환: score 2→2→2(신호 1) + 적대 소진 3 = auto-rounds → batch flush·판정 국면**
+
+| fingerprint | 발생 | severity | disposition | 근거·수정 |
+|---|---|---|---|---|
+| fp-I17 (재출현) | R2·**R3** | medium | ESCALATE(batch-pending → 일괄 제시) | 동일 계열 2회째 — 리뷰어도 미판정 상태 인지. 반복 규칙상 사용자 판정 확정 대상 |
+| fp-I19 · SKILL.md 7행 · R2 수정 문구와 writing-plans-split canonical 계약의 잔존 불일치 — ⓘ canonical 권위 = live SDD progress ledger의 명시 완료 기록(entrypoint 표는 ledger 유실 시 폴백·상충 시 [x]도 미완 회귀)인데 수정 문구는 표를 무조건 권위로 명시 ⓙ SDD 최종 whole-branch 리뷰 종결에 영속 표지가 없어 전 행 [x] 직후 재개 시 조기 8 진입 가능 · rec: 수렴 규칙 정렬 + 종결 신호 요구 + arm | R3 | medium | **ESCALATE(batch)** | ⓘ은 원문 대조로 **사실 확인**(execution contract: "authority = explicit completion record in the SDD progress ledger... falls back to this committed task table"). ⓙ는 생산자측 영속 신호 부재(fp-I17 동류). 7행 표면 2회째(fp-I18 계열) + 판정 국면 → 수정 대신 사용자 판정. 선택지 = 문구 정렬+포인터 FIXED / 현행 ACCEPTED / 생산자 계약 후속 OUT_OF_SCOPE |
+
+- **score 이력**: R1 = 2 → R2 = 2 → R3 = 2 (fp-I17 지속 1 + fp-I19 신규 1 — 2회 연속 비감소, 전환 신호 1 발화. FIXED 후보 0 = 수정 큐 소진, 신호 2 동시 성립)
+- **미확인 FIXED 큐**: fp-I15·fp-I16(`aa9ebf7`) + fp-I18(`ac9ec8c`) — 3건 불변 (fp-I19는 fp-I18의 재지적이 아니라 잔존 불일치 신규 지적 — 큐 소멸 판정은 확인 라운드 소관)
+- **batch 제시**: fp-I17 + fp-I19 (2026-08-11, 적대 소진 3 도달 시점)
