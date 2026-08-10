@@ -1,6 +1,6 @@
 # 순번 7b 설계 — doctor 점검 신설 · setup 마커 문구 · dev-cycle description (C-9 · C-6 D11 · fp-I3)
 
-- 상태: **7단계 구현 종결 (2026-08-10)** — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항 전건 일치**. 다음 = **8단계 `review-loop --phase impl`**. TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D1~D21 부여 완료**(루프에서 사용자가 닫은 ESCALATE 4건 = **D22~D25** 추가). 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
+- 상태: **7단계 구현 종결 (2026-08-10)** — writing-skills TDD **GREEN 90런** + 진단 정확도 실측(D18) **6항 전건 일치**. 다음 = **8단계 `review-loop --phase impl`**. TDD 전문 = `.remember/tdd-7b-doctor.md`, 요약 = 이 문서 말미 `## 적대검증 ledger (impl)`. — 4단계 `review-loop --phase spec` 종결 (2026-08-09), 미판정 blocking 0 · 확인 부채 0 · 확인 verdict `pass`. — 3단계 harden-spec 종결(갭 21건 소진, DEFERRED 0, 검증 필요 1), §3의 결정에 **D1~D21 부여 완료**(루프에서 사용자가 닫은 ESCALATE 4건 = **D22~D25**, 7단계 TDD 실측 판정 1건 = **D26** 추가). 루프 ledger = 이 문서 말미 `## 적대검증 ledger (spec)`.
 - 이력: 7a 트랙 종결(0.12.0, `3267b82`)에서 이 트랙을 다음 순번으로 지목
 - 대상: `dev-workflow` 플러그인 (기준 0.12.0) — **신설** `skills/doctor/SKILL.md` · **개정** `skills/setup/SKILL.md`(마커 문구) · `skills/dev-cycle/SKILL.md`(description) · `.claude-plugin/plugin.json` · README 3종
 - 날짜: 2026-08-09
@@ -47,7 +47,7 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 - **C-4(핸드오프 표준화)** — 순번 7c.
 - **fan-out 리포트 파일화 규약** — 순번 미배치 백로그.
 
-## 3. 설계 (D1~D21 확정 — harden-spec 2026-08-09 · **D22~D25** = spec 루프 사용자 판정 2026-08-09)
+## 3. 설계 (D1~D21 확정 — harden-spec 2026-08-09 · **D22~D25** = spec 루프 사용자 판정 2026-08-09 · **D26** = 7단계 TDD 실측 2026-08-10)
 
 ### C-9. doctor 신설
 
@@ -245,7 +245,7 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 
 ## 재논의 금지(기결정)
 
-> **D번호 표기 규칙** — 아래 `D<n>`은 **이 문서의 로컬 번호**다(harden-spec 2026-08-09 부여 D1~D21, spec 루프에서 사용자가 닫은 판정 D22~D25). 이전 트랙 결정을 가리킬 때는 `C-6 D11`처럼 **접두를 붙인다** — 접두 없는 `D11`은 이 문서의 로컬 결정(필드 결측 판정 불가)이고, setup 마커 문구 결정은 항상 `C-6 D11`로 쓴다.
+> **D번호 표기 규칙** — 아래 `D<n>`은 **이 문서의 로컬 번호**다(harden-spec 2026-08-09 부여 D1~D21, spec 루프에서 사용자가 닫은 판정 D22~D25, 7단계 TDD 실측 판정 D26). 이전 트랙 결정을 가리킬 때는 `C-6 D11`처럼 **접두를 붙인다** — 접두 없는 `D11`은 이 문서의 로컬 결정(필드 결측 판정 불가)이고, setup 마커 문구 결정은 항상 `C-6 D11`로 쓴다.
 
 **승계 기결정 (재론 금지 — 이 spec의 전제):**
 
@@ -255,7 +255,7 @@ C-9의 근거는 브리프 `:149` 한 줄이다 — *"3머신 버전 불일치 �
 - **C-6 D17 / 7a C-3** — planless 트랙의 impl ledger = spec 문서 말미.
 - **3.5(ui-mockup) 비대상** — 화면을 만들지 않는다(스킬 문면). ui-mockup 규약상 생략 기록도 남기지 않는다.
 
-**이 트랙의 확정 결정 (D1~D25 — 전건 사용자 결정 또는 사용자 확인):**
+**이 트랙의 확정 결정 (D1~D26 — 전건 사용자 결정 또는 사용자 확인):**
 
 | D | 결정 | 출처 |
 |---|---|---|
@@ -448,5 +448,29 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | 6. README 3종 동기 갱신(사용법 · 목차 · 상단 표 · 트러블슈팅 상호참조) | **충족** — 3파일 모두 5개 지점 반영 확인 |
 | 7. TDD **GREEN** 4계열 90런 | **충족** — 위 표 |
 | 8. 진단 정확도 실측 GREEN(6항 + 모델 기록 + degraded 분기별 처리) | **충족** — 위 |
-| 9. `review-loop --phase spec` · `--phase impl` 미판정 blocking 0 | spec **종결** · impl **미실행(다음 단계)** |
+| 9. `review-loop --phase spec` · `--phase impl` 미판정 blocking 0 | spec **종결** · impl **진행 중**(아래 finding ledger) |
 | 10. 9단계 릴리스·안내 | 미실행(9단계) — **V-7b-1 잔여분 포함** |
+
+### finding ledger — 적대검증 라운드
+
+- **fingerprint 접두 = `fp-7b-I<n>`.** 승계 문서에 이미 `fp-I3`(C-6 impl ledger → 이 트랙 D26)이 있어 `fp-I<n>`을 그대로 쓰면 충돌한다. 트랙 접두로 분리한다.
+- **이 표가 impl finding의 단일 원본이다** — 다른 문서로 복제하지 말고 참조만 한다.
+
+| fp | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 · 상태 |
+|---|---|---|---|---|
+| **fp-7b-I1** | `doctor/SKILL.md` · *플러그인 저장소 override를 무시해 다른 프로필을 진단한다* · 플러그인 루트를 별도로 결정해 registry·marketplaces·cache 조회에 모두 쓰라 | medium | **FIXED** (R1) | fp-S10(`CLAUDE_CONFIG_DIR`)과 같은 계열이나 **다른 변수**라 DUPLICATE 아님. 실증: Claude Code 2.1.226 바이너리의 `GM(){let e=te.CLAUDE_CODE_PLUGIN_CACHE_DIR; if(e)return G$(e); return join(configDir,"plugins")}` — **플러그인 루트 전체**를 옮긴다. §두 루트에 `P="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-$R/plugins}"` 신설, 프로브 1·2를 `$P`로 전환(설정 루트 `$R`은 프로브 4 전용으로 분리). 실행 검증: 정상 루트 + 빈 override 양쪽 |
+| **fp-7b-I2** | `doctor/SKILL.md` · *project/local 설치에 user-scope 갱신 명령을 안내한다* · 스코프별 `--scope`를 안내하고 `projectPath`에서 실행하도록 명시하라 | medium | **FIXED** (R1) | 실증: `claude plugin update --help` = `-s, --scope <scope>` **default: `user`**. 기존 문면("명령은 같고 실행 위치만 다르다")은 사실 오류이고, fp-S6이 `local` 열거를 넣었는데 **조치 행이 따라오지 않아** local은 안내 자체가 없었다. project 행에 `--scope project` + 기본값 함정 명시, **local 행 신설**. 부수로 스코프 종수 문면 정정(`install -s` 3종 · `update -s`는 `managed` 포함 4종)과 "갱신 불가 스코프는 조치를 지어내지 않고 근거만 보고" 규칙 추가 |
+| **fp-7b-I3** | `doctor/SKILL.md` · *동일 version의 stale 설치는 탐지해도 갱신할 수 없다* · 원격 manifest version을 읽어 `릴리스 메타데이터 불일치`로 분리하고 version bump를 안내하라 | medium | **ESCALATE(batch-pending)** | D5(subtree 판정) 재론이 아니라 *그 판정이 새로 식별하는 상태에 조치가 없다*는 별개 지적. 캐시가 version 디렉터리로 키잉되는 것은 실측 확인(`cache/<mkt>/<plugin>/<version>/`)했으나 **"version이 같으면 `/plugin update`를 건너뛴다"는 행동 주장은 미실증**이라 저신뢰이고, 조치 설계도 선택지 2+(상태 신설 · 문구 보강 · 수용). 자동 모드 batch군(critical·보안·방향전제 아님) |
+| **fp-7b-I4** | `doctor/SKILL.md` · *고아 캐시의 companion이 활성 설치 결함을 숨긴다* · 레지스트리의 활성 `installPath` 아래 companion만 확인하라 | medium | **FIXED** (R1) | D15(신호 3종) 재론 아님 — 신호 수가 아니라 *정해진 신호가 활성 설치를 안 본다*는 지적. 실증: 이 머신 캐시에 `dev-workflow` 6개 버전이 남아 있고 활성은 2개(`supabase`도 2개) → `find … -print -quit`는 고아 버전을 집을 수 있다. 레지스트리 엔트리에 **`installPath`가 실재**함을 확인하고 프로브 3의 companion 조회를 그 경로 기준으로 교체(스코프·경로·OK/MISSING 출력). 실행 검증 완료 |
+
+**부수 정정 1건 (루프 자체 발견 — 적대 지목 아님)** — `fp-S13` 계열(결정 범위 표기 미동기화)이 **D26 추가로 재발**했다. 7단계가 D26을 표에 넣으면서 범위 표기 4곳(`:3` 상태줄 · `:50` §3 제목 · `:248` D번호 표기 규칙 · `:258` 확정 결정 헤더)이 D25에 멈춰 있었다. 저비용이라 정정했으나 **계열 2회차**이고 근본 원인이 구조적(결정 1건 추가마다 4곳 수동 동기화)이라, 표기 방식 일반화 여부를 **batch ESCALATE로 함께 올린다**.
+
+**라운드 기록**
+
+| 라운드 | 모드 | verdict | 신규 finding | score(수정 전) | 미확인 FIXED 큐 |
+|---|---|---|---|---|---|
+| R1 | 적대 | needs-attention | medium 4 (critical/high/low 0) | **4** | 0 → **3** (fp-7b-I1 · I2 · I4) |
+
+- score 산식 = `critical4·high3·medium1`, 스냅샷은 §2c 분류 직후·수정 전(FIXED 후보 + 미해결 ESCALATE 포함, 미확인 FIXED 큐 제외).
+- 기결정 가드 대조 결과: R1 4건 모두 D1~D26·승계 기결정의 **재론이 아니다**(리뷰어 스스로 fp-S10·D5·D15와의 겹침 가능성을 단서 ③대로 명시했고, 대조 결과 전부 별개 지적). **루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건.**
+- 8단계 게이트 갈음(비-npm repo) — 이번 라운드 수정은 **본문만이고 description은 불변**이라 발견성 TDD 90런이 그대로 유효하다(7단계 REFACTOR와 같은 근거). 추가로 개정 프로브 3종을 **실제 실행**해 정상 루트·빈 override degraded 양쪽에서 기대 출력을 확인했다.

@@ -28,13 +28,16 @@ description: Use when the dev-workflow pipeline's own environment looks broken �
 | dev-cycle | "다음 단계 뭐야"·"어디서부터 시작해"는 `dev-cycle`. doctor는 **환경**만 본다 |
 | 제외 문장 2종 | ① **도구·현상에 묶이지 않은 일반 실패 문장** — "왜 안 돼" · "에러 났어" · "환경이 꾸직해" ② **다른 제품·도구를 주어로 한 같은 어휘** — "playwright 플러그인 최신인가" · "node 버전 맞나" · "codex로 딴 작업 돌리는데 안 돌아" |
 
-## 설정 루트 — 먼저 1회 결정해 전 프로브가 공유한다
+## 두 루트 — 먼저 1회 결정해 전 프로브가 공유한다
 
 ```bash
-R="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+R="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"            # 설정 루트 — 글로벌 settings.json
+P="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-$R/plugins}"    # 플러그인 루트 — registry · marketplaces · cache
 ```
 
-`~/.claude`를 하드코딩하지 않는다. 이 변수를 바꾸면 레지스트리 자체가 다른 프로필로 바뀌므로, 하드코딩하면 **활성 프로필이 아닌 다른 프로필을 진단해 "최신"·"미등록"을 틀리게 보고**한다. `installed_plugins.json` · 마켓플레이스 clone · plugin cache · 글로벌 `settings.json` 조회가 모두 이 루트를 쓴다.
+**경로를 하드코딩하지 않는다.** 두 변수가 옮기는 것이 다르다 — `CLAUDE_CONFIG_DIR`은 프로필 전체를, `CLAUDE_CODE_PLUGIN_CACHE_DIR`은 **플러그인 루트만** 따로 옮긴다(후자가 설정되면 `$R/plugins`는 쓰이지 않는다). 어느 쪽이든 무시하면 **활성 프로필이 아닌 곳을 진단해 "미설치"·"미등록"·"companion 없음"을 한꺼번에 오진**한다 — 가장 망가져 보이는 출력이 실은 doctor가 엉뚱한 데를 본 결과다.
+
+`installed_plugins.json` · 마켓플레이스 clone · plugin cache 조회는 **`$P`**, 글로벌 `settings.json` 조회는 **`$R`**을 쓴다.
 
 ## 점검 4항목 — 프로브
 
@@ -45,32 +48,32 @@ R="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 ```bash
 node -e '
 const fs=require("fs"),p=require("path");
-const f=p.join(process.argv[1],"plugins","installed_plugins.json");
+const f=p.join(process.argv[1],"installed_plugins.json");
 if (!fs.existsSync(f)) { console.log("REGISTRY_MISSING"); process.exit(0); }
 const d=JSON.parse(fs.readFileSync(f,"utf8"));
 for (const [key, entries] of Object.entries(d.plugins||{})) {
   if (!key.startsWith("dev-workflow@")) continue;
   for (const e of entries||[]) console.log([key, e.scope, e.projectPath||"-", e.version||"-", e.gitCommitSha||"-"].join("\t"));
-}' "$R"
+}' "$P"
 ```
 
 **출력이 `REGISTRY_MISSING`이거나 한 줄도 없으면 "미설치"다** — (b)의 "판정 불가"가 아니다. 레지스트리 파일 부재·엔트리 0건은 *조회가 실패한 것*이 아니라 **이 프로필에 설치 이력이 없다는 확정 사실**이다. (b)가 다루는 것은 *엔트리는 있는데* 근거 필드가 없거나 object 조회가 실패한 경우다.
 
-**스코프 이름을 하드코딩하지 않는다.** 설치 스코프는 `user`·`project`·`local` 3종이고(`claude plugin install -s <scope>`) 엔트리는 **배열**이다. 두 종만 열거하면 **stale한 local 설치가 활성인 repo에서 그 설치를 못 보고 "최신"이라 보고**한다. 배열 전체를 돌고 스코프 이름은 **출력에 그대로 옮긴다**(새 스코프가 생겨도 자동으로 덮인다).
+**스코프 이름을 하드코딩하지 않는다.** 설치 스코프는 `claude plugin install -s <scope>` 기준 `user`·`project`·`local` 3종이고, `claude plugin update -s <scope>`는 여기에 `managed`를 더한 4종을 받는다. 엔트리는 **배열**이다. 두 종만 열거하면 **stale한 local 설치가 활성인 repo에서 그 설치를 못 보고 "최신"이라 보고**한다. 배열 전체를 돌고 스코프 이름은 **출력에 그대로 옮긴다**(새 스코프가 생겨도 자동으로 덮인다).
 
 ### 2. 마켓플레이스 최신 — subtree object id 대조
 
 ```bash
 KEY=<1번 출력 1열>                 # `dev-workflow@<marketplace>`
 MP="${KEY#*@}"
-C="$R/plugins/marketplaces/$MP"
+C="$P/marketplaces/$MP"
 [ -d "$C/.git" ] || echo "미등록"     # 미등록이면 여기서 이 프로브를 끝낸다 (아래를 돌리지 않는다)
 git -C "$C" fetch -q origin
 REF="$(git -C "$C" symbolic-ref -q --short refs/remotes/origin/HEAD || echo origin/main)"
 git -C "$C" rev-parse "$REF:dev-workflow"          # 최신 subtree id — 엔트리 전체에 1회
 ```
 
-**미등록이면 거기서 끝낸다.** `.git`이 없는데 `fetch`·`rev-parse`를 이어 돌리면 fatal만 쌓이고 판정은 이미 "미등록"으로 확정돼 있다. **1번이 엔트리를 0건 냈을 때도 `KEY`가 없으므로 같다** — 그때는 `ls -1 "$R/plugins/marketplaces" 2>/dev/null`로 clone 유무만 보고(glob을 쓰지 않는다 — 점검 3 참조), 없으면 "미등록"·있으면 "판정 불가"(대조할 설치 sha가 없다)로 적는다.
+**미등록이면 거기서 끝낸다.** `.git`이 없는데 `fetch`·`rev-parse`를 이어 돌리면 fatal만 쌓이고 판정은 이미 "미등록"으로 확정돼 있다. **1번이 엔트리를 0건 냈을 때도 `KEY`가 없으므로 같다** — 그때는 `ls -1 "$P/marketplaces" 2>/dev/null`로 clone 유무만 보고(glob을 쓰지 않는다 — 점검 3 참조), 없으면 "미등록"·있으면 "판정 불가"(대조할 설치 sha가 없다)로 적는다.
 
 **기본 브랜치를 `main`으로 가정하지 않는다** — 원격 HEAD에서 유도하고 실패할 때만 `origin/main`으로 떨어진다.
 
@@ -91,12 +94,26 @@ git -C "$C" log --oneline "$SHA..$REF" -- dev-workflow/
 ```bash
 command -v codex                                                  # CLI 존재
 codex login status                                                # 인증
-find "$R/plugins/cache/openai-codex" -path '*/scripts/codex-companion.mjs' -print -quit 2>/dev/null   # companion 존재
 ```
 
-**glob으로 존재를 확인하지 않는다.** `ls -d …/*/…`는 무매치일 때 셸에 따라(zsh 기본 `nomatch`) **`ls`가 실행되기도 전에** 셸이 에러를 내고 `2>/dev/null`도 이를 막지 못한다. `find`는 무매치를 빈 출력으로 돌려준다.
+```bash
+# companion 존재 — 캐시를 훑지 않고 레지스트리가 가리키는 활성 설치본만 본다
+node -e '
+const fs=require("fs"),p=require("path");
+const f=p.join(process.argv[1],"installed_plugins.json");
+if (!fs.existsSync(f)) { console.log("REGISTRY_MISSING"); process.exit(0); }
+const d=JSON.parse(fs.readFileSync(f,"utf8"));
+for (const e of (d.plugins||{})["codex@openai-codex"]||[]) {
+  const c = e.installPath ? p.join(e.installPath,"scripts","codex-companion.mjs") : null;
+  console.log([e.scope, e.installPath||"-", (c && fs.existsSync(c)) ? "OK" : "MISSING"].join("\t"));
+}' "$P"
+```
 
-**판정 매핑** — `command -v codex`가 빈 출력이면 `CLI 없음`, `codex login status`가 비정상 종료하거나 로그인 상태가 아니라고 답하면 `미로그인`, companion 경로가 빈 출력이면 `companion 없음`, 셋 다 정상이면 `정상`이다. **둘 이상이 동시에 실패하면 전부 적는다**(`CLI 없음 · companion 없음`) — 하나만 골라 적으면 나머지가 조용히 사라진다.
+**캐시 디렉터리를 훑어서 판정하지 않는다.** plugin cache에는 **갱신 후에도 구버전 디렉터리가 남는다**(이 머신 실측: `dev-workflow` 캐시에 6개 버전이 있고 활성은 2개다). 캐시를 훑어 companion을 하나라도 찾으면 정상이라 판정하면, **활성 설치본에서 companion이 사라져도 고아 버전의 파일이 발견돼 거짓 정상**이 된다 — codex가 실제로 안 도는 바로 그 상황에서 doctor가 "정상"이라 답한다. 엔트리의 `installPath`가 활성 설치본을 가리키는 유일한 근거다.
+
+**glob으로 존재를 확인하지 않는다.** `ls -d …/*/…`는 무매치일 때 셸에 따라(zsh 기본 `nomatch`) **`ls`가 실행되기도 전에** 셸이 에러를 내고 `2>/dev/null`도 이를 막지 못한다. 위 조회가 셸 glob 대신 레지스트리를 읽는 이유이기도 하다.
+
+**판정 매핑** — `command -v codex`가 빈 출력이면 `CLI 없음`, `codex login status`가 비정상 종료하거나 로그인 상태가 아니라고 답하면 `미로그인`, companion 조회가 `MISSING`을 내거나 엔트리를 **0건**(또는 `REGISTRY_MISSING`) 내면 `companion 없음`, 셋 다 정상이면 `정상`이다. **둘 이상이 동시에 실패하면 전부 적는다**(`CLI 없음 · companion 없음`) — 하나만 골라 적으면 나머지가 조용히 사라진다.
 
 **이 3종이 전부다.** 3종이 정상인데도 문제가 있으면 `codex doctor`로 위임한다 — 깊은 진단을 여기서 재구현하지 않는다. codex의 **플러그인 버전은 대조하지 않는다**(버전 대조 범위는 dev-workflow 하나뿐이다).
 
@@ -170,12 +187,15 @@ grep -Hn CLAUDE_CTX_LIMIT "$R/settings.json" .claude/settings.json .claude/setti
 | 이상 | 안내 |
 |---|---|
 | user-scope 뒤처짐 | `/plugin update dev-workflow@<marketplace>` |
-| **project-scope 뒤처짐** | 명령은 같고 **실행 위치가 다르다** — 그 repo(`projectPath`) 안에서 돌려야 한다. 설치 트리거는 그 repo의 `.claude/settings.json`(`extraKnownMarketplaces` + `enabledPlugins`)이다 |
+| **project-scope 뒤처짐** | 그 repo(`projectPath`) **안에서** 돌린다. 설치 트리거는 그 repo의 `.claude/settings.json`(`extraKnownMarketplaces` + `enabledPlugins`)이다. **CLI로 돌린다면 스코프를 명시한다** — `claude plugin update dev-workflow@<marketplace> --scope project`. `--scope`의 **기본값이 `user`**라 생략하면 user 설치만 갱신되고 project 설치는 뒤처진 채 남는다 |
+| **local-scope 뒤처짐** | 같은 규칙이다 — 그 repo 안에서 `--scope local`을 명시한다. 스코프를 빠뜨리면 갱신은 안 됐는데 표에는 뒤처짐이 그대로 남아, 사용자가 같은 명령을 반복하게 된다 |
 | 미등록 · **미설치** | `/plugin marketplace add gguii74-rwk/claude-dev-workflow` → `/plugin install dev-workflow@claude-dev-workflow` (설치 경로가 같다) |
 | **스코프 간 드리프트** | 뒤처진 스코프의 안내를 따른다 — 드리프트는 그 갱신으로 해소된다. **모든 스코프가 최신인데 드리프트가 남으면** 근거를 다시 본다((b)의 판정 불가일 수 있다) |
 | 판정 불가 | 원인(네트워크·필드 결측)을 밝히고 재시도를 안내한다. **"최신"이라는 단어를 쓰지 않는다** |
 | codex 이상 | `/codex:setup`. 3종이 정상인데도 문제면 `codex doctor` |
 | CTX_LIMIT 이상 | `/dev-workflow:setup`이 값을 묻고 settings.json에 쓴다. **doctor가 직접 쓰지 않는다.** 반영은 Claude Code 재시작 후. 단 **값의 출처가 환경변수면 settings.json에 써도 환경변수가 이긴다** — 그 경우 주입 지점(셸 프로필 등)을 함께 안내한다 |
+
+**스코프 행은 사용자가 갱신할 수 있는 3종까지다.** 그 밖의 스코프(예: `managed`)가 열거되면 조치를 지어내지 말고 **판정과 근거만 보고**한다 — 진단 전용이라는 원칙이 그대로 적용된다.
 
 ## 하지 말 것
 
