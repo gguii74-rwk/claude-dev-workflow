@@ -76,7 +76,7 @@ spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시
 | 4 | spec `## 적대검증 ledger` 종결 | 유효 생략 기록 | review-loop(spec) |
 | 5 | `docs/plans/<feature>` 존재 | 유효 생략 기록 | writing-plans-split |
 | 6 | plan ledger 종결 | **5가 해당없음이면 자동**(검증할 plan이 없다), 또는 유효 생략 기록 | review-loop(plan) |
-| 7 | 구현 완료(산출물 신호 — plan 트랙 = entrypoint task 표의 완료 기록 전건이 권위(승인 전 구현 커밋만으로 완료 아님), planless·표 없는 plan = task 종결·구현 커밋. 코드 결손·품질은 8 적대검증 소관) | — | plan 있으면 subagent-driven-development, 5 해당없음이면 **직접 구현(TDD)** |
+| 7 | 구현 완료(산출물 신호 — plan 트랙 = entrypoint task 표의 완료 기록 전건(승인 시점 커밋분 — 승인 전 구현 커밋만으로 완료 아님). live SDD 진행 ledger가 실재하고 표와 어긋나거나 최종 whole-branch 리뷰 미종결을 보이면 ledger가 권위 = 7 미완(SDD 재개), ledger 부재·유실 시 커밋된 표가 폴백 권위. planless·표 없는 plan = task 종결·구현 커밋. 코드 결손·품질은 8 적대검증 소관) | — | plan 있으면 subagent-driven-development, 5 해당없음이면 **직접 구현(TDD)** |
 | 8 | `## 적대검증 ledger (impl)` 종결 — 위치 = plan 말미 · planless는 spec 말미(진행 중 승격으로 plan이 생겨도 spec 말미 유지 · 규정 도입 전 트랙의 비표준 위치는 인정 — 시점은 커밋·ledger 이력으로 판독하며, 인정은 되돌림이 아니므로 확인 없이 완료로 읽는다) | **없음(하한)** | review-loop(impl) |
 | 9 | PR merged + 그 repo 규약의 후속(배포·실측 — repo 밖 사실이라 불명확하면 사용자 확인) | — (경로 무관 공통) | finishing-a-development-branch + repo 규약. 완료면 **"트랙 완료"** — 9를 재권고하지 않는다 |
 
