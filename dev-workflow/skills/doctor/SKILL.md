@@ -162,11 +162,17 @@ if (!fs.existsSync(f)) { console.log("REGISTRY_MISSING"); process.exit(0); }
 let d;
 try { d=JSON.parse(fs.readFileSync(f,"utf8")); }
 catch (e) { console.log("REGISTRY_UNREADABLE"); process.exit(0); }
-for (const e of (d.plugins||{})["codex@openai-codex"]||[]) {
+const CWD=process.argv[3];
+const all=(d.plugins||{})["codex@openai-codex"]||[];
+const active=all.filter(e => e.scope==="user" || e.scope==="managed" || e.projectPath===CWD);
+if (!active.length) { console.log(all.length ? "NO_ACTIVE_ENTRY" : "NO_ENTRY"); process.exit(0); }
+for (const e of active) {
   const c = e.installPath ? p.join(e.installPath,"scripts","codex-companion.mjs") : null;
-  console.log([e.scope, e.installPath||"-", (c && fs.existsSync(c)) ? "OK" : "MISSING"].join("\t"));
-}' "$P"
+  console.log([e.scope, e.projectPath||"-", e.installPath||"-", (c && fs.existsSync(c)) ? "OK" : "MISSING"].join("\t"));
+}' "$P" "$PWD"
 ```
+
+**엔트리를 스코프 구분 없이 다 보지 않는다.** 런타임이 활성 후보로 삼는 것은 `user`·`managed` 엔트리와 **현재 프로젝트에 해당하는** `project`·`local` 엔트리다. 전부 훑으면 **다른 repo의 설치만 `OK`여도 "정상"이라 답하고**(이 repo에는 활성 companion이 없는데), 반대로 그 비활성 경로가 지워졌으면 멀쩡한 현재 설치를 `companion 없음`으로 찍는다. 그래서 후보를 먼저 거르고, 걸러진 게 없으면 `NO_ACTIVE_ENTRY`로 **판정 불가**다 — 있지도 않은 문제에 `/codex:setup`을 안내하지 않는다. 상대경로 비교이므로 이 조회도 **repo 루트에서 돌린다**(점검 4와 같다).
 
 **캐시 디렉터리를 훑어서 판정하지 않는다.** plugin cache에는 **갱신 후에도 구버전 디렉터리가 남는다**(이 머신 실측: `dev-workflow` 캐시에 6개 버전이 있고 활성은 2개다). 캐시를 훑어 companion을 하나라도 찾으면 정상이라 판정하면, **활성 설치본에서 companion이 사라져도 고아 버전의 파일이 발견돼 거짓 정상**이 된다 — codex가 실제로 안 도는 바로 그 상황에서 doctor가 "정상"이라 답한다. 엔트리의 `installPath`가 활성 설치본을 가리키는 유일한 근거다.
 
@@ -178,7 +184,8 @@ for (const e of (d.plugins||{})["codex@openai-codex"]||[]) {
 |---|---|
 | `command -v codex`가 빈 출력 | `CLI 없음` |
 | `codex login status`가 비정상 종료하거나 로그인 상태가 아니라고 답함 | `미로그인` |
-| companion 조회가 `MISSING` · 엔트리 **0건** · `REGISTRY_MISSING` | `companion 없음` |
+| companion 조회가 `MISSING` · `NO_ENTRY` · `REGISTRY_MISSING` | `companion 없음` |
+| companion 조회가 **`NO_ACTIVE_ENTRY`** | **`판정 불가`** — 엔트리는 있는데 **이 문맥에서 활성이 아니다**(다른 repo의 project/local 설치뿐) |
 | companion 조회가 **`REGISTRY_UNREADABLE`** | **`판정 불가`** — `companion 없음`이 **아니다** |
 | 셋 다 정상 | `정상` |
 
@@ -237,7 +244,12 @@ for (const f of process.argv.slice(1)) {
 **먼저 두 수를 확정한다 — 어느 쪽도 눈대중으로 넘기지 않는다.**
 
 - **유효 limit** = 환경변수에 양수 값이 있으면 그 값, **없으면 훅 기본값 `1,000,000`**이다(훅은 미설정 시 1M을 가정한다). settings.json 값은 **출처 표시용**이지 유효 값이 아니다 — 훅은 프로세스 환경변수만 읽는다.
-- **모델 윈도** = 현재 모델 ID에 `[1m]` 접미가 있으면 `1,000,000`, 없으면 `200,000`이다.
+- **모델 윈도** = 모델 메타데이터가 정한다. **`[1m]` 접미사로 가르지 않는다.**
+  - **Claude 5 계열(`claude-opus-5` · `claude-sonnet-5` · `claude-fable-5`)은 접미사와 무관하게 `1,000,000`이다.** 셋 다 `context:{window:1e6, native_1m:true}`로 정의돼 있다(Claude Code 2.1.226 실측). `[1m]`은 Opus의 **선택 접미사**(`supports_1m_suffix`)일 뿐 1M 여부를 만드는 표식이 아니다.
+  - 200k 모델(예: Haiku 4.5)은 `200,000`이다.
+  - **모르는 모델이면 `200,000`으로 단정하지 말고 판정 불가**다((b)).
+
+  **접미사로 판정하면 Claude 5 세션 전체가 오진된다.** 베어 ID 세션을 200k로 보면 유효 limit(미설정 시 훅 기본 1M) > 윈도(200k)가 되어 **정상 상태를 "과소평가"로 찍고 `CLAUDE_CTX_LIMIT=200000`을 유도**한다. 그 안내를 따르면 실제 1M 세션이 8% 지점에서 40%로 계산돼 **조기 넛지**가 뜬다 — 훅이 스스로 *"과대평가가 더 해롭다"*고 적어 둔 바로 그 방향이다.
 
 그다음 둘을 비교한다. **네 조합이 전부 이 표에 들어온다** — 판정을 못 내리는 상태가 남으면 (b)로 흘러가 "판정 불가"가 되는데, 그건 이 검사에서는 오답이다.
 

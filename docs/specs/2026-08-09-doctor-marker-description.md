@@ -414,6 +414,8 @@ doctor SKILL.md를 서브에이전트에게 **그대로 실행**시켜 측정했
 
 **모델 기록** — 과소평가 방향 = **Sonnet 5**(`claude-sonnet-5`), 나머지 = **Opus 5**(`claude-opus-5[1m]`). §5가 요구한 "두 방향을 서로 다른 모델 세션에서"는 `/model` 전환이 아니라 **모델을 달리 지정한 서브에이전트**로 충족했다(슬래시 커맨드를 에이전트가 실행할 수 없다).
 
+> **정정 (impl 루프 R6, 2026-08-10) — 위 6항 중 "과소평가" 1항은 틀린 전제 위에서 측정됐다.** 그 실행은 *Sonnet 5의 윈도가 200k*라는 당시 규칙 (e)를 참으로 두고 "미설정 → 과소평가"를 기대값으로 삼았다. 그러나 Claude Code 2.1.226 바이너리 실측 결과 **`claude-sonnet-5`·`claude-opus-5`·`claude-fable-5`가 모두 `context:{window:1e6, native_1m:true}`**이고, `[1m]`은 Opus의 선택 접미사(`supports_1m_suffix`)일 뿐이다. 따라서 **Sonnet 5 + 미설정은 `정상`이 옳고**, 그 실행이 "일치"로 기록된 것은 doctor와 oracle이 **같은 오류를 공유**했기 때문이다(oracle 독립성이 이 항에서만 깨졌다). 나머지 5항은 영향 없다 — 과대평가 방향(Opus 5 `[1m]` + `CLAUDE_CTX_LIMIT=200000` → 유효 200k < 윈도 1M)은 정정된 규칙에서도 그대로 성립한다. 규칙 (e)는 `fp-7b-I15`로 고쳤고, **과소평가 상태 자체는 사라지지 않았다**(200k 모델 + 미설정, 또는 200k 모델에 1M 주입). **재실측은 9단계로 이월한다** — 200k 모델(Haiku 4.5) 세션이 필요하고, 이 항 하나 때문에 8단계를 되돌리는 것보다 릴리스 안내에 붙이는 편이 낫다(V-7b-1과 같은 자리).
+
 **오탐 케이스** — ① "sha는 다른데 트리는 같은 쌍"은 **자연 발생**해 실측했다(user-scope `a117486` vs `origin/main` `3267b82`). ② "되돌린 이력으로 로그만 남은 쌍"은 이 repo 이력에 없어 **문면 확인으로 갈음**했다.
 
 **degraded 분기(D24) — 분기별 처리**: 빈 설정 루트를 `CLAUDE_CONFIG_DIR`로 지정해 **조작 없이** 재현했다(파일 미기록, D9 유지).
@@ -478,6 +480,9 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | **fp-7b-I14** | `doctor/SKILL.md` · *실패한 fetch 뒤 오래된 FETCH_HEAD를 최신 기준으로 재사용한다* · fetch 성공을 명시 분기하고 `ls-remote`의 원격 OID를 고정해 subtree·로그에 쓰라 | medium | **FIXED** (R5) | **fp-7b-I6·I9 수정이 만든 상호작용** — timeout을 넣어 중단 확률을 올려놓고 결과를 검증하지 않았다. 리뷰어가 기술한 재현(실패 fetch 후 FETCH_HEAD 잔존)은 **두 모드에서 그대로는 안 나왔다**(ref 부재 실패·SIGALRM 중단 모두 FETCH_HEAD가 비워져 안전 실패). 그러나 **세 번째 경로가 실재한다**: `$HB`가 비면 `git fetch -q origin ""`가 **exit 0으로 아무 것도 안 하고** 지나가고 낡은 `FETCH_HEAD`가 남는다(실측) — **종료코드 검사로도 못 잡고**, 결과는 뒤처진 설치본의 거짓 "최신"이라 규칙 (b) 정면 위반이다. `ls-remote`가 함께 주는 **OID를 고정**해 fetch 후 `FETCH_HEAD == $OID`를 확인하고, 이후 subtree·로그를 `$OID`로 돌리도록 교체. 검증: 정상 경로 일치 · 낡은 FETCH_HEAD를 가진 clone에서 불일치 → 판정 불가 |
 | **fp-7b-I13** | `doctor/SKILL.md` · *복수 marketplace 설치를 첫 marketplace 하나의 최신본과 비교한다* · 키별로 그룹화해 각 마켓플레이스 기준으로 비교하라 | medium | **ESCALATE → FIXED** (R5, 정밀 모드 즉시 처리) | 프로브 1은 `dev-workflow@<marketplace>` 키를 전부 열거하는데 프로브 2는 단일 `KEY`만 골라 그 최신 id를 모든 엔트리에 쓴다. 이 머신은 키가 1개라 **미재현**이나 CLI가 `plugin@marketplace` 단위 설치를 지원해 본가+fork 공존이 가능하다. **사용자 판정 = "복수 키 감지 → 안전 이탈"**(2026-08-10). 키가 둘 이상이면 한 기준을 나머지에 돌려 쓰지 않고 다른 키의 엔트리를 **판정 불가(대조 기준 미확보)** 로 남기며 어느 마켓플레이스가 대조되지 않았는지 근거에 적는다. 키별 그룹화 구현은 네트워크 호출이 키 수만큼 늘어 G1·G2와 긴장하므로 채택하지 않았다 — **거짓 "최신"을 막는 것이 목적이고 그건 이탈로 달성된다** |
 
+| **fp-7b-I15** | `doctor/SKILL.md` · *네이티브 1M 모델을 200k로 오판한다* · 모델 메타데이터로 native-1M을 판별하고 모르는 모델은 200k로 단정하지 말고 판정 불가로 처리하라 | medium | **FIXED** (R6) | D7(모델 대조를 근거로 삼는다) 재론이 아니라 **윈도 분류 규칙의 사실 오류**. **실측(Claude Code 2.1.226 바이너리)**: `claude-sonnet-5`·`claude-opus-5`·`claude-fable-5`가 전부 `context:{window:1e6, native_1m:!0}`이고 Opus만 `supports_1m_suffix:!0`을 더 갖는다 → **`[1m]`은 1M 여부를 가르는 표식이 아니다.** 기존 규칙이면 베어 ID Claude 5 세션(정상)이 전부 `과소평가`로 찍히고 `CLAUDE_CTX_LIMIT=200000` 안내가 나가, 따르면 1M 세션에 **조기 넛지**가 뜬다 — 훅이 *"과대평가가 더 해롭다"*고 적은 방향이다. 규칙 (e)의 모델 윈도 항을 계열 기준으로 교체하고 미지 모델은 판정 불가로. **부수: D18 대조표 6항 중 '과소평가' 1항이 이 오류를 oracle과 공유해 거짓 일치였음을 §D18에 정정 기록하고 재실측을 9단계로 이월** |
+| **fp-7b-I16** | `doctor/SKILL.md` · *다른 프로젝트의 codex 엔트리를 활성 설치본으로 오인한다* · user/managed 및 현재 projectPath 엔트리만 걸러 활성 installPath를 검사하라 | medium | **FIXED** (R6) | D15(신호 3종) 재론이 아니라 **활성 스코프 선택 누락**. fp-7b-I4가 "고아 캐시 대신 레지스트리 installPath"까지 좁혔으나 **엔트리 필터가 없어** 다른 repo의 project/local 설치만 `OK`여도 `정상`이 되고, 그 비활성 경로가 지워지면 멀쩡한 현재 설치가 `companion 없음`이 된다. 후보를 `user`·`managed` + 현재 `projectPath`로 거르고, 후보 0건이면 `NO_ACTIVE_ENTRY` → **판정 불가**(엔트리 자체가 없는 `NO_ENTRY` = companion 없음과 구분). fp-7b-I13의 "거짓 정상 대신 안전 이탈" 원칙과 같은 처리다. 검증: 활성 user · 타 repo project만(→ NO_ACTIVE_ENTRY) · 현재 repo project(→ 활성) · 엔트리 없음(→ NO_ENTRY) 4분기 |
+
 **batch flush (2026-08-10, 적대 소진 3 = `--auto-rounds` 도달)** — 적재분 2건 + 루프 발견 1건 + 트랙 판정 1건을 자동 수정 내역(커밋 `f529414`·`e2a5c88`·`e3c4d95`)과 함께 일괄 제시했고 사용자가 전건을 닫았다. 자동 수정 롤백 없음.
 
 | 항목 | 사용자 판정 | 결과 |
@@ -502,6 +507,7 @@ TDD 4계열은 *"doctor가 뜨는가"*만 보므로 프로브 판정의 정확�
 | R4 | 적대 (정밀 모드) | needs-attention | medium 2 (critical/high/low 0) | **2** | 10 → **12** (+ fp-7b-I11 · I12) |
 | R5 | 적대 (정밀 모드) | needs-attention | medium 2 (critical/high/low 0) | **2** | 12 → **14** (+ fp-7b-I13 · I14) |
 | C1 | **확인(중립)** | **fail** | **없음** | — | **13건 소멸 확인** · fp-7b-I12 **잔존** → **1** |
+| R6 | 적대 (**복귀 — 상한 밖**) | needs-attention | medium 2 신규 (critical/high/low 0) | **2** | 1 → **3** (+ fp-7b-I15 · I16) |
 
 **확인 라운드 C1 (2026-08-10)** — 응답 완전성 계약 충족(큐 14건 전 항목 명시 결과 + 판정 감사 + 신규 finding + verdict). 확인 소진 1/2.
 
