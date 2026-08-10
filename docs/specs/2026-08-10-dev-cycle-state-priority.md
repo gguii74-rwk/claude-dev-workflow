@@ -217,3 +217,18 @@ C-6 impl 루프에서 같은 구조 표면의 finding이 반복됐다:
 - **미확인 FIXED 큐**: **0건** — C1에서 7건(fp-S1·S3~S8) + C2에서 3건(fp-S2·S9·S10) 전건 소멸 확인. **확인 부채 0으로 성공 종료.**
 - **루프 직접 판정**: 없음 (fp-S6는 사용자 판정 — C-10 D17)
 - **루프 종결(2026-08-10)**: 적대 5 + 복귀 적대 1 / 확인 2(예산 소진 1 + 재진입 예약분 1). disposition 집계 = FIXED 10(전건 소멸 확인) · ESCALATE 1(fp-S6 → 사용자 판정 C-10 D17로 FIXED 귀결) · ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/DEFER_LOW 0. 다음 단계로 이월하는 blocking 없음.
+
+## 적대검증 ledger (impl)
+
+- 루프: `review-loop --phase impl` · base = main@`08866bc8d2f30d7b3d7a472cb53fdb113e5d6f1a` · 예산 max 5 / confirm 2 / auto 3 · impl 게이트 = writing-skills TDD GREEN 기록(`.remember/tdd-8-c10.md`) 갈음(planless 트랙 — C-10 D6·D17, ledger 위치 = 이 spec 말미)
+- score 산식: spec ledger와 동일(Σ weight, §2c 분류 직후·수정 전 — severity 재평가는 분류의 일부이므로 재평가 후 값으로 계산).
+
+| fingerprint | 발생 | severity | disposition | 근거·수정 |
+|---|---|---|---|---|
+| fp-I15 · SKILL.md 가드 1·3행 · R4 한정("실재 D블록 = harden 이행 판독")이 수기 완성 D블록의 하한 ② 우회(fail-open) 경로를 만든다는 지적 · rec: 실행 증명 분리 + 확인 복원 + 수기 arm | R1(target `828dbb0`) | high→**medium**(§2c 재평가 — 아래) | FIXED(R1) | 가드 1 "harden 실행 불명" 정의에 **수기 작성 정황**("직접 채웠다"류 발화·기록 — 내용 충실해도 하한 ②상 갈음 불가) 트리거 추가, 수기 정황 없는 실재 D블록의 커밋 이력 재감사 금지(TDD R4 취지)는 유지. **재평가 근거**: ⓐ 무신호 수기 블록은 0.14.0도 동일 통과(이 diff의 회귀 아님) ⓑ 하한 ② 규범 문장이 같은 문면에 실재해 실행이 보완 — RED 4/4 정답으로 실측 ⓒ 닫는 수정 저비용(§2c 문자 갭 규칙 = medium+FIXED). **잔존 경계**: 수기 정황 없는 완성 위조 블록은 grep 수준 판독의 문서 신뢰 모델상 비검출 — fp-I12·I13 ACCEPTED 계열(기록 신뢰 경계, 사용자 기판정)의 소관으로 새 수용 판정을 만들지 않음. 신규 arm X8(R-handd + 수기 발화, 기대 3+확인≤1) RED 4/4 정답→GREEN 파일럿+5런 전건, 재실행 M1·C-P·S7·X3 20/20, **AC2 재측정 0/10**. 수정 커밋 `aa9ebf7` |
+| fp-I16 · SKILL.md 3.5행 · 유효 생략 기록이 D번호+근거만 요구 — C-6 D16·ui-mockup 계약의 "사용자가 진입 확인에서 명시적으로 택한 기록만 유효" 요건이 개정에서 소실(이식 표 D16행 요지에 이 절 부재로 AC5 감사도 미검출) · rec: 사용자 결정 표지 한정 + arm | R1(target `828dbb0`) | medium | FIXED(R1) | 3.5행 유효 생략 기록을 "D번호+근거 + **사용자가 진입 확인에서 명시적으로 택했다는 표지**(표지 없는 기록 무효)"로 한정 — C-6 D16 복원. 4·5·6 생략 기록(D2 계약)에는 비확장(X2 재실행으로 확인). RED X9(R-ui-agent — 근거 있음·표지 없음) **4/4 이탈**로 결함 재현(r2는 커밋 이력상 문구 완화 인지에도 인정) → GREEN 재파일럿+5런 전건(파일럿 1런은 픽스처 이력 유출로 폐기·단일 커밋 재구축 — X4 전례), 양성 대조 U2(표지 있는 기록) 5/5 유효 인정·과잉 fail-closed 0, 재실행 X7·X6·X2 15/15. 수정 커밋 `aa9ebf7` |
+
+- **score 이력**: R1 = 2 (medium 2 — fp-I15는 재평가 후 medium으로 계산, 전부 신규·전부 FIXED 후보)
+- **미확인 FIXED 큐**: fp-I15 · fp-I16 (2건 — 수정 커밋 `aa9ebf7`, 소멸 확인 대기)
+- **루프 직접 판정**: disposition 없음. 단 **fp-I15 severity 재평가(high→medium)와 그 잔존 경계 논거는 루프 판단**이므로 확인 임무 ③ **우선 감사 대상**으로 기록.
+- 게이트: TDD GREEN 기록 갱신(임팩트 사이클 유효 60런·폐기 1런 — `.remember/tdd-8-c10.md` §impl R1, 채점 상세 = scores8.md·harness-8 백업). 96줄(D15 상한 내).
