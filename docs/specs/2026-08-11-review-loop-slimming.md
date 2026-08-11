@@ -147,3 +147,10 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 | fp-S2 = spec §5 A2 + "A2 자기적용 인용 부재·XVAL 권고 번호 오기" + "ledger·커밋 인용 + 권고 3 정정" | medium | FIXED (`d8e99ea`) | 1차 근거 확인: XVAL §9 권고 3 = 신규 규칙 입증 책임(4는 harden 투자) — 오기 확정. 같은 오기가 §8 SLIM D3 근거에도 존재(1·2·4→1·2·3, 결정 내용 불변·인용 정정만). A2 근거 열에 자기적용 인용 추가 = W2-1 폴백② 기계(7c D25~D28 도입, 커밋 `a86f73a`, 실사용 0) |
 
 **R1 (적대, 2026-08-11)** — target HEAD `40065a8`, verdict needs-attention. finding 2건(high 1·medium 1) → 재평가 후 medium 2. score(수정 전 스냅샷) = **2** · 미확인 FIXED 큐(라운드 시작 시) = 0. 판정: FIXED 2(자동 모드). 수정 커밋 `d8e99ea` → 미확인 FIXED 큐 = **2건(fp-S1·fp-S2)**.
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-S3 = spec §7 AC7 + "ko·ja README 108행 라운드 상한 예시 7회 잔존" + "3언어 전부 7→6 재계산 + 잔존 0 grep" | medium | FIXED (`05de069`) | 1차 근거 확인: README 3종 108행 전부 구 상한(7회 계열) 실재, 폴백② 제거 후 산법 = 3+1+1+1=6. AC7을 3언어 전부 재계산으로 명시 + 구 상한 잔존 0 검사 추가. §4 W2-1 근거 열 거울면 동기 |
+| fp-S4 = spec §5 A3 + "3지표 산식·집계 범위 미정의로 시계열 비교 불능" + "분자·분모·병합 규칙·0건 분모 명시" | medium | FIXED (`05de069`) | 1차 근거 확인: XVAL §1 기준선 스코프 상이(재론률 5트랙·철회 0.12.0 이후·사람개입률 누적 43/181) 실측. A3 행에 산식 고정(재론률=기결정 재론 DUP÷전체 blocking(fingerprint 병합)·철회=도입 조항 중 철회 수·사람개입률=사용자 판정 개입÷전체 blocking)·분모 0 = "해당 없음"·기준선 스코프 병기 |
+
+**R2 (적대, 2026-08-11)** — target HEAD `7808217`, verdict needs-attention. 신규 finding 2건(medium 2). score(수정 전 스냅샷) = **2** · score 이력 [2, 2] — 신호 1은 3점 필요, 비발화. 미확인 FIXED 큐 fp-S1·fp-S2 **적대 비재출현(R2)** 참고 기록 — 큐 유지(§두 큐). 판정: FIXED 2(자동 모드). 수정 커밋 `05de069` → 미확인 FIXED 큐 = **4건(fp-S1~fp-S4)**.
