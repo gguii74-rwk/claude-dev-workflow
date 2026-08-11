@@ -17,6 +17,7 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
   - **확인(중립) 모드** — 후반 라운드. 목적함수 = **"머지 가능한가 판정"**. ledger와 미확인 FIXED 큐를 입력으로 받아 임무 4종을 수행한다(§확인 모드). "신규 blocking 없음, 수정 확인됨"이 정당한 출력이 되어 종료가 자연스러워진다.
 - **초반(1~2라운드) = 수정 루프**: 실제 누락·결함을 FIXED로 고친다.
 - **3라운드~ 또는 전환 신호 발화 시 = 판정 루프**: finding이 새 영역으로 이동하거나 severity만 흔들리면 더 고치지 말고, ledger에 각 항목을 명시 판정해 닫는다. (문서 비대화·새 high 양산 churn 차단) **판정 루프 전환 신호는 확인 모드 진입 신호를 겸한다** — 순서: 신호 발화 → 모아둔 batch ESCALATE 일괄 제시(미판정 정리) → 확인 모드 진입(§2h).
+- **신규 규칙 입증 책임**: 이 문서에 규칙을 추가하려면 "그 규칙이 없어서 실패한 실제 사례(ledger·커밋)"를 인용해야 한다.
 
 ## 두 큐 — 용어 구분 (혼동 금지)
 
@@ -79,6 +80,7 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 모든 finding을 한 표로 추적한다:
 - **fingerprint** = `file` + 정규화 `title` + 정규화 `recommendation`(또는 body 핵심 문장). `line`은 보조 참고. **severity는 key에서 제외**(같은 결함이 high↔medium으로 흔들림).
 - 각 행: fingerprint · severity · disposition · 근거(ACCEPTED 이유·보완 / DEFERRED 연결 AC·task / DUPLICATE 원본 / OUT_OF_SCOPE follow-up).
+- **FIXED 행은 수정 커밋 해시를 셀에 인용한다 — 전 phase(spec·plan·impl) 적용**(행 인용이 있어야 소멸 확인·감사가 기계 검증 가능하다).
 - **같은 fingerprint 계열이 2회 이상 반복되면 더 고치지 말고 사용자/설계 결정으로 판정한다**(ESCALATE 또는 ACCEPTED/DEFERRED).
 - **위치**: ledger는 아래 문서 말미의 고정 섹션 `## 적대검증 ledger (<phase>)`에 둔다.
 
@@ -385,6 +387,7 @@ phase=impl이면 §1 게이트를 다시 통과시킨다. 깨지면 그 반복�
 - 총 반복 횟수(적대/확인 구분), blocking score **회차별 추세표**(라운드별 critical/high/medium 개수 + 신규/잔존 구분).
 - **disposition별 집계**: FIXED / ACCEPTED / DEFERRED_TO_IMPL / OUT_OF_SCOPE / DUPLICATE / ESCALATE, 남은 low.
 - **확인 부채 보고**: 미확인 FIXED 큐가 비었는지(성공 종료면 0이어야 함). 폴백 3택으로 이월한 항목이 있으면 명시.
+- **루프 건강 3지표**: 재론률 = 기결정 재론 DUPLICATE ÷ 전체 blocking finding(fingerprint 병합) · 철회 조항 수 = 이 트랙이 도입한 조항 중 철회된 수 · 사람개입률 = 사용자 판정 개입 finding ÷ 전체 blocking finding. 분모 0이면 "해당 없음"으로 보고한다(0%로 적지 않는다).
 - 최종 verdict(확인 라운드 verdict — 빠른 종료면 해당 없음 명시).
 - **no-AI-trace 확인**: 이번 루프가 만든 커밋 메시지·문서에 AI 도구 흔적이 없는지 grep으로 확인한다(예: `git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with'` + 이번 루프가 수정한 문서 동일 검사). 운영 프로젝트 no-AI-trace 규칙.
 - **(impl 한정) UI 대조 안내**: UI 기능이면(spec에 `## UI 설계` 존재) `docs/design/<feature>/`의 선택 목업·`docs/design/style-guide.md`와 구현된 화면을 **사용자가 수동 대조**하도록 **1회 안내**한다(매 라운드 아님, 자동 비교 없음).
