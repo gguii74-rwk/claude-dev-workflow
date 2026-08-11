@@ -154,7 +154,7 @@ node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 - **저장소 유래 문자열을 커맨드에 직접 보간하지 않는다.** 프롬프트에는 원 지적 원문·diff 요약이 들어가는데 거기에 `$(...)`·백틱·인용부호가 있으면 codex에 닿기 전에 셸이 해석해 **명령 실행·프롬프트 변조**가 일어난다. 반드시 파일에 쓴 뒤 `"$(cat <파일>)"`로 읽어 인자 하나로 넘긴다(변수에 담긴 내용은 재평가되지 않는다).
 - **기본은 foreground** — `task "$PROMPT"`의 출력이 곧 확인 응답이다. 변경이 커서 `--background`를 쓰면 **job id만 반환**되므로, job id를 캡처해 `status <job-id>`로 폴링하고 `result <job-id>`로 최종 결과를 회수한 뒤에 아래 응답 계약을 적용한다. **job 시작 출력 자체는 확인 응답이 아니므로 부분 응답으로 취급하지 않는다.**
 - `adversarial-review`+focus로 대체하지 않는다 — 기저 템플릿이 적대라 확인 목적함수를 누르지 못한다. `task`는 프롬프트 전체를 통제한다.
-- **프롬프트 첨부물**: ① ledger 표(루프 직접 판정 표시 포함), ② 미확인 FIXED 큐 전체 — 각 항목에 **원 지적 원문(title·body·recommendation)과 수정 커밋·diff 요약**을 함께 준다(fingerprint만 주면 불완전 수정을 못 잡는다), ③ 리뷰 기준 = **루프 시작 시 해소한 base SHA**(가변 ref를 적지 않는다 — §2b와 같은 스냅샷을 봐야 ledger·verdict가 같은 기준을 가리킨다), ④ 임무 4종 + 응답 형식(아래 계약), ⑤ "신규 영역 발굴은 임무가 아니다. 단, 발견한 blocking은 보고한다", ⑥ 감사 대상 경계 = **사용자 기결정 목록(D번호 + 한 줄)** — "이 목록은 감사 대상이 아니다"를 명시한다. 목록 등재는 §기결정 가드의 provenance 규칙을 따른다(실제 결정 기록에 대응하는 것만 — 불확실하면 [루프 판정]으로 강등해 감사 대상에 남긴다). **루프 직접 판정은 이 목록에 넣지 않는다** — 임무 ③의 감사 대상이라서다(①의 ledger 표로 이미 전달된다).
+- **프롬프트 첨부물**: ① ledger 표(루프 직접 판정 표시 포함), ② 미확인 FIXED 큐 전체 — 각 항목에 **원 지적 원문(title·body·recommendation)과 수정 커밋·diff 요약**을 함께 준다(fingerprint만 주면 불완전 수정을 못 잡는다), ③ 리뷰 기준 = **루프 시작 시 해소한 base SHA**(§인자·§1 base 해소), ④ 임무 4종 + 응답 형식(아래 계약), ⑤ "신규 영역 발굴은 임무가 아니다. 단, 발견한 blocking은 보고한다", ⑥ 감사 대상 경계 = **사용자 기결정 목록(D번호 + 한 줄)** — "이 목록은 감사 대상이 아니다"를 명시한다. 목록 등재는 §기결정 가드의 provenance 규칙을 따른다(실제 결정 기록에 대응하는 것만 — 불확실하면 [루프 판정]으로 강등해 감사 대상에 남긴다). **루프 직접 판정은 이 목록에 넣지 않는다** — 임무 ③의 감사 대상이라서다(①의 ledger 표로 이미 전달된다).
 - codex 샌드박스는 read-only — 게이트(테스트)는 현행대로 루프 세션이 실행한다.
 - `task` 커맨드 부재(codex 플러그인 구버전) 시: 멈추고 `/codex:setup`(플러그인 갱신) 안내. 임의 대체 실행 금지.
 
@@ -192,7 +192,7 @@ node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 - `--phase spec|plan|impl` (생략 시 변경 내용으로 추론)
 - `--max <n>` (기본 5) — **적대(발굴·수정) 라운드 상한**. 확인 라운드는 세지 않는다
 - `--confirm-rounds <n>` (기본 2) — **확인 라운드 예산**. 루프 전체 누적 상한이며 복귀 재진입 시 초기화되지 않는다. 복귀(1회) 시 적대 1 + 확인 재진입 1이, 폴백② 승인 시 확인 1이 각각 상한 밖 예약분으로 추가 허용 → 총 라운드 유계 = 기본값 기준 **최대 10회**(적대 5 + 확인 2 + 복귀 적대 1 + 재진입 확인 1 + 폴백② 확인 1). **확인 필수 조건이 성립하는데 0으로 설정되어 있으면 시작(resume 포함) 시 ESCALATE** — 그대로 진행하지 않는다
-- `--base <ref>` — 적대검증이 보는 브랜치 diff 기준 = **트랙 기준 ref**(기본 `main`이되 release/develop 등 비-main 기준 트랙은 그 ref). **루프 시작 시 해소해 핸드오프 base 필드로 보존**한다
+- `--base <ref>` — 적대검증이 보는 브랜치 diff 기준 = **트랙 기준 ref**(기본 `main`이되 release/develop 등 비-main 기준 트랙은 그 ref). **루프 시작 시 해소해 핸드오프 base 필드로 보존**한다 — 가변 ref를 그대로 쓰면 루프 중 ref 이동으로 라운드마다 diff 범위가 달라진다(모든 적대·확인 라운드가 같은 SHA를 본다)
 - `--resume` — `.remember/loop-*.md`의 미완 루프 상태에서 이어서 시작(§0의 3분기 판별 + 스냅샷 대조 통과 시). 인자 없이 시작해도 같은 조회로 자동 감지한다
 - `--auto-rounds <n>` (기본 3) — 초반 n회 **자동 모드**(FIXED 자동수정 + 위험군 외 ESCALATE batch 적재). `0`이면 매 라운드 즉시(현행). 보안 크리티컬 작업은 낮게(예: 1).
 
@@ -204,7 +204,7 @@ node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
 | plan | **통합 1회 — task 파일별로 쪼개지 말 것**(task 간 정합성이 plan의 가치; 분할 리뷰는 교차 결함을 구조적으로 못 본다) |
 | impl | task별 증분(`--base <직전 task 커밋>`) + **마지막 통합 1회** |
 
-- **증분 base 안전조건**: `--base <직전 task>` 증분 리뷰는 이전 task 회귀를 못 본다. **마지막에 반드시 트랙 기준 ref로 통합 리뷰 1회**(`--base <트랙 기준 ref>` — 루프 시작 시 해소해 둔 핸드오프 base 필드 값).
+- **증분 base 안전조건**: `--base <직전 task>` 증분 리뷰는 이전 task 회귀를 못 본다. **마지막에 반드시 트랙 기준 ref로 통합 리뷰 1회**(`--base` = §1에서 해소한 base 값).
 - **SDD 연계**: SDD(superpowers:subagent-driven-development) 내장 리뷰(건설)와 codex(적대)는 보완 관계다. **codex를 task마다 끼우지 않는다** — SDD가 approved 커밋을 끝낸 뒤 **그 위에서** 돌린다(동시 수정 금지). 실측: SDD 내장 리뷰를 잘 돌린 트랙은 review-loop impl이 R1 종결.
 
 ## 절차
@@ -279,12 +279,12 @@ git commit -m "<무엇을 했는지>"
 ```bash
 ROOT=$(ls -d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/ | sort -V | tail -1)
 # 가드 focus를 파일로 조립(매 라운드 새로) 후 `--` 뒤 인자 하나로 부착:
-# — 저장소 유래 문자열을 커맨드에 직접 보간하지 않는다(§확인 모드와 동일 위험 — $()·백틱·인용부호를 셸이 해석)
+# — 셸 보간 금지 규칙은 §확인 모드 실행과 동일(파일에 쓴 뒤 "$(cat <파일>)")
 # — `--` 뒤에 두면 텍스트가 `-`로 시작해도 옵션으로 파싱되지 않는다
 node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <해소한 base SHA> -- "$(cat <가드 focus 파일>)"
 ```
 - **빈 가드 = focus 인자 미부착**: 재논의 금지 블록·닫힌 ledger 항목·미확인 FIXED 큐가 **모두 없으면** `-- "$(cat …)"`을 통째로 빼고 호출한다(companion 기본값에 맡긴다 — 빈 목록을 보내 "닫힌 게 없다"는 신호로 오해될 여지를 만들지 않는다). **미확인 FIXED 큐만 비어 있지 않으면 진행 상태 한 줄만으로 focus를 부착한다**(§기결정 가드 — 계열 B 고지가 빈 가드 분기로 소실되지 않게).
-- **`--base`에는 루프 시작 시 해소한 base SHA를 넘긴다** — `main` 같은 가변 ref를 그대로 넘기지 않는다. 루프가 도는 동안 ref가 움직이면 라운드마다 diff 범위가 달라져 ledger·score 이력·확인 verdict가 서로 다른 스냅샷을 가리킨다. 모든 적대·확인 라운드가 같은 SHA를 본다(§1 base 해소 · §2i 핸드오프 base 필드).
+- **`--base`에는 루프 시작 시 해소한 base SHA를 넘긴다**(가변 ref 금지 — 원본·이유는 §인자 `--base`·§1 base 해소).
 - **target HEAD도 고정한다**: 라운드 시작 시 현재 HEAD SHA를 기록하고(ledger·프롬프트에 base·target 병기), **응답을 받은 뒤 branch·HEAD·clean 상태가 그대로인지 다시 확인**한다. 달라졌으면 그 응답을 쓰지 말고 중단 보고한다(큐 불변·예산 미차감 — §확인 모드 응답 완전성 계약과 동일 취급). 워크트리를 다른 세션과 공유하면 리뷰 중 들어온 커밋이 검증 없이 성공 판정을 받을 수 있다.
 - 변경이 크면(여러 파일/디렉터리 단위) `run_in_background: true`로 띄우고 `/codex:status`로 폴링한다. 결과 파일에서 리뷰 본문만 추출: `sed -n '/^# Codex Adversarial Review/,$p' <출력 파일>`.
 - 출력 JSON을 파싱한다: `{ verdict, summary, findings[{severity,title,body,file,line_start,line_end,confidence,recommendation}], next_steps }`.
