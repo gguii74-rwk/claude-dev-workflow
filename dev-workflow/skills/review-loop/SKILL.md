@@ -387,7 +387,7 @@ phase=impl이면 §1 게이트를 다시 통과시킨다. 깨지면 그 반복�
 - 총 반복 횟수(적대/확인 구분), blocking score **회차별 추세표**(라운드별 critical/high/medium 개수 + 신규/잔존 구분).
 - **disposition별 집계**: FIXED / ACCEPTED / DEFERRED_TO_IMPL / OUT_OF_SCOPE / DUPLICATE / ESCALATE, 남은 low.
 - **확인 부채 보고**: 미확인 FIXED 큐가 비었는지(성공 종료면 0이어야 함). 폴백 3택으로 이월한 항목이 있으면 명시.
-- **루프 건강 3지표**: 재론률 = 기결정 재론 DUPLICATE ÷ 전체 blocking finding(fingerprint 병합) · 철회 조항 수 = 이 트랙이 도입한 조항 중 철회된 수 · 사람개입률 = 사용자 판정 개입 finding ÷ 전체 blocking finding. 분모 0이면 "해당 없음"으로 보고한다(0%로 적지 않는다).
+- **루프 건강 3지표** — 공통 분모 = 이 루프 전체 blocking finding 수(fingerprint 병합 — 재출현은 원 1건): 재론률 = 기결정 재론 DUPLICATE 수 ÷ 공통 분모 · 철회 조항 수 = 이 트랙이 도입한 조항 중 철회(삭제·번복)된 수 · 사람개입률 = 사용자 판정이 개입한 고유 finding 수(ESCALATE 체인·사용자 재판정) ÷ 공통 분모. 분모 0이면 "해당 없음"으로 보고한다(0%로 적지 않는다).
 - 최종 verdict(확인 라운드 verdict — 빠른 종료면 해당 없음 명시).
 - **no-AI-trace 확인**: 이번 루프가 만든 커밋 메시지·문서에 AI 도구 흔적이 없는지 grep으로 확인한다(예: `git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with'` + 이번 루프가 수정한 문서 동일 검사). 운영 프로젝트 no-AI-trace 규칙.
 - **(impl 한정) UI 대조 안내**: UI 기능이면(spec에 `## UI 설계` 존재) `docs/design/<feature>/`의 선택 목업·`docs/design/style-guide.md`와 구현된 화면을 **사용자가 수동 대조**하도록 **1회 안내**한다(매 라운드 아님, 자동 비교 없음).
