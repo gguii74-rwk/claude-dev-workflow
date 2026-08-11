@@ -135,3 +135,15 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 | 3 | 영향권 arm 목록·런 예산 | ✓ §6 — harness-7c만 재사용(harness-8 오기 정정), AC2 3분류(SLIM D10), 차등 ~90런(SLIM D11) |
 | 4 | "하지 말 것" 잔류 기준 | ✓ 통삭제로 확정(SLIM D14) — 실측상 독립 규칙 0, 대응표를 impl ledger에 기록 |
 | 5 | A1~A3 배치 위치 | ✓ §5 확정 — A1 §finding ledger(전 phase — SLIM D15)·A2 §핵심 원칙 말미(SLIM D17)·A3 SKILL.md §4 보고 목록 |
+
+## 적대검증 ledger (spec)
+
+- 루프: 4 review-loop --phase spec (2026-08-11 시작). base = origin/main `650f0fa`(해소 SHA `650f0fad2144511398a2f54434ca3ab2baa98ac6`) · branch `worktree-prep-8-c10`. 예산 = max 5 · confirm 2 · auto-rounds 3(기본값). 보안 크리티컬 아님.
+- fingerprint = file + 정규화 title + 정규화 recommendation(severity 제외).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-S1 = spec §6 + "필수 회귀 하네스(harness-7c) 소재 불명으로 AC2·AC3 실행 불가" + "위치·재생성 명령 spec 수록" | high→medium 재평가 | FIXED (`d8e99ea`) | 재평가 근거: 하네스·재생 스크립트(mkfix/checkfix)·재현 규격(tdd-7c-loop-handoff.md) 전부 메인 체크아웃 `.remember/`에 실재 실측 — 남는 갭 = 문면 위치 참조 불명확·워크트리 부재 미고지(리뷰어 자신이 탐색 실패로 실증). 수정 = §6에 실재 위치·재현 규격 위치·파일럿 전 checkfix.py 실측 확인 의무 명시 |
+| fp-S2 = spec §5 A2 + "A2 자기적용 인용 부재·XVAL 권고 번호 오기" + "ledger·커밋 인용 + 권고 3 정정" | medium | FIXED (`d8e99ea`) | 1차 근거 확인: XVAL §9 권고 3 = 신규 규칙 입증 책임(4는 harden 투자) — 오기 확정. 같은 오기가 §8 SLIM D3 근거에도 존재(1·2·4→1·2·3, 결정 내용 불변·인용 정정만). A2 근거 열에 자기적용 인용 추가 = W2-1 폴백② 기계(7c D25~D28 도입, 커밋 `a86f73a`, 실사용 0) |
+
+**R1 (적대, 2026-08-11)** — target HEAD `40065a8`, verdict needs-attention. finding 2건(high 1·medium 1) → 재평가 후 medium 2. score(수정 전 스냅샷) = **2** · 미확인 FIXED 큐(라운드 시작 시) = 0. 판정: FIXED 2(자동 모드). 수정 커밋 `d8e99ea` → 미확인 FIXED 큐 = **2건(fp-S1·fp-S2)**.
