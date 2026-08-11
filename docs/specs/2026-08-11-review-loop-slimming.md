@@ -154,3 +154,9 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 | fp-S4 = spec §5 A3 + "3지표 산식·집계 범위 미정의로 시계열 비교 불능" + "분자·분모·병합 규칙·0건 분모 명시" | medium | FIXED (`05de069`) | 1차 근거 확인: XVAL §1 기준선 스코프 상이(재론률 5트랙·철회 0.12.0 이후·사람개입률 누적 43/181) 실측. A3 행에 산식 고정(재론률=기결정 재론 DUP÷전체 blocking(fingerprint 병합)·철회=도입 조항 중 철회 수·사람개입률=사용자 판정 개입÷전체 blocking)·분모 0 = "해당 없음"·기준선 스코프 병기 |
 
 **R2 (적대, 2026-08-11)** — target HEAD `7808217`, verdict needs-attention. 신규 finding 2건(medium 2). score(수정 전 스냅샷) = **2** · score 이력 [2, 2] — 신호 1은 3점 필요, 비발화. 미확인 FIXED 큐 fp-S1·fp-S2 **적대 비재출현(R2)** 참고 기록 — 큐 유지(§두 큐). 판정: FIXED 2(자동 모드). 수정 커밋 `05de069` → 미확인 FIXED 큐 = **4건(fp-S1~fp-S4)**.
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-S5 = spec §4 W2-1 + "폴백② 대체 1줄 존치와 유계 재계산(10→9·7→6) 모순, one-shot 상태 삭제로 재제시 무제한" + "완전 퇴역 또는 one-shot 보존+상한 유지+재제시 거부 arm" | high | ESCALATE(IMMEDIATE — 방향 결정: 웨이브 2 구현·AC7·검증 arm의 전제) | 문서 대조 확정: 대체 1줄이 폴백② 확인 라운드를 보존하므로 최악 경로는 여전히 10회/7회 — W2-1 연쇄·AC7의 9회/6회와 모순. 재제시 금지 부재로 유계 주장 훼손. arm ⓐ는 첫 실행만 검사. R2 fp-S3 수정(7→6)도 같은 전제 위 — 판정 결과에 따라 재작성 |
+
+**R3 (적대, 2026-08-11)** — target HEAD `448892a`, verdict needs-attention. 신규 finding 1건(high 1) → ESCALATE(IMMEDIATE). score(수정 전 스냅샷) = **3** · score 이력 [2, 2, 3] → **전환 신호 1 발화(2회 연속 비감소)** + 신규 FIXED 후보 0건(신호 2 겸발화). 미확인 FIXED 큐 fp-S1~fp-S4 **적대 비재출현(R3)** 참고 기록 — 큐 유지. 적대 소진 3/5 == auto-rounds → batch flush 지점(적재분 0건·fp-S5는 즉시 제시). 순서: fp-S5 사용자 판정 → 확인 모드 진입.
