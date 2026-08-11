@@ -1,6 +1,6 @@
 # review-loop 감량 (slimming) — 실측 근거 없는 규칙 삭제 + 재비대 방지
 
-- 단계: 1–2 브레인스토밍 ✓ → **3 harden-spec 완료 (2026-08-11) — 다음 = 4 review-loop --phase spec** (새 세션). 종결 시 이 줄을 갱신할 것.
+- 단계: 1–2 브레인스토밍 ✓ → 3 harden-spec ✓ → **4 review-loop(spec) 성공 종결 (2026-08-11, ledger = 이 문서 말미) — 다음 = 7 직접 구현(웨이브 1→2, writing-skills TDD)** (새 세션). 종결 시 이 줄을 갱신할 것.
 - 배경: 브리프 프로그램(순번 1~8) 종결 직후의 독립 트랙. 입력 = Fable 교차검증 보고서 `~/workspace/dev-workflow-eval/report/XVAL-2026-08-11.md`(repo 밖 — 게이트에 필요한 내용은 이 문서에 자체 수록) + 규칙별 입증 대조 인벤토리(브레인스토밍 세션 산출 — **§4 표가 원본 요지**; 초안의 "브리프 §4B 승계"는 깨진 참조였음 — 브리프에 §4B 없음, 기준 문장의 실제 출처 = 인벤토리 + XVAL §7·§9-3).
 - 대상: `dev-workflow/skills/review-loop/SKILL.md` (0.15.0 기준 **450줄 / 71.8KB** — 0.7.1은 19.6KB, ×3.7). 목표 릴리스 **0.16.0**.
 - 경로: **경량 확정(SLIM D12 — harden 세션 재승인 2026-08-11)** · 5 plan·6 plan 검증 생략 · **4 spec 적대검증 정식 실행** · impl ledger = 이 문서 말미.
@@ -171,3 +171,7 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 | fp-S6 = spec §6 + "재사용 하네스가 감량판 후보·갱신 오라클과 결속되지 않음(사본 SHA 불일치·구 오라클의 폴백② 기계 요구)" + "파일럿 직전 후보 반영+hash fail-closed 검사·오라클 선갱신·impl ledger 기록" | medium | FIXED (`f4ef2f1`) | 1차 근거 확인: harness-7c/skills/review-loop-new.md SHA(0bcce5c) ≠ 현 SKILL.md SHA(879d98f), PLAN L-4 C3 오라클이 "폴백② 허용·미소비 기록" 필수 요구(59행)·L-5 C2/C3도 예약분 기대(70~71행) — 전건 실측. §6에 하네스-후보 결속 불릿 신설 + AC2 전제 연결. fp-S1(소재)과 별개 fingerprint(결속) |
 
 **복귀 적대 (2026-08-11, 상한 밖 — 카운터 불변)** — target HEAD `9bd53ad`, verdict needs-attention. fp-S5 재출현 없음(수정 회귀 무지적). 신규 finding 1건(medium — fp-S6, 위 행) → FIXED `f4ef2f1` → 미확인 FIXED 큐 = **2건(fp-S5·fp-S6)**. batch 적재 0건 → flush 불요. → **재진입 확인(예약분 — 확인 소진 불변)**.
+
+**C2 (재진입 확인, 2026-08-11, 예약분 — 확인 소진 1/2 불변)** — target HEAD `41d8599`, base `650f0fa`. 응답 완전. 결과: **소멸 확인 2건 = fp-S5·fp-S6**(큐 빔) · 회귀 이상 없음(대체 문구·10회/7회·arm ⓐ~ⓓ·89런·AC2 전제 연결 전부 일관) · 판정 감사 대상 0건 확인 · 신규 blocking 0. verdict **pass**.
+
+**루프 종결 (2026-08-11) — 성공 종료(확인 경유)**: 미판정 blocking 0 · 미확인 FIXED 큐 0(확인 부채 0) · C2 verdict pass. 총 6라운드 = 적대 3(R1~R3, 소진 3/5) + 복귀 적대 1(상한 밖) + 확인 C1(소진 1/2) + 재진입 확인 C2(예약분). score 추세 [2, 2, 3] → R3 전환 신호 발화. disposition 집계: **FIXED 6**(fp-S1~S6 — 전건 소멸 확인, fp-S5는 ESCALATE 사용자 판정 경유) · ESCALATE 1(fp-S5 → 사용자 FIXED로 닫음) · ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE 0 · low(DEFER_LOW) 0. **A3 3지표(자기적용)**: 재론률 0%(기결정 재론 DUPLICATE 0/6) · 철회 조항 수 0 · 사람개입률 16.7%(1/6). 다음 = 7 직접 구현(웨이브 1→2, writing-skills TDD — §6 하네스-후보 결속 게이트 선행).
