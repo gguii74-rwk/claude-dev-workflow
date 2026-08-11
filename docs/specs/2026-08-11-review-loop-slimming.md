@@ -1,6 +1,6 @@
 # review-loop 감량 (slimming) — 실측 근거 없는 규칙 삭제 + 재비대 방지
 
-- 단계: 1–2 브레인스토밍 ✓ → 3 harden-spec ✓ → 4 review-loop(spec) 성공 종결 ✓ → **7 직접 구현 완료 (2026-08-11 — 웨이브 1·2 삭제 + A1~A3 + writing-skills TDD 게이트 전건 GREEN, impl ledger = 이 문서 말미) — 다음 = 8 review-loop --phase impl** (새 세션, planless — impl 게이트는 TDD GREEN 기록 갈음). 종결 시 이 줄을 갱신할 것.
+- 단계: 1–2 브레인스토밍 ✓ → 3 harden-spec ✓ → 4 review-loop(spec) 성공 종결 ✓ → 7 직접 구현 ✓ → **8 review-loop(impl) 성공 종결 ✓ (2026-08-11 — 적대 R1~R3 + 확인 C1 verdict pass, FIXED 4 전건 소멸 확인·확인 부채 0, ledger = 이 문서 말미) — 다음 = 9 릴리스 확정**(태그·머지·3머신 `/plugin update` 안내). 종결 시 이 줄을 갱신할 것.
 - 배경: 브리프 프로그램(순번 1~8) 종결 직후의 독립 트랙. 입력 = Fable 교차검증 보고서 `~/workspace/dev-workflow-eval/report/XVAL-2026-08-11.md`(repo 밖 — 게이트에 필요한 내용은 이 문서에 자체 수록) + 규칙별 입증 대조 인벤토리(브레인스토밍 세션 산출 — **§4 표가 원본 요지**; 초안의 "브리프 §4B 승계"는 깨진 참조였음 — 브리프에 §4B 없음, 기준 문장의 실제 출처 = 인벤토리 + XVAL §7·§9-3).
 - 대상: `dev-workflow/skills/review-loop/SKILL.md` (0.15.0 기준 **450줄 / 71.8KB** — 0.7.1은 19.6KB, ×3.7). 목표 릴리스 **0.16.0**.
 - 경로: **경량 확정(SLIM D12 — harden 세션 재승인 2026-08-11)** · 5 plan·6 plan 검증 생략 · **4 spec 적대검증 정식 실행** · impl ledger = 이 문서 말미.
@@ -254,7 +254,7 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 
 **AC7 릴리스 부속 수행 (2026-08-11)**: plugin.json 0.15.0 → **0.16.0** 범프. README 3종 대조 — 총 유계 **10회 불변**(en "at most 10"·ko "최대 10회"·ja "最大 10回" 각 1곳)·예시 **7회 불변**(각 1곳, 108행 무변경)·102행 산법 서술("새 세션에서 도는 폴백② 확인 1")은 대체 2줄과 정합·삭제된 기계 세부(허용·소비·unconsumed·消費·provenance 등) 참조 잔존 **0**(3언어+최종 SKILL 전수 grep). 릴리스 확정(태그·머지·3머신 `/plugin update` 안내)은 8단계 pass 후 9단계에서.
 
-**AC 충족 현황**: AC1 ✓ · AC2 ✓ · AC3 ✓ · AC4 ✓(A1 전 phase 문구·A2 §핵심 원칙 말미·자기적용 인용 = §5 근거 열) · AC5 ✓ · **AC6 = 8단계 impl 적대검증(다음 세션)** · AC7 부속 ✓(확정은 9단계). **다음 = 8 review-loop --phase impl(새 세션)** — planless 트랙: impl ledger = 이 섹션, impl 게이트 = 위 TDD GREEN 기록 갈음(§6·8단계 게이트 갈음 규정).
+**AC 충족 현황**: AC1 ✓ · AC2 ✓ · AC3 ✓ · AC4 ✓(A1 전 phase 문구·A2 §핵심 원칙 말미·자기적용 인용 = §5 근거 열) · AC5 ✓ · **AC6 ✓(2026-08-11 — impl 루프 성공 종결, C1 verdict pass·미판정 0·확인 부채 0)** · AC7 부속 ✓(확정은 9단계). **다음 = 9단계 릴리스 확정(태그·머지·3머신 `/plugin update` 안내)** — planless 트랙: impl ledger = 이 섹션, impl 게이트 = 위 TDD GREEN 기록 갈음(§6·8단계 게이트 갈음 규정).
 
 ### 8단계 impl 적대검증 루프 (2026-08-11)
 
@@ -295,3 +295,11 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 - **fp-I3 = 사용자 선택 "arm ⓔ 추가 검증" → FIXED(검증 이행)**: prompts/E.md 신설(편집 압박 — 기존 조항과 충돌하지 않는 무해·무근거 규칙 요청으로 설계, 충돌형이면 대조군도 내용 근거로 거부해 분리 불가)·PLAN ⓔ 오라클. **new 6/6 합격**(파일럿 E-r0 + 본배치 r1~r5 — 전건 A2 행을 "추가의 전제 조건"으로 인용하며 거부). **대조군 cur 5/5 거부 = RED 미재현**(요청이 구판 §2b base·target 병기·§2i와 실질 중복 — 내용 근거 거부 경로 존재). **한계 정직 기록**: 실증된 것 = 감량판에서 A2가 편집 압박 시 발화·인용됨(작동·무회귀). 미실증 = "A2 부재 시 수용"(RED) — 이 픽스처로는 순효과 분리 불가(7b D18 거짓 일치 경계 계열의 기록 의무). → fp-I3 미확인 FIXED 큐 편입.
 - **fp-I2 재출현 = 사용자 선택 "하네스 소스 repo 커밋" → FIXED(`0cc25bc`)**: mkfix.py·checkfix.py·PLAN.md·RUN.md 최종 상태(ⓔⓕ 반영판)를 `docs/specs/harness-7c-slim/`에 커밋 — 브랜치 단독 재생성(mkfix)·검증(checkfix)·채점(PLAN)·실행(RUN) 가능. 증거 부록 §2b·§2c에 최종 해시·ⓔⓕ manifest 갱신(같은 커밋). 픽스처 51 중첩 repo는 제외(리뷰어 권고도 제외 허용). → fp-I2 재큐.
 - 런 집계: 75 + 11(ⓔ new 6 + cur 5) = **86런**(예산 89 내, 폐기 0). **미확인 FIXED 큐 = 4건(fp-I1·fp-I2·fp-I3·fp-I4) · 미판정 blocking 0** → §2h ② 확인 예산 잔여 2 확인 → **확인 모드 진입(C1)**.
+
+**C1 (확인, 2026-08-11)** — target HEAD `e389f96` · base `650f0fa` 불변. 1차 시도(스레드 `019fef09-d91e`)는 시작 463초 뒤 turn_aborted(외부 interrupt — 런처에 nohup 부재로 셸 잡 수명에 묶인 것이 유력)로 최종 응답 없음 → §응답 완전성 계약 적용(큐 불변·예산 미소모·자동 재시도 금지), 사용자 판정 "동일 재실행"으로 2차 시도(스레드 `019fef16-797a`, nohup 분리) 완주. 2차 응답 완전(4항 전부 충족) → **확인 소진 1/2**.
+
+- **소멸 확인 (큐 4건 전건, 잔존·재분류 0)**: fp-I1(NFC 기계 검사 — 픽스처 3·L4/L5 출력 12 폐기 필드 0건 + checkfix 17사례×3arm fresh 전건 통과) · fp-I2(harness-7c-slim/ 4파일 ↔ 하네스 현물 byte-for-byte 일치·부록 해시 일치) · fp-I3(ⓔ new 6/6 전건 A2 인용 거부·cur 5/5 거부 = RED 미재현 한계 기록과 정합) · fp-I4(SKILL A3 행 spec §5 정합·ⓕ 6/6 오라클 정확 일치 `1/4=25% · 철회 1 · 1/4=25%`) → **미확인 FIXED 큐 = 0건**.
+- **판정 감사**: 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건 확인 — 이상 없음(두 ESCALATE 체인 모두 사용자 판정으로 종결).
+- **회귀 확인**: 이상 없음 — A3 수정 이후 SKILL 무변(`git diff 8c3995c..HEAD` 공백)·ledger·증거 manifest·86런 집계 정합·`git diff --check` 통과.
+- **신규 finding**: 없음.
+- **머지 준비도 verdict = pass** — 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 부채 0. **성공 종료(확인 경유) 불변식 3항 전부 충족 → 루프 성공 종결.** 총 라운드 = 적대 3(R1~R3) + 확인 1(C1, 1차 무효 시도 제외) · score 이력 [1, 1, 3] · 복귀 미사용 · 폴백 미발동. disposition 집계 = FIXED 4(fp-I1·I2·I3·I4 — 전건 소멸 확인) · ESCALATE 2(fp-I3·fp-I2 재출현 — 사용자 종결, FIXED로 이행) · ACCEPTED/DEFERRED/OUT_OF_SCOPE/DUPLICATE/low 각 0.
