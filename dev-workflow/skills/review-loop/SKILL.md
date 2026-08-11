@@ -280,7 +280,7 @@ node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <해�
 ```
 - **빈 가드 = focus 인자 미부착**: 재논의 금지 블록·닫힌 ledger 항목·미확인 FIXED 큐가 **모두 없으면** `-- "$(cat …)"`을 통째로 빼고 호출한다(companion 기본값에 맡긴다 — 빈 목록을 보내 "닫힌 게 없다"는 신호로 오해될 여지를 만들지 않는다). **미확인 FIXED 큐만 비어 있지 않으면 진행 상태 한 줄만으로 focus를 부착한다**(§기결정 가드 — 계열 B 고지가 빈 가드 분기로 소실되지 않게).
 - **`--base`에는 루프 시작 시 해소한 base SHA를 넘긴다**(가변 ref 금지 — 원본·이유는 §인자 `--base`·§1 base 해소).
-- **target HEAD도 고정한다**: 라운드 시작 시 현재 HEAD SHA를 기록하고(ledger·프롬프트에 base·target 병기), **응답을 받은 뒤 branch·HEAD·clean 상태가 그대로인지 다시 확인**한다. 달라졌으면 그 응답을 쓰지 말고 중단 보고한다(큐 불변·예산 미차감 — §확인 모드 응답 완전성 계약과 동일 취급). 워크트리를 다른 세션과 공유하면 리뷰 중 들어온 커밋이 검증 없이 성공 판정을 받을 수 있다.
+- 라운드 시작 시 현재 HEAD SHA를 기록한다(ledger·프롬프트에 base·target 병기). **공유 워킹트리면 응답 후 HEAD 재확인.**
 - 변경이 크면(여러 파일/디렉터리 단위) `run_in_background: true`로 띄우고 `/codex:status`로 폴링한다. 결과 파일에서 리뷰 본문만 추출: `sed -n '/^# Codex Adversarial Review/,$p' <출력 파일>`.
 - 출력 JSON을 파싱한다: `{ verdict, summary, findings[{severity,title,body,file,line_start,line_end,confidence,recommendation}], next_steps }`.
 - 출력이 스키마와 다르면 루프를 멈추고 원문을 보고한다(추측 금지). 자동 재시도 금지 — 재실행은 사용자 판단.
