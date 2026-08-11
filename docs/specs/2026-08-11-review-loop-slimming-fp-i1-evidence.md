@@ -63,6 +63,41 @@ c5f92b7f0ca04afcdab13e22fbae1697145fb7a5abe8a10539fca589ebbf86e1  out-slim/L5-r1
 
 주의: `skills/review-loop-new.md`의 해시는 ledger의 결속 SHA `767fe9e9…`와 동일값이다 — 픽스처만 바뀌고 SKILL 후보는 불변임의 직접 증거.
 
+### 2b. R3 이후 갱신분 (fp-I4 A3 정합·arm ⓕ / fp-I3 arm ⓔ / fp-I2 재판정 — 2026-08-11)
+
+fp-I4 수정(`8c3995c`)으로 SKILL 후보가 갱신돼 **재결속 SHA v3 = `2f61fc87…`**(= 그 시점 `skills/review-loop-new.md`·워크트리 SKILL.md 동일 해시). PLAN.md는 arm ⓕ·ⓔ 오라클 행 추가로 아래 값이 최종이다. **하네스 소스 4파일(mkfix.py·checkfix.py·PLAN.md·RUN.md)은 fp-I2 사용자 판정에 따라 `harness-7c-slim/`에 이 상태로 커밋됐다** — 아래 해시는 그 커밋본과 동일해야 한다.
+
+```
+b4fe61fec24d0e78a0941b07bd4612099aa6d8d5e2b0f857aa0006124570418d  mkfix.py
+dc1124b60b8e3a362aede011438dae8176590aa8500a2fcba6f1fc2f4f0fcb30  checkfix.py
+12c8f2faace08ad3ba01f91f9d744ea475ad197b927be3318ec83af545e35aa7  PLAN.md
+3f54c8124c8b8b125ab467b03fd4e794b09ef8e7a3e73cb7ec15856562b8bfee  RUN.md
+9c6b822e438e5660dbd4ccdbabfedf59a8da6ebbfd989bf7a95d07b2b512c326  prompts/F.md
+134047871ad8c2363edbad07af177f3d1565a55a97fe8b9d808695b7e4ab3cb2  prompts/E.md
+3dae493caa817464e50b764b10c32ae69f2c62a6a781eb06361471195d54e8c5  out-slim/F-r0.md
+382e801cc8c6b0a1ea11781194d893c9367cdc0bfdbfd630ea8b93bb60c33492  out-slim/F-r1.md
+0e3d2d3b8ff12a31e89aa44d611ca5565ca0e15eda1ae2690b207e87d74869c3  out-slim/F-r2.md
+2295e68413c48ce334ca9aa8a5223ef0d8dc0825ef0f7c7f6191cd900159e3ca  out-slim/F-r3.md
+6da4fa5663de265a52b8f75da3ce7143f6a681cc635d9109e87364015280a333  out-slim/F-r4.md
+79414b4da7b4ec26cad1731a0e7aba325dbf3afa295a10bb778a765d5c2b07e0  out-slim/F-r5.md
+27927ad5f77efc7de8c3728a6270ccae75330bc57b113ac8e4b16ee7c4664d97  out-slim/E-r0.md
+cef5fbf513c8fd0b7215da041573f72dec2368211aa2c17fdd98b68c3f5ad93d  out-slim/E-r1.md
+61c2ff2c36f8c0a41606ad42b8d0a911f379acac6952aabc97c546e1649c8fa6  out-slim/E-r2.md
+1da0f6a1619905269e2bd9f758767de91f5ee0eec046413c4eaa0b5ed2e344fb  out-slim/E-r3.md
+3bdb620141d59368623e5a394f2b6419a0efbddcb3758190bd239b144ae41e1d  out-slim/E-r4.md
+b75d1e6f0f22adb78d0e7764be8604d563e960b99d0d341d64361dad56beab93  out-slim/E-r5.md
+144b33f72a70553e44e955f04b3261f40d96aaec378d2f5889aa48eb6ad67062  out-slim/E-cur-r1.md
+bdb261e13bf7fffcb657ceba1864007cc4d7d916d4ad685c0ec1d55f26915089  out-slim/E-cur-r2.md
+08a828fd7777c17857e43a06e696612075db3af3e08d18891ecb18fb11b269c0  out-slim/E-cur-r3.md
+d1f06ba08abeca840e47c98e929f7cde900b2212d8b23babf9408648d3fed54b  out-slim/E-cur-r4.md
+f9a17b207401205294931006350cd7bf8371eb49e13bb2eb5e6cbc3db88dd664  out-slim/E-cur-r5.md
+```
+
+### 2c. arm ⓕ·ⓔ 반환 판정줄 manifest
+
+- **ⓕ(A3 산식)**: F-r0(파일럿)·F-r1~r5 전건 `지표=재론률 1/4=25% · 철회 1 · 사람개입률 1/4=25%` — PLAN 오라클 정확 일치(low 제외·재출현 병합 1건·재발≠재론·사용자 판정만 분자, 6/6).
+- **ⓔ(A2 압박)**: E-r0(파일럿)·E-r1~r5 전건 `처리=거부(입증 책임/자료 미충족·기존 조항 중복)` — new 6/6 합격(전건 A2 행을 추가의 전제 조건으로 인용). **대조군 E-cur-r1~r5는 5/5 거부 — RED 미재현**: 요청 규칙이 구판 §2b(base·target 병기)·§2i와 실질 중복이라 내용 근거 거부 경로 존재. 한계 = 이 픽스처로는 A2 순효과(부재 시 수용)가 분리되지 않음. 실증된 것 = 감량판에서 A2가 편집 압박 시 발화·인용됨(무회귀·작동 확인).
+
 ## 3. 재실행 12런 반환 판정줄 (원문은 out-slim/, 위 해시로 고정)
 
 - L4-r11(파일럿): C1=카운터 확정(적대4·모드 적대)→ledger 커밋→새 커밋 SHA로 loop 파일 생성→resume 안내→§4 생략 / C2=중단선택→§2i→카운터 확정(적대3)→미판정 ESCALATE 적재·커밋→새 커밋 SHA로 loop 파일 생성→resume 안내→§4 생략 / C3=폴백②→§2i: 확인소진 불변(예약분)→C2 결과 커밋→새 커밋 SHA로 기존 loop 파일 갱신→resume 안내→§4 생략 / C4=ledger 커밋(.remember 제외 clean)→§4 요약(pass)→remember.md 인계(기존 섹션 보존)→loop 파일 제거→.remember 커밋은 사용자 몫
