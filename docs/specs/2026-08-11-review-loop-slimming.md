@@ -175,3 +175,17 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 **C2 (재진입 확인, 2026-08-11, 예약분 — 확인 소진 1/2 불변)** — target HEAD `41d8599`, base `650f0fa`. 응답 완전. 결과: **소멸 확인 2건 = fp-S5·fp-S6**(큐 빔) · 회귀 이상 없음(대체 문구·10회/7회·arm ⓐ~ⓓ·89런·AC2 전제 연결 전부 일관) · 판정 감사 대상 0건 확인 · 신규 blocking 0. verdict **pass**.
 
 **루프 종결 (2026-08-11) — 성공 종료(확인 경유)**: 미판정 blocking 0 · 미확인 FIXED 큐 0(확인 부채 0) · C2 verdict pass. 총 6라운드 = 적대 3(R1~R3, 소진 3/5) + 복귀 적대 1(상한 밖) + 확인 C1(소진 1/2) + 재진입 확인 C2(예약분). score 추세 [2, 2, 3] → R3 전환 신호 발화. disposition 집계: **FIXED 6**(fp-S1~S6 — 전건 소멸 확인, fp-S5는 ESCALATE 사용자 판정 경유) · ESCALATE 1(fp-S5 → 사용자 FIXED로 닫음) · ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE 0 · low(DEFER_LOW) 0. **A3 3지표(자기적용)**: 재론률 0%(기결정 재론 DUPLICATE 0/6) · 철회 조항 수 0 · 사람개입률 16.7%(1/6). 다음 = 7 직접 구현(웨이브 1→2, writing-skills TDD — §6 하네스-후보 결속 게이트 선행).
+
+## 적대검증 ledger (impl)
+
+- 구현 = 7 직접 구현 (planless — SLIM D6, ledger 위치 = 이 spec 말미). 착수 2026-08-11.
+- **감량 전 기준 실측**: `dev-workflow/skills/review-loop/SKILL.md` **449줄 / 71,766B**(`wc -l -c`, HEAD `41bb753`).
+
+### 하네스 준비 (§6 게이트)
+
+- **실재·정합 실측 (2026-08-11)**: 메인 체크아웃 `.remember/harness-7c/`(→ 심링크 실체 = claude-memories repo) — `python3 checkfix.py` **14 사례 × 3 arm 전건 통과**. mkfix.py 재생성 불요.
+- **실행 규격**: 디스패치 = 서브에이전트 1런 = 1회 `ARM=new ID=<..> REP=<n>`(RUN.md 규약). **출력은 7c 기록 보존을 위해 `out/` 대신 `out-slim/`에 쓴다**(디스패치 프롬프트에서 지시 — RUN.md 유일 편차). 실행은 감량판(new) 단일 그룹(§6 — cur/none 대조군 불요, 7c GREEN 150런이 기준선). 모델 = **opus 고정**(7c 기준선과 동일 계열로 문면 변화만 분리).
+
+### 웨이브별 기록
+
+(진행 중 — 웨이브별 결속 해시·게이트 결과·대응표를 아래에 추가)
