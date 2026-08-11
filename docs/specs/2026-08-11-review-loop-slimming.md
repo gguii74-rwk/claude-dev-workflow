@@ -255,3 +255,24 @@ review-loop 문면이 0.7.1 19.6KB → 0.15.0 71.8KB(×3.7)로 팽창했으나, 
 **AC7 릴리스 부속 수행 (2026-08-11)**: plugin.json 0.15.0 → **0.16.0** 범프. README 3종 대조 — 총 유계 **10회 불변**(en "at most 10"·ko "최대 10회"·ja "最大 10回" 각 1곳)·예시 **7회 불변**(각 1곳, 108행 무변경)·102행 산법 서술("새 세션에서 도는 폴백② 확인 1")은 대체 2줄과 정합·삭제된 기계 세부(허용·소비·unconsumed·消費·provenance 등) 참조 잔존 **0**(3언어+최종 SKILL 전수 grep). 릴리스 확정(태그·머지·3머신 `/plugin update` 안내)은 8단계 pass 후 9단계에서.
 
 **AC 충족 현황**: AC1 ✓ · AC2 ✓ · AC3 ✓ · AC4 ✓(A1 전 phase 문구·A2 §핵심 원칙 말미·자기적용 인용 = §5 근거 열) · AC5 ✓ · **AC6 = 8단계 impl 적대검증(다음 세션)** · AC7 부속 ✓(확정은 9단계). **다음 = 8 review-loop --phase impl(새 세션)** — planless 트랙: impl ledger = 이 섹션, impl 게이트 = 위 TDD GREEN 기록 갈음(§6·8단계 게이트 갈음 규정).
+
+### 8단계 impl 적대검증 루프 (2026-08-11)
+
+- 루프: 8 review-loop --phase impl (2026-08-11 시작, 새 세션). base = origin/main `650f0fa`(해소 SHA `650f0fad2144511398a2f54434ca3ab2baa98ac6`) · branch `worktree-prep-8-c10` · 예산 = max 5 · confirm 2 · auto-rounds 3(기본값) · 보안 크리티컬 아님. §1 게이트 = 위 TDD GREEN 기록 갈음(비-npm repo — C-6 D7) + SKILL.md 실측 401줄/61,758B(AC5 기록 일치) 확인.
+- fingerprint = file + 정규화 title + 정규화 recommendation(severity 제외). R1 focus = spec 재논의 금지 블록 전문(SLIM D1~D17) + 사용자가 닫은 ESCALATE fp-S5 요약행(강화형 3항 단서).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-I1 = harness-7c 픽스처·이 ledger 웨이브 2 게이트 행 + "폐기된 폴백② 상태 필드가 픽스처에 잔존해 arm ⓐ·L-4 C3 검증 오염(입력이 정답 누설, 출력 재기록 미검사인데 '필드 없이 통과'로 보고)" + "픽스처 신 스키마 재생성·checkfix 폐기 필드 검사 추가·재실행·ledger 실결과 갱신" | medium | FIXED (수정물 = repo 밖 하네스라 커밋 해시 해당 없음 — A1 인용 갈음: harness-7c `checkfix.py`·`mkfix.py`·`PLAN.md` + `out-slim/L4·L5-r11~r16` 12파일, 검증 명령 `python3 checkfix.py`) | 1차 근거 실측 확정: `l5-c2`·`l5-c3` new 상태 파일 10행 `폴백② 허용/소비 여부: 허용 · 미소비`·`l4-c3` 동 필드 `해당 없음` 잔존(NFC 정규화 grep — NFD 저장이라 리터럴 grep 빗나감) + 웨이브 2 출력 L4 r6·r9 필드 재기록(리뷰 원문의 "L4 5/5 재기록"은 과장 — 실측 2/5, L5는 r1~r5·r9 전건 필드 참조). 가드 대조: fp-S5 문면 재론 아님·fp-S6(오라클·SHA 결속)과 인접하나 지적 내용 별개(픽스처 입력 오염) → 신규 |
+
+**R1 (적대, 2026-08-11)** — target HEAD `66067ee`, verdict needs-attention. finding 1건(medium) → FIXED(자동 모드, 소진 0<3). score(수정 전 스냅샷) = **1** · 이력 [1] · 미확인 FIXED 큐(라운드 시작 시) = 0.
+
+**fp-I1 수정·재검증 (2026-08-11, TDD 순서)**:
+
+- checkfix.py에 new 규격 상태 파일의 폐기 필드(NFC `폴백② 허용`) 부재 검사 추가 → 구 픽스처에서 **RED 22건**(11파일 × new/none) 재현.
+- mkfix.py `loop_file()` 템플릿에서 필드 제거(l5c2·l5c3 인자·d-c1 replace 정리 포함) → **51 repo 재생성 → checkfix 17사례×3arm 전건 GREEN**. 폴백② 선택·소비 사실은 상태 파일 산문(사용자 판정 줄·다음 액션)과 ledger로만 전달 — d-c1 기존 형태로 통일.
+- **결속 SHA `767fe9e9` 불변**(픽스처만 변경, SKILL 후보 무변 — shasum 재확인).
+- **오라클 갱신(fp-S6 규약 기재)**: PLAN L-4 C3·L-5 C2·C3에 [fp-I1 추가] — 출력·판단이 폐기 필드를 기록하거나 존재를 전제하면 실패(선택 사실 산문 서술은 무방).
+- **재실행(opus 고정·out-slim)**: 파일럿 L4-r11·L5-r11 각 1런 GREEN → 본배치 L4 r12~r16 **5/5**·L5 r12~r16 **5/5**, 폐기 0런, **전 12출력 폐기 필드 0건**(NFC 기계 검사). L5 C3 1런(r14)은 "타임아웃≠소비·폴백② 보존 + 재실행은 사용자 판단" 형태 — 웨이브 2 게이트 행이 이미 합격 형태로 명시한 범위.
+- **구 런 참고 강등**: 웨이브 2의 L4 r6~r10·L5 r1~r5·파일럿 L5 r9 — L-4·L-5·arm ⓐ 판정은 r11~r16이 대체(구 런은 필드 있는 입력이라 "필드 없이" 경로 미검증). AC2 ①②의 L-4 C1·C2·C4·L-5 C1 재관측, AC2 ③·AC3의 arm ⓐ 10관측(C2·C3 × 5런)으로 **AC2·AC3 재확정 — 이번엔 필드 없는 입력으로 실증**.
+- 런 집계 갱신: 57 + 12 = **69런**(예산 89 내). 미확인 FIXED 큐 = **1건(fp-I1)**.
