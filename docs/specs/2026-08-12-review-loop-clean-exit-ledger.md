@@ -1,6 +1,6 @@
 # review-loop 클린 종료 종결 기록 — 빠른 종료 ledger 계약 보강 (fp-I17 이월)
 
-- 단계: **harden-spec 완료 (2026-08-12) — 다음 = 4 review-loop(spec)** (새 세션). 판단 갭 8건 전건 확정(D6~D13)·DEFERRED 0. 종결 시 이 줄을 갱신할 것.
+- 단계: **4 review-loop(spec) 종결 (2026-08-12) — 다음 = 7 직접 구현(TDD)** (새 세션 권장). spec 루프 성공 종료(확인 경유, verdict pass) — 상세 = 말미 `## 적대검증 ledger (spec)`. 종결 시 이 줄을 갱신할 것.
 - 출처: C-10 impl ledger fp-I17 — R2·R3 재출현(medium), 사용자 batch 판정 **OUT_OF_SCOPE(후속 이월, 백로그 기재 의무)**. 원본 = `2026-08-10-dev-cycle-state-priority.md` §적대검증 ledger (impl). 순번 미배치 백로그(`.remember/remember.md` §백로그).
 - 대상: `dev-workflow/skills/review-loop/SKILL.md` (0.16.0 기준 402줄) — §2e 빠른 종료 + §1 plan 형식 관문 ③
 
@@ -143,4 +143,7 @@ SKILL.md 개정(§2e·§1) + TDD GREEN(AC1~AC3) + spec 루프·impl 루프 종�
 | fp-S5 · spec §4 AC1·§5 · P arm이 재사용하는 harness-7c-slim 실행 규약이 read-only(행동 서술만)라 AC1의 부작용(종결 1줄 기록·§3 커밋)을 실측 불가 — 서술만으로 거짓 GREEN 가능 · rec: writable 임시 clone 실행 모드 + 사후 git oracle(필드 정합·placeholder 검사) 명시 | R4(복귀) | medium | FIXED(R4) | §5에 부작용 실측 어댑터 신설 — 적용 범위 = P 전건 + R 중 기록 동작 검증 케이스, `git show HEAD:<규정 문서>` oracle·필드 실측치 정합·placeholder 잔존 RED, D13 유지(실행 모드 추가·하네스 교체 아님). 커밋 `6d3c58e` |
 
 - score 이력(속행): C1 지목 = 1 → R4(복귀) = 1 (medium 1, 신규)
-- 미확인 FIXED 큐: fp-S3 (C1 재수정 `68f208c`) · fp-S5 (R4 수정 `6d3c58e`) — 재진입 확인(C2) 대기
+- **확인 C2 (2026-08-12, 복귀 재진입 — 예산 밖 예약분)**: 소멸 확인 = **fp-S3·S5 (2건 전건)**. 회귀 없음(fp-S1·S2·S4 영역 포함) · 신규 finding 없음 · 판정 감사 해당 없음(루프 직접 판정 0건) · 머지 준비도 verdict **pass**(7 직접 구현 TDD 진입 가능).
+- **미확인 FIXED 큐: 0건** — C1에서 3건(fp-S1·S2·S4) + C2에서 2건(fp-S3·S5) 전건 소멸 확인. **확인 부채 0으로 성공 종료.**
+- **루프 직접 판정**: 없음 (ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE/ESCALATE/DEFER_LOW 전부 0건)
+- **루프 종결(2026-08-12)**: 성공 종료(확인 경유) — 적대 3 + 복귀 적대 1 / 확인 1 + 재진입 확인 1(예약분). disposition 집계 = FIXED 5(전건 소멸 확인), 그 외 0. 다음 단계로 이월하는 blocking 없음. base `9bd6322` → target `68f208c`(마지막 내용 수정 커밋).
