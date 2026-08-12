@@ -126,6 +126,7 @@ SKILL.md 개정(§2e·§1) + TDD GREEN(AC1~AC3) + spec 루프·impl 루프 종�
 | fingerprint | 발생 | severity | disposition | 근거·수정 |
 |---|---|---|---|---|
 | fp-S1 · spec §4 AC1·AC2·§5 · 문제 정의는 dev-cycle 4·6·8행을 교착 표면으로 특정하나 AC2·arm C는 4/8만 검증 — plan 빠른 종료의 종결 1줄 위치(plan entrypoint) 검증도 부재 · rec: AC1·AC2·P/C arm에 plan 케이스 추가 | R1 | medium | FIXED(R1) | AC1에 phase 2변형(spec·plan — plan은 entrypoint 말미 위치 검증), AC2 4/6/8 확장 + plan 6행 케이스, §5 arm P·C 반영 + D13 신작 범위 정합(무-finding 계열 명시). 커밋 `2faf8b2` |
+| fp-S2 · spec §4 AC1·§5 · AC1 생산자 검증이 spec·plan 2변형뿐 — impl 빠른 종료의 위치 분기(planful=plan entrypoint·planless=spec 말미) 미검증, 8행 생산자 공백 · rec: AC1·P arm에 impl 무-finding 변형 추가 | R2 | medium | FIXED(R2) | AC1을 phase 4변형(spec·plan·impl-planful·impl-planless)으로 전수 확장 + 위치 검증 일반화(§finding ledger 표 규정 문서 말미) + 진행 중 승격 케이스 불요 근거 명기(위치 귀결 impl-planless와 동일·기존 규정 무접촉) + §5·D13 정합. 커밋 `8433f36` |
 
-- score 이력: R1 = 1 (medium 1, 신규)
-- 미확인 FIXED 큐: fp-S1 (R1 수정, 소멸 확인 대기)
+- score 이력: R1 = 1 (medium 1, 신규) → R2 = 1 (medium 1, 신규 — 비감소 1회째)
+- 미확인 FIXED 큐: fp-S1 (R1 수정) · fp-S2 (R2 수정) — 소멸 확인 대기
