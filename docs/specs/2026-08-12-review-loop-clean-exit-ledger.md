@@ -133,6 +133,7 @@ SKILL.md 개정(§2e·§1) + TDD GREEN(AC1~AC3) + spec 루프·impl 루프 종�
 | fp-S3 · spec §3b·§4 AC3 · 관문 ③ 해당없음의 반대 경계 미검증 — 종결 기록+finding 행 공존(관문 적용)·finding 행 존재+fingerprint 컬럼 부재(기존 fail-closed) 음성 대조군이 AC3/R에 없음(과대 해석 시 승계 판정이 focus·DUPLICATE 대조에서 소실) · rec: AC3에 음성 케이스 명시 | R3 | medium | FIXED(R3) | §3b에 해당없음 경계 명문화("대조할 finding 행 없음"에만 성립·관문 적용/실패 동작 불변) + AC3에 음성 대조군 2케이스 추가. 커밋 `2ebaee9` |
 | fp-S4 · spec §4 AC1·§5 · D7 비결정 판정(1런 미생성도 결함)을 실행할 본배치 최소 반복 수 부재 — 변형별 1런만으로 "전건 GREEN" 선언 가능 · rec: 변형·케이스별 본배치 하한·모델 고정, 파일럿 제외 전 유효 런 GREEN | R3 | medium | FIXED(R3) | §5에 본배치 하한 게이트 신설(C-10 fp-S10 승계 — P 4변형·C 4/6/8·R 경계 케이스별 파일럿 제외 독립 5런 이상·대조군 포함·모델 하네스 규격 고정·하한 미달 GREEN 종결 불가) + AC1 "전건"의 기준 명시. 커밋 `2ebaee9` |
 
-- score 이력: R1 = 1 (medium 1, 신규) → R2 = 1 (medium 1, 신규 — 비감소 1회째) → R3 = 2 (medium 2, 전부 신규 — 비감소 2회째, **전환 신호 1 발화**)
-- 미확인 FIXED 큐: fp-S1 (R1) · fp-S2 (R2) · fp-S3 (R3) · fp-S4 (R3) — 소멸 확인 대기
+- score 이력: R1 = 1 (medium 1, 신규) → R2 = 1 (medium 1, 신규 — 비감소 1회째) → R3 = 2 (medium 2, 전부 신규 — 비감소 2회째, **전환 신호 1 발화**) → C1 지목 = 1 (fp-S3 잔존 medium)
 - batch ESCALATE 적재분: 0건 (flush 대상 없음 — 적대 소진 3 = auto-rounds 도달 겸 전환 신호 발화)
+- **확인 C1 (2026-08-12)**: 소멸 확인 = **fp-S1·S2·S4 (3건)**. **fp-S3 잔존**(medium — AC3는 관문 ③ 4케이스로 확장됐으나 §5 arm R이 "2케이스"로 남아 모순, 불완전 수정) → FIXED 재수정 커밋 `68f208c`(arm R을 양성 2·음성 2 4케이스로 정합화) 후 재큐. 신규 finding 없음 · 판정 감사 해당 없음(루프 직접 판정 0건) · verdict **fail**(fp-S3 잔존 사유) → **적대 복귀 1회(상한 밖) + 재진입 확인** 경로. 복귀 사용 = 예.
+- 미확인 FIXED 큐: fp-S3 (C1 재수정 `68f208c`) — 소멸 확인 대기
