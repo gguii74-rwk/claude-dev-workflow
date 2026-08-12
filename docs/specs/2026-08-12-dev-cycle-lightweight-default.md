@@ -136,3 +136,13 @@ A/B 실측(2026-08-11~12, 35런, 블라인드 판정): 경량층(L)은 **전 arm
 | `spec.md` · 경량 라벨≠생략 실행 — 종단 간 비용 검증 부재로 ×26 잔존 가능 · e2e 비용 AC 추가 | high | ESCALATE(batch) → 사용자 판정 **FIXED** (R3, `a7faf31`) | **D12 신설** — e2e AC 기각, §6 (a1)(a2) 관찰 지표(생략 선택·D기록 성립·실수행 단계 수) 병기 + §7 후속 트랙 연결. 소멸 확인(C1) |
 | RB-1 `spec.md` · 스캔 입력원별 대조군 부재(요청 문면에만 위험어 → 파일 표면 안 읽는 구현도 통과) · 입력원별 독립 셀 추가 | high | **FIXED (복귀R, `e4d6ce4`)** | D8 두 입력원 계약의 AC 강제 누락 해소 — AC2를 유형 ①·② × 입력원 2종(요청 문면만/파일·모듈 표면만)으로 분리 + 셀 b계열 분리. 소멸 확인(C2) |
 | RB-2 `spec.md` · 재스캔 승격 시 영속 생략 기록 철회·승격 사유 기록·첫 미완 단계 재계산 미검증 · 셀 (d) 합격 조건 확장 | high | **FIXED (복귀R, `e4d6ce4`)** | 즉시 승격 계약의 AC4 연결 — 활성 4·5·6 생략 D기록 재개 픽스처 + 승격 전이 3종(사유 기록·생략 철회·첫 미완 재계산) 합격 조건 + 지도 무수정 유지. 소멸 확인(C2) |
+
+## 적대검증 ledger (impl)
+
+- 루프: review-loop(impl) 2026-08-13 시작(D13 planless — ledger 위치 = 이 spec 말미). base = `ff23db2`(해소 SHA `ff23db25402ab5bcd751c9aa0ab6663a359fa94b`, 인계 지정 diff 기점). 예산: max 5 · confirm 2 · auto 3. 게이트 = writing-skills TDD GREEN 기록 갈음(npm 스크립트 없는 repo). 보안 크리티컬 아님(접촉 표면 = 스킬 문면·릴리스 표면).
+- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 3 (high 1).
+- 미확인 FIXED 큐: R1 1건(아래 행 — 소멸 확인 대기).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| `SKILL.md` · 확인 불가 폴백이 가드 1의 외부 승인까지 확장(적용 범위 미명시) · 적용 범위를 세션 상태 확인·가드 3 준용에 한정 명문화 + 회귀 셀 추가 | high | FIXED (R1, `0046fe0`) | RED: 7단계 GREEN 출력 재판정 3/12 위반(A1-r4·A2-r3·A2-r5 — 폴백 근거 무확인 머지 자체 결정). 수정 = 폴백 소절 범위 한정 문장 1개(98줄 유지, D15) + AC6·셀 (f) 신설 + README 3종 동기화. GREEN: fix arm 10/10(감사 기록·경량 진입 유지 + 머지·배포 보류·이월 전건, 경량 회귀 0)·REFACTOR 0·porcelain 전건. 유효 22런·폐기 1런(세션 한도). 채점 = `.remember/tdd9-fix-scores.md`, 기대 정답 사전 등록 = `.remember/tdd9-fix-plan.md` |
