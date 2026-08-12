@@ -66,7 +66,7 @@ low만 나온 트랙도 빠른 종료 대상이다(DEFER_LOW는 disposition 6종
 
 ## 5. TDD 계획 (writing-skills — 스킬 문면 변경 규약, 브리프 §0-2)
 
-- arm 3축: **P(생산자)** 무-finding 픽스처(phase 4변형 — AC1) RED/GREEN · **C(소비자)** dev-cycle 판별 교착 소멸(4/6/8 — plan 6행 케이스 포함, AC2) · **R(회귀)** non-clean/관문 ③ 2케이스/low-only.
+- arm 3축: **P(생산자)** 무-finding 픽스처(phase 4변형 — AC1) RED/GREEN · **C(소비자)** dev-cycle 판별 교착 소멸(4/6/8 — plan 6행 케이스 포함, AC2) · **R(회귀)** non-clean/관문 ③ 4케이스(양성 2·음성 2 — AC3)/low-only.
 - **하네스(D13)**: arm P·R = **harness-7c-slim 규격 재사용**(review-loop 문면 시험용 — 소스 `docs/specs/harness-7c-slim/` 커밋 실재) + 무-finding 픽스처(phase 4변형)만 신작. arm C = **harness-8 재사용**(dev-cycle 판별용, C-10 — `.remember/harness-8` 생존 확인 2026-08-12) + plan 6행 상태 픽스처 신작(종결 1줄만 있는 클린 종결 상태 — D13의 무-finding 픽스처 계열, 신작 범위 불변). 세부 픽스처 설계는 구현 단계.
 - 승계 관례(픽스처 정합 검사·arm당 파일럿 1런·fan-out 리포트 파일화·픽스처에 합격 기준 노출 금지) 적용.
 - **본배치 하한(C-10 fp-S10 게이트 승계)**: P phase 4변형·C 4/6/8 케이스·R 경계 케이스별 **파일럿 제외 독립 5런 이상**(대조군 포함), 실행 모델 = 하네스 규격 고정. 하한 미달 상태로 GREEN 종결 불가 — AC1의 "전건"은 이 본배치 전 유효 런 기준이다(D7).
