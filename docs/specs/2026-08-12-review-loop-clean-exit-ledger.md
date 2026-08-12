@@ -137,4 +137,10 @@ SKILL.md 개정(§2e·§1) + TDD GREEN(AC1~AC3) + spec 루프·impl 루프 종�
 - score 이력: R1 = 1 (medium 1, 신규) → R2 = 1 (medium 1, 신규 — 비감소 1회째) → R3 = 2 (medium 2, 전부 신규 — 비감소 2회째, **전환 신호 1 발화**) → C1 지목 = 1 (fp-S3 잔존 medium)
 - batch ESCALATE 적재분: 0건 (flush 대상 없음 — 적대 소진 3 = auto-rounds 도달 겸 전환 신호 발화)
 - **확인 C1 (2026-08-12)**: 소멸 확인 = **fp-S1·S2·S4 (3건)**. **fp-S3 잔존**(medium — AC3는 관문 ③ 4케이스로 확장됐으나 §5 arm R이 "2케이스"로 남아 모순, 불완전 수정) → FIXED 재수정 커밋 `68f208c`(arm R을 양성 2·음성 2 4케이스로 정합화) 후 재큐. 신규 finding 없음 · 판정 감사 해당 없음(루프 직접 판정 0건) · verdict **fail**(fp-S3 잔존 사유) → **적대 복귀 1회(상한 밖) + 재진입 확인** 경로. 복귀 사용 = 예.
-- 미확인 FIXED 큐: fp-S3 (C1 재수정 `68f208c`) — 소멸 확인 대기
+
+| fingerprint | 발생 | severity | disposition | 근거·수정 |
+|---|---|---|---|---|
+| fp-S5 · spec §4 AC1·§5 · P arm이 재사용하는 harness-7c-slim 실행 규약이 read-only(행동 서술만)라 AC1의 부작용(종결 1줄 기록·§3 커밋)을 실측 불가 — 서술만으로 거짓 GREEN 가능 · rec: writable 임시 clone 실행 모드 + 사후 git oracle(필드 정합·placeholder 검사) 명시 | R4(복귀) | medium | FIXED(R4) | §5에 부작용 실측 어댑터 신설 — 적용 범위 = P 전건 + R 중 기록 동작 검증 케이스, `git show HEAD:<규정 문서>` oracle·필드 실측치 정합·placeholder 잔존 RED, D13 유지(실행 모드 추가·하네스 교체 아님). 커밋 `6d3c58e` |
+
+- score 이력(속행): C1 지목 = 1 → R4(복귀) = 1 (medium 1, 신규)
+- 미확인 FIXED 큐: fp-S3 (C1 재수정 `68f208c`) · fp-S5 (R4 수정 `6d3c58e`) — 재진입 확인(C2) 대기
