@@ -106,9 +106,12 @@ A/B 실측(2026-08-11~12, 35런, 블라인드 판정): 경량층(L)은 **전 arm
 ## 적대검증 ledger (spec)
 
 - 루프: review-loop(spec) 2026-08-12 시작. base = `38c1859`(해소 SHA). 예산: max 5 · confirm 2 · auto 3.
-- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 4 (high 1 · medium 1).
+- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 4 (high 1 · medium 1) → R2 = 7 (high 2 · medium 1, 전건 신규).
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | `spec.md` · 재개 시 감사 기록 유효성 검증 없이 경량 재사용 · 기록 유효 범위·재스캔 규칙 명시 | high | FIXED (R1, `d307b56`) | §3a 기록 유효 범위 신설(동일 요청 한정·불완전=부재·절대 규칙 상시 우선) + §3b 가드 3 소비 규칙 + AC4 범위 확대 픽스처 + 셀 (d) 확장. 미확인 FIXED 큐 |
 | `spec.md` · 스캔 불명확 fail-closed·유형 ② 대조군이 TDD 행렬에 없음 · fail-closed 셀 추가 및 유형 분리 | medium | FIXED (R1, `d307b56`) | AC2 유형 ①·② 분리 + 스캔 불명확 픽스처 명시 + §6 셀 (b1)(b2)(e) 추가. 미확인 FIXED 큐 |
+| `spec.md` · 감사 기록 쓸 주체 부재로 D4와 G-g(읽기 전용 지도)를 동시 만족 불가 · 기록 주체·영속화 계약 명시 | high | FIXED (R2, `15160eb`) | §3a 기록 주체 신설 — 진입 세션이 기록(승격 사유 관례 동형), 지도 판별 무수정, 유실은 fail-closed 재적용 + AC5 무수정 검증 추가. 미확인 FIXED 큐 |
+| `spec.md` · 기록이 소비 세션의 확인 불가 여부까지 영속 우회(대화형 재개에서 확인 생략) · 소비 전제 명문화 | high | FIXED (R2, `15160eb`) | §3a 소비 전제 신설 — 재개 세션도 신호 ①·② 성립 시만 기록 판독, 대화형 재개는 확인 1회(존속 규칙 집행) + AC4·셀 (d) 대화 가능 재개 픽스처. 미확인 FIXED 큐 |
+| `spec.md` · 0.17.0 릴리스·README 3종 동기화가 범위·완료 게이트에 없음 · 릴리스 표면을 범위·AC에 연결 | medium | FIXED (R2, `15160eb`) | §2 릴리스 표면 문단 신설(D5·G-f 운용화 — 범프·README 경량 문단 동기화·3머신 안내) + AC5 게이트 연결. 미확인 FIXED 큐 |
