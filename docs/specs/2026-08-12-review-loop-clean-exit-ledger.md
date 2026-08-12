@@ -117,3 +117,15 @@ SKILL.md 개정(§2e·§1) + TDD GREEN(AC1~AC3) + spec 루프·impl 루프 종�
 
 - **DEFERRED(사용자 유예): 없음** — 이번 압박의 판단 갭 8건 전건 질문·확정(D6~D13).
 - **검증 필요(실측, 구현 단계): 없음** — 하네스 소스는 repo 커밋(`docs/specs/harness-7c-slim/`)·스크래치패드 생존(`.remember/harness-8`) 확인 완료. TDD 배치 실행 시점 제약(주간 API 한도, 8/17 09:00 KST 리셋)은 §5에 기재.
+
+## 적대검증 ledger (spec)
+
+- 루프: `review-loop --phase spec` · base = main@`9bd63223c98ef797dbdc9df6cbed4327bf99e572` · 예산 max 5 / confirm 2 / auto 3
+- score 산식: Σ weight(§2c 분류 직후·수정 전 미판정 blocking), weight = critical 4 · high 3 · medium 1 · low 0. 미확인 FIXED 큐 제외.
+
+| fingerprint | 발생 | severity | disposition | 근거·수정 |
+|---|---|---|---|---|
+| fp-S1 · spec §4 AC1·AC2·§5 · 문제 정의는 dev-cycle 4·6·8행을 교착 표면으로 특정하나 AC2·arm C는 4/8만 검증 — plan 빠른 종료의 종결 1줄 위치(plan entrypoint) 검증도 부재 · rec: AC1·AC2·P/C arm에 plan 케이스 추가 | R1 | medium | FIXED(R1) | AC1에 phase 2변형(spec·plan — plan은 entrypoint 말미 위치 검증), AC2 4/6/8 확장 + plan 6행 케이스, §5 arm P·C 반영 + D13 신작 범위 정합(무-finding 계열 명시). 커밋 `2faf8b2` |
+
+- score 이력: R1 = 1 (medium 1, 신규)
+- 미확인 FIXED 큐: fp-S1 (R1 수정, 소멸 확인 대기)
