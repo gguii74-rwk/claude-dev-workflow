@@ -45,6 +45,8 @@ fp-I17 원문 요지 (C-10 impl ledger R2): "빠른 종료(무-finding) 시 revi
 
 관문 ③의 목적(기결정 가드 focus 조립·DUPLICATE 대조의 원본 요건)상 대조 원본이 없으면 해당 없음이 논리적 귀결이다. 부재는 여전히 관문 실패가 아니다(비소급 — 기존 트랙의 ledger 부재 합법 유지).
 
+해당없음의 경계 = **"대조할 finding 행 없음"에만 성립**. 종결 기록과 finding 행이 공존하면 행이 있는 것이므로 관문을 그대로 적용하고, finding 행이 있는데 fingerprint 컬럼이 없으면 기존 fail-closed(루프 시작 전 컬럼 보강)가 그대로 발동한다 — 이 개정은 해당없음 분기를 넓힐 뿐 관문의 적용·실패 동작을 바꾸지 않는다.
+
 ### 3c. low-only 경계
 
 low만 나온 트랙도 빠른 종료 대상이다(DEFER_LOW는 disposition 6종 밖 — 미확인 FIXED 큐 0·직접 판정 0 성립). 종결 1줄의 `low <m>건` 표기가 그 요약 기록을 겸하므로 별도 규정을 두지 않는다. 이전 라운드의 DEFER_LOW 행이 이미 섹션에 있으면 종결 1줄은 그 말미에 덧붙인다.
@@ -58,7 +60,7 @@ low만 나온 트랙도 빠른 종료 대상이다(DEFER_LOW는 disposition 6종
 
 - **AC1 (생산자)**: 무-finding 픽스처에서 — 현행 문면 RED(**배치 중 1런 이상** 종결 ledger 미생성 = 결함 재현, D7 — 비결정적 발현도 결함, C-10 X11 전례), 개정 문면 GREEN(**전건** 종결 1줄 실재 + §3 커밋 경유). 픽스처는 **phase 4변형** — spec(planless)·plan(분할 entrypoint)·impl-planful(plan entrypoint)·impl-planless(spec 문서): 각 변형 GREEN은 종결 1줄이 **§finding ledger 표가 규정한 그 문서 말미**에 실재해야 통과(위치 오기재 = RED — 특히 plan/impl-planful은 task 파일 아님). 진행 중 승격 케이스는 별도 변형 불요 — 위치 귀결이 impl-planless와 동일(spec 말미 유지)하고 그 유지 규칙은 §finding ledger 표 기존 규정으로 이 변경이 접촉하지 않는다.
 - **AC2 (소비자)**: 종결 1줄만 있는 트랙에서 dev-cycle 판별이 해당 단계(**4/6/8**)를 완료로 판독하고 다음 단계를 안내(교착 소멸). plan 케이스 = plan ledger에 종결 1줄만 있는 상태(5 완료)에서 6을 재권고하지 않고 7을 안내. dev-cycle 문면 diff 0인 채로.
-- **AC3 (회귀)**: non-clean 경로 ledger 동작 무변경 · §1 관문 ③ — 부재(도입 전 트랙)·종결-기록뿐 두 케이스 모두 "해당 없음 + 사유 1줄" · low-only 트랙 정상.
+- **AC3 (회귀)**: non-clean 경로 ledger 동작 무변경 · §1 관문 ③ — 양성 2케이스(부재(도입 전 트랙)·종결-기록뿐 → "해당 없음 + 사유 1줄") + **음성 대조군 2케이스**(종결 기록+fingerprint finding 행 공존 → 관문 적용·정상 통과 / finding 행 존재+fingerprint 컬럼 부재 → 기존 fail-closed 발동 유지) · low-only 트랙 정상.
 - **AC4 (구조)**: 거울면 0 — dev-cycle 문면 변경 0, 종결 기록 규칙의 거처는 §2e 유일.
 - **AC5 (공정)**: no-AI-trace(커밋·문서) · 기계 장치 0(G-b).
 
@@ -67,6 +69,7 @@ low만 나온 트랙도 빠른 종료 대상이다(DEFER_LOW는 disposition 6종
 - arm 3축: **P(생산자)** 무-finding 픽스처(phase 4변형 — AC1) RED/GREEN · **C(소비자)** dev-cycle 판별 교착 소멸(4/6/8 — plan 6행 케이스 포함, AC2) · **R(회귀)** non-clean/관문 ③ 2케이스/low-only.
 - **하네스(D13)**: arm P·R = **harness-7c-slim 규격 재사용**(review-loop 문면 시험용 — 소스 `docs/specs/harness-7c-slim/` 커밋 실재) + 무-finding 픽스처(phase 4변형)만 신작. arm C = **harness-8 재사용**(dev-cycle 판별용, C-10 — `.remember/harness-8` 생존 확인 2026-08-12) + plan 6행 상태 픽스처 신작(종결 1줄만 있는 클린 종결 상태 — D13의 무-finding 픽스처 계열, 신작 범위 불변). 세부 픽스처 설계는 구현 단계.
 - 승계 관례(픽스처 정합 검사·arm당 파일럿 1런·fan-out 리포트 파일화·픽스처에 합격 기준 노출 금지) 적용.
+- **본배치 하한(C-10 fp-S10 게이트 승계)**: P phase 4변형·C 4/6/8 케이스·R 경계 케이스별 **파일럿 제외 독립 5런 이상**(대조군 포함), 실행 모델 = 하네스 규격 고정. 하한 미달 상태로 GREEN 종결 불가 — AC1의 "전건"은 이 본배치 전 유효 런 기준이다(D7).
 - **배치 실행 시점**: 주간 API 한도 리셋(8/17 09:00 KST) 후, 또는 그 전이면 토큰 사용량 보고 후 사용자 판단.
 
 ## 6. 트랙 운영 (자기적용)
