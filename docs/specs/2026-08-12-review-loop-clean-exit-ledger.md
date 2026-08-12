@@ -130,6 +130,9 @@ SKILL.md 개정(§2e·§1) + TDD GREEN(AC1~AC3) + spec 루프·impl 루프 종�
 |---|---|---|---|---|
 | fp-S1 · spec §4 AC1·AC2·§5 · 문제 정의는 dev-cycle 4·6·8행을 교착 표면으로 특정하나 AC2·arm C는 4/8만 검증 — plan 빠른 종료의 종결 1줄 위치(plan entrypoint) 검증도 부재 · rec: AC1·AC2·P/C arm에 plan 케이스 추가 | R1 | medium | FIXED(R1) | AC1에 phase 2변형(spec·plan — plan은 entrypoint 말미 위치 검증), AC2 4/6/8 확장 + plan 6행 케이스, §5 arm P·C 반영 + D13 신작 범위 정합(무-finding 계열 명시). 커밋 `2faf8b2` |
 | fp-S2 · spec §4 AC1·§5 · AC1 생산자 검증이 spec·plan 2변형뿐 — impl 빠른 종료의 위치 분기(planful=plan entrypoint·planless=spec 말미) 미검증, 8행 생산자 공백 · rec: AC1·P arm에 impl 무-finding 변형 추가 | R2 | medium | FIXED(R2) | AC1을 phase 4변형(spec·plan·impl-planful·impl-planless)으로 전수 확장 + 위치 검증 일반화(§finding ledger 표 규정 문서 말미) + 진행 중 승격 케이스 불요 근거 명기(위치 귀결 impl-planless와 동일·기존 규정 무접촉) + §5·D13 정합. 커밋 `8433f36` |
+| fp-S3 · spec §3b·§4 AC3 · 관문 ③ 해당없음의 반대 경계 미검증 — 종결 기록+finding 행 공존(관문 적용)·finding 행 존재+fingerprint 컬럼 부재(기존 fail-closed) 음성 대조군이 AC3/R에 없음(과대 해석 시 승계 판정이 focus·DUPLICATE 대조에서 소실) · rec: AC3에 음성 케이스 명시 | R3 | medium | FIXED(R3) | §3b에 해당없음 경계 명문화("대조할 finding 행 없음"에만 성립·관문 적용/실패 동작 불변) + AC3에 음성 대조군 2케이스 추가. 커밋 `2ebaee9` |
+| fp-S4 · spec §4 AC1·§5 · D7 비결정 판정(1런 미생성도 결함)을 실행할 본배치 최소 반복 수 부재 — 변형별 1런만으로 "전건 GREEN" 선언 가능 · rec: 변형·케이스별 본배치 하한·모델 고정, 파일럿 제외 전 유효 런 GREEN | R3 | medium | FIXED(R3) | §5에 본배치 하한 게이트 신설(C-10 fp-S10 승계 — P 4변형·C 4/6/8·R 경계 케이스별 파일럿 제외 독립 5런 이상·대조군 포함·모델 하네스 규격 고정·하한 미달 GREEN 종결 불가) + AC1 "전건"의 기준 명시. 커밋 `2ebaee9` |
 
-- score 이력: R1 = 1 (medium 1, 신규) → R2 = 1 (medium 1, 신규 — 비감소 1회째)
-- 미확인 FIXED 큐: fp-S1 (R1 수정) · fp-S2 (R2 수정) — 소멸 확인 대기
+- score 이력: R1 = 1 (medium 1, 신규) → R2 = 1 (medium 1, 신규 — 비감소 1회째) → R3 = 2 (medium 2, 전부 신규 — 비감소 2회째, **전환 신호 1 발화**)
+- 미확인 FIXED 큐: fp-S1 (R1) · fp-S2 (R2) · fp-S3 (R3) · fp-S4 (R3) — 소멸 확인 대기
+- batch ESCALATE 적재분: 0건 (flush 대상 없음 — 적대 소진 3 = auto-rounds 도달 겸 전환 신호 발화)
