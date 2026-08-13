@@ -98,3 +98,14 @@ H2 R3 적대검증이 "경량 라벨 ≠ 생략 실행 — 라벨이 붙어도 4
 | D8 | **재개 거처 = 새 트랙 spec 신설**(이 spec 승계 참조, 재개방 금지) | "이 트랙을 재개한다" 문구의 재개방 오독 차단 — 종결 트랙 spec 재개방 금지 관례(D5 정합) |
 | D9 | **도달성 = 글로벌 메모리 포인터**(dev-workflow-ab-followup, 종결 핸드오프 시 재개 조건·판독 기준 반영) | F2 확장 등 후속 세션은 eval repo에서 돌아 이 spec 미열람 가능. repo 변경 없음(AC5 불변)·비용 0 |
 | D10 | **8단계 게이트 = AC1~AC5 문서 대조 갈음** 명시(문서 전용 — 검증 명령·TDD 없음) | H2 "writing-skills TDD GREEN 기록 갈음" 전례 동형 — 게이트 해석 정지 방지 |
+
+## 적대검증 ledger (impl)
+
+- 루프: review-loop(impl) 2026-08-13 시작(planless — ledger 위치 = 이 spec 말미, D7 호출 1회·예산 기본). base = `d95c422`(해소 SHA `d95c42245cb7e4774a9c5cac2ddf505cbe7b1ac6`, 트랙 시작 직전 main). 예산: max 5 · confirm 2 · auto 3. 게이트 = AC1~AC5 문서 대조 갈음(D10) — R1 진입 시 전건 충족(AC5: diff = docs/specs 2파일뿐). 보안 크리티컬 아님(접촉 표면 = 문서 전용).
+- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 1 (medium 1).
+- R1 적대(소진 1/5, target `b09b8de`): finding 1건(medium) → FIXED 자동 수정(자동 모드). batch 적재 0건. verdict(참고 — 게이트 아님): needs-attention.
+- 미확인 FIXED 큐: fp-C11-R1 1건(수정 커밋 `1497c87`, 소멸 확인 대기).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-C11-R1: C-11 spec:4 · 판정 근거 파일(`tdd9-scores.md`)이 양 repo 모두 git 미추적(메모리 repo gitignore `tdd9-*` 미예외) — clean clone·타 머신 감사 불가·조용한 유실 위험 · 관찰 행을 추적 문서에 보존 | medium | FIXED (R1, `1497c87`) | 권고 2안 중 저비용·자기완결안 채택 — 관찰 지표 절 전문을 §3c 추적 발췌로 보존 + 출처 행에 미추적 명시(AC5 유지 — 변경은 이 spec 내부). 원본 파일의 repo 커밋 여부는 remember 기존 유예(하네스 결정적 소스, 사용자 몫)와 인접 별건으로 불변경. D1 재논의 아님(finding 자체 명시) |
