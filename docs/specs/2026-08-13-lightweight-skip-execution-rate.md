@@ -1,6 +1,6 @@
 # 경량 생략 실행률 후속 판정 — 갭·판정 라인 (H2 파생, C-11)
 
-- 단계: **7 문서 반영 완료 (2026-08-13) — 다음 = 8 impl 적대검증**(착수 전 codex 한도 상태 확인). 3 harden-spec 종결(2026-08-13, D6~D10). 경량 승인(대화형 확인 1회, 2026-08-13) · 4·5·6 생략(D3·D4, 6은 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 8단계 = review-loop(impl) **호출 1회·내부 예산 규약 기본**(D7), 게이트 = **AC1~AC5 문서 대조 갈음**(문서 전용 트랙 — 검증 명령·TDD 없음, D10).
+- 단계: **8 impl 적대검증 종결 (2026-08-13, 성공 종료 — 적대 2·확인 1, FIXED 1) — 다음 = 9 통합**(origin push, 사용자 확인). 3 harden-spec 종결(2026-08-13, D6~D10) · 7 문서 반영 완료(2026-08-13). 경량 승인(대화형 확인 1회, 2026-08-13) · 4·5·6 생략(D3·D4, 6은 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 8단계 = review-loop(impl) **호출 1회·내부 예산 규약 기본**(D7), 게이트 = **AC1~AC5 문서 대조 갈음**(문서 전용 트랙 — 검증 명령·TDD 없음, D10).
 - 출처: H2 spec(`2026-08-12-dev-cycle-lightweight-default.md`) §7·D12가 이 트랙에 넘긴 판단 재료 2건. 근거 데이터 = `.remember/tdd9-scores.md` 관찰 지표(D12) 절(git 미추적 로컬 산출물 — 추적 발췌 = §3c).
 - 대상: 판정 트랙 — 규약 변경 없음이 예상 종착점(부정 결과 종료, L5). 변경 파일 = 이 spec(신설) + H2 spec §7 포인터 1줄 + `.remember/remember.md`.
 
@@ -105,8 +105,9 @@ H2 R3 적대검증이 "경량 라벨 ≠ 생략 실행 — 라벨이 붙어도 4
 - score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 1 (medium 1) → R2 = 0 (신규 0).
 - R1 적대(소진 1/5, target `b09b8de`): finding 1건(medium) → FIXED 자동 수정(자동 모드). batch 적재 0건. verdict(참고 — 게이트 아님): needs-attention.
 - R2 적대(소진 2/5, target `2ab47f5`): 신규 finding 0 · verdict approve · fp-C11-R1 적대 비재출현(R2) — 참고 신호일 뿐 큐 유지(§두 큐). **전환 신호 2(수정 큐 소진) 발화 → batch 적재분 0건 → 확인 모드 진입.**
-- 미확인 FIXED 큐: fp-C11-R1 1건(수정 커밋 `1497c87`, 소멸 확인 대기).
+- C1 확인 라운드(확인 소진 1/2): **fp-C11-R1 소멸 확인**(§3c 발췌가 원자료 관찰 행 2개를 정확 보존·출처 행 미추적 명시 검증) · 수정 주변 회귀 없음(§3a·§3b·D1~D10·AC1~AC5·H2 §7 포인터 무모순) · 판정 감사 대상 없음(루프 직접 판정 0건) · 신규 finding 0 · verdict **pass** → **성공 종료**(미판정 blocking 0 · 미확인 FIXED 큐 0 · verdict pass). 루프 총계: 적대 2 · 확인 1. disposition: FIXED 1 · 기타 0 · low 0.
+- 미확인 FIXED 큐: R1 1건 → **C1 소멸 확인, 잔여 0**.
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
-| fp-C11-R1: C-11 spec:4 · 판정 근거 파일(`tdd9-scores.md`)이 양 repo 모두 git 미추적(메모리 repo gitignore `tdd9-*` 미예외) — clean clone·타 머신 감사 불가·조용한 유실 위험 · 관찰 행을 추적 문서에 보존 | medium | FIXED (R1, `1497c87`) | 권고 2안 중 저비용·자기완결안 채택 — 관찰 지표 절 전문을 §3c 추적 발췌로 보존 + 출처 행에 미추적 명시(AC5 유지 — 변경은 이 spec 내부). 원본 파일의 repo 커밋 여부는 remember 기존 유예(하네스 결정적 소스, 사용자 몫)와 인접 별건으로 불변경. D1 재논의 아님(finding 자체 명시) |
+| fp-C11-R1: C-11 spec:4 · 판정 근거 파일(`tdd9-scores.md`)이 양 repo 모두 git 미추적(메모리 repo gitignore `tdd9-*` 미예외) — clean clone·타 머신 감사 불가·조용한 유실 위험 · 관찰 행을 추적 문서에 보존 | medium | FIXED (R1, `1497c87`) | 권고 2안 중 저비용·자기완결안 채택 — 관찰 지표 절 전문을 §3c 추적 발췌로 보존 + 출처 행에 미추적 명시(AC5 유지 — 변경은 이 spec 내부). 원본 파일의 repo 커밋 여부는 remember 기존 유예(하네스 결정적 소스, 사용자 몫)와 인접 별건으로 불변경. D1 재논의 아님(finding 자체 명시). 소멸 확인(C1) |
