@@ -140,7 +140,8 @@ A/B 실측(2026-08-11~12, 35런, 블라인드 판정): 경량층(L)은 **전 arm
 ## 적대검증 ledger (impl)
 
 - 루프: review-loop(impl) 2026-08-13 시작(D13 planless — ledger 위치 = 이 spec 말미). base = `ff23db2`(해소 SHA `ff23db25402ab5bcd751c9aa0ab6663a359fa94b`, 인계 지정 diff 기점). 예산: max 5 · confirm 2 · auto 3. 게이트 = writing-skills TDD GREEN 기록 갈음(npm 스크립트 없는 repo). 보안 크리티컬 아님(접촉 표면 = 스킬 문면·릴리스 표면).
-- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 3 (high 1).
+- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 3 (high 1) → R2 = 0 (신규 0).
+- R2 적대(소진 2/5): 신규 finding 0 · verdict approve · fp-H2-R1 적대 비재출현(R2) — 참고 신호일 뿐 큐 유지(§두 큐). 1차 실행은 codex 사용량 한도로 실패(카운터 미소진), 사용자 지시로 재실행. **전환 신호 2(수정 큐 소진) 발화 → batch 적재분 0건 → 확인 모드 진입.**
 - 미확인 FIXED 큐: R1 1건(아래 행 — 소멸 확인 대기).
 
 | fingerprint | severity | disposition | 근거 |
