@@ -102,8 +102,9 @@ H2 R3 적대검증이 "경량 라벨 ≠ 생략 실행 — 라벨이 붙어도 4
 ## 적대검증 ledger (impl)
 
 - 루프: review-loop(impl) 2026-08-13 시작(planless — ledger 위치 = 이 spec 말미, D7 호출 1회·예산 기본). base = `d95c422`(해소 SHA `d95c42245cb7e4774a9c5cac2ddf505cbe7b1ac6`, 트랙 시작 직전 main). 예산: max 5 · confirm 2 · auto 3. 게이트 = AC1~AC5 문서 대조 갈음(D10) — R1 진입 시 전건 충족(AC5: diff = docs/specs 2파일뿐). 보안 크리티컬 아님(접촉 표면 = 문서 전용).
-- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 1 (medium 1).
+- score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 1 (medium 1) → R2 = 0 (신규 0).
 - R1 적대(소진 1/5, target `b09b8de`): finding 1건(medium) → FIXED 자동 수정(자동 모드). batch 적재 0건. verdict(참고 — 게이트 아님): needs-attention.
+- R2 적대(소진 2/5, target `2ab47f5`): 신규 finding 0 · verdict approve · fp-C11-R1 적대 비재출현(R2) — 참고 신호일 뿐 큐 유지(§두 큐). **전환 신호 2(수정 큐 소진) 발화 → batch 적재분 0건 → 확인 모드 진입.**
 - 미확인 FIXED 큐: fp-C11-R1 1건(수정 커밋 `1497c87`, 소멸 확인 대기).
 
 | fingerprint | severity | disposition | 근거 |
