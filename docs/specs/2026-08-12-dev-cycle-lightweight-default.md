@@ -1,6 +1,6 @@
 # dev-cycle 경량 분기 기본값 재설계 — 확인 불가 폴백 (H2 / A/B 권고 1)
 
-- 단계: **7 구현 종결 (2026-08-13, writing-skills TDD GREEN — §7단계 구현 기록) — 다음 = 8 impl 적대검증**(새 세션, 게이트 = TDD GREEN 기록 갈음, ledger 위치 = 이 spec 말미). 5·6 생략 확정(D13). 3.5 비대상(화면 무관 — 스킬 문면 변경).
+- 단계: **8 impl 적대검증 종결 (2026-08-13, 성공 종료 — §적대검증 ledger (impl)) — 다음 = 9 통합**(origin push는 사용자 판단 + 3머신 `/plugin update` 안내). 5·6 생략 확정(D13). 3.5 비대상(화면 무관 — 스킬 문면 변경).
 - 출처: A/B 실측 파일럿 권고 1 (`~/workspace/dev-workflow-eval/report/AB-2026-08-12.md` §5) — H2 채택(전 rep 일관). 교훈 원칙 L3("기본값은 싼 쪽", `LESSONS-2026-08-12.md`).
 - 대상: `dev-workflow/skills/dev-cycle/SKILL.md` (0.16.0 기준 96줄) — 경량 경로 절(세션 상태 판정 문장) + 가드 3(세션 상태 재확인).
 
@@ -142,8 +142,9 @@ A/B 실측(2026-08-11~12, 35런, 블라인드 판정): 경량층(L)은 **전 arm
 - 루프: review-loop(impl) 2026-08-13 시작(D13 planless — ledger 위치 = 이 spec 말미). base = `ff23db2`(해소 SHA `ff23db25402ab5bcd751c9aa0ab6663a359fa94b`, 인계 지정 diff 기점). 예산: max 5 · confirm 2 · auto 3. 게이트 = writing-skills TDD GREEN 기록 갈음(npm 스크립트 없는 repo). 보안 크리티컬 아님(접촉 표면 = 스킬 문면·릴리스 표면).
 - score 이력(산식: 미판정 blocking 가중합 c4/h3/m1, §2c 스냅샷 시점, 미확인 FIXED 큐 제외): R1 = 3 (high 1) → R2 = 0 (신규 0).
 - R2 적대(소진 2/5): 신규 finding 0 · verdict approve · fp-H2-R1 적대 비재출현(R2) — 참고 신호일 뿐 큐 유지(§두 큐). 1차 실행은 codex 사용량 한도로 실패(카운터 미소진), 사용자 지시로 재실행. **전환 신호 2(수정 큐 소진) 발화 → batch 적재분 0건 → 확인 모드 진입.**
-- 미확인 FIXED 큐: R1 1건(아래 행 — 소멸 확인 대기).
+- C1 확인 라운드(확인 소진 1/2): **fp-H2-R1 소멸 확인** · 수정 주변 회귀 없음 · 판정 감사 대상 없음(루프 직접 판정 0건) · 신규 finding 0 · verdict **pass** → **성공 종료**(미판정 blocking 0 · 미확인 FIXED 큐 0 · verdict pass). 루프 총계: 적대 2 · 확인 1. disposition: FIXED 1 · 기타 0 · low 0.
+- 미확인 FIXED 큐: R1 1건 → **C1 소멸 확인, 잔여 0**.
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
-| `SKILL.md` · 확인 불가 폴백이 가드 1의 외부 승인까지 확장(적용 범위 미명시) · 적용 범위를 세션 상태 확인·가드 3 준용에 한정 명문화 + 회귀 셀 추가 | high | FIXED (R1, `0046fe0`) | RED: 7단계 GREEN 출력 재판정 3/12 위반(A1-r4·A2-r3·A2-r5 — 폴백 근거 무확인 머지 자체 결정). 수정 = 폴백 소절 범위 한정 문장 1개(98줄 유지, D15) + AC6·셀 (f) 신설 + README 3종 동기화. GREEN: fix arm 10/10(감사 기록·경량 진입 유지 + 머지·배포 보류·이월 전건, 경량 회귀 0)·REFACTOR 0·porcelain 전건. 유효 22런·폐기 1런(세션 한도). 채점 = `.remember/tdd9-fix-scores.md`, 기대 정답 사전 등록 = `.remember/tdd9-fix-plan.md` |
+| `SKILL.md` · 확인 불가 폴백이 가드 1의 외부 승인까지 확장(적용 범위 미명시) · 적용 범위를 세션 상태 확인·가드 3 준용에 한정 명문화 + 회귀 셀 추가 | high | FIXED (R1, `0046fe0`) | RED: 7단계 GREEN 출력 재판정 3/12 위반(A1-r4·A2-r3·A2-r5 — 폴백 근거 무확인 머지 자체 결정). 수정 = 폴백 소절 범위 한정 문장 1개(98줄 유지, D15) + AC6·셀 (f) 신설 + README 3종 동기화. GREEN: fix arm 10/10(감사 기록·경량 진입 유지 + 머지·배포 보류·이월 전건, 경량 회귀 0)·REFACTOR 0·porcelain 전건. 유효 22런·폐기 1런(세션 한도). 채점 = `.remember/tdd9-fix-scores.md`, 기대 정답 사전 등록 = `.remember/tdd9-fix-plan.md`. 소멸 확인(C1) |
