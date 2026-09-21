@@ -147,17 +147,9 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 
 ### 실행 (task 커맨드)
 
-```bash
-ROOT=$(ls -d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/ | sort -V | tail -1)
-PROMPT="$(cat <확인 리뷰 프롬프트 파일>)"      # 프롬프트는 파일로 쓰고 변수로 읽는다
-node "${ROOT}scripts/codex-companion.mjs" task "$PROMPT"
-```
-- **저장소 유래 문자열을 커맨드에 직접 보간하지 않는다.** 프롬프트에는 원 지적 원문·diff 요약이 들어가는데 거기에 `$(...)`·백틱·인용부호가 있으면 codex에 닿기 전에 셸이 해석해 **명령 실행·프롬프트 변조**가 일어난다. 반드시 파일에 쓴 뒤 `"$(cat <파일>)"`로 읽어 인자 하나로 넘긴다(변수에 담긴 내용은 재평가되지 않는다).
-- **기본은 foreground** — `task "$PROMPT"`의 출력이 곧 확인 응답이다. 변경이 커서 `--background`를 쓰면 **job id만 반환**되므로, job id를 캡처해 `status <job-id>`로 폴링하고 `result <job-id>`로 최종 결과를 회수한 뒤에 아래 응답 계약을 적용한다. **job 시작 출력 자체는 확인 응답이 아니므로 부분 응답으로 취급하지 않는다.**
-- `adversarial-review`+focus로 대체하지 않는다 — 기저 템플릿이 적대라 확인 목적함수를 누르지 못한다. `task`는 프롬프트 전체를 통제한다.
+실행 기제는 **§2b 라운드 실행 공통 절차**와 같다 — 파일 접미만 `-C<N>`, 래퍼 안의 명령만 `node "$ROOT/scripts/codex-companion.mjs" task --prompt-file "$L.prompt"`. 프롬프트는 파일로 넘겨 원 지적 원문의 `$(...)`·백틱·인용부호가 셸·argv에 닿지 않게 한다. `--prompt-file`은 companion **≥1.0.6** — §2b ① 게이트가 `COMPANION_TOO_OLD`면(또는 `task` 커맨드 부재면) 멈추고 `/codex:setup` 안내, 임의 대체 실행 금지. 마커 뒤 `$L.out` 본문이 확인 응답이다(아래 계약; 회수는 §2b ⑤). `adversarial-review`+focus로 대체하지 않는다(기저 템플릿이 적대라 확인 목적함수를 누르지 못한다).
 - **프롬프트 첨부물**: ① ledger 표(루프 직접 판정 표시 포함), ② 미확인 FIXED 큐 전체 — 각 항목에 **원 지적 원문(title·body·recommendation)과 수정 커밋·diff 요약**을 함께 준다(fingerprint만 주면 불완전 수정을 못 잡는다), ③ 리뷰 기준 = **루프 시작 시 해소한 base SHA**(§인자·§1 base 해소), ④ 임무 4종 + 응답 형식(아래 계약), ⑤ "신규 영역 발굴은 임무가 아니다. 단, 발견한 blocking은 보고한다", ⑥ 감사 대상 경계 = **사용자 기결정 목록(D번호 + 한 줄)** — "이 목록은 감사 대상이 아니다"를 명시한다. **루프 직접 판정은 이 목록에 넣지 않는다** — 임무 ③의 감사 대상이라서다(①의 ledger 표로 이미 전달된다).
-- codex 샌드박스는 read-only — 게이트(테스트)는 현행대로 루프 세션이 실행한다.
-- `task` 커맨드 부재(codex 플러그인 구버전) 시: 멈추고 `/codex:setup`(플러그인 갱신) 안내. 임의 대체 실행 금지.
+- codex 샌드박스는 read-only — 게이트(테스트)는 루프 세션이 실행한다.
 
 ### 응답 완전성 계약 (fail-closed)
 
@@ -270,23 +262,49 @@ git commit -m "<무엇을 했는지>"
 
 **이유: 적대검증은 커밋된 HEAD(브랜치 diff) 기준으로 본다. 미커밋이면 직전 수정을 놓친다.** 그래서 항상 "수정→커밋→리뷰" 순서.
 
-#### 2b. 리뷰 실행 (모드 분기)
-- **적대 모드** — 실행 직전 **기결정 가드 focus를 재조립한다**(내용·입도·문구 = §기결정 가드의 focus 규격. 매 라운드 재조립 — 루프 시작 1회 조립이면 직전 라운드에 닫힌 항목을 구조적으로 못 잡는다):
+#### 2b. 리뷰 실행 — 라운드 실행 공통 절차(모드 분기는 래퍼 안의 명령만)
+
+라운드는 **파일로 띄우고 파일로 받는다**(실측: Bash 도구 timeout·/clear·조기 사망으로 결과 소실 11건, macOS 세션 분리 명령 부재 1건). companion 1.0.6의 `adversarial-review --background`·`--wait`는 무시된다(항상 포그라운드) — 분리는 이 절차가 한다.
+
+**① companion 경로 — 라운드마다 레지스트리에서 해소**(캐시 디렉터리 glob 금지 — 고아 캐시가 거짓 정상, zsh `nomatch` 에러). 우선순위 = cwd 일치 project/local > user > managed. `RESOLVE_FAIL`이면 멈추고 `/codex:setup` 안내 — glob 폴백 없음.
 ```bash
-ROOT=$(ls -d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/ | sort -V | tail -1)
-# 가드 focus를 파일로 조립(매 라운드 새로) 후 `--` 뒤 인자 하나로 부착:
-# — 셸 보간 금지 규칙은 §확인 모드 실행과 동일(파일에 쓴 뒤 "$(cat <파일>)")
-# — `--` 뒤에 두면 텍스트가 `-`로 시작해도 옵션으로 파싱되지 않는다
-node "${ROOT}scripts/codex-companion.mjs" adversarial-review --wait --base <해소한 base SHA> -- "$(cat <가드 focus 파일>)"
+P="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"
+ROOT=$(node -e 'const fs=require("fs"),p=require("path");let d;try{d=JSON.parse(fs.readFileSync(p.join(process.argv[1],"installed_plugins.json"),"utf8"))}catch{process.exit(1)}
+const r=e=>e.projectPath===process.argv[2]?0:e.scope==="user"?1:e.scope==="managed"?2:9;
+const a=((d.plugins||{})["codex@openai-codex"]||[]).filter(e=>r(e)<9).sort((x,y)=>r(x)-r(y))[0];
+if(!a||!fs.existsSync(p.join(a.installPath,"scripts","codex-companion.mjs")))process.exit(1);console.log(a.installPath)' "$P" "$PWD") || echo RESOLVE_FAIL
+V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$ROOT")
+[ "$(printf '1.0.6\n%s\n' "$V" | sort -V | head -1)" = 1.0.6 ] || echo "COMPANION_TOO_OLD $V"
+```
+
+**② 라운드 파일 = `.remember/`**(clean 판정·커밋 제외 — 추적 파일 편집 금지와 무충돌): `L=.remember/loop-<ledger basename>-<phase>-R<N>`(확인은 `-C<N>`). 적대는 매 라운드 가드 focus를 `$L.focus`에 **재조립**(§기결정 가드), 확인은 `$L.prompt`. 래퍼 `$L.sh` → 출력 `$L.out`(기동 시 **새로 쓴다** — 같은 `$L` 재실행에서 이전 마커·본문이 현재 라운드로 읽히지 않게) → pid `$L.pid`, 끝에 마커 `COMPANION_EXIT:<code>`. 분리 = **node `spawn(detached)` 1줄, 전 플랫폼 공통**(스크립트 동봉 없음). focus는 `--` 뒤 인자 하나(파일 내용은 재평가되지 않는다). `$L.pid`가 살아 있으면(`kill -0`) 띄우지 않고 ③으로.
+```bash
+cat > "$L.sh" <<EOF
+#!/bin/bash
+cd "$PWD" || exit 97
+node "$ROOT/scripts/codex-companion.mjs" adversarial-review --wait --base <해소한 base SHA> -- "\$(cat "$L.focus")"
+echo COMPANION_EXIT:\$?
+EOF
+node -e 'const fs=require("fs"),[sh,out,pid]=process.argv.slice(1),fd=fs.openSync(out,"w");
+const c=require("child_process").spawn("bash",[sh],{detached:true,stdio:["ignore",fd,fd]});fs.writeFileSync(pid,String(c.pid));c.unref()' "$L.sh" "$L.out" "$L.pid"
 ```
 - **빈 가드 = focus 인자 미부착**: 재논의 금지 블록·닫힌 ledger 항목·미확인 FIXED 큐가 **모두 없으면** `-- "$(cat …)"`을 통째로 빼고 호출한다(companion 기본값에 맡긴다 — 빈 목록을 보내 "닫힌 게 없다"는 신호로 오해될 여지를 만들지 않는다). **미확인 FIXED 큐만 비어 있지 않으면 진행 상태 한 줄만으로 focus를 부착한다**(§기결정 가드 — 계열 B 고지가 빈 가드 분기로 소실되지 않게).
-- **`--base`에는 루프 시작 시 해소한 base SHA를 넘긴다**(가변 ref 금지 — 원본·이유는 §인자 `--base`·§1 base 해소).
-- 라운드 시작 시 현재 HEAD SHA를 기록한다(ledger·프롬프트에 base·target 병기). **공유 워킹트리면 응답 후 HEAD 재확인.**
-- 변경이 크면(여러 파일/디렉터리 단위) `run_in_background: true`로 띄우고 `/codex:status`로 폴링한다. 결과 파일에서 리뷰 본문만 추출: `sed -n '/^# Codex Adversarial Review/,$p' <출력 파일>`.
+
+**③ 대기 = 백그라운드 기본** — `run_in_background: true`의 until-loop 또는 Monitor로 마커를 기다리며 **턴을 끝낸다**(라운드 경계마다 Stop 훅 넛지 체크포인트가 서서 §2i 진행 중 라운드 분기가 성립한다. 포그라운드 대기는 넛지를 없애 기본이 아니다).
+```bash
+for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; done; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
+```
+- **대기 프로세스 사망 ≠ 라운드 실패**: `WAIT_EXPIRED`면 `kill -0 "$(cat "$L.pid")"`로 생존 확인(**`pgrep -f` 금지** — 자기 매칭) 후 마커 재확인·대기 재개. 마커 없이 pid도 죽었으면 실행 실패(④).
+- **진행 중 금지 2종.** (1) **/clear 금지** — codex 플러그인 `SessionEnd` 훅이 이 세션의 running 잡을 kill한다. Stop 훅 ②와 동일 문구(규범 원본은 여기): "진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라." — 앞 문장(완료 전 /clear 금지)은 항상, 뒷 문장(기록만 하고 멈춤)은 **넛지를 받은 세션에만** 적용된다(§2i 경로 ①). 넛지 없이 완료 알림이 오면 ④ → §2c로 정상 진행한다. (2) **추적 파일 편집 금지** — 리뷰어가 디스크를 직접 읽는다.
+- 라운드 시작 시 HEAD SHA를 기록한다(base·target 병기; 공유 워킹트리면 응답 후 재확인). `--base` = §1에서 해소한 base SHA.
+
+**④ 완료·유효 판정**
 - 출력 JSON을 파싱한다: `{ verdict, summary, findings[{severity,title,body,file,line_start,line_end,confidence,recommendation}], next_steps }`.
 - 출력이 스키마와 다르면 루프를 멈추고 원문을 보고한다(추측 금지). 자동 재시도 금지 — 재실행은 사용자 판단.
 - companion이 미설치/미인증으로 실패하면 멈추고 `/codex:setup`을 안내한다(임의 수정 금지).
-- **확인 모드**: §확인 모드의 실행·응답 계약을 따른다(`task` 커맨드).
+
+**⑤ 회수(사용자 판단 — 자동 재실행 금지·예산 미소모·원문 보고).** 적대는 **재실행뿐**(ephemeral 스레드). 확인 `task`는 `$L.out`의 `Thread ready (<id>)`로 `codex exec … resume <id>`(옵션은 `resume` 앞). 클라이언트만 죽으면 job이 `running`으로 잔존해 다음 라운드와 겹친다 — `status --all`의 Job id로 `cancel <id>`. **`--help`·무인자 호출 금지**(실제 job이 뜬다) · `| head` 등 파이프 금지(job 잔존).
+- **확인 모드**: 위 ①~⑤ + §확인 모드 실행(`task --prompt-file`)·응답 계약.
 
 #### 2c. 분류 · 판정(disposition) · ledger 갱신
 각 finding을 fingerprint로 ledger와 대조한다(신규/잔존/해결/중복). 미확인 FIXED 큐 항목이 재출현하지 않았으면 ledger에 '적대 비재출현(R#)'을 참고 기록하되 **큐에서 빼지 않는다**(§두 큐 — 큐 제거는 확인 라운드의 명시 '소멸' 또는 blocking 재분류로만).
