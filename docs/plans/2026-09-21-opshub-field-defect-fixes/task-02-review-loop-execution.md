@@ -32,16 +32,9 @@ task-01(RED 기록이 먼저 있어야 GREEN 대조가 성립).
 ````markdown
 ### 실행 (task 커맨드)
 
-실행 기제(경로 해소·버전 게이트·라운드 파일·분리 기동·대기·마커·pid·회수)는 **§2b 라운드 실행 공통 절차**와 같다 — 파일 접미만 `-C<N>`, 래퍼 안의 명령만 다음으로 바꾼다:
-
-```bash
-node "$ROOT/scripts/codex-companion.mjs" task --prompt-file "$L.prompt"
-```
-- **프롬프트는 파일(`$L.prompt`)로 넘긴다.** 원 지적 원문·diff 요약의 `$(...)`·백틱·인용부호가 셸에 닿지 않고(명령 실행·프롬프트 변조 차단) argv에도 노출되지 않는다. `--prompt-file`은 companion **≥1.0.6**이 받는다 — §2b ①의 버전 게이트가 `COMPANION_TOO_OLD`면(또는 `task` 커맨드 부재면) 실행하지 말고 멈춰 `/codex:setup`(플러그인 갱신)을 안내한다. 임의 대체 실행 금지.
-- 마커 뒤 `$L.out` 본문이 곧 확인 응답이다 — 아래 응답 계약을 적용한다. `[codex] Thread ready (<id>)` 행이 남으므로 클라이언트만 죽어도 스레드 재개로 회수할 수 있다(§2b ⑤).
-- `adversarial-review`+focus로 대체하지 않는다 — 기저 템플릿이 적대라 확인 목적함수를 누르지 못한다. `task`는 프롬프트 전체를 통제한다.
+실행 기제는 **§2b 라운드 실행 공통 절차**와 같다 — 파일 접미만 `-C<N>`, 래퍼 안의 명령만 `node "$ROOT/scripts/codex-companion.mjs" task --prompt-file "$L.prompt"`. 프롬프트는 파일로 넘겨 원 지적 원문의 `$(...)`·백틱·인용부호가 셸·argv에 닿지 않게 한다. `--prompt-file`은 companion **≥1.0.6** — §2b ① 게이트가 `COMPANION_TOO_OLD`면(또는 `task` 커맨드 부재면) 멈추고 `/codex:setup` 안내, 임의 대체 실행 금지. 마커 뒤 `$L.out` 본문이 확인 응답이다(아래 계약; 회수는 §2b ⑤). `adversarial-review`+focus로 대체하지 않는다(기저 템플릿이 적대라 확인 목적함수를 누르지 못한다).
 [158행 원문 그대로]
-- codex 샌드박스는 read-only — 게이트(테스트)는 현행대로 루프 세션이 실행한다.
+- codex 샌드박스는 read-only — 게이트(테스트)는 루프 세션이 실행한다.
 ````
 
 ### 2. 교체 §B — `#### 2b. 리뷰 실행 (모드 분기)` 절(273~289행)을 다음으로 바꾼다
@@ -51,9 +44,9 @@ node "$ROOT/scripts/codex-companion.mjs" task --prompt-file "$L.prompt"
 ````markdown
 #### 2b. 리뷰 실행 — 라운드 실행 공통 절차(모드 분기는 래퍼 안의 명령만)
 
-라운드는 **파일로 띄우고 파일로 받는다.** 근거: 실행 신뢰성 사고 11건(08-03~09-17 — Bash 도구 timeout(기본 2분·최대 10분 < 라운드 10~16분)·/clear·조기 사망으로 결과 소실·재실행 6건, 스레드 재개로 회수 3건, 대기 프로세스만 사망 2건) + 플러그인 repo 1건(macOS 세션 분리 명령 부재). companion 1.0.6의 `adversarial-review --background`·`--wait`는 파싱만 되고 무시된다(항상 포그라운드) — 분리는 이 절차가 한다.
+라운드는 **파일로 띄우고 파일로 받는다**(실측: Bash 도구 timeout·/clear·조기 사망으로 결과 소실 11건, macOS 세션 분리 명령 부재 1건). companion 1.0.6의 `adversarial-review --background`·`--wait`는 무시된다(항상 포그라운드) — 분리는 이 절차가 한다.
 
-**① companion 경로 — 라운드마다 레지스트리에서 해소.** 캐시 glob(`cache/openai-codex/codex/*/` + `sort -V`) 금지 — 고아 캐시 버전이 활성 설치본 없이도 거짓 정상을 만들고, zsh `nomatch`는 무매치에 에러다(doctor와 같은 근거). 활성 후보 우선순위 = cwd 일치 project/local > user > managed. `RESOLVE_FAIL`(파일 없음·파싱 실패·활성 엔트리 0·companion 파일 없음)이면 멈추고 `/codex:setup` 안내 — glob 폴백 없음. 버전 게이트는 확인 모드용(`--prompt-file` ≥1.0.6).
+**① companion 경로 — 라운드마다 레지스트리에서 해소**(캐시 디렉터리 glob 금지 — 고아 캐시가 거짓 정상, zsh `nomatch` 에러). 우선순위 = cwd 일치 project/local > user > managed. `RESOLVE_FAIL`이면 멈추고 `/codex:setup` 안내 — glob 폴백 없음.
 ```bash
 P="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"
 ROOT=$(node -e 'const fs=require("fs"),p=require("path");let d;try{d=JSON.parse(fs.readFileSync(p.join(process.argv[1],"installed_plugins.json"),"utf8"))}catch{process.exit(1)}
@@ -64,7 +57,7 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 [ "$(printf '1.0.6\n%s\n' "$V" | sort -V | head -1)" = 1.0.6 ] || echo "COMPANION_TOO_OLD $V"
 ```
 
-**② 라운드 파일 = `.remember/`**(루프 상태 디렉터리 — clean 판정·커밋에서 이미 제외라 추적 파일 편집 금지·리뷰어 디스크 읽기와 충돌하지 않는다): `L=.remember/loop-<ledger basename>-<phase>-R<N>`(확인은 `-C<N>`). 적대는 매 라운드 **기결정 가드 focus를 `$L.focus`에 재조립**(규격 = §기결정 가드 — 루프 시작 1회 조립이면 직전 라운드에 닫힌 항목을 구조적으로 못 잡는다), 확인은 `$L.prompt`. 래퍼 `$L.sh` → 출력 `$L.out` → pid `$L.pid`, 끝에 마커 `COMPANION_EXIT:<code>`. 분리 = **node `spawn(detached)` 1줄, 전 플랫폼 공통**(스크립트 동봉 없음 — 실행 문면이다). focus는 `--` 뒤 인자 하나로 — 파일 내용은 재평가되지 않고(`$(...)`·백틱 무해) `-`로 시작해도 옵션으로 파싱되지 않는다.
+**② 라운드 파일 = `.remember/`**(clean 판정·커밋 제외 — 추적 파일 편집 금지와 무충돌): `L=.remember/loop-<ledger basename>-<phase>-R<N>`(확인은 `-C<N>`). 적대는 매 라운드 가드 focus를 `$L.focus`에 **재조립**(§기결정 가드), 확인은 `$L.prompt`. 래퍼 `$L.sh` → 출력 `$L.out`(기동 시 **새로 쓴다** — 같은 `$L` 재실행에서 이전 마커·본문이 현재 라운드로 읽히지 않게) → pid `$L.pid`, 끝에 마커 `COMPANION_EXIT:<code>`. 분리 = **node `spawn(detached)` 1줄, 전 플랫폼 공통**(스크립트 동봉 없음). focus는 `--` 뒤 인자 하나(파일 내용은 재평가되지 않는다). `$L.pid`가 살아 있으면(`kill -0`) 띄우지 않고 ③으로.
 ```bash
 cat > "$L.sh" <<EOF
 #!/bin/bash
@@ -72,24 +65,23 @@ cd "$PWD" || exit 97
 node "$ROOT/scripts/codex-companion.mjs" adversarial-review --wait --base <해소한 base SHA> -- "\$(cat "$L.focus")"
 echo COMPANION_EXIT:\$?
 EOF
-node -e 'const fs=require("fs"),[sh,out,pid]=process.argv.slice(1),fd=fs.openSync(out,"a");
+node -e 'const fs=require("fs"),[sh,out,pid]=process.argv.slice(1),fd=fs.openSync(out,"w");
 const c=require("child_process").spawn("bash",[sh],{detached:true,stdio:["ignore",fd,fd]});fs.writeFileSync(pid,String(c.pid));c.unref()' "$L.sh" "$L.out" "$L.pid"
 ```
 [282행 원문 그대로]
 
-**③ 대기 = 백그라운드 기본** — `run_in_background: true`의 until-loop 또는 Monitor로 마커를 기다리며 **턴을 끝낸다**. 라운드마다 턴 경계가 생겨 Stop 훅의 넛지 체크포인트가 라운드 경계마다 서고, 넛지 시 §2i 진행 중 라운드 분기가 "현재 라운드까지만"을 성립시킨다. 포그라운드 until-loop는 턴을 유지해 루프 중 넛지를 구조적으로 없애므로 기본으로 두지 않는다.
+**③ 대기 = 백그라운드 기본** — `run_in_background: true`의 until-loop 또는 Monitor로 마커를 기다리며 **턴을 끝낸다**(라운드 경계마다 Stop 훅 넛지 체크포인트가 서서 §2i 진행 중 라운드 분기가 성립한다. 포그라운드 대기는 넛지를 없애 기본이 아니다).
 ```bash
 timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; done"; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
 ```
-- **대기 프로세스가 죽어도 라운드 실패가 아니다**(Bash 도구 10분 cap·하네스 저메모리 kill): `WAIT_EXPIRED`·대기 사망이면 `kill -0 "$(cat "$L.pid")"`로 생존을 확인하고(**`pgrep -f` 금지** — 자기 매칭으로 1시간 손실) 마커를 재확인한 뒤 대기를 재개한다. 마커 없이 pid도 죽었으면 실행 실패(④).
-- **라운드 진행 중 금지 2종.** (1) **/clear 금지** — codex 플러그인 `SessionEnd` 훅이 이 세션 id(`CODEX_COMPANION_SESSION_ID`)의 running 잡 프로세스 트리를 kill한다(셸 세션 분리로는 못 막는다). 규범 원본은 여기, Stop 훅 ②와 동일 문구: "진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라." (2) **추적 파일 편집 금지** — 리뷰어가 디스크를 직접 읽는다(09-03~05 3회).
-- 라운드 시작 시 HEAD SHA를 기록한다(ledger·프롬프트에 base·target 병기; 공유 워킹트리면 응답 후 HEAD 재확인). `--base` = 루프 시작 시 해소한 base SHA(§인자·§1).
+- **대기 프로세스 사망 ≠ 라운드 실패**: `WAIT_EXPIRED`면 `kill -0 "$(cat "$L.pid")"`로 생존 확인(**`pgrep -f` 금지** — 자기 매칭) 후 마커 재확인·대기 재개. 마커 없이 pid도 죽었으면 실행 실패(④).
+- **진행 중 금지 2종.** (1) **/clear 금지** — codex 플러그인 `SessionEnd` 훅이 이 세션의 running 잡을 kill한다. Stop 훅 ②와 동일 문구(규범 원본은 여기): "진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라." (2) **추적 파일 편집 금지** — 리뷰어가 디스크를 직접 읽는다.
+- 라운드 시작 시 HEAD SHA를 기록한다(base·target 병기; 공유 워킹트리면 응답 후 재확인). `--base` = §1에서 해소한 base SHA.
 
 **④ 완료·유효 판정**
 [286~288행 원문 그대로 — 3줄]
 
-**⑤ 회수 경로(사용자 판단용 — 자동 재실행 금지·예산 미소모·원문 보고).** 적대(ephemeral 스레드)는 **재실행뿐**(클라이언트가 죽으면 결과를 쓸 주체가 없다). 확인 `task`는 `$L.out`의 `Thread ready (<id>)`로 `codex exec … resume <id>` 재개(옵션은 `resume` 앞, 약 1분 — 실측 1회). companion `--resume-last`는 포그라운드 `task`에서 실패한다(state 미기록). **stale job 정리**: 클라이언트만 죽으면 job이 `running`으로 잔존해 codex 세션을 점유하고 다음 라운드와 겹친다 — `node "$ROOT/scripts/codex-companion.mjs" status --all` 표의 **Job 열 id**로 `cancel <id>`.
-- **`--help`·무인자 호출 금지** — 도움말이 아니라 실제 리뷰 job이 뜬다. 출력에 `| head` 등 파이프를 붙이지 않는다(클라이언트만 죽고 job 잔존).
+**⑤ 회수(사용자 판단 — 자동 재실행 금지·예산 미소모·원문 보고).** 적대는 **재실행뿐**(ephemeral 스레드). 확인 `task`는 `$L.out`의 `Thread ready (<id>)`로 `codex exec … resume <id>`(옵션은 `resume` 앞). 클라이언트만 죽으면 job이 `running`으로 잔존해 다음 라운드와 겹친다 — `status --all`의 Job id로 `cancel <id>`. **`--help`·무인자 호출 금지**(실제 job이 뜬다) · `| head` 등 파이프 금지(job 잔존).
 - **확인 모드**: 위 ①~⑤ + §확인 모드 실행(`task --prompt-file`)·응답 계약.
 ````
 
@@ -97,13 +89,13 @@ timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; don
 
 ```bash
 F=dev-workflow/skills/review-loop/SKILL.md
-grep -c '/codex:status' $F; grep -c 'job id' $F; grep -c 'setsid' $F; grep -c 'sort -V' $F; grep -c 'cache/openai-codex' $F   # 기대: 전부 0
+grep -c '/codex:status' $F; grep -c 'job id' $F; grep -c 'setsid' $F; grep -c 'sort -V | tail' $F; grep -c 'cache/openai-codex' $F; grep -c 'ls -d' $F   # 기대: 전부 0 (`sort -V | head -1`은 SC-4 버전 비교 — 금지 대상은 glob 최신 정렬 `sort -V | tail`만)
 grep -n 'run_in_background' $F              # 기대: ③ 대기 문단 1건만
 grep -c 'COMPANION_EXIT' $F                  # 기대: ≥3
 grep -c 'installed_plugins.json' $F          # 기대: 1
 grep -c 'pgrep -f' $F                        # 기대: 1 (금지 문구)
 grep -c '진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라.' $F   # 기대: 1 (SC-3 HOOK-② 바이트 동일)
-wc -c $F                                     # 소프트 예산: ≤ 63,900
+wc -c $F                                     # 소프트 예산: ≤ 64,500 (SC-7 — plan 합성값 64,390 + 여유)
 ```
 ### 4. 커밋
 
@@ -116,11 +108,11 @@ git commit -m "fix(review-loop): 라운드 실행 공통 절차 — 레지스트
 
 ```bash
 F=dev-workflow/skills/review-loop/SKILL.md
-for s in '/codex:status' 'job id' 'setsid' 'sort -V' 'cache/openai-codex' 'ls -d'; do printf '%s\t' "$s"; grep -c -- "$s" $F; done   # 전부 0
+for s in '/codex:status' 'job id' 'setsid' 'sort -V | tail' 'cache/openai-codex' 'ls -d'; do printf '%s\t' "$s"; grep -c -- "$s" $F; done   # 전부 0 (AC2의 `sort -V` = glob 최신 정렬 — SC-4의 `sort -V | head -1` 버전 비교는 대상 아님)
 grep -c 'installed_plugins.json' $F; grep -c 'spawn(' $F; grep -c '\-\-prompt-file' $F; grep -c '1\.0\.6' $F; grep -c 'status --all' $F; grep -c 'cancel <id>' $F   # 전부 ≥1
 grep -c 'COMPANION_TOO_OLD' $F               # 2 (게이트 명령 + 확인 모드 문장)
 grep -n '^#### 2b\. 리뷰 실행' $F             # 1행
-[ "$(wc -c < $F)" -le 63900 ] && echo SIZE_OK  # 소프트 예산
+[ "$(wc -c < $F)" -le 64500 ] && echo SIZE_OK  # 소프트 예산(SC-7)
 git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'   # 0
 ```
 
@@ -131,4 +123,5 @@ git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'  
 - **`CODEX_COMPANION_SESSION_ID`를 비우는 우회를 쓰지 않는다. 이유: D5 미채택 — 사실 기록만 한다.**
 - **SC-4·SC-5 명령을 다시 쓰지 않고 그대로 붙인다. 이유: task-06 AC 그렙과 SC-3·SC-4 문자열이 바이트 단위로 맞아야 한다.**
 - **`$L.out`에 `| head`·`| tail`을 붙인 예시를 쓰지 않는다. 이유: F1-6 — 파이프가 클라이언트만 죽이고 job을 잔존시킨다.**
-- **소프트 예산(63,900B)을 넘으면 첫 문단의 근거 수치 나열을 줄인다(사고 11건 요지만 남김). 이유: AC9 상한은 올리지 않는다(D34).**
+- **spawn 1줄의 `fs.openSync(out,"w")`를 `"a"`로 바꾸지 않는다. 이유: 같은 `$L`로 재실행하면 이전 마커가 남아 대기가 즉시 끝나고 이전 결과를 현재 라운드로 판정한다(review-loop(plan) R1 high). 대기 재개(③)는 파일을 열지 않으므로 영향 없다.**
+- **소프트 예산(SC-7)을 넘으면 §B 첫 문단의 근거를 "실행 신뢰성 사고 11건 + macOS 1건"만 남긴다. 이유: AC9 상한은 올리지 않는다(D34) — 교체문은 plan 합성으로 크기를 이미 맞췼으므로 통상 초과하지 않는다.**

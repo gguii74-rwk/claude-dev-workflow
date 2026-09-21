@@ -28,7 +28,7 @@ task-03.
 ```
 교체:
 ```
-- **FIXED 행은 수정 커밋 해시를 셀에 인용한다 — 전 phase(spec·plan·impl) 적용**(행 인용이 있어야 소멸 확인·감사가 기계 검증 가능하다). **순서 = 수정 커밋 먼저, ledger의 FIXED 행은 다음 커밋에서 그 해시를 인용한다** — spec·plan은 수정 대상과 ledger가 같은 문서라 한 커밋에 자기 해시를 넣을 수 없어, "되돌아가 채우는" 해시 전용 커밋이 라운드당 ≈0.28건 생겼다(08-11~09-14 ≈55건). 행은 다음 라운드 §2a 커밋 전에 들어가므로 가드·focus 조립 원본(커밋된 문서)에는 영향이 없다. **이력 재작성(filter-branch·저장소 이전)으로 인용 해시가 무효화되면 ledger에 구→신 SHA 매핑 1줄을 남긴다.**
+- **FIXED 행은 수정 커밋 해시를 셀에 인용한다 — 전 phase(spec·plan·impl) 적용**(행 인용이 있어야 소멸 확인·감사가 기계 검증 가능하다). **순서 = 수정 커밋 먼저, ledger의 FIXED 행은 다음 커밋에서 그 해시를 인용한다**(같은 문서에 자기 해시를 넣을 수 없어 생기던 해시 전용 커밋 ≈0.28건/라운드 제거). **이력 재작성으로 인용 해시가 무효화되면 ledger에 구→신 SHA 매핑 1줄을 남긴다.**
 ```
 
 ### 2. F7 — §2i 경로 ① "40%" 고정 표기
@@ -50,7 +50,7 @@ task-03.
 ```
 교체:
 ```
-- `$(git rev-parse --git-dir)/index.lock`이 존재하면 다른 세션이 git 사용 중 — 지우지 말고 끝나길 기다린다(링크드 워크트리에서는 `.git`이 파일이라 `.git/index.lock` 검사는 항상 "없음"으로 통과한다).
+- `$(git rev-parse --git-dir)/index.lock`이 존재하면 다른 세션이 git 사용 중 — 지우지 말고 끝나길 기다린다(링크드 워크트리에서 `.git/index.lock` 검사는 항상 "없음"이다).
 ```
 
 ### 4. F8(b) — §2f spec/plan ② 자체 점검 범위 (D31)
@@ -61,7 +61,7 @@ task-03.
 ```
 교체:
 ```
-- **spec/plan**: 문서를 수정한 뒤 ① 해당 phase 관문(§1) 재확인 + ② **변경된 결정/가정/AC/테스트 기준이 문서 내부와 교차 문서(같은 수치·경로·D번호를 담은 task 파일·런북·요약절)에서 상호모순 없는지 자체 점검**(상위 문구 미갱신으로 3회 연속 잔존 판정 실사례).
+- **spec/plan**: 문서를 수정한 뒤 ① 해당 phase 관문(§1) 재확인 + ② **변경된 결정/가정/AC/테스트 기준이 문서 내부와 교차 문서(같은 수치·경로·D번호를 담은 task 파일·런북·요약절)에서 상호모순 없는지 자체 점검**(상위 문구 미갱신 3회 연속 잔존 실사례).
 ```
 
 ### 5. F8(c) — §1 base 해소 2구 (D32)
@@ -83,7 +83,7 @@ task-03.
 ```
 교체:
 ```
-- **impl**: 각 항목을 TDD로 고친다 — 재현/실패 테스트 → 최소 수정 → 게이트 통과. 가능하면 `superpowers:subagent-driven-development` 패턴. 서브에이전트에 디스패치할 때 **repo가 no-AI-trace 규칙을 가지면** 커밋 메시지·문서에 AI 서명/도구 흔적 금지를 프롬프트에 명시한다(조건부 — §4의 사후 grep은 무조건 유지).
+- **impl**: 각 항목을 TDD로 고친다 — 재현/실패 테스트 → 최소 수정 → 게이트 통과. 가능하면 `superpowers:subagent-driven-development` 패턴. 서브에이전트 디스패치 시 **repo가 no-AI-trace 규칙을 가지면** AI 서명/도구 흔적 금지를 프롬프트에 명시한다(조건부 — §4 사후 grep은 무조건).
 ```
 
 ### 7. 자기 점검 + 커밋
@@ -96,7 +96,7 @@ grep -c '\.git/index\.lock' $F                                        # 1 (괄�
 grep -c 'git rev-parse --git-dir)/index.lock' $F                      # 1
 grep -c 'task 파일·런북·요약절' $F; grep -c 'merge하지 않는다' $F; grep -c '원격 추적 ref' $F; grep -c 'no-AI-trace 규칙을 가지면' $F   # 각 1
 grep -c 'co-authored|generated with' $F                              # 1 (§4 사후 grep 예시 불변)
-wc -c $F                                                              # 소프트 예산 ≤ 65,300
+wc -c $F                                                              # 소프트 예산 ≤ 66,800 (SC-7 — 합성값 66,632)
 git add $F
 git commit -m "fix(review-loop): FIXED 행 해시 인용 순서 규정(수정 커밋 먼저·다음 커밋 인용, 이력 재작성 SHA 매핑) + 임계 표기·index.lock 워크트리 경로·§2f 교차 문서 점검·base fetch/merge 금지·impl 디스패치 조건부 no-AI-trace (F5·F7·F8)"
 ```
@@ -114,7 +114,7 @@ grep -c 'task 파일·런북·요약절' $F                  # 1  (AC8 b)
 grep -c 'merge하지 않는다' $F; grep -c 'git fetch' $F   # 각 1  (AC8 c)
 grep -c 'no-AI-trace 규칙을 가지면' $F              # 1  (AC8 d)
 grep -c "grep -iE 'co-authored|generated with'" $F  # 1  (§4 사후 grep 불변)
-[ "$(wc -c < $F)" -le 65300 ] && echo SIZE_OK
+[ "$(wc -c < $F)" -le 66800 ] && echo SIZE_OK
 git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'   # 0
 ```
 

@@ -61,12 +61,12 @@ cd "$PWD" || exit 97
 node "$ROOT/scripts/codex-companion.mjs" adversarial-review --wait --base <해소한 base SHA> -- "\$(cat "$L.focus")"
 echo COMPANION_EXIT:\$?
 EOF
-node -e 'const fs=require("fs"),[sh,out,pid]=process.argv.slice(1),fd=fs.openSync(out,"a");
+node -e 'const fs=require("fs"),[sh,out,pid]=process.argv.slice(1),fd=fs.openSync(out,"w");
 const c=require("child_process").spawn("bash",[sh],{detached:true,stdio:["ignore",fd,fd]});fs.writeFileSync(pid,String(c.pid));c.unref()' "$L.sh" "$L.out" "$L.pid"
 # 대기(run_in_background: true 또는 Monitor) — 이 명령이 끝나면 턴도 끝난다
 timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; done"; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
 ```
-확인 라운드의 래퍼 명령 = `node "$ROOT/scripts/codex-companion.mjs" task --prompt-file "$L.prompt"`(나머지 동일). 생존 확인 = `kill -0 "$(cat "$L.pid")"` — `pgrep -f` 금지. `setsid` 문자열 금지(macOS 부재).
+확인 라운드의 래퍼 명령 = `node "$ROOT/scripts/codex-companion.mjs" task --prompt-file "$L.prompt"`(나머지 동일). 생존 확인 = `kill -0 "$(cat "$L.pid")"` — `pgrep -f` 금지. `setsid` 문자열 금지(macOS 부재). **`$L.out`은 기동 시 새로 쓴다(`"w"`)** — 실행 실패 뒤 사용자 승인 재실행은 같은 `$L`을 쓰므로 append면 이전 마커가 남아 대기가 즉시 끝나고 이전 결과를 현재 라운드로 판정한다(review-loop(plan) R1 high). 기동 전 `$L.pid`가 살아 있으면 띄우지 않는다. 대기 재개 명령은 파일을 열지 않으므로 영향 없다.
 
 ### SC-6. 하네스 규약 (spec §6 · task-01 작성 · task-06 GREEN)
 
@@ -76,9 +76,9 @@ timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; don
 - 훅 = `node $H/hook-cases.mjs <hook 경로>`(decideNudge 직접 import, 최초·재넛지 문구에 SC-3 ①②③ 포함 여부).
 - 결과 기록 = `.remember/tdd-opshub-field-defect-fixes.md`(형식 = `tdd-7c-loop-handoff.md`) + 이 문서 task 표 outcome. cur arm이 이미 통과하는 축은 "효과 미확인(자동 보완)"으로 적는다 — RED 미재현은 plan 실패가 아니라 기록 대상이다.
 
-### SC-7. AC9 규모 (D34)
+### SC-7. AC9 규모 (D34 — 2026-09-22 갱신 +7KB)
 
-기준 61,898B → 상한 **65,994B**(`wc -c dev-workflow/skills/review-loop/SKILL.md`). 소프트 예산: task-02 후 ≤ 63,900 · task-03 후 ≤ 64,800 · task-04 후 ≤ 65,300 · task-05 후 ≤ 65,900. 하드 확인 = task-06(초과 시 task-06 §압축 후보에서 줄인다 — 상한을 올리지 않는다).
+기준 61,898B → 상한 **69,066B**(`wc -c dev-workflow/skills/review-loop/SKILL.md`). **plan 합성 실측**(task-02~05 교체문을 0.17.0 RL에 그대로 적용, review-loop(plan) R1): task-02 후 64,390 · task-03 후 65,662 · task-04 후 66,632 · task-05 후 68,378. 소프트 예산(합성값 + ≈100B): task-02 후 ≤ 64,500 · task-03 후 ≤ 65,800 · task-04 후 ≤ 66,800 · task-05 후 ≤ 68,500. 하드 확인 = task-06(초과 시 task-06 §압축 후보에서 줄인다 — 상한을 다시 올리지 않는다). 소프트 예산을 넘으면 교체문을 그대로 붙이지 않은 것이므로 먼저 diff로 원인을 찾는다.
 
 ### SC-8. 커밋 규칙
 
@@ -107,7 +107,7 @@ timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; don
 
 ## 재논의 금지(기결정) — spec에서 승계
 
-> **이번 트랙 확정 결정 = D1~D38(spec §4, 2026-09-21 harden-spec, 전부 사용자 확정)** — 적대검증(plan·impl)에서 재론하지 않는다. 특히: D1 백그라운드 대기 기본 · D2 SLIM D15 → 순서 규정 대체 · D3 유효성 조건(실행 로그 ≥1, 전면 실패만 무효) · D4 스크립트 비동봉·node 1줄 · D5 세션 결속 해제 미채택 · D7 자동 재실행 금지 유지 · D16 라운드마다 경로 해소 · D25 15%p·PreToolUse 불변 · D26 루프 파일 필드 불변 · D33 트레일러 조건부 · D34 +4KB · D35 2웨이브 · D37 실사용 완료 조건.
+> **이번 트랙 확정 결정 = D1~D38(spec §4, 2026-09-21 harden-spec, 전부 사용자 확정)** — 적대검증(plan·impl)에서 재론하지 않는다. 특히: D1 백그라운드 대기 기본 · D2 SLIM D15 → 순서 규정 대체 · D3 유효성 조건(실행 로그 ≥1, 전면 실패만 무효) · D4 스크립트 비동봉·node 1줄 · D5 세션 결속 해제 미채택 · D7 자동 재실행 금지 유지 · D16 라운드마다 경로 해소 · D25 15%p·PreToolUse 불변 · D26 루프 파일 필드 불변 · D33 트레일러 조건부 · D34 +7KB(2026-09-22 갱신, 원안 +4KB — review-loop(plan) R1 합성 실측 68,378B 후 사용자 판정; 기존 문장 압축·신규 내용 축소 대안 불채택) · D35 2웨이브 · D37 실사용 완료 조건.
 >
 > 아래는 **승계 기결정** — 이 트랙이 위배하면 안 되는 것.
 
