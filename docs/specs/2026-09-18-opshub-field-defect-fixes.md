@@ -249,11 +249,13 @@ Q1~Q7 대응: Q1→D4 · Q2→D16 · Q3→D12 · Q4→D2 · Q5→D25 · Q6→D33
 ## 적대검증 ledger (spec)
 
 - 루프: review-loop(spec) 2026-09-21 시작(spark2 · Fable). base = `21b68e9`(해소 SHA `21b68e9a86bbf08a422b7224e2bd0acec98d26a1`, 트랙 시작 직전 main) · branch main. 예산: max 5 · confirm 2 · auto 3. 게이트 = §2 목표/범위/비목표·§4 결정·§5 AC·§7 미해결 질문("없음" 명시) 충족. 보안 크리티컬 아님(접촉 표면 = 스킬 문면·훅 문구). 실행 방식 = F1 방향의 **수동 선적용**(0.17.0 문면 RL:285로 도는 마지막 루프): 래퍼 `.remember/loop-<basename>-spec-R<N>.sh` + `.out` + `.pid` + `COMPANION_EXIT:` 마커, node `spawn(detached)` 기동, Monitor 대기, focus 첫 줄 = 정적 검토 완료형 고정 줄(F3-2 선적용 — spark2 bwrap 빈 응답 재발 방지).
-- score 이력(산식 = RL §blocking score, 미확인 FIXED 큐 제외): R1 = 1(medium 1).
-- 미확인 FIXED 큐: fp-OF-R1-1 (1건).
+- score 이력(산식 = RL §blocking score, 미확인 FIXED 큐 제외): R1 = 1(medium 1) · R2 = 1(medium 1).
+- 미확인 FIXED 큐: fp-OF-R1-1 · fp-OF-R2-1 (2건).
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | fp-OF-R1-1 = spec §3 F6-2(:110) · "판정 전에 소진 카운터를 올리면 재개 후 다른 정책으로 판정된다(auto-rounds 경계에서 batch→즉시 ESCALATE로 바뀜, 결과 의존 모드 전이의 확정 시점 미정의)" · "수신 라운드의 판정 전 모드·미처리 단계를 다음 액션에 보존, 재개 시 원래 정책으로 판정·카운터 재증가 금지·전이 확정 시점 정의, AC6 검증" | medium | **FIXED** `5ee91cc` | F6-2에 재개 계약 추가(카운터 = 수신 사실만, 판정 정책 = 수신 시점 모드, 카운터 재증가 금지, 결과 의존 전이는 판정 뒤 확정, auto-rounds=3 R3 예시) + AC6 항목 1건 + §6 RED ① 확장. D26 필드 불변·C-4 D26 순서 불변 유지. 미확인 FIXED 큐 편입 |
+| fp-OF-R2-1 = spec §3 F6-2(:110) · "재개 계약의 카운터 반영(적대 +1·확인 완전 시 +1)이 §2j 예약분(복귀 적대·재진입 확인·폴백②) 카운터 불변 예외를 덮어 중단 시 5/5→6/5·2/2→3/2로 저장될 수 있다" · "카운터 증가는 일반 예산 라운드만, 예약분은 §2j대로 불변 명시 + 다음 액션에 예약분 종류 보존 + AC6 사례" | medium | **FIXED** `898790f` | 카운터 반영을 "§2j 표 그대로"로 정정(예약분 어느 카운터도 불변), 다음 액션 기록에 라운드 종류(일반/예약분) 추가, AC6에 예약분 중단 사례. fp-OF-R1-1과 별개 결함(판정 시점 ≠ 예약분 계수). 미확인 FIXED 큐 편입 |
 
 - **R1**(적대, 2026-09-21 21:34~21:36): verdict needs-attention · 신규 1(medium 1) · FIXED 1 · 가드 일치(DUPLICATE) 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 실행 로그 10건 · `bwrap:` 0 → 유효.
+- **R2**(적대, 21:39~21:40): verdict needs-attention · 신규 1(medium 1) · FIXED 1 · DUPLICATE 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 로그 9건 · `bwrap:` 0 → 유효. fp-OF-R1-1 적대 비재출현(R2, 참고 신호 — 큐 유지).
