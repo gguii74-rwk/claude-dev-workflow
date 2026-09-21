@@ -1,6 +1,6 @@
 # 실사용 결함 수리 — ops-hub 실측 후속 (0.18.0 후보)
 
-- 단계: **3 harden-spec 완료 (2026-09-21)** — Fable 교차검증(`~/workspace/dev-workflow-eval/report/XVAL2-2026-09-21.md`) 반영, 판단 갭 38건을 전부 질문으로 확정(D1~D38, §4), 사용자 유예 0. 다음 = **4 review-loop(spec)** (새 세션 + /clear). 3.5 비대상(화면 무관 — 스킬 문면·훅 변경). 경로 = **정식**(사용자 확정 2026-09-18 — 접촉 표면: 외부 연동 — codex 실행 방식·Stop 훅 동작).
+- 단계: **4 review-loop(spec) 완료 (2026-09-21, spark2)** — 적대 3·확인 1, FIXED 2(F6-2 재개 계약, ledger 말미), verdict pass. 3 harden-spec(2026-09-21): Fable 교차검증(`~/workspace/dev-workflow-eval/report/XVAL2-2026-09-21.md`) 반영, D1~D38 확정, 사용자 유예 0. 다음 = **5 writing-plans-split**(D35 2웨이브, 새 세션 + /clear). 3.5 비대상(화면 무관 — 스킬 문면·훅 변경). 경로 = **정식**(사용자 확정 2026-09-18 — 접촉 표면: 외부 연동 — codex 실행 방식·Stop 훅 동작).
 - 출처: `~/workspace/dev-workflow-eval/report/OPSHUB-2026-09-18.md` §4·§5 + 같은 날 사용자 제기(넛지 후 폭주) + XVAL2(주장 S1~S8 판정·F별 중복 대조·Q 권고). 근거 원장: `…/data/opshub-2026-09-18/friction/FRICTION.md`(B·C 번호), `…/audit/AUDIT.md`(④ 불일치).
 - 대상: `dev-workflow/skills/review-loop/SKILL.md`(61,898B) · `dev-workflow/hooks/scripts/context-threshold-hook.mjs` · `dev-workflow/skills/writing-plans-split/SKILL.md` · `dev-workflow/skills/dev-cycle/SKILL.md` · `dev-workflow/skills/doctor/SKILL.md` · `dev-workflow/skills/harden-spec/SKILL.md`·`dev-workflow/skills/ui-mockup/SKILL.md`(F8(a) 1줄만) · README 3종 · `plugin.json`.
 - 이 트랙 밖 항목까지 포함한 전체 작업 지도: `~/workspace/dev-workflow-eval/FOLLOWUP-2026-09-18.md`.
@@ -250,7 +250,8 @@ Q1~Q7 대응: Q1→D4 · Q2→D16 · Q3→D12 · Q4→D2 · Q5→D25 · Q6→D33
 
 - 루프: review-loop(spec) 2026-09-21 시작(spark2 · Fable). base = `21b68e9`(해소 SHA `21b68e9a86bbf08a422b7224e2bd0acec98d26a1`, 트랙 시작 직전 main) · branch main. 예산: max 5 · confirm 2 · auto 3. 게이트 = §2 목표/범위/비목표·§4 결정·§5 AC·§7 미해결 질문("없음" 명시) 충족. 보안 크리티컬 아님(접촉 표면 = 스킬 문면·훅 문구). 실행 방식 = F1 방향의 **수동 선적용**(0.17.0 문면 RL:285로 도는 마지막 루프): 래퍼 `.remember/loop-<basename>-spec-R<N>.sh` + `.out` + `.pid` + `COMPANION_EXIT:` 마커, node `spawn(detached)` 기동, Monitor 대기, focus 첫 줄 = 정적 검토 완료형 고정 줄(F3-2 선적용 — spark2 bwrap 빈 응답 재발 방지).
 - score 이력(산식 = RL §blocking score, 미확인 FIXED 큐 제외): R1 = 1(medium 1) · R2 = 1(medium 1) · R3 = 0 → **전환 신호 2(수정 큐 소진) 발화**, 적대 소진 3 = auto-rounds(batch 적재 0건 → flush 없음) → 확인 모드 진입(확인 예산 2, 복귀 미사용).
-- 미확인 FIXED 큐: fp-OF-R1-1 · fp-OF-R2-1 (2건).
+- 미확인 FIXED 큐: **0건**(C1에서 fp-OF-R1-1·fp-OF-R2-1 소멸 확인). 확인 소진 1/2 · 복귀 미사용 · 폴백 없음.
+- **종료: 성공(확인 경유), 2026-09-21 21:46.** 총 4라운드(적대 3 · 확인 1). 최종 verdict = C1 **pass**. disposition 집계: FIXED 2 · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · ESCALATE 0 · low 0. 루프 건강 3지표(분모 = blocking 2): 재론률 0/2 · 철회 조항 0 · 사람개입률 0/2. 단계 경계 인계 항목(ACCEPTED/DEFERRED/OUT_OF_SCOPE) 없음.
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -260,3 +261,4 @@ Q1~Q7 대응: Q1→D4 · Q2→D16 · Q3→D12 · Q4→D2 · Q5→D25 · Q6→D33
 - **R1**(적대, 2026-09-21 21:34~21:36): verdict needs-attention · 신규 1(medium 1) · FIXED 1 · 가드 일치(DUPLICATE) 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 실행 로그 10건 · `bwrap:` 0 → 유효.
 - **R2**(적대, 21:39~21:40): verdict needs-attention · 신규 1(medium 1) · FIXED 1 · DUPLICATE 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 로그 9건 · `bwrap:` 0 → 유효. fp-OF-R1-1 적대 비재출현(R2, 참고 신호 — 큐 유지).
 - **R3**(적대, 21:41~21:43): verdict approve · 신규 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 로그 9건 · `bwrap:` 0 → 유효(실행 실패 아님). fp-OF-R1-1·fp-OF-R2-1 적대 비재출현(R3, 참고 신호 — 큐 유지). 루프 직접 판정 0건 → 확인 임무 = ①②④(③ 감사 대상 없음).
+- **C1**(확인, `task --prompt-file`, 21:44~21:46, 스레드 `01a0c3ff-6e30-7371-be36-7a80622f9a11`): 완전 응답 — fp-OF-R1-1 **소멸**(spec:110·AC6:189) · fp-OF-R2-1 **소멸**(spec:110·AC6:189) · 회귀 없음(D26 필드 불변·C-4 D26 순서·§2j 예약분 규칙 정합) · 판정 감사 해당 없음 · 신규 finding 없음 · verdict **pass**. 유효성: 마커 `COMPANION_EXIT:0` · 명령 로그 12건 · `bwrap:` 0.
