@@ -63,8 +63,8 @@ echo COMPANION_EXIT:\$?
 EOF
 node -e 'const fs=require("fs"),[sh,out,pid]=process.argv.slice(1),fd=fs.openSync(out,"w");
 const c=require("child_process").spawn("bash",[sh],{detached:true,stdio:["ignore",fd,fd]});fs.writeFileSync(pid,String(c.pid));c.unref()' "$L.sh" "$L.out" "$L.pid"
-# 대기(run_in_background: true 또는 Monitor) — 이 명령이 끝나면 턴도 끝난다
-timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; done"; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
+# 대기(run_in_background: true 또는 Monitor) — 이 명령이 끝나면 턴도 끝난다. 유계 = 38회×15초 = 570초(Bash 도구 10분 cap 안). 외부 timeout(1)·gtimeout 미사용 — macOS 기본 설치에 없다(DR:130 실측)
+for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; done; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
 ```
 확인 라운드의 래퍼 명령 = `node "$ROOT/scripts/codex-companion.mjs" task --prompt-file "$L.prompt"`(나머지 동일). 생존 확인 = `kill -0 "$(cat "$L.pid")"` — `pgrep -f` 금지. `setsid` 문자열 금지(macOS 부재). **`$L.out`은 기동 시 새로 쓴다(`"w"`)** — 실행 실패 뒤 사용자 승인 재실행은 같은 `$L`을 쓰므로 append면 이전 마커가 남아 대기가 즉시 끝나고 이전 결과를 현재 라운드로 판정한다(review-loop(plan) R1 high). 기동 전 `$L.pid`가 살아 있으면 띄우지 않는다. 대기 재개 명령은 파일을 열지 않으므로 영향 없다.
 
@@ -78,7 +78,7 @@ timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; don
 
 ### SC-7. AC9 규모 (D34 — 2026-09-22 갱신 +7KB)
 
-기준 61,898B → 상한 **69,066B**(`wc -c dev-workflow/skills/review-loop/SKILL.md`). **plan 합성 실측**(task-02~05 교체문을 0.17.0 RL에 그대로 적용, review-loop(plan) R1): task-02 후 64,621 · task-03 후 65,893 · task-04 후 66,863 · task-05 후 68,609(R2 수정 반영, 여유 457B). 소프트 예산(합성값 + ≈130B): task-02 후 ≤ 64,750 · task-03 후 ≤ 66,000 · task-04 후 ≤ 67,000 · task-05 후 ≤ 68,750. 하드 확인 = task-06(초과 시 task-06 §압축 후보에서 줄인다 — 상한을 다시 올리지 않는다). 소프트 예산을 넘으면 교체문을 그대로 붙이지 않은 것이므로 먼저 diff로 원인을 찾는다.
+기준 61,898B → 상한 **69,066B**(`wc -c dev-workflow/skills/review-loop/SKILL.md`). **plan 합성 실측**(task-02~05 교체문을 0.17.0 RL에 그대로 적용, review-loop(plan) R1): task-02 후 64,621 · task-03 후 65,893 · task-04 후 66,863 · task-05 후 68,610(R2·R3 수정 반영, 여유 456B). 소프트 예산(합성값 + ≈130B): task-02 후 ≤ 64,750 · task-03 후 ≤ 66,000 · task-04 후 ≤ 67,000 · task-05 후 ≤ 68,750. 하드 확인 = task-06(초과 시 task-06 §압축 후보에서 줄인다 — 상한을 다시 올리지 않는다). 소프트 예산을 넘으면 교체문을 그대로 붙이지 않은 것이므로 먼저 diff로 원인을 찾는다.
 
 ### SC-8. 커밋 규칙
 

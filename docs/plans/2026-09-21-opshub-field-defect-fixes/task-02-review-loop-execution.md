@@ -72,7 +72,7 @@ const c=require("child_process").spawn("bash",[sh],{detached:true,stdio:["ignore
 
 **③ 대기 = 백그라운드 기본** — `run_in_background: true`의 until-loop 또는 Monitor로 마커를 기다리며 **턴을 끝낸다**(라운드 경계마다 Stop 훅 넛지 체크포인트가 서서 §2i 진행 중 라운드 분기가 성립한다. 포그라운드 대기는 넛지를 없애 기본이 아니다).
 ```bash
-timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; done"; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
+for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; done; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
 ```
 - **대기 프로세스 사망 ≠ 라운드 실패**: `WAIT_EXPIRED`면 `kill -0 "$(cat "$L.pid")"`로 생존 확인(**`pgrep -f` 금지** — 자기 매칭) 후 마커 재확인·대기 재개. 마커 없이 pid도 죽었으면 실행 실패(④).
 - **진행 중 금지 2종.** (1) **/clear 금지** — codex 플러그인 `SessionEnd` 훅이 이 세션의 running 잡을 kill한다. Stop 훅 ②와 동일 문구(규범 원본은 여기): "진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라." — 앞 문장(완료 전 /clear 금지)은 항상, 뒷 문장(기록만 하고 멈춤)은 **넛지를 받은 세션에만** 적용된다(§2i 경로 ①). 넛지 없이 완료 알림이 오면 ④ → §2c로 정상 진행한다. (2) **추적 파일 편집 금지** — 리뷰어가 디스크를 직접 읽는다.
@@ -92,6 +92,7 @@ F=dev-workflow/skills/review-loop/SKILL.md
 grep -c '/codex:status' $F; grep -c 'job id' $F; grep -c 'setsid' $F; grep -c 'sort -V | tail' $F; grep -c 'cache/openai-codex' $F; grep -c 'ls -d' $F   # 기대: 전부 0 (`sort -V | head -1`은 SC-4 버전 비교 — 금지 대상은 glob 최신 정렬 `sort -V | tail`만)
 grep -n 'run_in_background' $F              # 기대: ③ 대기 문단 1건만
 grep -c 'COMPANION_EXIT' $F                  # 기대: ≥3
+grep -cE '(^|[ "(;])g?timeout [0-9]' $F      # 기대: 0 (외부 timeout(1) 미사용 — macOS 부재); grep -c 'seq 38' $F → 1
 grep -c 'installed_plugins.json' $F          # 기대: 1
 grep -c 'pgrep -f' $F                        # 기대: 1 (금지 문구)
 grep -c '진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라.' $F   # 기대: 1 (SC-3 HOOK-② 바이트 동일)
@@ -111,6 +112,7 @@ F=dev-workflow/skills/review-loop/SKILL.md
 for s in '/codex:status' 'job id' 'setsid' 'sort -V | tail' 'cache/openai-codex' 'ls -d'; do printf '%s\t' "$s"; grep -c -- "$s" $F; done   # 전부 0 (AC2의 `sort -V` = glob 최신 정렬 — SC-4의 `sort -V | head -1` 버전 비교는 대상 아님)
 grep -c 'installed_plugins.json' $F; grep -c 'spawn(' $F; grep -c '\-\-prompt-file' $F; grep -c '1\.0\.6' $F; grep -c 'status --all' $F; grep -c 'cancel <id>' $F   # 전부 ≥1
 grep -c 'COMPANION_TOO_OLD' $F               # 2 (게이트 명령 + 확인 모드 문장)
+grep -cE '(^|[ "(;])g?timeout [0-9]' $F; grep -c 'seq 38' $F   # 0 · 1 (대기 유계 = 내장 for/seq — `timeout`·`gtimeout` 금지, DR:130)
 grep -n '^#### 2b\. 리뷰 실행' $F             # 1행
 [ "$(wc -c < $F)" -le 64750 ] && echo SIZE_OK  # 소프트 예산(SC-7)
 git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'   # 0
@@ -119,6 +121,7 @@ git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'  
 ## Cautions
 
 - **RL:158(프롬프트 첨부물 ①~⑥)과 RL:282·286~288을 고쳐 쓰지 않는다. 이유: 282·286~288은 task-03이 유효성 블록·빈 가드 정밀화로 바꾼다 — 여기서 손대면 두 task의 diff가 겹친다.**
+- **대기 유계에 `timeout`·`gtimeout`을 쓰지 않는다(`for i in $(seq 38)` 유지). 이유: macOS 기본 설치에 둘 다 없어(doctor SKILL.md:130 실측) 맥북에서 대기가 즉시 `WAIT_EXPIRED`로 끝나고 재대기도 같은 이유로 반복 실패한다(review-loop(plan) R3).**
 - **`--wait`를 래퍼 명령에서 빼지 않는다. 이유: 1.0.6은 무시하지만 상위 버전이 백그라운드 기본으로 바뀌어도 포그라운드 완주 의도를 문면에 남긴다(래퍼가 완주해야 마커가 찍힌다).**
 - **`CODEX_COMPANION_SESSION_ID`를 비우는 우회를 쓰지 않는다. 이유: D5 미채택 — 사실 기록만 한다.**
 - **HOOK-② 인용문 안에 넛지 조건을 넣지 않는다 — 조건은 인용 밖 문장으로 둔다. 이유: SC-3 바이트 동일(훅은 넛지 시에만 발화하므로 조건이 내재) — 인용을 고치면 훅과 어긋난다. 조건이 없으면 백그라운드 기본(D1) 아래 모든 라운드 완료가 중단 지시로 읽힌다(review-loop(plan) R2).**

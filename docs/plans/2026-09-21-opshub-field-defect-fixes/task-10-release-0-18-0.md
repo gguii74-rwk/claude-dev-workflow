@@ -34,8 +34,8 @@ node -e 'JSON.parse(require("fs").readFileSync("dev-workflow/.claude-plugin/plug
 
 ```bash
 BASE=$(git log --format=%H --grep='review-loop(spec) 종결' -1)     # spec 종결 커밋(4e3cd8d) = 구현 착수 직전
-git log --format=%B $BASE..HEAD | grep -ciE 'co-authored|generated with|claude-session'   # 0
-git diff --name-only $BASE..HEAD | xargs grep -liE 'co-authored-by|generated with \[claude' 2>/dev/null | grep -v 'review-loop/SKILL.md'   # 빈 출력 (RL §4의 grep 예시만 해당 문자열을 갖는다)
+git log --format=%B $BASE..HEAD | grep -ciE '^(co-authored-by|claude-session): |generated with \[claude code\]\('   # 0 — 트레일러 실형(행 머리 `Key: `·링크형 푸터)만. "AI 서명 금지" 같은 규칙 언급은 대상 아님
+git diff --name-only $BASE..HEAD | xargs grep -nE '^(Co-Authored-By|Claude-Session): |Generated with \[Claude Code\]\(' 2>/dev/null   # 빈 출력 — 행 머리 트레일러·링크형 푸터(대소문자 실형)만 검출. 규칙 문구(백틱 인용 `Co-Authored-By`)·RL §4 grep 예시(소문자 패턴)·WPS 계약 블록의 조건부 트레일러 서술은 검출되지 않아야 한다(느슨한 `-liE 'co-authored-by|generated with'`는 plan 엔트리포인트·task-07·task-10을 오탐 — review-loop(plan) R3 실측)
 for f in README.md README.ko.md README.ja.md; do grep -c '0.18.0' $f; done   # 각 2 (AC10 — 신규 서술 3건: F1·F5 문단 + F6 문장)
 ```
 
@@ -47,9 +47,9 @@ for f in README.md README.ko.md README.ja.md; do grep -c '0.18.0' $f; done   # �
 
 0.18.0 설치본으로 **실제 트랙의 review-loop 라운드 1회**를 돌리며 다음 3단계를 **같은 라운드 안에서** 기록한다. 검증 대상은 "Bash **도구**의 timeout kill이 분리 프로세스를 죽이지 않는가"이므로, 대기 명령의 자체 종료(`timeout 570 …` → `WAIT_EXPIRED`)를 끊는 것으로 대체하지 않는다 — 그 경로는 도구가 프로세스를 정리하는 상황을 만들지 않는다.
 
-1. **Bash 도구 timeout 주입**: 기동 직후 대기를 셸 `timeout` 없이 `until grep -q '^COMPANION_EXIT:' "$L.out"; do sleep 15; done`로 띄우고 **Bash 도구의 `timeout` 인자를 라운드 소요보다 짧게**(예: 120000ms) 준다 → 도구가 대기 프로세스를 kill한다(도구의 timeout 에러 메시지 시각을 기록).
+1. **Bash 도구 timeout 주입**: 기동 직후 대기를 유계 없는 `until grep -q '^COMPANION_EXIT:' "$L.out"; do sleep 15; done`로 띄우고 **Bash 도구의 `timeout` 인자를 라운드 소요보다 짧게**(예: 120000ms) 준다 → 도구가 대기 프로세스를 kill한다(도구의 timeout 에러 메시지 시각을 기록).
 2. **동일 pid 생존**: 그 직후 `kill -0 "$(cat "$L.pid")"; echo $?` = 0(래퍼 pid가 도구 kill을 견딤). `$L.pid` 값이 기동 시 기록한 값과 같은지 함께 적는다.
-3. **동일 라운드 마커 회수**: 규약대로 대기를 재개해(`timeout 570 …`) 같은 `$L.out`에서 `COMPANION_EXIT:` 마커와 헤더·실행 로그를 회수한다(재실행 없이).
+3. **동일 라운드 마커 회수**: 규약 대기 명령(`for i in $(seq 38) …` 유계 루프)으로 재개해 같은 `$L.out`에서 `COMPANION_EXIT:` 마커와 헤더·실행 로그를 회수한다(재실행 없이).
 
 | 호스트 | OS/셸 | 날짜 | 트랙·라운드 | 도구 timeout 주입(인자·에러 시각) | pid 생존(`kill -0` 결과·pid 동일) | 마커 회수(같은 `$L.out`) | 명령 로그 수 | 결과 |
 |---|---|---|---|---|---|---|---|---|
@@ -89,7 +89,7 @@ git log -1 --format=%s | grep -c '^release: 0.18.0'                        # 1
 grep -c '^## AC11 실사용 확인' docs/plans/2026-09-21-opshub-field-defect-fixes.md   # 1
 grep -c 'spark2' docs/plans/2026-09-21-opshub-field-defect-fixes.md        # ≥2 (SC/AC11 표)
 for f in README.md README.ko.md README.ja.md; do grep -c '0.18.0' $f; done # 각 2  (AC10)
-BASE=$(git log --format=%H --grep='review-loop(spec) 종결' -1); git log --format=%B $BASE..HEAD | grep -ciE 'co-authored|generated with|claude-session'   # 0
+BASE=$(git log --format=%H --grep='review-loop(spec) 종결' -1); git log --format=%B $BASE..HEAD | grep -ciE '^(co-authored-by|claude-session): |generated with \[claude code\]\('   # 0
 git status --short | grep -v '^??' | wc -l                                  # 0
 ```
 
