@@ -124,3 +124,19 @@ timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; don
 - **C-11 판정 종결**(`docs/specs/2026-08-13-lightweight-skip-execution-rate.md` §6) — 재개는 새 트랙 spec으로.
 - **사용자 결정(2026-09-18)** — 후속 작업은 전부 문서로 먼저 작성하고, Fable 교차검증을 거친 뒤 파이프라인(3 harden-spec~)으로 진행한다. **경로 = 정식**, 3.5 비대상.
 - **spec ledger 닫힌 항목**: fp-OF-R1-1·fp-OF-R2-1(F6-2 재개 계약, FIXED `5ee91cc`·`898790f`, C1 소멸 확인) — 원문·근거는 spec 말미 ledger(복제 금지). ACCEPTED/DEFERRED/OUT_OF_SCOPE 인계 항목 없음.
+
+## 적대검증 ledger (plan)
+
+- 루프: review-loop(plan) 2026-09-22 시작(spark2 · Fable). base = `4e3cd8d`(해소 SHA `4e3cd8d5c2ef3611f88a118f9feb74191dd0381f`, plan 커밋 직전 main — spec diff 제외해 plan 11파일만 리뷰) · branch main · 시작 HEAD `b0acbfc`. 예산: max 5 · confirm 2 · auto 3. 게이트: 내용 관문 충족(SC-1~8·task 표·AC↔task), 형식 관문 ①②④ 스킵(repo에 CLAUDE.md/AGENTS.md 없음), ③ 통과(spec ledger fingerprint 컬럼 있음). 보안 크리티컬 아님. 입도 = 통합 1회(task 파일별 분할 리뷰 없음). 실행 방식 = spec 루프와 같은 F1 수동 선적용(`.remember/loop-2026-09-21-opshub-field-defect-fixes-plan-R<N>.{sh,out,pid,focus}` + node `spawn(detached)` + `COMPANION_EXIT:` 마커 + 백그라운드 대기, focus 첫 줄 = 정적 검토 완료형 고정 줄).
+- score 이력(산식 = RL §blocking score, 미확인 FIXED 큐 제외): R1 = 6(high 1 + medium 3, 전부 FIXED 후보 — 그중 1건은 즉시 ESCALATE 경유).
+- 미확인 FIXED 큐: **4건**(fp-OF-P-R1-1 ~ R1-4, 수정 커밋 `6698f68`). 적대 소진 1/5 · 확인 소진 0/2 · 복귀 미사용 · 자동 모드(batch 적재 0건).
+- 사람 개입: fp-OF-P-R1-2 즉시 ESCALATE(후속 task 전제 — D34 기결정과 내용량 충돌) → 사용자 판정 2026-09-22 "D34 상한 +7KB 갱신"(대안 = 기존 0.17.0 문장 압축 / 신규 내용 축소 / 중단 — 불채택). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) 0건.
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-OF-P-R1-1 = task-02 §B ②(SC-5 spawn 1줄) · "재실행 시 이전 완료 마커와 리뷰 결과가 재사용됨(출력 append, 초기화 단계 없음 — 실패 재실행이 같은 R<N> 경로라 대기 즉시 종료·이전 JSON을 현재 결과로 판정)" · "기동 전 이전 프로세스 종료 확인·기존 출력 분리 후 현재 출력 초기화, 대기 재개는 초기화 안 함" | high | **FIXED** `6698f68` | SC-5·task-02 §B의 `fs.openSync(out,"a")` → `"w"`(기동 시 새로 씀), ② 산문에 재실행·이름 변경·`$L.pid` 생존 시 미기동(③으로) 명시, 대기 재개는 파일을 열지 않음. SC-5 ↔ task-02 diff 0 확인. task-02 Cautions에 `"a"` 회귀 금지 추가. 미확인 FIXED 큐 편입 |
+| fp-OF-P-R1-2 = task-06 §5 · SC-7 · "지정 압축 후보로 AC9 상한(65,994B) 도달 불가 — task-02~05 교체문 합성 71,618B(+5,624B 초과), 후보 전부 제거해도 70,065B, 구현자가 plan 밖 대규모 재작성을 결정해야 함" · "상한을 만족하는 교체문을 plan에서 확정, SC-7·task별 예상 크기를 합성 결과에 맞출 것" | medium | **ESCALATE(즉시) → 사용자 판정 → FIXED** `6698f68` | 루프 재현: 합성 71,618B 일치. 신규 문면 압축 2회(근거 1줄 수준) → 68,378B(+6,480B)로 +4KB 불가 확정 → 즉시 ESCALATE(3택 + 중단). **사용자 판정: D34 상한 +7KB(≤69,066B)로 갱신**(컨텍스트 비용 ≈1K토큰/세션 < 라운드 소실 1건). 반영: spec D34 행·AC9·재논의 금지 블록, plan 재논의 금지 블록·SC-7(합성값 4점 + 소프트 예산)·task-02~05 SIZE_OK·task-06 상한/Caution. 압축 교체문은 유지(AC grep 전 항목 합성본에서 기대값 일치 확인). 미확인 FIXED 큐 편입 |
+| fp-OF-P-R1-3 = task-06 §3(:51) · "GREEN 재실행이 수정 전 스킬 사본을 계속 검사 — 사본 생성은 단계 1에만 있고 불통과 수정·단계 5 압축 뒤 재생성 없음(GREEN 증거 ≠ 배포 문면)" · "RL 수정·압축 후 사본 재생성·영향 케이스 재실행, 원본·사본 동일성 확인 절차" | medium | **FIXED** `6698f68` | task-06 순서 재배치: 훅 GREEN → AC grep → AC9 확정(압축·커밋) → **확정 문면에서** 사본 `cp` + `cmp`(COPY_SYNC) → 22런. 불통과 수정 시 grep·AC9 재확인 → 사본 재생성 → 그 ID 재실행 명시. AC에 `cmp` 추가, outcome 문구에 COPY_SYNC, Caution 추가. 미확인 FIXED 큐 편입 |
+| fp-OF-P-R1-4 = task-02 AC(:118-119) · task-06 §4 AC2 · "필수 삽입문(① 산문 `cache/openai-codex`·`sort -V`, SC-4 버전 비교 `sort -V`)이 AC2 0건 검사를 반드시 실패시킴(1건·2건)" · "금지 대상(glob 최신 정렬)과 버전 비교·설명 문구를 구분해 검사 범위를 정하거나 교체문 수정, SC-4·task-02·task-06 동기화" | medium | **FIXED** `6698f68` | ① 산문에서 리터럴 제거("캐시 디렉터리 glob 금지"), 0건 grep의 `sort -V` → `sort -V | tail`(glob 최신 정렬 = spec AC2 의도; SC-4의 `sort -V | head -1` 버전 비교는 대상 아님 — 주석으로 명시), task-02 자기 점검·AC, task-06 AC2·Caution 동기화. 합성본 grep: cache/openai-codex 0 · sort -V \| tail 0 · ls -d 0. 미확인 FIXED 큐 편입 |
+
+- **R1**(적대, 2026-09-22 05:45~05:49, target `b0acbfc`): verdict needs-attention · 신규 4(high 1·medium 3) · FIXED 3 + ESCALATE→FIXED 1 · 가드 일치(DUPLICATE) 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 실행 로그 16건 · `bwrap:` 0 → 유효. 수정 커밋 `6698f68`(plan 6파일 + spec D34/AC9).
