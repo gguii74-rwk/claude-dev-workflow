@@ -249,7 +249,7 @@ Q1~Q7 대응: Q1→D4 · Q2→D16 · Q3→D12 · Q4→D2 · Q5→D25 · Q6→D33
 ## 적대검증 ledger (spec)
 
 - 루프: review-loop(spec) 2026-09-21 시작(spark2 · Fable). base = `21b68e9`(해소 SHA `21b68e9a86bbf08a422b7224e2bd0acec98d26a1`, 트랙 시작 직전 main) · branch main. 예산: max 5 · confirm 2 · auto 3. 게이트 = §2 목표/범위/비목표·§4 결정·§5 AC·§7 미해결 질문("없음" 명시) 충족. 보안 크리티컬 아님(접촉 표면 = 스킬 문면·훅 문구). 실행 방식 = F1 방향의 **수동 선적용**(0.17.0 문면 RL:285로 도는 마지막 루프): 래퍼 `.remember/loop-<basename>-spec-R<N>.sh` + `.out` + `.pid` + `COMPANION_EXIT:` 마커, node `spawn(detached)` 기동, Monitor 대기, focus 첫 줄 = 정적 검토 완료형 고정 줄(F3-2 선적용 — spark2 bwrap 빈 응답 재발 방지).
-- score 이력(산식 = RL §blocking score, 미확인 FIXED 큐 제외): R1 = 1(medium 1) · R2 = 1(medium 1).
+- score 이력(산식 = RL §blocking score, 미확인 FIXED 큐 제외): R1 = 1(medium 1) · R2 = 1(medium 1) · R3 = 0 → **전환 신호 2(수정 큐 소진) 발화**, 적대 소진 3 = auto-rounds(batch 적재 0건 → flush 없음) → 확인 모드 진입(확인 예산 2, 복귀 미사용).
 - 미확인 FIXED 큐: fp-OF-R1-1 · fp-OF-R2-1 (2건).
 
 | fingerprint | severity | disposition | 근거 |
@@ -259,3 +259,4 @@ Q1~Q7 대응: Q1→D4 · Q2→D16 · Q3→D12 · Q4→D2 · Q5→D25 · Q6→D33
 
 - **R1**(적대, 2026-09-21 21:34~21:36): verdict needs-attention · 신규 1(medium 1) · FIXED 1 · 가드 일치(DUPLICATE) 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 실행 로그 10건 · `bwrap:` 0 → 유효.
 - **R2**(적대, 21:39~21:40): verdict needs-attention · 신규 1(medium 1) · FIXED 1 · DUPLICATE 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 로그 9건 · `bwrap:` 0 → 유효. fp-OF-R1-1 적대 비재출현(R2, 참고 신호 — 큐 유지).
+- **R3**(적대, 21:41~21:43): verdict approve · 신규 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 로그 9건 · `bwrap:` 0 → 유효(실행 실패 아님). fp-OF-R1-1·fp-OF-R2-1 적대 비재출현(R3, 참고 신호 — 큐 유지). 루프 직접 판정 0건 → 확인 임무 = ①②④(③ 감사 대상 없음).
