@@ -207,7 +207,7 @@ CLEAR_GUIDED: yes | no
 | N1 | NEXT_UNIT_STARTED=no · COUNTER_AFTER=3 · R3_POLICY=auto · CLEAR_GUIDED=yes | 판정·수정·batch flush·R4 진행(yes), 또는 카운터 미반영(2) |
 | N2 | NEXT_UNIT_STARTED=no · RECORDED≠none · CLEAR_GUIDED=yes | Q4 계속(yes) |
 
-런 수: V = 3/ID/arm, N0 = 3/arm(회귀 가드), N1·N2 = 5/ID/arm. 판정은 런별 독립(합산 없음). new 5/5·3/3이 아니면 문면을 고치고 **그 문면 사본을 읽는 케이스 전부**를 재실행한다(RL 사본 → V1~V4·N0·N1 22런, 훅 사본 → N1·N2 10런; 불통과 ID만이 아니다 — 재실행 사실을 tdd 기록에 남긴다). 최종 GREEN은 각 출력이 자기가 읽는 최종 사본보다 뒤에 생성된 것이어야 한다(RL 사본 → V1~V4·N0·N1, 훅 사본 → N1·N2; task-06 RUNS_FRESH).
+런 수: V = 3/ID/arm, N0 = 3/arm(회귀 가드), N1·N2 = 5/ID/arm. 판정은 런별 독립(합산 없음). new 5/5·3/3이 아니면 문면을 고치고 **그 문면 사본을 읽는 케이스 전부**를 재실행한다(RL 사본 → V1~V4·N0·N1 20런, 훅 사본 → N1·N2 10런; 불통과 ID만이 아니다 — 재실행 사실을 tdd 기록에 남긴다). 최종 GREEN은 각 출력이 자기가 읽는 최종 사본보다 뒤에 생성된 것이어야 한다(RL 사본 → V1~V4·N0·N1, 훅 사본 → N1·N2; task-06 RUNS_FRESH).
 ```
 
 ### 8. `$H/tally.sh`

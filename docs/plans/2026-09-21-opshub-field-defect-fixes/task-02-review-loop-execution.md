@@ -96,7 +96,7 @@ grep -cE '(^|[ "(;])g?timeout [0-9]' $F      # 기대: 0 (외부 timeout(1) 미�
 grep -c 'installed_plugins.json' $F          # 기대: 1
 grep -c 'pgrep -f' $F                        # 기대: 1 (금지 문구)
 grep -c '진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라.' $F   # 기대: 1 (SC-3 HOOK-② 바이트 동일)
-wc -c $F                                     # 소프트 예산: ≤ 64,750 (SC-7 — plan 합성값 64,621 + 여유)
+wc -c $F                                     # 소프트 예산: ≤ 64,750 (SC-7 — plan 합성값 64,622 + 여유)
 ```
 ### 4. 커밋
 
