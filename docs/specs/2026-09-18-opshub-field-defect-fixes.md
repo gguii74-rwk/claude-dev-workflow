@@ -245,3 +245,15 @@ Q1~Q7 대응: Q1→D4 · Q2→D16 · Q3→D12 · Q4→D2 · Q5→D25 · Q6→D33
 - **DR:196**(doctor는 codex 플러그인 버전을 대조하지 않는다) — F1-7의 ≥1.0.6 게이트는 RL 런타임 검사이지 doctor 확장이 아니다(D8).
 - **C-11 판정 종결**(`docs/specs/2026-08-13-lightweight-skip-execution-rate.md` §6) — 재개는 새 트랙 spec으로.
 - **사용자 결정(2026-09-18)** — 후속 작업은 전부 문서로 먼저 작성하고, Fable 교차검증을 거친 뒤 파이프라인(3 harden-spec~)으로 진행한다. **경로 = 정식**, 3.5 비대상.
+
+## 적대검증 ledger (spec)
+
+- 루프: review-loop(spec) 2026-09-21 시작(spark2 · Fable). base = `21b68e9`(해소 SHA `21b68e9a86bbf08a422b7224e2bd0acec98d26a1`, 트랙 시작 직전 main) · branch main. 예산: max 5 · confirm 2 · auto 3. 게이트 = §2 목표/범위/비목표·§4 결정·§5 AC·§7 미해결 질문("없음" 명시) 충족. 보안 크리티컬 아님(접촉 표면 = 스킬 문면·훅 문구). 실행 방식 = F1 방향의 **수동 선적용**(0.17.0 문면 RL:285로 도는 마지막 루프): 래퍼 `.remember/loop-<basename>-spec-R<N>.sh` + `.out` + `.pid` + `COMPANION_EXIT:` 마커, node `spawn(detached)` 기동, Monitor 대기, focus 첫 줄 = 정적 검토 완료형 고정 줄(F3-2 선적용 — spark2 bwrap 빈 응답 재발 방지).
+- score 이력(산식 = RL §blocking score, 미확인 FIXED 큐 제외): R1 = 1(medium 1).
+- 미확인 FIXED 큐: fp-OF-R1-1 (1건).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| fp-OF-R1-1 = spec §3 F6-2(:110) · "판정 전에 소진 카운터를 올리면 재개 후 다른 정책으로 판정된다(auto-rounds 경계에서 batch→즉시 ESCALATE로 바뀜, 결과 의존 모드 전이의 확정 시점 미정의)" · "수신 라운드의 판정 전 모드·미처리 단계를 다음 액션에 보존, 재개 시 원래 정책으로 판정·카운터 재증가 금지·전이 확정 시점 정의, AC6 검증" | medium | **FIXED** `5ee91cc` | F6-2에 재개 계약 추가(카운터 = 수신 사실만, 판정 정책 = 수신 시점 모드, 카운터 재증가 금지, 결과 의존 전이는 판정 뒤 확정, auto-rounds=3 R3 예시) + AC6 항목 1건 + §6 RED ① 확장. D26 필드 불변·C-4 D26 순서 불변 유지. 미확인 FIXED 큐 편입 |
+
+- **R1**(적대, 2026-09-21 21:34~21:36): verdict needs-attention · 신규 1(medium 1) · FIXED 1 · 가드 일치(DUPLICATE) 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 실행 로그 10건 · `bwrap:` 0 → 유효.
