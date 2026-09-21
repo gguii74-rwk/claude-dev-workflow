@@ -88,7 +88,7 @@ for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; d
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 01 | 하네스 작성 + RED(cur arm) | [ ] | [task-01](2026-09-21-opshub-field-defect-fixes/task-01-harness-red.md) | — | |
+| 01 | 하네스 작성 + RED(cur arm) | [x] | [task-01](2026-09-21-opshub-field-defect-fixes/task-01-harness-red.md) | — | 2026-09-22 하네스 12파일 + cur 25런(opus) + 훅 RED 12 fail. RED 재현: V2 3/3·V3 2/3·N2 1/5·N1 R3_POLICY 이탈 4/5; 자동 보완: V1·V4·N1 기대축(착수/카운터). PLAN.md는 `.remember/harness-0.18.0-caller/`로 격리(오염 9런 폐기·재실행, 편향 실재 N1 auto 3/5→1/5). repo 변경 없음, 리뷰 clean |
 | 02 | RL 실행 절차 재작성 — F1·F2 | [ ] | [task-02](2026-09-21-opshub-field-defect-fixes/task-02-review-loop-execution.md) | 01 | |
 | 03 | RL 유효성 블록 + focus 고정 줄 — F3 | [ ] | [task-03](2026-09-21-opshub-field-defect-fixes/task-03-review-loop-validity-focus.md) | 02 | |
 | 04 | RL ledger 순서 규정·소규모 정정 — F5·F7(RL:337)·F8 | [ ] | [task-04](2026-09-21-opshub-field-defect-fixes/task-04-review-loop-ledger-misc.md) | 03 | |
