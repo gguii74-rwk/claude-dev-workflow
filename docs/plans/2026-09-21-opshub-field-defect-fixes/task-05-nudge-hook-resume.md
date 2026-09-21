@@ -106,7 +106,7 @@ grep -c '진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금
 grep -c '수신 시점 모드' $F                                              # 2 (분기 + 다음 액션)
 grep -c '진행 중 라운드 분기' $F                                          # ≥2 (§2b ③ 참조 + §2i 정의)
 sed -n '/^- `## 현재` = /p' $F | grep -c 'phase / 적대 라운드 소진 카운트 / 확인 라운드 소진 카운트 / 현재 모드 / 복귀 사용 여부'   # 1 (필드 목록 불변 D26)
-wc -c $F                                                                 # 소프트 예산 ≤ 68,500 (SC-7 — 합성값 68,378; AC9 하드 상한 69,066은 task-06)
+wc -c $F                                                                 # 소프트 예산 ≤ 68,750 (SC-7 — 합성값 68,609; AC9 하드 상한 69,066은 task-06)
 git add $F $K
 git commit -m "fix(hook,review-loop): 넛지 = 현재 작업 단위만 마무리(①②③ 최초·재넛지 동일, 규약 핸드오프 파일·루프 파일 단서) + §2i 진행 중 라운드 분기(대기→순서 0→미판정 기록→1~4, 재개 계약: 수신 시점 모드·카운터 재증가 금지·예약분 불변) (F6)"
 ```
@@ -123,7 +123,7 @@ grep -c 'auto-rounds=3에서 R3' $F               # 1  (AC6 — 경계 예시)
 grep -c '예약분 라운드 중단도 두 카운터 불변' $F  # 1  (AC6 — 예약분)
 grep -c '새 필드는 없다' $F                       # 1  (D26)
 grep -n '^| \*\*0\*\* |' $F | wc -l              # 1  (순서 표 0~4 불변)
-[ "$(wc -c < $F)" -le 68500 ] && echo SIZE_OK
+[ "$(wc -c < $F)" -le 68750 ] && echo SIZE_OK
 git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'   # 0
 ```
 

@@ -4,7 +4,7 @@
 
 ## Files
 
-- Create: `$H/skills/review-loop-new.md` · `$H/skills/hook-new.txt` · `$H/out/new/*.md`(22런)
+- Create: `$H/skills/review-loop-new.md` · `$H/skills/hook-new.txt` · `$H/out/new/*.md`(25런)
 - Modify: `.remember/tdd-opshub-field-defect-fixes.md`(GREEN 절 + AC 대조표)
 - Modify(조건부): `dev-workflow/skills/review-loop/SKILL.md` — AC9 초과 시 압축만
 - Test: `$H/hook-cases.mjs` · `$H/tally.sh new`
@@ -62,13 +62,13 @@ node -e 'import("./dev-workflow/hooks/scripts/context-threshold-hook.mjs").then(
 grep -c '새 작업 단위' $H/skills/hook-new.txt    # 2
 ```
 
-### 5. new arm 22런 디스패치(런 1개 = 디스패치 1개)
+### 5. new arm 25런 디스패치(런 1개 = 디스패치 1개)
 
 디스패치 프롬프트 원문:
 ```
 `$HOME/workspace/claude-memories/claude-dev-workflow/remember/harness-0.18.0/RUN.md`를 읽고 그 규약대로 수행하라. 호출: ARM=new ID=<ID> REP=<n>
 ```
-- `ID=V1..V4 REP=1..3`(12런) · `ID=N1 REP=1..5` · `ID=N2 REP=1..5`(10런).
+- `ID=V1..V4 REP=1..3`(12런) · `ID=N0 REP=1..3`(3런, 무넛지 회귀 가드) · `ID=N1 REP=1..5` · `ID=N2 REP=1..5`(10런).
 ```bash
 bash $H/tally.sh new
 ```
@@ -78,15 +78,17 @@ bash $H/tally.sh new
 
 `.remember/tdd-opshub-field-defect-fixes.md`의 `## GREEN (new = 웨이브 1 HEAD)` 아래에 표를 채운다(형식 = RED 표와 동일 열 + "판정" 열: `GREEN · 지침 효과 확정` / `GREEN · 효과 미확인(자동 보완)` / `GREEN · 부분 효과` — cur 결과와 대비해 적는다). 이어서 `## AC 대조(RL·훅)`·`## AC9` 절(`wc -c` 값, 압축 여부, **사본 `cmp` 결과 = 검증한 문면과 HEAD 문면의 동일성**).
 
-repo 커밋은 압축·불통과 수정이 있었을 때만(단계 3·5). 엔트리포인트 task 표 outcome에는 "V 12/12 · N1 5/5 · N2 5/5 · 훅 GREEN · RL <bytes>B · COPY_SYNC" 한 줄을 적는다(디스패처가 완료 확인 시).
+repo 커밋은 압축·불통과 수정이 있었을 때만(단계 3·5). 엔트리포인트 task 표 outcome에는 "V 12/12 · N0 3/3 · N1 5/5 · N2 5/5 · 훅 GREEN · RL <bytes>B · COPY_SYNC" 한 줄을 적는다(디스패처가 완료 확인 시).
 
 ## Acceptance Criteria
 
 ```bash
 H=$HOME/workspace/claude-memories/claude-dev-workflow/remember/harness-0.18.0
-ls $H/out/new | wc -l                                                    # 22
+ls $H/out/new | wc -l                                                    # 25
 bash $H/tally.sh new | grep -c 'V[1-3].*VERDICT: exec_fail'              # 9
 bash $H/tally.sh new | grep -c 'V4.*VERDICT: valid'                      # 3
+bash $H/tally.sh new | grep -c 'N0.*NEXT_UNIT_STARTED: yes'              # 3 (무넛지 완료 = 정상 진행)
+bash $H/tally.sh new | grep -c 'N0.*CLEAR_GUIDED: no'                    # 3
 bash $H/tally.sh new | grep -c 'N1.*NEXT_UNIT_STARTED: no'               # 5
 bash $H/tally.sh new | grep -c 'N1.*R3_POLICY: auto'                     # 5
 bash $H/tally.sh new | grep -c 'N2.*NEXT_UNIT_STARTED: no'               # 5
@@ -102,6 +104,6 @@ git status --short | grep -v '^??' | wc -l                               # 0 (tr
 - **new arm이 cur 결과와 같아도(자동 보완) 문면을 "더 강하게" 고치지 않는다. 이유: L1 — 실측에서 통과한 축은 그대로 기록한다(7c 형식).**
 - **AC9 초과를 상한 상향으로 풀지 않는다. 이유: D34(+7KB, 2026-09-22 실측 갱신 — 재갱신 없음) — 압축 후보에서 줄인다.**
 - **압축으로 SC-3·SC-4 정본 문자열이나 0건 요건(`setsid`·`/codex:status`·`sort -V | tail`)을 건드리지 않는다. 이유: task-02~05 AC가 그 문자열을 전제한다.**
-- **하네스 22런을 AC9 확정(단계 3) 전에 돌리지 않고, RL을 고친 뒤 사본 재생성 없이 재실행하지 않는다. 이유: 하네스는 `review-loop-new.md` 사본만 읽는다 — 사본과 HEAD가 다르면 GREEN이 배포 문면의 증거가 아니다(review-loop(plan) R1).**
+- **하네스 25런을 AC9 확정(단계 3) 전에 돌리지 않고, RL을 고친 뒤 사본 재생성 없이 재실행하지 않는다. 이유: 하네스는 `review-loop-new.md` 사본만 읽는다 — 사본과 HEAD가 다르면 GREEN이 배포 문면의 증거가 아니다(review-loop(plan) R1).**
 - **하네스 산출(`out/new`)·tdd 기록을 repo에 커밋하지 않는다. 이유: `.remember/` 규약 — claude-memories 커밋은 사용자 몫.**
 - **불통과 런을 "모델 편차"로 넘기지 않는다. 이유: 5/5·3/3이 판정 기준(PLAN.md) — 문면을 고치고 그 ID만 재실행한다.**

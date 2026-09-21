@@ -72,13 +72,13 @@ timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; don
 
 - 위치 `H=$HOME/workspace/claude-memories/claude-dev-workflow/remember/harness-0.18.0` (= 이 repo `.remember/harness-0.18.0`, 심링크). repo에 커밋하지 않는다(claude-memories 커밋은 사용자 몫). 판정 기준은 `PLAN.md`(호출자 전용)에만 두고 `RUN.md`·프롬프트에는 **절대 넣지 않는다**(7b 교훈: 기대 답 노출 런 60개 폐기).
 - arm: `cur` = 0.17.0 문면(`$H/skills/review-loop-cur.md` · `$H/skills/hook-cur.txt`) / `new` = 웨이브 1 완료 HEAD 문면(`review-loop-new.md` · `hook-new.txt`). 스킬 사본으로만 읽는다 — `Skill` 도구 호출 금지.
-- 케이스: `V1~V4`(§2b 유효성 픽스처 4종, 프롬프트 `prompts/V.md`, 3런/arm) · `N1`(RL 라운드 진행 중 넛지→완료 알림, auto-rounds 경계, `prompts/N1.md`, 5런/arm) · `N2`(비루프 harden 질문 대기 중 넛지, `prompts/N2.md`, 5런/arm). 출력 `$H/out/<arm>/<ID>-r<REP>.md`, 집계 `bash $H/tally.sh <arm>`.
+- 케이스: `V1~V4`(§2b 유효성 픽스처 4종, 프롬프트 `prompts/V.md`, 3런/arm) · `N0`(N1과 같은 상태에서 **넛지 없이** 완료 알림 — 정상 진행 회귀 가드, `prompts/N0.md`, 3런/arm) · `N1`(RL 라운드 진행 중 넛지→완료 알림, auto-rounds 경계, `prompts/N1.md`, 5런/arm) · `N2`(비루프 harden 질문 대기 중 넛지, `prompts/N2.md`, 5런/arm). 출력 `$H/out/<arm>/<ID>-r<REP>.md`, 집계 `bash $H/tally.sh <arm>`.
 - 훅 = `node $H/hook-cases.mjs <hook 경로>`(decideNudge 직접 import, 최초·재넛지 문구에 SC-3 ①②③ 포함 여부).
 - 결과 기록 = `.remember/tdd-opshub-field-defect-fixes.md`(형식 = `tdd-7c-loop-handoff.md`) + 이 문서 task 표 outcome. cur arm이 이미 통과하는 축은 "효과 미확인(자동 보완)"으로 적는다 — RED 미재현은 plan 실패가 아니라 기록 대상이다.
 
 ### SC-7. AC9 규모 (D34 — 2026-09-22 갱신 +7KB)
 
-기준 61,898B → 상한 **69,066B**(`wc -c dev-workflow/skills/review-loop/SKILL.md`). **plan 합성 실측**(task-02~05 교체문을 0.17.0 RL에 그대로 적용, review-loop(plan) R1): task-02 후 64,390 · task-03 후 65,662 · task-04 후 66,632 · task-05 후 68,378. 소프트 예산(합성값 + ≈100B): task-02 후 ≤ 64,500 · task-03 후 ≤ 65,800 · task-04 후 ≤ 66,800 · task-05 후 ≤ 68,500. 하드 확인 = task-06(초과 시 task-06 §압축 후보에서 줄인다 — 상한을 다시 올리지 않는다). 소프트 예산을 넘으면 교체문을 그대로 붙이지 않은 것이므로 먼저 diff로 원인을 찾는다.
+기준 61,898B → 상한 **69,066B**(`wc -c dev-workflow/skills/review-loop/SKILL.md`). **plan 합성 실측**(task-02~05 교체문을 0.17.0 RL에 그대로 적용, review-loop(plan) R1): task-02 후 64,621 · task-03 후 65,893 · task-04 후 66,863 · task-05 후 68,609(R2 수정 반영, 여유 457B). 소프트 예산(합성값 + ≈130B): task-02 후 ≤ 64,750 · task-03 후 ≤ 66,000 · task-04 후 ≤ 67,000 · task-05 후 ≤ 68,750. 하드 확인 = task-06(초과 시 task-06 §압축 후보에서 줄인다 — 상한을 다시 올리지 않는다). 소프트 예산을 넘으면 교체문을 그대로 붙이지 않은 것이므로 먼저 diff로 원인을 찾는다.
 
 ### SC-8. 커밋 규칙
 

@@ -75,7 +75,7 @@ const c=require("child_process").spawn("bash",[sh],{detached:true,stdio:["ignore
 timeout 570 bash -c "until grep -q '^COMPANION_EXIT:' '$L.out'; do sleep 15; done"; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
 ```
 - **대기 프로세스 사망 ≠ 라운드 실패**: `WAIT_EXPIRED`면 `kill -0 "$(cat "$L.pid")"`로 생존 확인(**`pgrep -f` 금지** — 자기 매칭) 후 마커 재확인·대기 재개. 마커 없이 pid도 죽었으면 실행 실패(④).
-- **진행 중 금지 2종.** (1) **/clear 금지** — codex 플러그인 `SessionEnd` 훅이 이 세션의 running 잡을 kill한다. Stop 훅 ②와 동일 문구(규범 원본은 여기): "진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라." (2) **추적 파일 편집 금지** — 리뷰어가 디스크를 직접 읽는다.
+- **진행 중 금지 2종.** (1) **/clear 금지** — codex 플러그인 `SessionEnd` 훅이 이 세션의 running 잡을 kill한다. Stop 훅 ②와 동일 문구(규범 원본은 여기): "진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라." — 앞 문장(완료 전 /clear 금지)은 항상, 뒷 문장(기록만 하고 멈춤)은 **넛지를 받은 세션에만** 적용된다(§2i 경로 ①). 넛지 없이 완료 알림이 오면 ④ → §2c로 정상 진행한다. (2) **추적 파일 편집 금지** — 리뷰어가 디스크를 직접 읽는다.
 - 라운드 시작 시 HEAD SHA를 기록한다(base·target 병기; 공유 워킹트리면 응답 후 재확인). `--base` = §1에서 해소한 base SHA.
 
 **④ 완료·유효 판정**
@@ -95,7 +95,7 @@ grep -c 'COMPANION_EXIT' $F                  # 기대: ≥3
 grep -c 'installed_plugins.json' $F          # 기대: 1
 grep -c 'pgrep -f' $F                        # 기대: 1 (금지 문구)
 grep -c '진행 중인 백그라운드 작업이 있으면 완료 전 /clear 금지. 완료 알림을 받으면 결과를 기록만 하고 멈춘 뒤, 그때 /clear를 안내하라.' $F   # 기대: 1 (SC-3 HOOK-② 바이트 동일)
-wc -c $F                                     # 소프트 예산: ≤ 64,500 (SC-7 — plan 합성값 64,390 + 여유)
+wc -c $F                                     # 소프트 예산: ≤ 64,750 (SC-7 — plan 합성값 64,621 + 여유)
 ```
 ### 4. 커밋
 
@@ -112,7 +112,7 @@ for s in '/codex:status' 'job id' 'setsid' 'sort -V | tail' 'cache/openai-codex'
 grep -c 'installed_plugins.json' $F; grep -c 'spawn(' $F; grep -c '\-\-prompt-file' $F; grep -c '1\.0\.6' $F; grep -c 'status --all' $F; grep -c 'cancel <id>' $F   # 전부 ≥1
 grep -c 'COMPANION_TOO_OLD' $F               # 2 (게이트 명령 + 확인 모드 문장)
 grep -n '^#### 2b\. 리뷰 실행' $F             # 1행
-[ "$(wc -c < $F)" -le 64500 ] && echo SIZE_OK  # 소프트 예산(SC-7)
+[ "$(wc -c < $F)" -le 64750 ] && echo SIZE_OK  # 소프트 예산(SC-7)
 git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'   # 0
 ```
 
@@ -121,6 +121,7 @@ git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'  
 - **RL:158(프롬프트 첨부물 ①~⑥)과 RL:282·286~288을 고쳐 쓰지 않는다. 이유: 282·286~288은 task-03이 유효성 블록·빈 가드 정밀화로 바꾼다 — 여기서 손대면 두 task의 diff가 겹친다.**
 - **`--wait`를 래퍼 명령에서 빼지 않는다. 이유: 1.0.6은 무시하지만 상위 버전이 백그라운드 기본으로 바뀌어도 포그라운드 완주 의도를 문면에 남긴다(래퍼가 완주해야 마커가 찍힌다).**
 - **`CODEX_COMPANION_SESSION_ID`를 비우는 우회를 쓰지 않는다. 이유: D5 미채택 — 사실 기록만 한다.**
+- **HOOK-② 인용문 안에 넛지 조건을 넣지 않는다 — 조건은 인용 밖 문장으로 둔다. 이유: SC-3 바이트 동일(훅은 넛지 시에만 발화하므로 조건이 내재) — 인용을 고치면 훅과 어긋난다. 조건이 없으면 백그라운드 기본(D1) 아래 모든 라운드 완료가 중단 지시로 읽힌다(review-loop(plan) R2).**
 - **SC-4·SC-5 명령을 다시 쓰지 않고 그대로 붙인다. 이유: task-06 AC 그렙과 SC-3·SC-4 문자열이 바이트 단위로 맞아야 한다.**
 - **`$L.out`에 `| head`·`| tail`을 붙인 예시를 쓰지 않는다. 이유: F1-6 — 파이프가 클라이언트만 죽이고 job을 잔존시킨다.**
 - **spawn 1줄의 `fs.openSync(out,"w")`를 `"a"`로 바꾸지 않는다. 이유: 같은 `$L`로 재실행하면 이전 마커가 남아 대기가 즉시 끝나고 이전 결과를 현재 라운드로 판정한다(review-loop(plan) R1 high). 대기 재개(③)는 파일을 열지 않으므로 영향 없다.**

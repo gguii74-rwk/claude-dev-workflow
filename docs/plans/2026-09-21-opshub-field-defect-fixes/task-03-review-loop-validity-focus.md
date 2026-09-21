@@ -61,7 +61,7 @@ grep -c '가드 블록 미포함 — focus 인자는 고정 줄로 항상 부착
 grep -c '샌드박스는 읽기 전용이라 테스트·빌드 실행이 실패할 수 있다 — 실패를 이유로 검토를 중단하지 말고 정적 검토로 완료하라(게이트는 루프가 실행한다). typecheck 같은 읽기 전용 명령은 그대로 실행하라.' $F   # 1 (SC-3 FOCUS-LINE 바이트 동일)
 grep -c '실행 로그 ≥1건' $F; grep -c '개별 명령 실패는 무효 사유가 아니다' $F; grep -c 'bwrap:' $F   # 각 1
 grep -c 'Codex Adversarial Review' $F                            # ≥1 (sed 추출 유지)
-wc -c $F                                                          # 소프트 예산 ≤ 65,800 (SC-7 — 합성값 65,662)
+wc -c $F                                                          # 소프트 예산 ≤ 66,000 (SC-7 — 합성값 65,893)
 ```
 
 ### 5. 커밋
@@ -81,7 +81,7 @@ grep -c '실행 로그 ≥1건' $F                                        # 1
 grep -c '개별 명령 실패는 무효 사유가 아니다' $F                     # 1
 grep -n '고정 첫 줄 — 적대 focus 맨 앞' $F | cut -d: -f1            # 행 번호 < '문구 = 무효 선언형' 행 번호 (D5 짝 바깥·앞)
 grep -n '문구 = 무효 선언형' $F | cut -d: -f1
-[ "$(wc -c < $F)" -le 65800 ] && echo SIZE_OK
+[ "$(wc -c < $F)" -le 66000 ] && echo SIZE_OK
 git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'   # 0
 ```
 

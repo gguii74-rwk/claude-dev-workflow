@@ -190,7 +190,7 @@ Q1~Q7 대응: Q1→D4 · Q2→D16 · Q3→D12 · Q4→D2 · Q5→D25 · Q6→D33
   - 재현 시나리오 2케이스(D27)에서 세션이 기록 후 멈추고 새 단위를 띄우지 않는다(하네스 — §6).
 - **AC7 (F7)**: README 3종 3건·DC:38·RL:337·DR:26·DR:16·DC:28·:33·:83의 서술이 SKILL 문면과 일치한다(대조표는 plan). 스킬 문면에 "40%" 고정 표기가 0건이다(대상 DC:38·RL:337 — 훅 기본값 설명은 제외). DC 9단계 완료 신호는 "PR/MR merged", DR:16에 머신 수 표기 없음.
 - **AC8 (F8)**: (a) `$(git rev-parse --git-dir)/index.lock`이 RL·HS·UM 3곳에 있고 `.git/index.lock` 0건 · (b) §2f ② 범위에 "task 파일·런북·요약절" · (c) 2구(merge 금지·fetch 후 원격 ref) · (d) WPS 블록·RL §2f impl의 **조건부** 금지 문구 + §4 grep 문구 불변.
-- **AC9 (규모)**: review-loop SKILL.md 순증 ≤ +7KB(61,898B → ≤69,066B)(D34, 2026-09-22 갱신 — plan 합성 실측 68,378B 기준 여유 688B). 초과 시 plan에서 압축 대상을 찾는다 — 상한을 다시 올리지 않는다.
+- **AC9 (규모)**: review-loop SKILL.md 순증 ≤ +7KB(61,898B → ≤69,066B)(D34, 2026-09-22 갱신 — plan 합성 실측 68,609B(R2 수정 반영) 기준 여유 457B). 초과 시 plan에서 압축 대상을 찾는다 — 상한을 다시 올리지 않는다.
 - **AC10 (릴리스)**: plugin.json `0.18.0` · README 3종에 F7 정정 + 신규 서술 3건(F1·F5·F6, 3언어 같은 위치)(D36) · 설치 갱신 안내에 spark2 포함(4머신).
 - **AC11 (실사용 확인 — 트랙 완료 조건, D37)**: Windows(OMEN 또는 그램) 1루프 + spark2 1루프에서 F1 분리 실행이 Bash 툴 timeout을 견디고 마커로 회수됨을 ledger에 기록한다. Windows 실패 시 PowerShell `Start-Process` 폴백 1줄 병기 패치 릴리스가 완료 조건에 추가된다.
 

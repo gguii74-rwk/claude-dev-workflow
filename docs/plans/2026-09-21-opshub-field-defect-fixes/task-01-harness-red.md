@@ -6,7 +6,7 @@
 
 - Create (전부 `H=$HOME/workspace/claude-memories/claude-dev-workflow/remember/harness-0.18.0`, = repo `.remember/harness-0.18.0`):
   - `$H/RUN.md` · `$H/PLAN.md` · `$H/tally.sh` · `$H/hook-cases.mjs`
-  - `$H/prompts/V.md` · `$H/prompts/N1.md` · `$H/prompts/N2.md`
+  - `$H/prompts/V.md` · `$H/prompts/N0.md` · `$H/prompts/N1.md` · `$H/prompts/N2.md`
   - `$H/fix/V1.out` · `$H/fix/V2.out` · `$H/fix/V3.out` · `$H/fix/V4.out`
   - `$H/skills/review-loop-cur.md` · `$H/skills/harden-spec.md` · `$H/skills/hook-cur.txt`
   - `$H/out/cur/*.md`(실행 산출)
@@ -44,13 +44,14 @@ grep -c "핸드오프" $H/skills/hook-cur.txt   # 기대: 2
 ```markdown
 # 실행 규약 — 0.18.0 TDD 하네스
 
-호출 메시지는 `ARM=<cur|new> ID=<V1|V2|V3|V4|N1|N2> REP=<n>` 한 줄이다. 아래 표대로 파일을 읽고 프롬프트를 수행한 뒤, **응답 전문을 출력 파일에 쓰고 호출자에게는 프롬프트가 정한 결과 줄만 반환**한다.
+호출 메시지는 `ARM=<cur|new> ID=<V1|V2|V3|V4|N0|N1|N2> REP=<n>` 한 줄이다. 아래 표대로 파일을 읽고 프롬프트를 수행한 뒤, **응답 전문을 출력 파일에 쓰고 호출자에게는 프롬프트가 정한 결과 줄만 반환**한다.
 
 `H` = `$HOME/workspace/claude-memories/claude-dev-workflow/remember/harness-0.18.0`
 
 | 항목 | 경로 |
 |---|---|
 | 프롬프트 (`V*`) | `$H/prompts/V.md` |
+| 프롬프트 (`N0`) | `$H/prompts/N0.md` |
 | 프롬프트 (`N1`) | `$H/prompts/N1.md` |
 | 프롬프트 (`N2`) | `$H/prompts/N2.md` |
 | review-loop 규약 사본 | `$H/skills/review-loop-<ARM>.md` |
@@ -162,6 +163,21 @@ CLEAR_GUIDED: yes | no              (사용자에게 /clear 후 재개를 안내
 호출자에게는 이 4줄만 반환한다.
 ```
 
+### 5b. `$H/prompts/N0.md` (N1의 무넛지 대조 — 회귀 가드: 정상 완료를 중단으로 읽지 않는가)
+
+```markdown
+당신은 review-loop 세션이다(규약 = 규약 사본 review-loop). 상태: phase=spec · `--max 5 --confirm-rounds 2 --auto-rounds 3` · 적대 소진 **2** · 현재 모드 = 적대(자동) · 미확인 FIXED 큐 1건(fp-X-R1-1, 커밋 `1111111`) · batch 적재 ESCALATE 1건(fp-X-R2-2, batch-pending) · base `abc0000` · branch main · HEAD `abc1234` · 작업 트리 clean. 컨텍스트 사용량은 임계보다 훨씬 낮고 **Stop 훅 넛지는 오지 않았다**.
+
+방금 일어난 일: R3 적대 라운드를 규약대로 띄우고 백그라운드 대기로 **턴을 끝냈다**. 그 뒤 **R3 완료 알림**이 도착해 세션이 깨어났다. R3 출력은 유효(헤더·스키마·실행 로그 있음)이고 finding = medium 1건(신규, 수정 방향 명확 — 규약대로면 FIXED 후보), low 0.
+
+지금부터 당신이 **실제로 하는 일**을 순서대로 서술하라(수행할 명령·기록 내용 포함). 그런 다음 마지막에 정확히 다음 4줄을 쓴다(값은 하나만):
+NEXT_UNIT_STARTED: yes | no        (R3 finding의 판정·수정 착수, batch flush 제시, 또는 R4 기동 중 하나라도 이 세션에서 했으면 yes)
+COUNTER_AFTER: <숫자>               (이 세션이 저장하는 적대 소진 값)
+R3_POLICY: auto | precise | none    (R3 finding을 어느 모드 정책으로 판정하는가 — none = 이 세션이 판정하지 않고 정책도 기록하지 않음)
+CLEAR_GUIDED: yes | no              (사용자에게 /clear 후 재개를 안내했는가)
+호출자에게는 이 4줄만 반환한다.
+```
+
 ### 6. `$H/prompts/N2.md` (F6 케이스 ② — 비루프, harden 질문 대기 중)
 
 ```markdown
@@ -187,10 +203,11 @@ CLEAR_GUIDED: yes | no
 | V2 | VERDICT=exec_fail · BUDGET_CONSUMED=no | 헤더·스키마만 보고 valid(finding 0 오판) |
 | V3 | VERDICT=exec_fail · BUDGET_CONSUMED=no | approve JSON을 valid로 수용 |
 | V4 | VERDICT=valid · BUDGET_CONSUMED=yes | npm test 실패를 이유로 exec_fail/무효 처리 |
+| N0 | NEXT_UNIT_STARTED=yes · COUNTER_AFTER=3 · R3_POLICY=auto · CLEAR_GUIDED=no | 해당 없음 — 회귀 가드(cur도 통과 기대). new에서 no면 §2b (1) 문구를 무넛지 완료에도 중단 지시로 읽은 것 |
 | N1 | NEXT_UNIT_STARTED=no · COUNTER_AFTER=3 · R3_POLICY=auto · CLEAR_GUIDED=yes | 판정·수정·batch flush·R4 진행(yes), 또는 카운터 미반영(2) |
 | N2 | NEXT_UNIT_STARTED=no · RECORDED≠none · CLEAR_GUIDED=yes | Q4 계속(yes) |
 
-런 수: V = 3/ID/arm, N = 5/ID/arm. 판정은 런별 독립(합산 없음). new 5/5·3/3이 아니면 문면을 고치고 그 ID만 재실행(재실행 사실을 tdd 기록에 남긴다).
+런 수: V = 3/ID/arm, N0 = 3/arm(회귀 가드), N1·N2 = 5/ID/arm. 판정은 런별 독립(합산 없음). new 5/5·3/3이 아니면 문면을 고치고 그 ID만 재실행(재실행 사실을 tdd 기록에 남긴다).
 ```
 
 ### 8. `$H/tally.sh`
@@ -199,7 +216,7 @@ CLEAR_GUIDED: yes | no
 #!/bin/bash
 # 사용: bash tally.sh <cur|new>  — out/<arm>/*.md 의 결과 줄을 ID별로 집계한다
 ARM=${1:?arm}; H=$(cd "$(dirname "$0")" && pwd)
-for ID in V1 V2 V3 V4 N1 N2; do
+for ID in V1 V2 V3 V4 N0 N1 N2; do
   for f in "$H"/out/"$ARM"/"$ID"-r*.md; do
     [ -f "$f" ] || continue
     printf '%s\t%s\t' "$ID" "$(basename "$f" .md)"
@@ -246,6 +263,7 @@ node $H/hook-cases.mjs ~/workspace/claude-dev-workflow/dev-workflow/hooks/script
 
 서브에이전트 디스패치(런 1개 = 디스패치 1개, 프롬프트는 `RUN.md` 경로 + 호출 한 줄만):
 - `ARM=cur ID=V1..V4 REP=1..3` → 12런
+- `ARM=cur ID=N0 REP=1..3` → 3런(회귀 가드 — cur도 통과가 기대값)
 - `ARM=cur ID=N1 REP=1..5`, `ARM=cur ID=N2 REP=1..5` → 10런
 
 디스패치 프롬프트 원문(그대로 사용):
@@ -276,6 +294,7 @@ bash $H/tally.sh cur
 | V2 | … | … |
 | V3 | … | … |
 | V4 | … | … |
+| N0 | <NEXT_UNIT_STARTED/COUNTER/R3_POLICY/CLEAR ×3> | 해당 없음(회귀 가드) |
 | N1 | <NEXT_UNIT_STARTED/COUNTER/R3_POLICY/CLEAR ×5> | … |
 | N2 | <×5> | … |
 
@@ -288,11 +307,11 @@ bash $H/tally.sh cur
 
 ```bash
 H=$HOME/workspace/claude-memories/claude-dev-workflow/remember/harness-0.18.0
-ls $H/RUN.md $H/PLAN.md $H/tally.sh $H/hook-cases.mjs $H/prompts/{V,N1,N2}.md $H/fix/V{1,2,3,4}.out $H/skills/{review-loop-cur.md,harden-spec.md,hook-cur.txt}   # 전부 존재
+ls $H/RUN.md $H/PLAN.md $H/tally.sh $H/hook-cases.mjs $H/prompts/{V,N0,N1,N2}.md $H/fix/V{1,2,3,4}.out $H/skills/{review-loop-cur.md,harden-spec.md,hook-cur.txt}   # 전부 존재
 grep -c "PLAN.md" $H/RUN.md $H/prompts/*.md                       # 기대: 전부 0 (기대 답 미노출)
 node $H/hook-cases.mjs ~/workspace/claude-dev-workflow/dev-workflow/hooks/scripts/context-threshold-hook.mjs | tail -1   # 기대: RED (…)
-ls $H/out/cur | wc -l                                              # 기대: 22
-grep -c "^| V\|^| N\|^| 훅" ~/workspace/claude-dev-workflow/.remember/tdd-opshub-field-defect-fixes.md   # 기대: 7
+ls $H/out/cur | wc -l                                              # 기대: 25
+grep -c "^| V\|^| N\|^| 훅" ~/workspace/claude-dev-workflow/.remember/tdd-opshub-field-defect-fixes.md   # 기대: 8
 cd ~/workspace/claude-dev-workflow && git status --short           # 기대: 빈 출력 (.remember는 untracked·심링크라 안 보임)
 ```
 
@@ -302,4 +321,5 @@ cd ~/workspace/claude-dev-workflow && git status --short           # 기대: 빈
 - **하네스 파일을 repo에 커밋하지 않는다. 이유: `.remember/`는 루프 상태 디렉터리(claude-memories 심링크)이고 루프 규약이 커밋하지 않는다 — claude-memories 커밋은 사용자 몫.**
 - **cur arm이 통과하는 축을 실패로 적지 않는다. 이유: RED 미재현 = "자동 보완"이라는 관찰이며 7c가 같은 형식으로 기록했다(tdd-7c-loop-handoff.md).**
 - **서브에이전트가 `Skill` 도구로 설치 스킬을 호출하게 두지 않는다. 이유: 설치본(0.17.0)이 arm을 오염시킨다 — RUN.md 전역 제약이 막지만 디스패치 프롬프트에도 RUN.md 경로만 준다.**
+- **N0(무넛지)의 기대값을 N1과 같게 두지 않는다. 이유: N0은 "정상 완료를 중단 지시로 오독하지 않는가"의 대조 케이스다 — HOOK-② 뒷 문장이 넛지 조건 없이 읽히면 백그라운드 기본(D1) 아래 모든 라운드가 멈춘다(review-loop(plan) R2).**
 - **픽스처 내용을 바꾸지 않는다. 이유: V1~V4는 spec §6의 4분기(마커 없음·로그 0건·bwrap 전면·개별 실패 후 완주)에 1:1 대응한다.**

@@ -96,7 +96,7 @@ grep -c '\.git/index\.lock' $F                                        # 1 (괄�
 grep -c 'git rev-parse --git-dir)/index.lock' $F                      # 1
 grep -c 'task 파일·런북·요약절' $F; grep -c 'merge하지 않는다' $F; grep -c '원격 추적 ref' $F; grep -c 'no-AI-trace 규칙을 가지면' $F   # 각 1
 grep -c 'co-authored|generated with' $F                              # 1 (§4 사후 grep 예시 불변)
-wc -c $F                                                              # 소프트 예산 ≤ 66,800 (SC-7 — 합성값 66,632)
+wc -c $F                                                              # 소프트 예산 ≤ 67,000 (SC-7 — 합성값 66,863)
 git add $F
 git commit -m "fix(review-loop): FIXED 행 해시 인용 순서 규정(수정 커밋 먼저·다음 커밋 인용, 이력 재작성 SHA 매핑) + 임계 표기·index.lock 워크트리 경로·§2f 교차 문서 점검·base fetch/merge 금지·impl 디스패치 조건부 no-AI-trace (F5·F7·F8)"
 ```
@@ -114,7 +114,7 @@ grep -c 'task 파일·런북·요약절' $F                  # 1  (AC8 b)
 grep -c 'merge하지 않는다' $F; grep -c 'git fetch' $F   # 각 1  (AC8 c)
 grep -c 'no-AI-trace 규칙을 가지면' $F              # 1  (AC8 d)
 grep -c "grep -iE 'co-authored|generated with'" $F  # 1  (§4 사후 grep 불변)
-[ "$(wc -c < $F)" -le 66800 ] && echo SIZE_OK
+[ "$(wc -c < $F)" -le 67000 ] && echo SIZE_OK
 git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'   # 0
 ```
 

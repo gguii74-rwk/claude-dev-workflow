@@ -45,15 +45,20 @@ for f in README.md README.ko.md README.ja.md; do grep -c '0.18.0' $f; done   # �
 ```markdown
 ## AC11 실사용 확인 (트랙 완료 조건, D37) — 릴리스 후 기록
 
-0.18.0 설치본으로 **실제 트랙의 review-loop 라운드 1회**를 돌려, F1 분리 실행이 Bash 도구 timeout(최대 10분)을 견디고 `COMPANION_EXIT:` 마커로 회수됨을 확인한다. 라운드 소요가 10분 미만이면 대기 명령(`timeout 570 …`)이 `WAIT_EXPIRED`를 내도록 라운드 도중 한 번 끊고 재대기하는 것으로 "대기 사망 ≠ 라운드 실패" 경로를 함께 본다.
+0.18.0 설치본으로 **실제 트랙의 review-loop 라운드 1회**를 돌리며 다음 3단계를 **같은 라운드 안에서** 기록한다. 검증 대상은 "Bash **도구**의 timeout kill이 분리 프로세스를 죽이지 않는가"이므로, 대기 명령의 자체 종료(`timeout 570 …` → `WAIT_EXPIRED`)를 끊는 것으로 대체하지 않는다 — 그 경로는 도구가 프로세스를 정리하는 상황을 만들지 않는다.
 
-| 호스트 | OS/셸 | 날짜 | 트랙·라운드 | 마커 회수 | 대기 재개(pid 생존 확인) | 명령 로그 수 | 결과 |
-|---|---|---|---|---|---|---|---|
-| spark2 | Linux · bash | | | | | | |
-| OMEN 또는 그램 | Windows · Git Bash | | | | | | |
+1. **Bash 도구 timeout 주입**: 기동 직후 대기를 셸 `timeout` 없이 `until grep -q '^COMPANION_EXIT:' "$L.out"; do sleep 15; done`로 띄우고 **Bash 도구의 `timeout` 인자를 라운드 소요보다 짧게**(예: 120000ms) 준다 → 도구가 대기 프로세스를 kill한다(도구의 timeout 에러 메시지 시각을 기록).
+2. **동일 pid 생존**: 그 직후 `kill -0 "$(cat "$L.pid")"; echo $?` = 0(래퍼 pid가 도구 kill을 견딤). `$L.pid` 값이 기동 시 기록한 값과 같은지 함께 적는다.
+3. **동일 라운드 마커 회수**: 규약대로 대기를 재개해(`timeout 570 …`) 같은 `$L.out`에서 `COMPANION_EXIT:` 마커와 헤더·실행 로그를 회수한다(재실행 없이).
 
-- spark2는 2026-09-21 spec 루프 4라운드(R1~R3·C1)가 같은 방식(수동 선적용)으로 마커 회수·bwrap 0을 보였다 — **0.18.0 문면으로 1루프 재확인**해야 완료다.
-- **Windows 실패 시**: RL §2b ②에 PowerShell 폴백 1줄(`Start-Process -NoNewWindow -FilePath bash -ArgumentList "$L.sh" -RedirectStandardOutput "$L.out"` 형태, 08-29 검증분)을 병기하는 패치 릴리스(0.18.1)가 완료 조건에 추가된다.
+| 호스트 | OS/셸 | 날짜 | 트랙·라운드 | 도구 timeout 주입(인자·에러 시각) | pid 생존(`kill -0` 결과·pid 동일) | 마커 회수(같은 `$L.out`) | 명령 로그 수 | 결과 |
+|---|---|---|---|---|---|---|---|---|
+| spark2 | Linux · bash | | | | | | | |
+| OMEN 또는 그램 | Windows · Git Bash | | | | | | | |
+
+- 통과 = 1·2·3 전부 기록되고 2가 0·3이 회수. 1을 건너뛴 라운드(도구 timeout이 발생하지 않은 정상 완료)나 대기 명령 자체 종료(`WAIT_EXPIRED`)만 본 라운드는 **별도 줄**(비고)로 남기고 AC11 통과 근거로 인정하지 않는다.
+- spark2는 2026-09-21 spec 루프 4라운드(R1~R3·C1)가 같은 방식(수동 선적용)으로 마커 회수·bwrap 0을 보였으나 도구 timeout 주입은 없었다 — **0.18.0 문면 + 주입 절차로 1루프 재확인**해야 완료다.
+- **Windows 실패 시**(2에서 pid 사망 또는 3에서 마커 미회수): RL §2b ②에 PowerShell 폴백 1줄(`Start-Process -NoNewWindow -FilePath bash -ArgumentList "$L.sh" -RedirectStandardOutput "$L.out"` 형태, 08-29 검증분)을 병기하는 패치 릴리스(0.18.1)가 완료 조건에 추가된다.
 - 두 행이 채워지고 결과가 통과여야 **트랙 완료**(dev-cycle 9단계 "트랙 완료" 신호). 채우는 주체 = 그 호스트에서 루프를 돈 세션(이 파일 커밋).
 ```
 
@@ -72,7 +77,7 @@ git log -1 --format=%B | grep -ciE 'co-authored|generated with|claude-session'  
   /plugin update dev-workflow@claude-dev-workflow
 대상: 맥북(~/workspace) · OMEN(D:\workspace) · 그램(C:\workspace) · spark2(~/workspace).
 갱신 확인: /dev-workflow:doctor (설치본 0.18.0 · 마켓플레이스 최신).
-트랙 완료 조건(AC11): spark2 1루프 + Windows(OMEN 또는 그램) 1루프에서 F1 분리 실행 실측 → plan 엔트리포인트 §AC11 표 기록. Windows 실패 시 PowerShell 폴백 패치(0.18.1).
+트랙 완료 조건(AC11): spark2 1루프 + Windows(OMEN 또는 그램) 1루프에서 F1 분리 실행 실측(Bash 도구 timeout 주입 → 동일 pid 생존 → 같은 라운드 마커 회수) → plan 엔트리포인트 §AC11 표 기록. Windows 실패 시 PowerShell 폴백 패치(0.18.1).
 후속(트랙 밖, D38): ~/workspace/dev-workflow-eval/FOLLOWUP-2026-09-18.md §6에 O6·AUDIT §1c 추가(eval repo 별도 커밋) · F5 효과 실측 = ops-hub "해시 전용 커밋 수/라운드"(기준선 ≈0.28, D23) · F6 효과 = FOLLOWUP §3 관찰.
 ```
 
