@@ -80,7 +80,7 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 모든 finding을 한 표로 추적한다:
 - **fingerprint** = `file` + 정규화 `title` + 정규화 `recommendation`(또는 body 핵심 문장). `line`은 보조 참고. **severity는 key에서 제외**(같은 결함이 high↔medium으로 흔들림).
 - 각 행: fingerprint · severity · disposition · 근거(ACCEPTED 이유·보완 / DEFERRED 연결 AC·task / DUPLICATE 원본 / OUT_OF_SCOPE follow-up).
-- **FIXED 행은 수정 커밋 해시를 셀에 인용한다 — 전 phase(spec·plan·impl) 적용**(행 인용이 있어야 소멸 확인·감사가 기계 검증 가능하다).
+- **FIXED 행은 수정 커밋 해시를 셀에 인용한다 — 전 phase(spec·plan·impl) 적용**(행 인용이 있어야 소멸 확인·감사가 기계 검증 가능하다). **순서 = 수정 커밋 먼저, ledger의 FIXED 행은 다음 커밋에서 그 해시를 인용한다**(같은 문서에 자기 해시를 넣을 수 없어 생기던 해시 전용 커밋 ≈0.28건/라운드 제거). **이력 재작성으로 인용 해시가 무효화되면 ledger에 구→신 SHA 매핑 1줄을 남긴다.**
 - **같은 fingerprint 계열이 2회 이상 반복되면 더 고치지 말고 사용자/설계 결정으로 판정한다**(ESCALATE 또는 ACCEPTED/DEFERRED).
 - **위치**: ledger는 아래 문서 말미의 고정 섹션 `## 적대검증 ledger (<phase>)`에 둔다.
 
@@ -243,7 +243,7 @@ impl 게이트가 실패하면 루프를 시작하지 말고 먼저 해결한다
 
 추가로 루프 시작 시:
 - **복원한 루프의 2차 대조(planless 한정)**: plan을 생략한 트랙은 spec·impl ledger가 같은 문서라 파일명만으로 phase가 갈리지 않는다 — §0에서 복원한 phase가 변경 내용으로 독립 추론한 phase와 다르면 리뷰를 돌리지 말고 사용자 확인(fail-closed).
-- **base 해소**: 트랙 기준 ref(기본 main, 비-main 트랙은 그 ref)를 확정하고 SHA와 함께 기록한다(§인자).
+- **base 해소**: 트랙 기준 ref(기본 main, 비-main 트랙은 그 ref)를 확정하고 SHA와 함께 기록한다(§인자). 원격이 있으면 `git fetch` 후 **원격 추적 ref**(예: `origin/main`)로 해소한다. **루프 중 base 브랜치를 merge하지 않는다**(diff 오염).
 - **보안 크리티컬 자가 판정**: 변경 접촉면이 ESCALATE 즉시군 계열(권한·인증·보안 경계·데이터 손상/유실·비가역 마이그레이션)에 닿으면, 사용자에게 "보안 크리티컬 트랙으로 취급할지" **확인 1회**. 보안 트랙이면 전환 신호에서 score 정체를 무시한다(§blocking score).
 
 ### 2. 반복 — 적대 라운드 (적대 소진 < max인 동안)
@@ -259,7 +259,7 @@ git add <이 루프에서 수정한 파일들>       # 명시적 stage
 git commit -m "<무엇을 했는지>"
 ```
 - **`git add -A` 금지.** 같은 워킹트리를 다른 세션과 공유할 수 있고, 커밋하면 안 되는 untracked 파일·다른 세션의 미커밋 작업이 섞인다. 이 루프에서 수정한 파일만 명시적으로 stage한다.
-- `.git/index.lock`이 존재하면 다른 세션이 git 사용 중 — 지우지 말고 끝나길 기다린다.
+- `$(git rev-parse --git-dir)/index.lock`이 존재하면 다른 세션이 git 사용 중 — 지우지 말고 끝나길 기다린다(링크드 워크트리에서 `.git/index.lock` 검사는 항상 "없음"이다).
 
 **이유: 적대검증은 커밋된 HEAD(브랜치 diff) 기준으로 본다. 미커밋이면 직전 수정을 놓친다.** 그래서 항상 "수정→커밋→리뷰" 순서.
 
@@ -327,8 +327,8 @@ for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; d
 
 #### 2f. FIXED 처리 (phase 분기)
 수정 큐를 처리한다.
-- **impl**: 각 항목을 TDD로 고친다 — 재현/실패 테스트 → 최소 수정 → 게이트 통과. 가능하면 `superpowers:subagent-driven-development` 패턴.
-- **spec/plan**: 문서를 수정한 뒤 ① 해당 phase 관문(§1) 재확인 + ② **변경된 결정/가정/AC/테스트 기준이 문서 내부에서 상호모순 없는지 자체 점검**.
+- **impl**: 각 항목을 TDD로 고친다 — 재현/실패 테스트 → 최소 수정 → 게이트 통과. 가능하면 `superpowers:subagent-driven-development` 패턴. 서브에이전트 디스패치 시 **repo가 no-AI-trace 규칙을 가지면** AI 서명/도구 흔적 금지를 프롬프트에 명시한다(조건부 — §4 사후 grep은 무조건).
+- **spec/plan**: 문서를 수정한 뒤 ① 해당 phase 관문(§1) 재확인 + ② **변경된 결정/가정/AC/테스트 기준이 문서 내부와 교차 문서(같은 수치·경로·D번호를 담은 task 파일·런북·요약절)에서 상호모순 없는지 자체 점검**(상위 문구 미갱신 3회 연속 잔존 실사례).
 - 수정한 항목은 미확인 FIXED 큐에 들어간다(소멸 확인 기록 전까지).
 - `DEFERRED_TO_IMPL`로 닫은 항목은 impl plan의 acceptance criteria/테스트에 기재한다(연결 누락 금지).
 
@@ -350,7 +350,7 @@ phase=impl이면 §1 게이트를 다시 통과시킨다. 깨지면 그 반복�
 
 **세 경로가 이 절차를 쓴다.** 공통점은 *이 루프를 나중에 재개한다*는 것이다 — 컨텍스트 임계와는 무관하게 세 경로 모두에서 재개 상태가 파일에 남아야 한다.
 
-① 컨텍스트 사용량이 ≥40%로 느껴지거나 Stop 훅이 넛지 · ② ESCALATE에서 사용자가 중단 선택(§2d) · ③ 폴백②(새 세션에서 확인 라운드 1회 — §확인 모드 결과 처리).
+① 컨텍스트 사용량이 임계 이상(Stop 훅 넛지 — 임계는 `CLAUDE_CTX_THRESHOLD`로 바뀔 수 있다) · ② ESCALATE에서 사용자가 중단 선택(§2d) · ③ 폴백②(새 세션에서 확인 라운드 1회 — §확인 모드 결과 처리).
 
 | 순서 | 동작 |
 |---|---|
