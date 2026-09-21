@@ -72,11 +72,11 @@ grep -c '새 작업 단위' $H/skills/hook-new.txt    # 2
 ```bash
 bash $H/tally.sh new
 ```
-판정은 `$H/PLAN.md` 표의 new 통과 조건으로 런별 독립. **불통과 런이 있으면**: 그 런의 출력 전문에서 어느 문장을 오독했는지 찾아 RL 문면을 고치고(압축 예산 안에서) 커밋 → **단계 2·3을 다시 돌려 grep·AC9를 재확인** → **단계 4의 `cp`·`cmp`로 사본을 재생성**(하네스는 사본만 읽으므로 재생성 없이는 수정 효과를 검증하지 못한다) → **재실행 범위 = 바뀐 사본을 읽는 케이스 전부**: RL 사본이 바뀌면 `rm $H/out/new/{V1,V2,V3,V4,N0,N1}-r*.md` 후 그 22런 전부(불통과 ID만이 아니다 — 예: N1을 강화한 문면이 무넛지 N0을 중단시키는 교차 회귀는 이전 문면의 N0 결과로는 안 보인다), 훅이 바뀌면 `hook-new.txt` 재생성 후 N1·N2 10런. N2는 RL 사본을 읽지 않으므로 RL만 바뀌었으면 유지. 재실행 사실·수정 커밋을 tdd 기록에 남긴다.
+판정은 `$H/PLAN.md` 표의 new 통과 조건으로 런별 독립. **불통과 런이 있으면**: 그 런의 출력 전문에서 어느 문장을 오독했는지 찾아 RL 문면을 고치고(압축 예산 안에서) 커밋 → **단계 2·3을 다시 돌려 grep·AC9를 재확인** → **단계 4에서 바뀐 사본만 재생성**(`cp`·`cmp`; 하네스는 사본만 읽으므로 재생성 없이는 수정 효과를 검증하지 못한다) → **재실행 범위 = 바뀐 사본을 읽는 케이스 전부**: RL 사본이 바뀌면 `rm $H/out/new/{V1,V2,V3,V4,N0,N1}-r*.md` 후 그 22런 전부(불통과 ID만이 아니다 — 예: N1을 강화한 문면이 무넛지 N0을 중단시키는 교차 회귀는 이전 문면의 N0 결과로는 안 보인다), 훅이 바뀌면 `hook-new.txt` 재생성 후 N1·N2 10런. N2는 RL 사본을 읽지 않으므로 RL만 바뀌었으면 유지. 재실행 사실·수정 커밋을 tdd 기록에 남긴다.
 
 ### 6. tdd 기록 GREEN 절 + 커밋
 
-`.remember/tdd-opshub-field-defect-fixes.md`의 `## GREEN (new = 웨이브 1 HEAD)` 아래에 표를 채운다(형식 = RED 표와 동일 열 + "판정" 열: `GREEN · 지침 효과 확정` / `GREEN · 효과 미확인(자동 보완)` / `GREEN · 부분 효과` — cur 결과와 대비해 적는다). 이어서 `## AC 대조(RL·훅)`·`## AC9` 절(`wc -c` 값, 압축 여부, **사본 `cmp` 결과 = 검증한 문면과 HEAD 문면의 동일성**, **RUNS_FRESH = 모든 출력이 최종 사본보다 최신**).
+`.remember/tdd-opshub-field-defect-fixes.md`의 `## GREEN (new = 웨이브 1 HEAD)` 아래에 표를 채운다(형식 = RED 표와 동일 열 + "판정" 열: `GREEN · 지침 효과 확정` / `GREEN · 효과 미확인(자동 보완)` / `GREEN · 부분 효과` — cur 결과와 대비해 적는다). 이어서 `## AC 대조(RL·훅)`·`## AC9` 절(`wc -c` 값, 압축 여부, **사본 `cmp` 결과 = 검증한 문면과 HEAD 문면의 동일성**, **RUNS_FRESH = 각 출력이 자기가 읽는 최종 사본보다 최신(RL → V·N0·N1, 훅 → N1·N2)**).
 
 repo 커밋은 압축·불통과 수정이 있었을 때만(단계 3·5). 엔트리포인트 task 표 outcome에는 "V 12/12 · N0 3/3 · N1 5/5 · N2 5/5 · 훅 GREEN · RL <bytes>B · COPY_SYNC · RUNS_FRESH" 한 줄을 적는다(디스패처가 완료 확인 시).
 
@@ -95,7 +95,7 @@ bash $H/tally.sh new | grep -c 'N2.*NEXT_UNIT_STARTED: no'               # 5
 node $H/hook-cases.mjs "$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" | tail -1   # GREEN
 [ "$(wc -c < dev-workflow/skills/review-loop/SKILL.md)" -le 69066 ] && echo AC9_OK
 cmp -s dev-workflow/skills/review-loop/SKILL.md $H/skills/review-loop-new.md && echo COPY_SYNC   # GREEN이 검증한 사본 = HEAD 문면
-[ -z "$(find $H/out/new -name '*.md' ! -newer $H/skills/review-loop-new.md)" ] && [ -z "$(find $H/out/new -name 'N[12]-r*.md' ! -newer $H/skills/hook-new.txt)" ] && echo RUNS_FRESH   # 모든 출력이 최종 사본(RL·훅)보다 뒤에 생성 — 이전 문면 결과 혼입 없음
+[ -z "$(find $H/out/new \( -name 'V[1-4]-r*.md' -o -name 'N[01]-r*.md' \) ! -newer $H/skills/review-loop-new.md)" ] && [ -z "$(find $H/out/new -name 'N[12]-r*.md' ! -newer $H/skills/hook-new.txt)" ] && echo RUNS_FRESH   # 케이스별 의존성 기준: RL 사본을 읽는 V1~V4·N0·N1은 RL 사본보다, 훅 사본을 읽는 N1·N2는 훅 사본보다 뒤에 생성. N2는 RL 사본과 비교하지 않는다(RL만 수정한 뒤 N2를 유지하는 경로에서도 통과)
 grep -c '^## GREEN\|^## AC 대조\|^## AC9' ~/workspace/claude-dev-workflow/.remember/tdd-opshub-field-defect-fixes.md   # 3
 git status --short | grep -v '^??' | wc -l                               # 0 (tracked 변경 없음)
 ```
@@ -108,4 +108,4 @@ git status --short | grep -v '^??' | wc -l                               # 0 (tr
 - **하네스 25런을 AC9 확정(단계 3) 전에 돌리지 않고, RL을 고친 뒤 사본 재생성 없이 재실행하지 않는다. 이유: 하네스는 `review-loop-new.md` 사본만 읽는다 — 사본과 HEAD가 다르면 GREEN이 배포 문면의 증거가 아니다(review-loop(plan) R1).**
 - **하네스 산출(`out/new`)·tdd 기록을 repo에 커밋하지 않는다. 이유: `.remember/` 규약 — claude-memories 커밋은 사용자 몫.**
 - **불통과 런을 "모델 편차"로 넘기지 않는다. 이유: 5/5·3/3이 판정 기준(PLAN.md) — 문면을 고치고 그 사본을 읽는 케이스 전부를 재실행한다.**
-- **문면을 고친 뒤 불통과 ID만 재실행하지 않는다. 이유: 다른 ID의 이전 문면 결과가 GREEN에 섞여 서로 다른 문면의 결과로 25런 통과를 선언하게 된다 — COPY_SYNC는 사본↔HEAD만 보고 출력의 신선도는 RUNS_FRESH가 본다(review-loop(plan) R4).**
+- **문면을 고친 뒤 불통과 ID만 재실행하지 않는다. 이유: 다른 ID의 이전 문면 결과가 GREEN에 섞여 서로 다른 문면의 결과로 25런 통과를 선언하게 된다 — COPY_SYNC는 사본↔HEAD만 보고 출력의 신선도는 RUNS_FRESH가 케이스별 의존성(RL → V·N0·N1, 훅 → N1·N2)으로 본다(review-loop(plan) R4·R5).**
