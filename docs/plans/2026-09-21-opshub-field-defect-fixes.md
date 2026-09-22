@@ -173,3 +173,21 @@ for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; d
 - **R1**(적대, 2026-09-22 10:00~10:04, target `e5869d0`, 스레드 `01a0c6a1-5c8e-7363-a8f7-ac2c54577f37`): verdict needs-attention · 신규 1(high 1) · FIXED 1 · DUPLICATE 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 실행 로그 17건 · `bwrap:` 0 → 유효. 리뷰어 자체 검증: 훅 구문 검사 통과·base 대비 판정·상태 비교 통과. 수정 커밋 `eb38fd8`.
 - **R2**(적대, 2026-09-22 10:08~10:11, target `7a75de6`, 스레드 `01a0c6a7-c7d3-7262-a31e-b17c25bfc809`, 자동 모드, eb38fd8 argv 래퍼로 기동): verdict **approve** · 신규 0 · DUPLICATE 0 · low 0. 유효성: 마커 `COMPANION_EXIT:0` · 헤더 1 · 명령 실행 로그 24건 · `bwrap:` 0 → 유효. 리뷰어 자체 검증: 훅·래퍼 구문 검사, diff 검사, 훅 판정 3,630건 base 비교 통과. fp-OF-I-R1-1 적대 비재출현(R2, 참고 신호 — 큐 유지). 적대 소진 2 → 신호 2 발화 → C1.
 - **C1**(확인, `task --prompt-file`, 2026-09-22 10:13~10:18, 스레드 `01a0c6ac-e115-7031-b16b-b449aad9aa11`, target `4528363`): **완전 응답** — fp-OF-I-R1-1 **소멸**(RL:283 `<<'EOF'`, :285~290 argv → `"$1"`~`"$4"`, :150 확인 명령 정합, 특수문자 경로 모의 실행 주입 미실행) · 회귀 (a) `$L`↔위치 인자 구분 성립 (b) 삭제 괄호 참조 없음 (c) 금지 7종 0건·필수 14종 ≥1건 (d) 68,974B ≤ 69,066 (e) SC-3 3종 바이트 동일(UNIT 94B·HOOK-② 172B·FOCUS-LINE 271B) (f) 훅 로직 base 동일(780 입력 조합 `shouldNudge`·`nextStep` 일치, `node --check`) (g) D4 유지 — 전부 통과 · 판정 감사 해당 없음 · 신규 blocking 없음 · verdict **pass**(25런 하네스는 재실행하지 않음 — GREEN 이력과 직접 검증을 구분). 유효성: 마커 `COMPANION_EXIT:0` · 명령 로그 18건 · `bwrap:` 0.
+
+## AC11 실사용 확인 (트랙 완료 조건, D37) — 릴리스 후 기록
+
+0.18.0 설치본으로 **실제 트랙의 review-loop 라운드 1회**를 돌리며 다음 3단계를 **같은 라운드 안에서** 기록한다. 검증 대상은 "Bash **도구**의 timeout kill이 분리 프로세스를 죽이지 않는가"이므로, 대기 명령의 자체 종료(`timeout 570 …` → `WAIT_EXPIRED`)를 끊는 것으로 대체하지 않는다 — 그 경로는 도구가 프로세스를 정리하는 상황을 만들지 않는다.
+
+1. **Bash 도구 timeout 주입**: 기동 직후 대기를 유계 없는 `until grep -q '^COMPANION_EXIT:' "$L.out"; do sleep 15; done`로 띄우고 **Bash 도구의 `timeout` 인자를 라운드 소요보다 짧게**(예: 120000ms) 준다 → 도구가 대기 프로세스를 kill한다(도구의 timeout 에러 메시지 시각을 기록).
+2. **동일 pid 생존**: 그 직후 `kill -0 "$(cat "$L.pid")"; echo $?` = 0(래퍼 pid가 도구 kill을 견딤). `$L.pid` 값이 기동 시 기록한 값과 같은지 함께 적는다.
+3. **동일 라운드 마커 회수**: 규약 대기 명령(`for i in $(seq 38) …` 유계 루프)으로 재개해 같은 `$L.out`에서 `COMPANION_EXIT:` 마커와 헤더·실행 로그를 회수한다(재실행 없이).
+
+| 호스트 | OS/셸 | 날짜 | 트랙·라운드 | 도구 timeout 주입(인자·에러 시각) | pid 생존(`kill -0` 결과·pid 동일) | 마커 회수(같은 `$L.out`) | 명령 로그 수 | 결과 |
+|---|---|---|---|---|---|---|---|---|
+| spark2 | Linux · bash | | | | | | | |
+| OMEN 또는 그램 | Windows · Git Bash | | | | | | | |
+
+- 통과 = 1·2·3 전부 기록되고 2가 0·3이 회수. 1을 건너뛴 라운드(도구 timeout이 발생하지 않은 정상 완료)나 대기 명령 자체 종료(`WAIT_EXPIRED`)만 본 라운드는 **별도 줄**(비고)로 남기고 AC11 통과 근거로 인정하지 않는다.
+- spark2는 2026-09-21 spec 루프 4라운드(R1~R3·C1)가 같은 방식(수동 선적용)으로 마커 회수·bwrap 0을 보였으나 도구 timeout 주입은 없었다 — **0.18.0 문면 + 주입 절차로 1루프 재확인**해야 완료다.
+- **Windows 실패 시**(2에서 pid 사망 또는 3에서 마커 미회수): RL §2b ②에 PowerShell 폴백 1줄(`Start-Process -NoNewWindow -FilePath bash -ArgumentList "$L.sh" -RedirectStandardOutput "$L.out"` 형태, 08-29 검증분)을 병기하는 패치 릴리스(0.18.1)가 완료 조건에 추가된다.
+- 두 행이 채워지고 결과가 통과여야 **트랙 완료**(dev-cycle 9단계 "트랙 완료" 신호). 채우는 주체 = 그 호스트에서 루프를 돈 세션(이 파일 커밋).
