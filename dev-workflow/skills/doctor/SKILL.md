@@ -13,7 +13,7 @@ description: Use when the dev-workflow pipeline's own environment looks broken �
 
 유일한 예외는 마켓플레이스 clone의 `git fetch`다 — **진단에 필수인 조회 행위**이고 상위 clone의 작업 트리를 바꾸지 않는다. fetch 없이 판정하면 clone이 뒤처진 만큼 상시 "판정 불가"가 나온다.
 
-**이 머신 하나만 본다.** 다른 머신은 진단하지 않는다 — 3머신 정렬은 "각 머신이 각자 돌린다"로 달성한다.
+**이 머신 하나만 본다.** 다른 머신은 진단하지 않는다 — 머신 간 정렬은 "각 머신이 각자 돌린다"로 달성한다.
 
 ## 언제 뜨고, 언제 뜨면 안 되는가
 
@@ -23,7 +23,7 @@ description: Use when the dev-workflow pipeline's own environment looks broken �
 
 | 잠식 위험 | 경계 |
 |---|---|
-| review-loop | **루프 실행 중의 codex 실패는 review-loop 소관**이다(`review-loop` §실행). doctor가 끼면 루프가 끊긴다 — doctor는 **루프 밖**의 증상 문장에만 뜬다 |
+| review-loop | **루프 실행 중의 codex 실패는 review-loop 소관**이다(적대 = `review-loop` §2b 라운드 실행 공통 절차, 확인 = §확인 모드 실행). doctor가 끼면 루프가 끊긴다 — doctor는 **루프 밖**의 증상 문장에만 뜬다 |
 | setup | "이 repo에 세팅해줘"는 `setup`. 진단 결과 **쓰기가 필요하면** setup으로 보낸다 |
 | dev-cycle | "다음 단계 뭐야"·"어디서부터 시작해"는 `dev-cycle`. doctor는 **환경**만 본다 |
 | 제외 문장 2종 | ① **도구·현상에 묶이지 않은 일반 실패 문장** — "왜 안 돼" · "에러 났어" · "환경이 꾸직해" ② **다른 제품·도구를 주어로 한 같은 어휘** — "playwright 플러그인 최신인가" · "node 버전 맞나" · "codex로 딴 작업 돌리는데 안 돌아" |

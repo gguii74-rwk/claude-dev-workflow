@@ -25,17 +25,17 @@ description: Use when starting a new feature or multi-step change, when a small 
 | 6 | plan 적대검증 | review-loop `--phase plan` | dev-workflow |
 | 7 | 구현 | subagent-driven-development | superpowers |
 | 8 | impl 적대검증 | review-loop `--phase impl` | dev-workflow |
-| 9 | 통합·후속 검증 (PR·머지·배포·실측) | finishing-a-development-branch + 그 repo 규약 | superpowers + repo |
+| 9 | 통합·후속 검증 (PR/MR·머지·배포·실측) | finishing-a-development-branch + 그 repo 규약 | superpowers + repo |
 
 - 1–2단계 후 brainstorming의 기본 종착점(writing-plans)으로 바로 가지 말고 **3–4(harden-spec → review-loop)로 spec을 굳힌 뒤** 5로 간다.
 - **3.5는 옵션**이다 — spec이 새 화면을 만들거나 기존 화면 구성을 바꿀 때만 3과 4 사이에 넣는다(문구·색 같은 경미 변경은 건너뜀). 화면 결정을 굳힌 *뒤* 4를 돌려야 목업발 spec 변경도 적대검증 안에 들어온다.
 - **8단계 게이트가 npm이 아닌 repo**(Python·Go·Rust 등) — review-loop의 impl 게이트는 npm 4종 고정이므로, **그 repo의 검증 명령**(`make check`·`go test ./...` 등)이나 **writing-skills TDD GREEN 기록**으로 갈음해 8단계에 들어간다. **경량·정식 어느 경로에도 적용된다.**
-- **9단계는 포인터만**이다 — PR·머지·배포·후속 실측의 절차 내용은 그 repo의 CLAUDE.md/AGENTS.md에 있다. 여기에 체크 항목을 복제하지 않는다. 배포 대상이 없는 repo(플러그인 등)에서는 릴리스 + 설치 갱신 안내가 그 자리를 대신한다.
+- **9단계는 포인터만**이다 — PR/MR·머지·배포·후속 실측의 절차 내용은 그 repo의 CLAUDE.md/AGENTS.md에 있다. 여기에 체크 항목을 복제하지 않는다. 배포 대상이 없는 repo(플러그인 등)에서는 릴리스 + 설치 갱신 안내가 그 자리를 대신한다.
 - **superpowers 미설치 시**: 1·7·9단계는 자체 브레인스토밍·구현·종료 절차로 대체 가능하다. 3–6·8단계(dev-workflow 자체 스킬)만으로도 spec–plan–검증 골격은 완결된다.
 
 ## 단계 경계 = 새 세션 + `/clear`
 
-spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시작**한다(review-loop 규약). 한 세션에서 여러 phase를 강행하지 않는다 — 컨텍스트가 커지고 phase가 섞인다. review-loop의 컨텍스트 40% 핸드오프 넛지가 이를 돕는다. **경량 경로도 이 경계 규약을 바꾸지 않는다.**
+spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시작**한다(review-loop 규약). 한 세션에서 여러 phase를 강행하지 않는다 — 컨텍스트가 커지고 phase가 섞인다. Stop 훅의 컨텍스트 임계 넛지가 이를 돕는다. **경량 경로도 이 경계 규약을 바꾸지 않는다.**
 
 ## 경량 경로 (작은 변경)
 
@@ -80,7 +80,7 @@ spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시
 | 6 | plan ledger 종결 | **5가 해당없음이면 자동**(검증할 plan이 없다), 또는 유효 생략 기록 | review-loop(plan) |
 | 7 | 구현 완료(산출물 신호 — plan 트랙 = entrypoint task 표의 완료 기록 전건(승인 시점 커밋분 — 승인 전 구현 커밋만으로 완료 아님). live SDD 진행 ledger가 실재하고 표와 어긋나거나 최종 whole-branch 리뷰 미종결을 보이면 ledger가 권위 = 7 미완(SDD 재개), ledger 부재·유실 시 커밋된 표가 폴백 권위. planless·표 없는 plan = task 종결·구현 커밋. 코드 결손·품질은 8 적대검증 소관) | — | plan 있으면 subagent-driven-development, 5 해당없음이면 **직접 구현(TDD)** |
 | 8 | `## 적대검증 ledger (impl)` 종결 — 위치 = plan 말미 · planless는 spec 말미(진행 중 승격으로 plan이 생겨도 spec 말미 유지 · 규정 도입 전 트랙의 비표준 위치는 인정 — 시점은 커밋·ledger 이력으로 판독하며, 인정은 되돌림이 아니므로 확인 없이 완료로 읽는다) | **없음(하한)** | review-loop(impl) |
-| 9 | PR merged + 그 repo 규약의 후속(배포·실측 — repo 밖 사실이라 불명확하면 사용자 확인) | — (경로 무관 공통) | finishing-a-development-branch + repo 규약. 완료면 **"트랙 완료"** — 9를 재권고하지 않는다 |
+| 9 | PR/MR merged + 그 repo 규약의 후속(배포·실측 — repo 밖 사실이라 불명확하면 사용자 확인) | — (경로 무관 공통) | finishing-a-development-branch + repo 규약. 완료면 **"트랙 완료"** — 9를 재권고하지 않는다 |
 
 **표 판독의 전제 — 가드 3종**:
 
