@@ -259,7 +259,7 @@ git add <이 루프에서 수정한 파일들>       # 명시적 stage
 git commit -m "<무엇을 했는지>"
 ```
 - **`git add -A` 금지.** 같은 워킹트리를 다른 세션과 공유할 수 있고, 커밋하면 안 되는 untracked 파일·다른 세션의 미커밋 작업이 섞인다. 이 루프에서 수정한 파일만 명시적으로 stage한다.
-- `$(git rev-parse --git-dir)/index.lock`이 존재하면 다른 세션이 git 사용 중 — 지우지 말고 끝나길 기다린다(링크드 워크트리에서 `.git/index.lock` 검사는 항상 "없음"이다).
+- `$(git rev-parse --git-dir)/index.lock`이 존재하면 다른 세션이 git 사용 중 — 지우지 말고 끝나길 기다린다(링크드 워크트리에서는 `.git`이 파일이라 고정 경로 검사는 항상 "없음"이다).
 
 **이유: 적대검증은 커밋된 HEAD(브랜치 diff) 기준으로 본다. 미커밋이면 직전 수정을 놓친다.** 그래서 항상 "수정→커밋→리뷰" 순서.
 
@@ -291,7 +291,7 @@ const c=require("child_process").spawn("bash",[sh],{detached:true,stdio:["ignore
 ```
 - **빈 가드 = 가드 블록 미포함 — focus 인자는 고정 줄로 항상 부착**: 재논의 금지 블록·닫힌 ledger 항목·미확인 FIXED 큐가 **모두 없으면** `$L.focus` = 고정 첫 줄만(빈 목록을 보내 "닫힌 게 없다"는 신호로 오해될 여지를 만들지 않는다 — guard-focus D10 취지, 문언만 정밀화). **미확인 FIXED 큐만 비어 있지 않으면 고정 줄 + 진행 상태 한 줄**(§기결정 가드 — 계열 B 고지가 빈 가드 분기로 소실되지 않게).
 
-**③ 대기 = 백그라운드 기본** — `run_in_background: true`의 until-loop 또는 Monitor로 마커를 기다리며 **턴을 끝낸다**(라운드 경계마다 Stop 훅 넛지 체크포인트가 서서 §2i 진행 중 라운드 분기가 성립한다. 포그라운드 대기는 넛지를 없애 기본이 아니다).
+**③ 대기 = 백그라운드 기본** — `run_in_background: true`의 until-loop 또는 Monitor로 마커를 기다리며 **턴을 끝낸다**(라운드 경계마다 Stop 훅 넛지 체크포인트가 서서 §2i 진행 중 라운드 분기가 성립한다. 포그라운드 대기는 넛지를 없애 기본이 아니다). 대기 명령의 `timeout` 인자는 600000(상한) — 도구 timeout으로 죽어도 `WAIT_EXPIRED`와 같이 처리.
 ```bash
 for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; done; grep -q '^COMPANION_EXIT:' "$L.out" || echo WAIT_EXPIRED
 ```
@@ -329,6 +329,7 @@ for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; d
 수정 큐를 처리한다.
 - **impl**: 각 항목을 TDD로 고친다 — 재현/실패 테스트 → 최소 수정 → 게이트 통과. 가능하면 `superpowers:subagent-driven-development` 패턴. 서브에이전트 디스패치 시 **repo가 no-AI-trace 규칙을 가지면** AI 서명/도구 흔적 금지를 프롬프트에 명시한다(조건부 — §4 사후 grep은 무조건).
 - **spec/plan**: 문서를 수정한 뒤 ① 해당 phase 관문(§1) 재확인 + ② **변경된 결정/가정/AC/테스트 기준이 문서 내부와 교차 문서(같은 수치·경로·D번호를 담은 task 파일·런북·요약절)에서 상호모순 없는지 자체 점검**(상위 문구 미갱신 3회 연속 잔존 실사례).
+- **공통(spec/plan·impl)**: 수정 파일만 **먼저 커밋**하고(§finding ledger 순서 규정) FIXED 행에 그 해시를 적는다 — 그 행은 §2a(또는 §2i 순서 1) 커밋에 실린다.
 - 수정한 항목은 미확인 FIXED 큐에 들어간다(소멸 확인 기록 전까지).
 - `DEFERRED_TO_IMPL`로 닫은 항목은 impl plan의 acceptance criteria/테스트에 기재한다(연결 누락 금지).
 
