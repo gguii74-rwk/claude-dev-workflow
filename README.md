@@ -90,6 +90,8 @@ Since 0.10.0, a plan-stage loop clears a **four-item format gate** before its fi
 
 Since 0.18.0, each round runs **detached**: the companion call is written to a wrapper script under `.remember/`, launched with a one-line node `spawn(detached)`, and its output, pid and a `COMPANION_EXIT:` marker land in files — the loop waits in the background and judges completion by the marker, so a Bash tool timeout or a dead waiter no longer loses the round. A round is valid only with the review header, the schema JSON and at least one command-execution log line; a sandbox-wide startup failure is an execution failure, not "zero findings". The companion path is resolved from the plugin registry every round. FIXED rows cite the fix commit **after** it lands (fix commit first, hash cited in the next commit), which removes the hash-only follow-up commits.
 
+Since 0.19.0, every question the loop asks the user is written on the assumption that **the reader has not seen the raw finding or the ledger**: each item gets a plain-language explanation plus one concrete example scenario, the first option is the recommendation (marked "(추천)"), option labels are plain action names with the disposition code in parentheses (e.g. 「지금 고친다 (FIXED)」 = "fix it now"), and a batch presentation ends with one progress question (keep and continue / roll back selectively / stop and review).
+
 All options are optional — plain `/dev-workflow:review-loop` works.
 
 | Option | Default | Role |
@@ -148,6 +150,8 @@ Since 0.10.0 the entrypoint's execution contract also makes **recording completi
 ```
 
 **Pinned to Fable** — frontmatter (`model: fable` + `effort: max`) so the pressure runs on the strongest model regardless of the session model. Questioning is **hybrid**: high-risk gaps (irreversible, cross-module, invariants, AC-changing) are probed one at a time in depth, while remaining judgment gaps go out in batched rounds of up to 4 (AskUserQuestion) **until the ledger is exhausted**. Facts are investigated directly in the code; every judgment gap is asked to the user — **no DEFERRED without a question first**. Settled matters (ADRs, prior decisions) are not relitigated. Each resolved gap becomes a proposed wording change applied to the spec on approval; at the end, residual risks are recorded as DEFERRED, the spec is committed, and the skill stops (next stage recommended in a fresh session). It is the complement that runs ahead of `review-loop` (codex artifact verification), filling in *what only a human knows* first. Also auto-triggers on phrases like "harden this spec" or "find what I missed" or "pre-mortem."
+
+Since 0.19.0, each question body is written for a reader who has not seen the gap ledger or the spec text: a plain-language explanation plus one concrete example scenario, with gap IDs and decision numbers only as a trailing reference; option labels are plain action names and each description says what changes if that option is chosen.
 
 ### 5. `ui-mockup` — UI mockup selection
 

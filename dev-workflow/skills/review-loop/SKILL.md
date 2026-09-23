@@ -118,6 +118,15 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 - **batch(지연)**: 그 외(UX·정책 범위·국소 선택지·저신뢰). 자동 모드에서는 묻지 않고 ledger에 `ESCALATE(batch-pending)`로 적재 → batch 시점에 일괄 제시.
 - **확인 모드 예외 — 군 구분 없이 전부 즉시**: 확인 라운드에서 발생한 ESCALATE는 저신뢰·국소 선택지라도 batch에 적재하지 않고 그 자리에서 처리한다. 확인 진입 시점에 batch는 이미 flush됐고(§2h 순서) 이후 flush 지점이 없어, 적재하면 그 항목이 미판정으로 교착한다.
 
+## 사람에게 묻는 형식 — 루프의 모든 사용자 질문 공통
+
+finding·ledger 문구는 루프용 기록이고, 질문을 읽는 사람은 그 원문을 보지 않았다. 이 루프의 `AskUserQuestion`(즉시·batch ESCALATE, 보안 크리티컬 확인, phase 대조 확인)은 판정할 항목 1개당 질문 1개로, 아래 칸을 채워 쓴다(한 호출 4문까지 — 넘치면 이어서 호출).
+
+- `question` = ① **무슨 일인가** — 쉬운 말 1~2문장. 필드·함수·약어는 그 뜻으로 바꿔 쓴다. ② **「예:」 장면 1개** — 누가 무엇을 하면 무엇이 잘못되나. ③ 끝에 괄호로 finding ID·D번호(참조용).
+- `options` = 실제로 고를 행동. **첫 선택지 = 추천**(label 끝 "(추천)"). label = 쉬운 행동 이름 + 괄호 disposition — 「지금 고친다 (FIXED)」「알고도 둔다 (ACCEPTED)」「구현 때 처리 (DEFERRED_TO_IMPL)」「이번 범위 밖 (OUT_OF_SCOPE)」. 수정안이 둘 이상이면 안마다 선택지 하나.
+- option `description` = 고르면 무엇이 달라지나(동작·위험·추가 작업) 한 문장. 추천 선택지는 그 이유를 붙인다.
+- batch 제시는 질문 직전 채팅 텍스트에 라운드별 자동 수정 「무엇을 고쳤나(쉬운 말 1줄) · 커밋」을 두고, 판정 질문 뒤에 **진행 질문 1개**를 붙인다 — 「모두 유지하고 계속 (추천)」「골라서 되돌린다」「지금 멈추고 직접 본다」.
+
 ## 자동 모드 (auto-rounds) — 사람 개입 최소화
 
 사람 개입이 자동화의 병목이므로, 초반 `--auto-rounds`(기본 3) 라운드는 가급적 자동으로 돈다(초반은 실제 누락이 많아 수정 가치가 크다). 이 축(자동/정밀)은 적대/확인 축과 직교다.
@@ -125,7 +134,7 @@ description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적�
 - **자동 모드(적대 소진 < auto-rounds)**: FIXED는 자동 수정. ESCALATE는 **즉시군만** 묻고 **batch군은 적재**(안 물음). 매 라운드 게이트 통과 + 커밋.
 - **batch 전환(자동 모드 종료)** — 다음 중 하나면 모아둔 batch ESCALATE를 일괄 제시:
   ① 적대 소진이 auto-rounds 도달, ② blocking score 2회 연속 비감소(정체/발산) **조기 전환**, ③ 수정 큐가 비고 남은 게 batch ESCALATE뿐.
-- **batch 제시**: 모아둔 batch ESCALATE 전부 + **round별 자동 수정 내역(커밋·diff 요약)**을 한 번에 `AskUserQuestion`. 사용자가 각 항목을 FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE로 닫고, 자동 수정도 검토·롤백할 수 있다.
+- **batch 제시**: 모아둔 batch ESCALATE 전부 + **round별 자동 수정 내역(커밋·diff 요약)**을 한 번에 `AskUserQuestion`(§사람에게 묻는 형식). 사용자가 각 항목을 FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE로 닫고, 자동 수정도 검토·롤백할 수 있다.
 - **정밀 모드(적대 소진 ≥ auto-rounds)**: 현행대로 ESCALATE 즉시 처리(사람 손을 탄 마무리).
 - `--auto-rounds 0`이면 자동 모드 없이 매 라운드 즉시(현행 동작).
 
@@ -316,8 +325,8 @@ for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$L.out" && break; sleep 15; d
 - 미판정 blocking score를 계산해 이력에 기록.
 
 #### 2d. ESCALATE 처리 (모드 분기)
-- **자동 모드(적대 소진 < auto-rounds)**: **즉시(IMMEDIATE)군만** `AskUserQuestion`으로 처리(각 항목: 무엇이/왜/영향/선택지). batch군은 ledger에 `ESCALATE(batch-pending)`로 적재(안 물음).
-- **batch 전환 시점 / 정밀 모드(적대 소진 ≥ auto-rounds)**: 모아둔 batch ESCALATE를 **일괄** `AskUserQuestion` + **round별 자동수정 내역(커밋·diff 요약)** 동반. 사용자가 각 항목을 **FIXED·ACCEPTED·DEFERRED_TO_IMPL·OUT_OF_SCOPE 중 하나로 닫거나** "지금 멈추고 직접 본다"를 택한다. **중단 선택 시 §2i의 일시중단 절차를 따른다**(카운터 확정 → 커밋 → 커밋 후 HEAD로 루프 파일 → 안내 → §4 건너뜀).
+- **자동 모드(적대 소진 < auto-rounds)**: **즉시(IMMEDIATE)군만** `AskUserQuestion`으로 처리(§사람에게 묻는 형식). batch군은 ledger에 `ESCALATE(batch-pending)`로 적재(안 물음).
+- **batch 전환 시점 / 정밀 모드(적대 소진 ≥ auto-rounds)**: 모아둔 batch ESCALATE를 **일괄** `AskUserQuestion`(§사람에게 묻는 형식) + **round별 자동수정 내역(커밋·diff 요약)** 동반. 사용자가 각 항목을 **FIXED·ACCEPTED·DEFERRED_TO_IMPL·OUT_OF_SCOPE 중 하나로 닫거나** "지금 멈추고 직접 본다"를 택한다. **중단 선택 시 §2i의 일시중단 절차를 따른다**(카운터 확정 → 커밋 → 커밋 후 HEAD로 루프 파일 → 안내 → §4 건너뜀).
 
 #### 2e. 종료 판정
 - **빠른 종료**: 루프 전체에서 미확인 FIXED 큐 0건 **AND** 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건 **AND** 미판정 blocking 0 → 확인 라운드 없이 즉시 성공 종료. 4번으로. (확인할 대상이 없는 클린 트랙 — 라운드를 추가하지 않는다)
