@@ -1,6 +1,6 @@
 # doctor 설치본 판정 — shallow 마켓플레이스 clone에서 옛 설치 sha 보강 조회
 
-- 단계: **3 harden-spec 종결 (2026-09-24, D1~D10)** — 다음 = 4 review-loop(spec). 경로 = **경량 — 4 수행, 5·6 생략**(D8, 6은 5 생략의 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 릴리스는 오르카 후계 세션 트랙 task-06 종결 **뒤**(D6).
+- 단계: **3 harden-spec 종결 (2026-09-24, D1~D10)** → **4 review-loop(spec) 종결 (2026-09-24, C1 approve — 말미 ledger)** — 다음 = 7 impl. 경로 = **경량 — 4 수행, 5·6 생략**(D8, 6은 5 생략의 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 릴리스는 오르카 후계 세션 트랙 task-06 종결 **뒤**(D6).
 - 출처: 2026-09-24 맥북 `/dev-workflow:doctor` 실행 — ops-hub project 스코프(0.18.0 · `9613013`)가 **판정 불가**로 나왔다. 원인 = 마켓플레이스 clone이 shallow(`.git/shallow` = `3fbc355` 1줄)라 설치 sha 객체가 clone에 없다.
 - 대상: `dev-workflow/skills/doctor/SKILL.md` — 핵심 원칙의 fetch 예외 문단 1구절 · 점검 2의 "엔트리마다 설치본 subtree id" 절차와 보조 근거 · 조치 안내의 판정 불가 행.
 
@@ -161,6 +161,9 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 | R1 | 적대(자동) | 4 (high 1·medium 1) | 0 → 1 | verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE(batch-pending) 1 · 응답 수신 후 옛 세션 컨텍스트 넛지로 일시중단 → 후계 세션이 판정(수신 시점 모드 = 자동·적대) |
 | R2 | 적대(자동) | 5 (high 1·medium 1 신규 + R1-2 미판정 medium 1) | 1 → 2 | 1차 실행 실패(본문 없음 — 잘린 요약 1줄만, 소진 미반영, 잡 잔존 없음, 사용자 판단으로 재실행 · 원문 `R2.out.fail1`) · 재실행 verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE(batch-pending) 1 · R1-1 적대 비재출현(R2, 참고 — 큐 유지) · 신호 1 미발화(4→5, 2점뿐) |
 | R3 | 적대(자동, 경계) | 6 (medium 2 신규 + 미판정 R1-2 medium 1·R2-1 high 1) | 2 → 3 | verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE 1 · 큐 2건(R1-1·R2-2) 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계 → **batch flush**(R1-2·R2-1·R3-2 사용자 판정, 자동 수정 3건 유지) · **신호 1 발화(4→5→6)** → 확인 모드 진입 · batch 후 큐 3 → 5(R1-2·R2-1 FIXED `f5fcf2a`) |
+| C1 | 확인(일반 1/2) | — | 5 → 0 | 완전 응답 · **소멸 5**(R1-1 `510001f` · R2-2 `ab85cd7` · R3-1 `eb00247` · R1-2·R2-1 `f5fcf2a`) · 회귀 없음 · 감사 해당 없음(루프 직접 판정 0) · 신규 없음 · **verdict approve** · 확인 소진 1 → **성공 종료**(미판정 0·큐 0·verdict 통과) |
+
+**종결(2026-09-24)**: 적대 3 · 확인 1 · score 4 → 5 → 6(전환 신호 1로 확인 진입) · FIXED 5 · ACCEPTED 1(사용자) · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · 남은 low 0 · merge-ready yes. 다음 = impl(경량 D8 — 5·6 생략, impl ledger = 이 문서 말미 `## 적대검증 ledger (impl)`).
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
