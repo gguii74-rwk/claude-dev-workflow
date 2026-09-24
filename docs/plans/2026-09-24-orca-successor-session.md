@@ -137,6 +137,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | R1 | 적대(자동) | 5 (medium 5) | 0 → 5 | verdict needs-attention · 신규 5 · FIXED 5 `49806b1`(R1-1 재평가 high→medium) · batch 적재 0 · 루프 직접 판정 0 |
 | R2 | 적대(자동) | 3 (medium 3) | 5 → 8 | verdict needs-attention · 신규 3 · FIXED 3 `d722293` · R1 큐 5건 적대 비재출현(R2, 참고 — 큐 유지) · batch 적재 0 · 루프 직접 판정 0 · 신호 미발화(5→3 감소) |
 | R3 | 적대(자동, 경계) | 5 (high 1·medium 2) | 8 → 11 | verdict needs-attention · 신규 3 · FIXED 3 `378c92e`(R3-1·R3-2 재평가 high→medium) · 큐 8건 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 신호 1 미발화(5→3→5) · 신호 2 미발화 → 정밀 모드 R4 |
+| R4 | 적대(정밀) | 5 (medium 5 — R4 4 + 루프 자체 발견 L1) | 11 → 16 | verdict needs-attention · 신규 4 + L1 · FIXED 5 `f0febc9`(R4-1·R4-2 재평가 high→medium) · 큐 11건 적대 비재출현(R4, 참고 — 큐 유지) · 소진 4 · **신호 1 발화**(5→3→5→5: s4≥s3≥s2) → batch 적재 0(flush 없음) → **확인 모드 진입(C1)** |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -151,4 +152,11 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | task-02 · [R3-1] 상태 파일의 필수 필드(`config`·`jobs`) 누락(`{}`)을 빈 상태로 오인 · 파일이 있으면 두 필드 필수 + C11 누락 케이스 | medium(재평가 ← high: companion `saveState`는 항상 `{version,config,jobs}`를 쓰므로 누락 = 부분 손상뿐, 검사 1줄) | FIXED `378c92e` | `jobsOk`·`cfgOk`에서 `undefined` 허용 제거, `stopReviewGate` boolean 필수. SC-4·SC-6·Cautions 갱신, C11 bad 케이스 `{}`·한쪽 누락·`config:{}` 추가, 정상 케이스는 `saveState` 형태. 실제 상태 파일(`keys: version,config,jobs`)로 필수 요구가 정상 경로를 막지 않음 확인 |
 | task-05 · [R3-2] impl 검토 종결 게이트가 impl ledger 헤더 이후 어디든 `종결` 1회로 통과 · 절 범위 한정 + 종결 표지·verdict·미판정 0·큐 0 명시 검사 | medium(재평가 ← high: 사람/세션이 순서대로 실행하는 9단계 게이트, 문면 결함) | FIXED `378c92e` | awk로 `## 적대검증 ledger (impl)`~다음 `##` 범위만, `**종결(` 행이 `미확인 FIXED 큐 0`·`미판정 blocking 0`·`verdict approve|빠른 종료`를 모두 담아야 1(단계 1 + AC). spec ledger 종결 행으로 1, impl 절 부재로 0 실행 확인 |
 | task-05 · [R3-3] AC6 표가 비어도 task-05가 `[x]`가 되어 트랙 완료로 복구됨 · AC6 실측을 별도 완료 행으로 + 11행 채움·eval 부기 게이트 | high | FIXED `378c92e` | task-06(AC6 실사용 기록) 신설 — Deps 05+push+맥북 갱신, SDD 범위 밖, AC = 11행 관찰 열 비어 있지 않고 결과 열 `통과`(빈 표 0 · 10통과+1실패 10 실행 확인; 11통과 케이스는 10행 셀의 `||`가 awk 열을 밀어 10 — 루프 자체 발견 L1로 R4 묶음에서 재수정) + eval 보고서 부기 grep·커밋. task 표 06행·AC6 매핑(05 `[x]` ≠ AC6)·SC-7·task-05 목적/Cautions/안내 동기. 트랙 완료 = 06행 `[x]` |
+| task-02 · [R4-1] [폴백] 마지막 문장 "그런 다음"이 소멸 확인 실패 뒤에도 무조건 `/clear` 안내 · 소멸 확인 시에만 CLEAR, 미확인이면 보고·정지 + 부정 경로 테스트 | medium(재평가 ← high: 직전 문장이 "안내 전에 차단 보고"라 해석 갭, 문장 1개 교체) | FIXED `f0febc9` | 폴백 끝 문장 = "소멸이 확인된 경우에만 … 안내 / 남아 있거나 모호하면 /clear를 안내하지 말고 차단 상태 보고 뒤 정지". SC-5 [폴백] needle 2종·C4 NEEDLES 추가·Cautions. task-04 README 문장(R1-5)과 동기 |
+| task-05 · [R4-2] AC6 게이트 전에 1.0.0 push·4머신 배포 · 맥북 먼저 → AC6 → 나머지 승격 | medium(재평가 ← high: push는 사용자 판단, 안내 문안 순서 변경) | FIXED `f0febc9` | 설치 갱신 = push → 맥북만 → task-06 통과 → 나머지 3머신(실패면 patch → 맥북 재검증). task-05 절·안내 문안·task-06 Deps·SC-7 동기. 트랙 밖 "각 머신 첫 넛지 때" 규정과 일관 |
+| task-05 · [R4-3] AC6가 시작할 review-loop 대상 미지정(종결된 이 트랙 ledger 재사용 위험) · repo·phase·ledger·base·루프 파일 지정 + 재사용 가드 | medium | FIXED `f0febc9` | 대상 = 그 시점에 착수하는 다른 실제 트랙(후보 예시), 이 트랙 ledger에 라운드 추가 금지, 9행 관찰 열에 repo·phase·ledger 문서·base SHA·루프 파일 경로 기록(지금 확정 불가 — D11 실사용 조건). task-06 단계 1 동기 |
+| task-05 · [R4-4] 11행이 `## 다음 액션`에 미판정 기록 요구(§2i는 `## 미해결 ledger`) · 기대값 정정 | medium | FIXED `f0febc9` | 11행 = `## 미해결 ledger` 미판정 + `## 다음 액션` 수신 라운드·판정 정책·미처리 단계. task-06 관찰 지침 동기 |
+| task-05/06 · [L1, 루프 자체 발견] AC6 10행 셀의 `\|\|`가 task-06 AC awk 열을 밀고, macOS BSD awk가 한글 `==`를 locale collation으로 비교해 `"실패"=="통과"`가 참 · 셀 세로줄 금지 + NF 검사 + `LC_ALL=C` | medium | FIXED `f0febc9` | 10행 문구 `… )`로, task-05 통과 규칙·task-06 Cautions에 셀 `\|` 금지, AC에 `NF != 7` 0 검사와 `LC_ALL=C awk`(실측 awk 20200816: `LANG=en_US.UTF-8`에서 `("실패"=="통과")`=1, `LC_ALL=C`=0). python 생성 표로 11/10/10/0 확인 |
+
+**확인 모드 진입(C1, 2026-09-24)**: 적대 4라운드 소진(max 5 중) · 신호 1 발화 · 미확인 FIXED 큐 16(R1 5 · R2 3 · R3 3 · R4 4 · L1 1) · 루프 직접 판정 0(임무 ③ 감사 대상 없음 — 사용자 기결정 D1~D12·spec 승계 ACCEPTED/OUT_OF_SCOPE는 대상 아님) · 확인 예산 2 · 복귀 미사용.
 
