@@ -121,3 +121,16 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 | D8 | **경로 = 경량 — 4 수행, 5·6 생략**(6은 자동 귀결), planless(impl ledger = 이 spec 말미) | 변경이 SKILL.md 한 절·사용자 작업물·권한·데이터 비접촉. 이전 doctor 트랙과 같은 경로 |
 | D9 | **검증 게이트 = scratch clone 실측(AC1~AC3) + 문면 확인(AC4·AC5) + 릴리스 뒤 맥북 doctor 1회(AC7)** — writing-skills TDD 없음 | 변경이 명령 절차라 실측이 더 직접적 |
 | D10 | **보강 fetch 시간 초과 1회면 나머지 엔트리는 fetch 없이 판정 불가(시간 초과)** | 네트워크 정지 시 최악 추가 대기를 30초로 고정 — 표 4행 출력 보장(doctor 부분 실패 계속 원칙) |
+
+## 적대검증 ledger (spec)
+
+루프 시작 2026-09-24 · base = 사용자 지정 `3fbc355`(SHA 고정) · 예산 max 5 · confirm 2 · auto 3 · 보안 크리티컬 아님(루프 자가 판정 — D8 비접촉 + 옵션 주입은 D3로 닫힘). score 산식 = critical 4 · high 3 · medium 1(§2c 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외).
+
+| R | 모드 | score | 미확인 FIXED 큐 | 비고 |
+|---|---|---|---|---|
+| R1 | 적대(자동) | 4 (high 1·medium 1) | 0 → 1 | verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE(batch-pending) 1 · 응답 수신 후 옛 세션 컨텍스트 넛지로 일시중단 → 후계 세션이 판정(수신 시점 모드 = 자동·적대) |
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| spec:3a · SHA 형식 검사가 revision 해석보다 늦어 `HEAD`·짧은 sha가 검사를 우회해 거짓 "최신" · 모든 rev-parse 앞에서 형식 검사 | high | FIXED `510001f` | D3 재론 아님(D3 "아니면 판정 불가"의 미구현). §3a 코드 순서 교체(형식 불일치면 rev-parse·fetch 모두 생략) + 결측 분기 선행 명시. AC3에 `HEAD`·`FETCH_HEAD`·짧은 sha 추가 |
+| spec:3b · 빈 subtree 결과만으로 원격 커밋 부재를 단정 — 인증·잠금·디스크 오류·경로 부재도 "원격에 없음" · RC·commit·경로 상태 분리, 명시적 not-found 근거 있을 때만 "원격에 없음" | medium | ESCALATE(batch-pending) | D4 매핑 전제(§3b "ls-remote 성공 → 원격 부재로 읽음")를 건드림 + 선택지 2+(원인 묶기 / stderr 문구 판별 / 현행 수용). batch flush 때 사용자 판정 |
