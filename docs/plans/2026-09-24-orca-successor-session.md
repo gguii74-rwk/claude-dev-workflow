@@ -274,6 +274,9 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 
 - G1 적대(자동, 소진 1/5, target `c2ce2de`): score 3(high 1) · 미확인 FIXED 큐 1 → 2(AC6 2회차 복구 · G1-1) · verdict needs-attention · 실행 로그 9건(테스트 4건 EROFS/EPERM — 정적 검토 완료, 유효) · batch 적재 0 · 루프 직접 판정 0
 - G2 적대(자동, 소진 2/5, target `d5bb4a7`): 신규 0 · verdict **approve** · 실행 로그 14건(C9·C10 bash EPERM — 정적 검토 완료, 유효) · score 0 · 미확인 FIXED 큐 2 유지 · 큐 2건 적대 비재출현(G2, 참고 — 큐 유지) · **신호 2 발화**(수정 큐 소진) → batch flush(적재 0건) → **확인 모드 진입(GC1)** — 임무 ① 큐 2(AC6 2회차 복구 · G1-1) · 임무 ③ 이 재진입의 루프 직접 판정 0(감사 대상 없음) · 확인 예산 2 · 복귀 미사용
+- GC1 확인(일반 1/2, target `f678389`): 완전 응답(Q1·Q2·감사·신규·verdict 전부 명시) · 실행 로그 10건 · **소멸 2**(AC6 2회차 복구 `8874868`·`ca9d6ca`·`c2ce2de` · G1-1 `2717496`·`c620ef6`) · 회귀 없음 · 판정 감사 해당 없음(이 재진입의 루프 직접 판정 0) · 신규 없음 · **verdict merge-ready: yes** · 확인 소진 1
+
+**재진입 2 종결(2026-09-24)**: 적대 2 + 확인 1 = 총 3라운드(실행 실패 0) · 미판정 blocking 0 · 미확인 FIXED 큐 0 · 최종 verdict = GC1 merge-ready: yes. score 이력 3 → 0(신호 2로 확인 진입). disposition 집계(고유 fingerprint 2): FIXED 2(브리프 지시 1 AC6 2회차 복구 · 자동 1 G1-1) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · low 0. 루프 건강: 재론률 0/2 · 철회 조항 1(재진입 1의 M1 재론 FIXED `ec0d728` 환경변수 접두 — AC6 2회차 원인 A로 철회) · 사람개입률 0/2(AC6 2회차 복구는 복구 절차·브리프 지시로 진입, 루프 중 사용자 판정 없음). 훅 테스트 최종 GREEN 11/11(`2717496`, 위 기록 절). **다음** = `release: 1.0.2` 커밋 → push(사용자) → spark2 `/plugin update` → 재시작 → `/dev-workflow:doctor` → AC6 3회차(task-06 단계 1부터).
 
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 spark2 오르카 세션이 기록
 
