@@ -37,16 +37,21 @@ doctor 점검 1행의 존재 이유는 **"이 설치본이 뒤처졌나"**에 �
 엔트리별 `git rev-parse "$SHA:dev-workflow"`가 **실패한 엔트리만**(D2) 그 sha를 지목해 1회 fetch한 뒤 다시 조회한다.
 
 ```bash
-T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
-if [ -z "$T" ] && printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$' && [ -z "$TIMED_OUT" ]; then
-  if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
-  perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q $D origin "$SHA" 2>/dev/null; RC=$?
-  [ "$RC" = 142 ] && TIMED_OUT=1
+T=""
+if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+  :   # 판정 불가(설치 sha 형식 이상) — rev-parse도 fetch도 하지 않는다
+else
   T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+  if [ -z "$T" ] && [ -z "$TIMED_OUT" ]; then
+    if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
+    perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q $D origin "$SHA" 2>/dev/null; RC=$?
+    [ "$RC" = 142 ] && TIMED_OUT=1
+    T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+  fi
 fi
 ```
 
-- **sha 형식 검사(D3)**: `^[0-9a-f]{40}$`가 아니면 fetch하지 않는다 — 레지스트리 값이 옵션 모양(`--upload-pack=…`)이면 git이 옵션으로 해석할 수 있다. 판정 불가 사유 = **"설치 sha 형식 이상"**.
+- **sha 형식 검사(D3)는 어떤 `rev-parse`보다 먼저**: `^[0-9a-f]{40}$`가 아니면 subtree 조회도 fetch도 하지 않고 판정 불가 사유 = **"설치 sha 형식 이상"**. 조회 뒤에 검사하면 `HEAD`·`FETCH_HEAD`·해석 가능한 짧은 sha가 `rev-parse`를 통과해 형식 검사를 우회하고, 로컬 최신 revision을 가리킬 경우 거짓 "최신"이 나온다((b) 위반). 옵션 모양 값(`--upload-pack=…`)이 git 옵션으로 해석되는 경로도 같은 검사가 막는다. `gitCommitSha` **결측**은 기존 분기(필드 결측 → 판정 불가)가 이 검사보다 먼저다(비목표 — 무변경).
 - **`--depth 1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다.
 - **시간 초과 1회면 나머지 건너뜀(D10)**: 보강 fetch가 상한(exit 142)에 걸리면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 최악 추가 대기 30초 고정.
 - 기존 네트워크 규약(`GIT_TERMINAL_PROMPT=0` · perl wall-clock 상한 · stderr `2>/dev/null`) 그대로.
@@ -77,7 +82,7 @@ fi
 
 - **AC1**: shallow clone(tip 깊이 1)에서 tip보다 오래된 도달 가능한 설치 sha에 대해 3a 절차가 subtree id를 내고 1행이 최신/뒤처짐을 판정한다 — scratch `--depth 1` clone + `9613013` → `b0f5c02`.
 - **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지.
-- **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "설치된 커밋이 원격에 없음" + 스코프 갱신 조치로 적힌다 · 형식이 깨진 sha(`--upload-pack=x` 등)는 **fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"이 나오지 않는다((b)).
+- **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "설치된 커밋이 원격에 없음" + 스코프 갱신 조치로 적힌다 · 형식이 깨진 sha(`--upload-pack=x` 등)와 **로컬에서 해석은 되는 비정상 값(`HEAD`·`FETCH_HEAD`·clone tip의 7자리 짧은 sha)**은 **subtree 조회·fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"·"뒤처짐"이 나오지 않는다((b)).
 - **AC4**: 뒤처짐 보조 근거가 `git diff --stat "$SHA" "$OID" -- dev-workflow/`이고, SKILL.md에 `log --oneline "$SHA..` 형태가 남지 않는다.
 - **AC5**: 보강 fetch가 시간 초과에 걸리면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적힌다 — SKILL.md 문면 확인(재현 조작 불요, D9).
 - **AC6**: 변경 파일 = doctor `SKILL.md` + 이 spec(+ 릴리스 시 plugin.json·README 규약대로).
