@@ -124,3 +124,20 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 - **C-4 D11·D14·D26** — 훅 단서 "review-loop 실행 중이면 그 스킬 규정" 유지 · §0↔§2i 동일 목록 · §2i 순서 0~4 불변(3행 내용만 조건화).
 - **08-13 사용자 합의** — 사람 게이트는 넘기지 않는다(단계 경계·경로 ②·③ 수동 유지, R5-1).
 - **plan-gate fp-C1**(어댑터 = 계약 블록 안) · **DR:196**(doctor는 오르카·codex 상태를 새로 진단하지 않는다 — D8 스위치 없음과 같은 취지).
+
+## 적대검증 ledger (plan)
+
+루프 시작 2026-09-24 · base = origin/main `ee0a356` · 예산 max 5 · confirm 2 · auto 3 · 보안 크리티컬 아님(일반 트랙, spec 루프와 동일 판정). 게이트: repo CLAUDE.md 없음 → 분할 규약 관문 ①②④ 스킵 · ③ spec ledger fingerprint 컬럼 있음 · 내용 관문 통과. score 산식 = critical 4 · high 3 · medium 1(§2c 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외).
+
+| R | 모드 | score | 미확인 FIXED 큐 | 비고 |
+|---|---|---|---|---|
+| R1 | 적대(자동) | 5 (medium 5) | 0 → 5 | verdict needs-attention · 신규 5 · FIXED 5 `49806b1`(R1-1 재평가 high→medium) · batch 적재 0 · 루프 직접 판정 0 |
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| task-02 · [R1-1] ORCA_TERMINAL_HANDLE이 셸 명령에 무이스케이프 삽입 · 핸들 allowlist 불일치 시 폴백 + 적대 핸들 회귀 테스트 | medium(재평가 ← high: 핸들은 오르카 호스트가 심는 env, 검사 1줄) | FIXED `49806b1` | `resolveOrcaHandle` = trim 뒤 `/^[A-Za-z0-9._-]+$/` 불일치 → null(오르카 밖 경로). SC-3·SC-5 부정 요건·task-02 Cautions, E2E C8 적대 핸들 케이스 |
+| task-02 · [R1-2] STATE_PROBE_CMD가 JSON 배열·스키마 이탈을 정상 상태로 오인(fail-open) · 루트 배열 차단 + config·jobs 형식 검증 + 실행 테스트 | medium | FIXED `49806b1` | `obj()` 헬퍼로 루트 비객체(배열 포함)·`jobs` 비배열·`config` 비객체 → `STATE_UNREADABLE` exit 2. SC-4 계약 갱신. 신규 C11(가짜 companion 루트·상태 파일로 reason에서 잘라낸 프로브를 bash 실행 — `[]`·비JSON·`{"jobs":"x"}`·`{"config":[]}` 차단, 정상 객체 `GATE_ON FOREIGN_ACTIVE=1`). 테스트 11개, RED 4/7 · GREEN 11/11 합성 실측 |
+| task-05 · [R1-3] F6 진행 중 넛지 검증(11행)을 "미발생"으로 생략해도 AC6 통과 · 11행 필수 + 재현 절차 | medium | FIXED `49806b1` | 11행 필수(통과 = 1~11), 조건 ③ 재현 = `CLAUDE_CTX_THRESHOLD=0.05`로 review-loop 시작 → §2b ③ 백그라운드 대기 턴의 Stop이 첫 넛지; 먼저 온 넛지면 임계 올려 재시작. SC-7·설치 안내 문안 동기 |
+| task-05 · [R1-4] AC6 메타문자 전달 검증이 정상 구현으로도 불성립(내용은 `<경로>`로 전달되지 않음) + 정규화 기대값 오기 · 프로브 재설계 + `ac6---echo-x---id--` | medium | FIXED `49806b1` | 전달 프로브 = 재개 프롬프트 템플릿 내장 `$(…)` 식(CLI·companion 해소식)이 확장 없이 도착하는지(`<경로>` 슬롯은 review-loop에서 고정 — spec F6 "경로" 항목의 구체화). 제목 기대값 정정(집합 밖 8자 → `-` 8개) |
+| task-04 · [R1-5] README 1.0.0 문단이 모든 실패에서 `/clear` 복귀를 약속(차단 경로 누락) · F2와 정확히 동기 | medium | FIXED `49806b1` | 3언어 문단: 정리·소멸 확인 뒤에만 `/clear` 안내, 후계 미확정(0/2+)·정리 미확인이면 차단 보고. 표·python 치환 원문 둘 다 갱신 |
+
