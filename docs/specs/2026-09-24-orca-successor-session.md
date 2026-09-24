@@ -43,14 +43,14 @@
   1. `${ORCA_CLI_COMMAND:-orca} terminal create --worktree active --title <작업명> --command claude --json` → 새 핸들 = `startupTerminal.handle`(없으면 `terminal.handle`).
   2. `... terminal wait --terminal <새 핸들> --for tui-idle --timeout-ms 90000 --json` → `satisfied:true` 확인. false면 timeout 2배로 1회 재시도, 그래도 false면 F2.
   3. `... terminal send --terminal <새 핸들> --enter --wait-submit 15 --json --text "<재개 프롬프트>"` → `accepted:true` 확인. false면 F2.
-  4. 재개 프롬프트(훅이 템플릿 제공) = "핸드오프 파일 <경로>를 읽고 같은 작업을 이어서 진행. **첫 동작**: 옛 터미널 `<ORCA_TERMINAL_HANDLE>`에 `/exit`를 보내고(`terminal send --text "/exit" --enter`) `tui-idle` 대기 뒤 `terminal close`. 그 전에는 codex를 실행하지 마라." 경로 = 핸드오프 규약 파일(기본 `.remember/remember.md`, review-loop면 루프 파일).
+  4. 재개 프롬프트(훅이 템플릿 제공) = "핸드오프 파일 <경로>를 읽고 같은 작업을 이어서 진행. **첫 동작**: 옛 터미널 `<ORCA_TERMINAL_HANDLE>`에 `/exit`를 보내고(`terminal send --text "/exit" --enter`) `tui-idle` 대기 뒤 `terminal close`. 그 전에는 codex를 실행하지 마라. 옛 핸들이 `terminal list`에 없으면 이미 닫힌 것으로 보고 진행하고, 있는데 닫기가 실패하면 사용자에게 알리고 codex 라운드를 시작하지 마라(D9). **핸드오프의 다음 액션이 다른 단계(spec→plan, plan→impl)의 시작이면 시작하지 말고 사용자에게 확인하라**(D4)." 경로 = 핸드오프 규약 파일(기본 `.remember/remember.md`, review-loop면 루프 파일). `--title` = 모델이 현재 작업을 요약한 짧은 이름, 마땅치 않으면 `successor`(D7).
   5. `accepted:true`를 확인했으면 **더 아무것도 하지 말고 턴을 끝낸다** — 후계가 이 세션을 닫는다. 자기 터미널을 스스로 닫지 않는다.
 - 정지 보장: 그 다음 Stop은 `stop_hook_active`로 훅이 통과(exit 0)하므로 재넛지 없이 idle. 후계의 `/exit`로 종료.
 - 재넛지(15%p 구간) 변형도 같은 (2)를 붙인다(현행 D6 원칙: 재넛지 = 지시 동일 + 사실 추가).
 
 ### F2. 실패 폴백
 
-wait `satisfied:false`(재시도 후) 또는 send `accepted:false` 또는 CLI 실행 오류 → 후계를 만들지 못한 것으로 보고 현행 문장("이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요")을 사용자에게 안내한다. 만들다 만 터미널이 있으면 그 핸들을 함께 알린다(닫기는 사람). fail-closed.
+wait `satisfied:false`(재시도 후) 또는 send `accepted:false` 또는 CLI 실행 오류 → 후계를 만들지 못한 것으로 보고 현행 문장("이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요")을 사용자에게 안내한다. 만들다 만 터미널이 있으면 옛 세션이 폴백 안내 전에 `terminal close`로 닫는다(D10 — 아직 일한 것이 없어 잃을 게 없다). fail-closed.
 
 ### F3. review-loop 문구
 
@@ -64,9 +64,9 @@ wait `satisfied:false`(재시도 후) 또는 send `accepted:false` 또는 CLI �
 - `plugin.json` `1.0.0`. 사용자 결정: 이 반영으로 정식 1.0.0.
 - 설치 갱신 안내 4머신(맥북·OMEN·그램·spark2).
 
-### F5. 훅 테스트
+### F5. 훅 테스트 (repo 파일 없음 — 08-09 D10 유지, D5)
 
-`dev-workflow/hooks/scripts/context-threshold-hook.test.mjs`(`node --test`, 의존성 없음):
+스크래치패드에서 `node --test`로 돌리고 GREEN 출력을 impl ledger에 기록한다. 케이스:
 - 비오르카: 최초·재넛지 reason이 (0) 인계 문장 교체분을 제외하고 현행 문자열과 동일(고정 문자열 스냅샷).
 - 오르카: reason에 create/wait/send 3명령 · `ORCA_TERMINAL_HANDLE` 값 · `/exit` 첫 동작 · 폴백 문장이 있고, "자가 /clear는 불가" 문장이 없다.
 - `stopHookActive`·구간 로직은 기존 동작 불변(기존 케이스 유지).
@@ -75,17 +75,32 @@ wait `satisfied:false`(재시도 후) 또는 send `accepted:false` 또는 CLI �
 
 맥북 오르카에서 실제 세션 1회: 넛지 → 핸드오프 → 후계 스폰 → 옛 세션 종료(SessionEnd 정리 확인) → 후계가 review-loop §0 스냅샷 대조로 재개. 결과를 eval repo 보고서에 부기. 파일럿 미측정 3건(§0 재개·실 40% 흐름·서브에이전트 진행 중)을 여기서 닫는다.
 
-## 4. 결정사항
+## 4. 결정사항 (3 harden-spec, 2026-09-24 — 전부 사용자 확정, 추천안 채택)
 
-brainstorming 확정(2026-09-24, 사용자): 후계 실행 명령 = `claude` 그대로(기본 설정 상속) · 설계안 1~7 승인. D번호 결정·근거는 3단계 harden-spec에서 채운다.
+| D | 결정 | 근거 |
+|---|---|---|
+| D1 | **같은 체크아웃 + 후계 터미널**. 워크트리 2개 핑퐁 불채택 | git 동일 브랜치 이중 체크아웃 불가 · `.remember` 심볼릭 링크 미전파 · 실측(브레인스토밍 확정) |
+| D2 | 후계 실행 명령 = **`claude` 그대로**(사용자 기본 설정 상속). 옛 세션 인자 복제 불채택 | 실측: auto 권한 상속 · OS별 인자 조회 실패 지점 제거 |
+| D3 | 옛 세션 종료 = **후계의 첫 동작**: `/exit` 전송 → tui-idle 대기 → `terminal close`. 옛 세션 자기 종료·`terminal close`만 쓰기 불채택 | `/exit`만 SessionEnd 정리(브로커·잡) · close는 SIGKILL 상당(실측 E2·E3·E5) · 브로커는 폴더당 공유 |
+| D4 | 후계는 **단계 경계를 넘지 않는다** — 다음 액션이 다른 단계의 시작이면 사용자 확인 | 08-13 합의(사람 게이트) · dev-cycle 경계 규약 불변 |
+| D5 | 훅 테스트는 **repo 파일 없음** — 스크래치 실행 + impl ledger 기록(08-09 D10 유지) | 기결정 양립 확인 |
+| D6 | 넛지 문구 **길이 상한 없음** — 명령을 정확히 적는다 | 세션당 수 회 · 플래그 추측 방지 |
+| D7 | 후계 탭 제목 = **모델이 붙인 짧은 작업명**, 폴백 `successor` | 탭에서 작업 식별 |
+| D8 | 자동 인계 **끄기 스위치 없음** | 설정·doctor 항목 증가 방지 · 수동은 오르카 밖 |
+| D9 | 옛 터미널 닫기 실패 → `terminal list` 확인, 없으면 진행 / 있는데 실패면 사용자 알림 + codex 라운드 금지 | 브로커 공유 위험 · 무인 진행 유지 |
+| D10 | 후계 생성 실패 시 **반쪽 터미널은 옛 세션이 닫는다** | 빈 탭 잔존 방지 · 손실 없음 |
+| D11 | 1.0.0 완료 조건 = **맥북 실사용 1회**. spark2·Windows는 후속(각 머신 첫 넛지 때 확인) | 폴백이 있어 깨지지 않음 |
+| D12 | (0)의 인계 문장은 **양 경로 공통** 신규 문장 — RL §2b (1) 바이트 동일 규정 유지 | 규정 조회(RL §2b) |
 
-## 5. Acceptance Criteria (초안 — harden에서 확정)
+기결정 양립: 08-09 D3(재넛지 대응으로 RL 문면 불변 — 이번 RL 변경은 재넛지가 아니라 바이트 동일 규정 이행) · D6(재넛지 = 지시 동일 + 사실 추가 — (2)도 동일 적용) · D10(D5로 유지) · 0.18.0 D25(①②③ 최초·재넛지 동일).
+
+## 5. Acceptance Criteria (harden 확정)
 
 - **AC1 (F1)**: `ORCA_TERMINAL_HANDLE` 미설정 시 `decideNudge` reason이 0.19.0과 동일하되 (0)의 인계 문장 1개만 신규 문장으로 바뀐다(최초·재넛지, 고정 문자열 대조). 설정 시 reason에 (2) 5항목이 있고 옛 핸들 값이 그대로 들어가며 "자가 /clear는 불가" 문장이 없다.
-- **AC2 (F2)**: 오르카 reason에 폴백 조건 3종(wait false·send false·CLI 오류)과 복귀 문장이 명시된다.
+- **AC2 (F2)**: 오르카 reason에 폴백 조건 3종(wait false·send false·CLI 오류)·반쪽 터미널 close·복귀 문장이 명시된다. 재개 프롬프트 템플릿에 단계 경계 확인(D4)·닫기 실패 처리(D9)·탭 제목 규칙(D7)이 들어간다.
 - **AC3 (F3)**: RL §2b (1) 인용문 = 훅 (0) 문장(바이트 동일, grep 대조). §2i 표 3행이 조건화되고 재개 프롬프트에 `--resume`가 들어간다. 단계 경계 `/clear` 문장은 불변.
 - **AC4 (F4)**: `plugin.json` `1.0.0` · README 3종 같은 위치에 1.0.0 문단 · 설치 갱신 안내 4머신.
-- **AC5 (F5)**: `node --test dev-workflow/hooks/scripts/` GREEN, 케이스 ≥ 5.
+- **AC5 (F5)**: 스크래치 `node --test` GREEN 기록이 impl ledger에 있다(케이스 ≥ 5, 출력 원문 인용). repo에 테스트 파일이 추가되지 않는다(D5).
 - **AC6 (F6, 트랙 완료 조건)**: 실사용 1회 기록 — 후계가 옛 세션을 정리하고 §0 대조를 통과해 라운드를 이어감.
 
 ## 6. 검증 계획 (개요 — 배치는 5단계 plan에서)
@@ -96,14 +111,16 @@ brainstorming 확정(2026-09-24, 사용자): 후계 실행 명령 = `claude` 그
 
 ## 7. 미해결 질문
 
-- spark2(Linux, Orca 클라이언트 접속)와 Windows에서 `ORCA_TERMINAL_HANDLE` 존재와 `orca` 실행 파일 해소(`ORCA_CLI_COMMAND`/`orca-ide`)가 맥북과 같은가 — 미실측. 1.0.0 완료 조건에는 넣지 않고 잔여 리스크로.
-- 훅 reason 길이 증가(명령 3개 + 템플릿)가 넛지 가독성을 해치는가 — harden에서 상한 결정.
+없음 — harden-spec에서 전부 결정(D6 길이 상한 없음 · D11 완료 조건 맥북). spark2·Windows 환경 차이는 잔여 리스크(검증 필요·실측).
 
 ## 잔여 리스크 (DEFERRED)
 
-- spark2·Windows 오르카 환경 미실측 — 실패하면 F2 폴백으로 현행 동작에 떨어진다(안전).
-- 후계가 첫 동작(옛 세션 종료)을 건너뛰고 codex를 띄우면 옛 세션 `/exit` 시점에 브로커가 내려가 라운드가 죽는다 — 프롬프트 문면으로만 강제. F6에서 관찰.
+- **검증 필요(실측)** spark2·Windows 오르카 환경(`ORCA_TERMINAL_HANDLE` 존재 · `orca`/`ORCA_CLI_COMMAND` 해소 · `--wait-submit` 지원) — 실패하면 F2 폴백으로 현행 동작(안전). D11로 후속.
+- **검증 필요(실측)** 후계가 첫 동작(옛 세션 종료)을 건너뛰고 codex를 띄우면 옛 세션 `/exit` 시점에 브로커가 내려가 라운드가 죽는다 — 프롬프트 문면으로만 강제. F6에서 관찰.
+- **검증 필요(실측)** 옛 세션이 send 뒤 턴을 끝내기 전에 후계의 `/exit`가 도착하는 경쟁 — 입력은 턴 종료 후 처리될 것으로 예상. F6에서 관찰.
 
 ## 재논의 금지(기결정)
 
-(3단계 harden-spec에서 D번호로 채운다.)
+> **이번 트랙 확정 결정 = D1~D12(§4, 2026-09-24 harden-spec, 전부 사용자 확정)** — 적대검증(4단계~)에서 재론하지 않는다. 특히: D1 같은 체크아웃(워크트리 핑퐁 불채택) · D2 `claude` 그대로 · D3 `/exit`→close 순서(후계 첫 동작) · D4 단계 경계 불가침 · D5 테스트 repo 파일 없음 · D8 스위치 없음 · D11 완료 조건 맥북 1회.
+>
+> **승계 기결정**: 08-09 D3·D4·D5·D6·D10·D24·D26(넛지 구간·재넛지·플래그) · 0.18.0 D1·D25·D26·D27(백그라운드 대기·문구 동일·필드 불변·하네스 2케이스) · 08-13 사용자 합의(사람 게이트는 넘기지 않는다).
