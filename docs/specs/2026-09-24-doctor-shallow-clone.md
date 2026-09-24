@@ -146,6 +146,12 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 | D9 | **검증 게이트 = scratch clone 실측(AC1~AC3) + 문면 확인(AC4·AC5) + 릴리스 뒤 맥북 doctor 1회(AC7)** — writing-skills TDD 없음 | 변경이 명령 절차라 실측이 더 직접적 |
 | D10 | **보강 fetch 시간 초과 1회면 나머지 엔트리는 fetch 없이 판정 불가(시간 초과)** | 네트워크 정지 시 최악 추가 대기를 30초로 고정 — 표 4행 출력 보장(doctor 부분 실패 계속 원칙) |
 
+**review-loop(spec) 사용자 판정 (2026-09-24 batch)** — 위 D표를 보강한다(뒤집지 않는다):
+
+- **R1-2 → D4 보강**: 시간 초과가 아닌 보강 fetch 뒤 객체가 없으면 원인을 단정하지 않는다 — 사유 "보강 fetch 실패(원격에 없거나 접근 오류)", 조치 "재시도 → 반복되면 그 스코프 갱신". git 오류 문구 판별(버전 의존)·현행 유지(원격 부재 단정)는 기각됐다. commit은 있는데 경로가 없으면 별도 사유.
+- **R2-1 → D3 보강**: 형식 검사 뒤 객체 유형이 **commit**일 때만 subtree를 조회한다(fetch 후 재확인) — 아니면 "설치 sha 객체 유형 이상". 레지스트리 손상 방어의 범위는 **형식(40자리 hex) + 객체 유형(commit)** 까지다.
+- **R3-2 ACCEPTED**: 보강 fetch(`--depth 1`)가 `.git/shallow`를 갱신하므로 동시 `/plugin update`·다른 doctor와 겹치면 한쪽이 잠금 충돌로 실패할 수 있다 — 알고도 둔다. 동시 실행은 드물고, git 잠금으로 손상이 아니라 한쪽 실패로 드러나며 재실행으로 풀린다. 기존 기본 브랜치 fetch도 같은 성질이고 `/plugin update` 쪽 직렬화는 이 repo가 통제할 수 없다. 보완 = AC7 관찰. **직렬화·대기·재시도 규약 추가 요구는 재론이다.**
+
 ## 적대검증 ledger (spec)
 
 루프 시작 2026-09-24 · base = 사용자 지정 `3fbc355`(SHA 고정) · 예산 max 5 · confirm 2 · auto 3 · 보안 크리티컬 아님(루프 자가 판정 — D8 비접촉 + 옵션 주입은 D3로 닫힘). score 산식 = critical 4 · high 3 · medium 1(§2c 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외).
@@ -154,10 +160,13 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 |---|---|---|---|---|
 | R1 | 적대(자동) | 4 (high 1·medium 1) | 0 → 1 | verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE(batch-pending) 1 · 응답 수신 후 옛 세션 컨텍스트 넛지로 일시중단 → 후계 세션이 판정(수신 시점 모드 = 자동·적대) |
 | R2 | 적대(자동) | 5 (high 1·medium 1 신규 + R1-2 미판정 medium 1) | 1 → 2 | 1차 실행 실패(본문 없음 — 잘린 요약 1줄만, 소진 미반영, 잡 잔존 없음, 사용자 판단으로 재실행 · 원문 `R2.out.fail1`) · 재실행 verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE(batch-pending) 1 · R1-1 적대 비재출현(R2, 참고 — 큐 유지) · 신호 1 미발화(4→5, 2점뿐) |
+| R3 | 적대(자동, 경계) | 6 (medium 2 신규 + 미판정 R1-2 medium 1·R2-1 high 1) | 2 → 3 | verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE 1 · 큐 2건(R1-1·R2-2) 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계 → **batch flush**(R1-2·R2-1·R3-2 사용자 판정, 자동 수정 3건 유지) · **신호 1 발화(4→5→6)** → 확인 모드 진입 · batch 후 큐 3 → 5(R1-2·R2-1 FIXED `f5fcf2a`) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | spec:3a · SHA 형식 검사가 revision 해석보다 늦어 `HEAD`·짧은 sha가 검사를 우회해 거짓 "최신" · 모든 rev-parse 앞에서 형식 검사 | high | FIXED `510001f` | D3 재론 아님(D3 "아니면 판정 불가"의 미구현). §3a 코드 순서 교체(형식 불일치면 rev-parse·fetch 모두 생략) + 결측 분기 선행 명시. AC3에 `HEAD`·`FETCH_HEAD`·짧은 sha 추가 |
-| spec:3b · 빈 subtree 결과만으로 원격 커밋 부재를 단정 — 인증·잠금·디스크 오류·경로 부재도 "원격에 없음" · RC·commit·경로 상태 분리, 명시적 not-found 근거 있을 때만 "원격에 없음" | medium | ESCALATE(batch-pending) | D4 매핑 전제(§3b "ls-remote 성공 → 원격 부재로 읽음")를 건드림 + 선택지 2+(원인 묶기 / stderr 문구 판별 / 현행 수용). batch flush 때 사용자 판정 |
-| spec:3a · 40자리 tree OID가 설치 commit으로 오인되어 거짓 "최신" · 형식 검사 뒤 `cat-file -t`가 commit인지 확인(fetch 후 재확인), 아니면 "설치 sha 객체 유형 이상" | high | ESCALATE(batch-pending) | R1-1과 같은 계열(손상 레지스트리 값이 검사를 우회해 거짓 "최신") **2회째** → 규약상 더 고치지 않고 사용자 판정. 레지스트리 손상 방어 범위(형식만 / 객체 유형까지 / 수용) 선택 |
+| spec:3b · 빈 subtree 결과만으로 원격 커밋 부재를 단정 — 인증·잠금·디스크 오류·경로 부재도 "원격에 없음" · RC·commit·경로 상태 분리, 명시적 not-found 근거 있을 때만 "원격에 없음" | medium | FIXED `f5fcf2a`(사용자 판정 — batch R3) | 원인 묶기 채택(stderr 문구 판별·현행 수용 기각). §3a `WHY` 분기 · §3b 사유표 5행(보강 fetch 실패 = 재시도 → 반복 시 갱신, 경로 부재 별도) · AC3 가짜 sha·도달 불가 origin·경로 없는 로컬 커밋. 실측: scratch shallow clone에서 전 사례 기대 사유 |
+| spec:3a · 40자리 tree OID가 설치 commit으로 오인되어 거짓 "최신" · 형식 검사 뒤 `cat-file -t`가 commit인지 확인(fetch 후 재확인), 아니면 "설치 sha 객체 유형 이상" | high | FIXED `f5fcf2a`(사용자 판정 — batch R3) | R1-1과 같은 계열 2회째 → 사용자가 객체 유형 검사 채택(방어 범위 = 형식 + commit 유형, 재논의 금지 블록). §3a `cat-file -t` = commit일 때만 조회(fetch 후 재확인) · AC3 root tree OID. 실측: tree OID → "설치 sha 객체 유형 이상" |
 | spec:3a · 보강 fetch가 FETCH_HEAD를 덮어써 공유 clone의 동시 작업 교란 · `--no-write-fetch-head` + FETCH_HEAD 불변 AC | medium | FIXED `ab85cd7` | D1 재론 아님(pseudo-ref 쓰기만 제거). §3a 코드·불릿 교체, AC2에 FETCH_HEAD 불변 검증. 실측: git 2.54 scratch shallow clone에서 FETCH_HEAD 불변 + subtree 조회 성공 |
+| spec:3a · 30초 총 대기 상한이 실제로는 엔트리마다 반복 · 보강 전체 공유 deadline, 각 fetch엔 남은 시간만 | medium | FIXED `eb00247` | D10 재론 아님(D10 "최악 추가 대기 30초 고정"의 미구현). §3a `DL` 공유 deadline + alarm "$LEFT" · AC5 남은 시간 alarm 문면 |
+| spec:3a · FETCH_HEAD 보호만으로 공유 shallow clone 동시 fetch가 안전하지 않음(`.git/shallow` 쓰기 경쟁) · 직렬화·대기·재시도 규약 + 동시 실행 AC | medium | ACCEPTED(사용자 판정 — batch R3) | R2-2와 같은 "공유 clone 동시 fetch" 계열 2회째. 이유: 동시 실행 드묾 · git 잠금으로 손상 아닌 한쪽 실패 · 재실행으로 해소 · 기존 기본 브랜치 fetch도 동일 · `/plugin update` 쪽 직렬화 통제 불가. 보완 단계 = AC7 관찰(재논의 금지 블록 등재) |
