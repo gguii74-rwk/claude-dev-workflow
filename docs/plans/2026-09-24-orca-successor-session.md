@@ -177,3 +177,32 @@ C1 소멸 확인 14건: R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1. low 1
 C3 소멸 확인 1건: R5-3.
 
 **종결(2026-09-24)**: 적대 4 + 복귀 적대 1 · 확인 1 + 재진입 확인 1 + 일반 확인 1 = 총 8라운드(실행 실패 0). 미판정 blocking 0 · **미확인 FIXED 큐 1**(C3 회귀 `d5ae7c9` — 확인 예산 소진으로 **폴백 ①: review-loop(impl) 필수 확인 항목으로 이월**, 사용자 판정) · 최종 verdict = C3 merge-ready: no(그 1건이 사유이며 사용자 FIXED로 닫힘 — 확인은 impl 루프 몫). disposition 집계(고유 fingerprint 21): FIXED 21(그중 재분류·회귀 후 재수정 4: C1 재분류 2 · C2 잔존 1 · C3 회귀 1; 사용자 판정 2: C2 잔존 · C3 회귀) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · low 1(EOF 빈 줄, 부수 정리) · ESCALATE 2건 전부 사용자가 FIXED로 닫음. 루프 건강: 재론률 0/21 · 철회 조항 0 · 사람개입률 2/21. **다음 phase 승계**: 재논의 금지 블록(D1~D12 + spec 2행)은 이 문서 상단에 이미 있음 · 이 루프의 ACCEPTED/OUT_OF_SCOPE/DEFERRED 0 · **review-loop(impl) 필수 확인 항목(폴백 ①)**: task-06 AC 커밋 제목 버전 대조 `d5ae7c9`의 소멸 확인 — impl 확인 프롬프트 ②에 첨부. **권고**: 재진입 확인(C2)과 일반 확인(C3)이 연속으로 새 blocking을 냈다(모두 task-05/06 AC6 게이트 문면) — 규정에 따라 **새 세션 whole-branch 리뷰 1회 권고**(impl 착수 전, 대상 = plan 전체; 사용자 판단).
+
+## 훅 테스트 기록 (AC5, D5)
+
+테스트 = `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs`(repo 파일 아님, claude-memories) · 실행 = `HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap <파일>`.
+
+| 일시 | 훅 커밋 | 결과 | 비고 |
+|---|---|---|---|
+| 2026-09-24 13:17 | 0.19.0 `92e1374` | RED 4 pass / 7 fail | C3·C7·C9·C10 자동 보완(현행에서도 통과) · C11은 오르카 문면 부재로 실패 |
+| 2026-09-24 13:17 | `958c1e5` | GREEN 11/11 | 스니펫 실행: `GATE_OFF FOREIGN_ACTIVE=0` · `CLI=orca` · `LEN=40` |
+
+GREEN 원문:
+````
+ok 1 - C1 비오르카 최초 넛지 = 고정 문자열
+ok 2 - C2 비오르카 재넛지 = 고정 문자열
+ok 3 - C3 비오르카(orcaHandle 생략·null·빈 문자열 아님)에는 후계 절차가 없다
+ok 4 - C4 오르카 최초 넛지 — (2-0)~(2-5)·폴백·옛 핸들 그대로, '자가 /clear는 불가' 없음
+ok 5 - C5 오르카 재넛지 = 최초와 같은 (2) (D6: 지시 동일 + 사실 추가)
+ok 6 - C6 오르카 reason 안의 send/wait/close/read/show 전부 --terminal 바인딩(옛 핸들 또는 새 핸들)
+ok 7 - C7 판정 로직 불변(orcaHandle 유무와 무관)
+ok 8 - C8 E2E ORCA_TERMINAL_HANDLE 유무·안전 문자 집합으로 (2)가 갈린다
+ok 9 - C9 40자 초과 작업명에서도 토큰이 온전히 남고 title 정확 조회가 1건
+ok 10 - C10 정규화된 제목은 $()·백틱·따옴표가 없어 셸 큰따옴표 안에서 원문 그대로다
+ok 11 - C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE(exit 2)로 차단한다
+# tests 11
+# pass 11
+# fail 0
+````
+
+review-loop(impl)에서 훅이 다시 바뀌면 재실행해 이 표에 행을 추가한다.
