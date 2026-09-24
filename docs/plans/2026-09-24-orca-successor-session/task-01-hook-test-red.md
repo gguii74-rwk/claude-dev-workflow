@@ -263,7 +263,7 @@ test("C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE
     assert.deepEqual(run(null), ["GATE_OFF FOREIGN_ACTIVE=0", 0]); // 파일 부재 = 잡 없음
     assert.deepEqual(run('{"config":{"stopReviewGate":true},"jobs":[{"status":"running","sessionId":"other"},{"status":"queued","sessionId":"me"},{"status":"done","sessionId":"x"}]}'), ["GATE_ON FOREIGN_ACTIVE=1", 0]);
     assert.deepEqual(run('{"jobs":[]}'), ["GATE_OFF FOREIGN_ACTIVE=0", 0]);
-    for (const bad of ["[]", "null", "42", "not json", '{"jobs":"x"}', '{"jobs":{}}', '{"config":[]}', '{"config":null}']) {
+    for (const bad of ["[]", "null", "42", "not json", '{"jobs":"x"}', '{"jobs":{}}', '{"jobs":[null]}', '{"jobs":[{"status":1,"sessionId":"x"}]}', '{"config":[]}', '{"config":null}', '{"config":{"stopReviewGate":"true"}}', '{"config":{"stopReviewGate":1}}']) {
       assert.deepEqual(run(bad), ["STATE_UNREADABLE", 2], bad);
     }
   } finally {
