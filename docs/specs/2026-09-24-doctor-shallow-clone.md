@@ -34,33 +34,46 @@ doctor 점검 1행의 존재 이유는 **"이 설치본이 뒤처졌나"**에 �
 
 ### 3a. 설치 sha 보강 fetch (D1·D2·D3·D10)
 
-엔트리별 `git rev-parse "$SHA:dev-workflow"`가 **실패한 엔트리만**(D2) 그 sha를 지목해 1회 fetch한 뒤 다시 조회한다.
+설치 sha 객체가 **clone에 없는 엔트리만**(D2) 그 sha를 지목해 1회 fetch한 뒤 다시 조회한다. D2의 "subtree 조회 실패"를 객체 부재로 좁혀 적은 것이다 — 객체가 있는데 경로가 없으면 fetch로 풀리지 않는다.
 
 ```bash
 # 엔트리 순회 전에 1회 — 보강 fetch 전체가 나눠 쓰는 공유 상한(D10)
 DL=$(( $(date +%s) + 30 ))
 
-# 엔트리마다
-T=""
+# 엔트리마다 — 끝에 T(subtree id)가 비면 WHY가 판정 불가 사유(3b)
+T=""; WHY=""
 if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
-  :   # 판정 불가(설치 sha 형식 이상) — rev-parse도 fetch도 하지 않는다
+  WHY="설치 sha 형식 이상"                 # 객체 조회도 fetch도 하지 않는다(D3)
 else
-  T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
-  if [ -z "$T" ] && [ -z "$TIMED_OUT" ]; then
+  TY="$(git -C "$C" cat-file -t "$SHA" 2>/dev/null)"
+  if [ -z "$TY" ]; then                    # 객체가 clone에 없는 엔트리만 보강(D2)
     LEFT=$(( DL - $(date +%s) ))
-    if [ "$LEFT" -le 0 ]; then
-      TIMED_OUT=1   # 공유 상한 소진 — 이 엔트리부터 fetch 없이 판정 불가(시간 초과)
+    if [ -n "$TIMED_OUT" ] || [ "$LEFT" -le 0 ]; then
+      TIMED_OUT=1; WHY="시간 초과"          # D10 — fetch 없이 건너뜀
     else
       if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
       perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
-      [ "$RC" = 142 ] && TIMED_OUT=1
+      if [ "$RC" = 142 ]; then
+        TIMED_OUT=1; WHY="시간 초과"
+      else
+        TY="$(git -C "$C" cat-file -t "$SHA" 2>/dev/null)"
+        [ -n "$TY" ] || WHY="보강 fetch 실패"   # RC 무관 — 원격 부재와 접근 오류를 가르지 않는다
+      fi
+    fi
+  fi
+  if [ -z "$WHY" ]; then
+    if [ "$TY" != commit ]; then
+      WHY="설치 sha 객체 유형 이상"          # tree·tag·blob — subtree를 조회하지 않는다
+    else
       T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+      [ -n "$T" ] || WHY="설치 커밋에 dev-workflow/ 없음"
     fi
   fi
 fi
 ```
 
-- **sha 형식 검사(D3)는 어떤 `rev-parse`보다 먼저**: `^[0-9a-f]{40}$`가 아니면 subtree 조회도 fetch도 하지 않고 판정 불가 사유 = **"설치 sha 형식 이상"**. 조회 뒤에 검사하면 `HEAD`·`FETCH_HEAD`·해석 가능한 짧은 sha가 `rev-parse`를 통과해 형식 검사를 우회하고, 로컬 최신 revision을 가리킬 경우 거짓 "최신"이 나온다((b) 위반). 옵션 모양 값(`--upload-pack=…`)이 git 옵션으로 해석되는 경로도 같은 검사가 막는다. `gitCommitSha` **결측**은 기존 분기(필드 결측 → 판정 불가)가 이 검사보다 먼저다(비목표 — 무변경).
+- **sha 형식 검사(D3)는 어떤 객체 조회보다 먼저**: `^[0-9a-f]{40}$`가 아니면 객체·subtree 조회도 fetch도 하지 않고 판정 불가 사유 = **"설치 sha 형식 이상"**. 조회 뒤에 검사하면 `HEAD`·`FETCH_HEAD`·해석 가능한 짧은 sha가 `rev-parse`를 통과해 형식 검사를 우회하고, 로컬 최신 revision을 가리킬 경우 거짓 "최신"이 나온다((b) 위반). 옵션 모양 값(`--upload-pack=…`)이 git 옵션으로 해석되는 경로도 같은 검사가 막는다. `gitCommitSha` **결측**은 기존 분기(필드 결측 → 판정 불가)가 이 검사보다 먼저다(비목표 — 무변경).
+- **객체 유형이 commit일 때만 subtree를 조회한다**(R2-1 사용자 판정): `<sha>:dev-workflow` 문법은 tree-ish를 모두 받으므로, 형식만 맞는 **tree OID**(예: 최신 커밋의 root tree)가 들어오면 설치 커밋 근거 없이 최신 subtree id가 나와 거짓 "최신"이 된다. fetch로 받아 온 경우에도 같은 검사를 다시 거친다. commit이 아니면 판정 불가 사유 = **"설치 sha 객체 유형 이상"**.
 - **`--depth 1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다.
 - **시간 초과 1회면 나머지 건너뜀(D10)** — 상한 30초는 **보강 fetch 전체가 나눠 쓰는 공유 deadline**(`DL`)이다. 각 fetch에는 남은 시간만 alarm으로 준다. 보강 fetch가 상한(exit 142)에 걸리거나 남은 시간이 0 이하면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 여러 fetch가 상한 직전에 142가 아닌 코드로 실패해도 **누적 추가 대기는 30초를 넘지 않는다**.
 - 기존 네트워크 규약(`GIT_TERMINAL_PROMPT=0` · perl wall-clock 상한 · stderr `2>/dev/null`) 그대로.
@@ -69,15 +82,17 @@ fi
 
 ### 3b. 판정 불가 사유·조치의 원인별 분리 (D4)
 
-보강 뒤에도 `T`가 비면 판정 불가이고, 사유와 조치를 원인별로 나눈다. **어느 경우에도 "최신"·"뒤처짐"이라 단정하지 않는다**((b)).
+보강 뒤에도 `T`가 비면 판정 불가이고, 사유(`WHY`)와 조치를 원인별로 나눈다. **어느 경우에도 "최신"·"뒤처짐"이라 단정하지 않는다**((b)).
 
 | 원인 | 판정 불가 사유 | 조치 |
 |---|---|---|
 | sha 형식 이상 | 설치 sha 형식 이상 | 그 스코프 갱신 명령(조치 표의 스코프별 행) |
-| 보강 fetch 시간 초과(exit 142) 또는 D10으로 건너뜀 | 시간 초과 | 재시도 |
-| fetch는 끝났는데 객체 없음 | 설치된 커밋이 원격에 없음(force-push 등) | 그 스코프 갱신 명령 — 재시도로는 해소되지 않는다 |
+| 객체가 commit이 아님 | 설치 sha 객체 유형 이상 | 그 스코프 갱신 명령 |
+| 보강 fetch 시간 초과(exit 142) · 공유 상한 소진 · D10으로 건너뜀 | 시간 초과 | 재시도 |
+| 시간 초과가 아닌 fetch 뒤에도 객체 없음 | 보강 fetch 실패(원격에 없거나 접근 오류) | 재시도 — **같은 결과가 반복되면** 그 스코프 갱신 명령 |
+| commit은 있는데 `dev-workflow/` 경로 없음 | 설치 커밋에 dev-workflow/ 없음 | 그 스코프 갱신 명령 |
 
-같은 실행에서 `ls-remote`·기본 브랜치 fetch가 이미 성공했으므로, 시간 초과가 아닌 실패는 네트워크보다 원격 부재로 읽는다.
+**시간 초과가 아닌 fetch 실패는 원인을 단정하지 않는다**(R1-2 사용자 판정). 같은 결과(객체 없음)가 force-push로 커밋이 원격에서 사라진 경우에도, 인증·잠금·디스크 오류 같은 일시 장애에도 나온다 — 종료코드·빈 결과만으로는 둘을 가를 수 없고, git 오류 문구 판별은 git·호스트 버전에 따라 깨진다. 조치를 "재시도 → 반복되면 갱신"으로 두어 일시 장애는 재시도로 풀리고, 원격 부재는 재시도가 무한 반복되지 않는다(D4 취지).
 
 ### 3c. 보조 근거를 트리 비교로 (D5)
 
@@ -91,7 +106,7 @@ fi
 
 - **AC1**: shallow clone(tip 깊이 1)에서 tip보다 오래된 도달 가능한 설치 sha에 대해 3a 절차가 subtree id를 내고 1행이 최신/뒤처짐을 판정한다 — scratch `--depth 1` clone + `9613013` → `b0f5c02`.
 - **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지. · 보강 fetch 전에 `FETCH_HEAD`에 임의 값을 기록해 두면 fetch 뒤에도 그 값이 불변이고 subtree 조회는 성공한다(shallow·full 모두).
-- **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "설치된 커밋이 원격에 없음" + 스코프 갱신 조치로 적힌다 · 형식이 깨진 sha(`--upload-pack=x` 등)와 **로컬에서 해석은 되는 비정상 값(`HEAD`·`FETCH_HEAD`·clone tip의 7자리 짧은 sha)**은 **subtree 조회·fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"·"뒤처짐"이 나오지 않는다((b)).
+- **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "보강 fetch 실패(원격에 없거나 접근 오류)" + "재시도 → 반복되면 스코프 갱신" 조치로 적힌다 · origin URL을 도달 불가 경로로 바꾼 scratch clone에서도 같은 사유다("원격에 없음"으로 단정하지 않는다) · 현재 커밋의 **root tree OID**는 fetch 없이 "설치 sha 객체 유형 이상" · scratch clone에서 `dev-workflow/`를 뺀 로컬 커밋의 sha는 "설치 커밋에 dev-workflow/ 없음" · 형식이 깨진 sha(`--upload-pack=x` 등)와 **로컬에서 해석은 되는 비정상 값(`HEAD`·`FETCH_HEAD`·clone tip의 7자리 짧은 sha)**은 **subtree 조회·fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"·"뒤처짐"이 나오지 않는다((b)).
 - **AC4**: 뒤처짐 보조 근거가 `git diff --stat "$SHA" "$OID" -- dev-workflow/`이고, SKILL.md에 `log --oneline "$SHA..` 형태가 남지 않는다.
 - **AC5**: 보강 fetch가 시간 초과에 걸리거나 공유 deadline(`DL`)이 소진되면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적히고, 각 fetch의 alarm 값이 고정 30이 아니라 **남은 시간**이다 — SKILL.md 문면 확인(재현 조작 불요, D9).
 - **AC6**: 변경 파일 = doctor `SKILL.md` + 이 spec(+ 릴리스 시 plugin.json·README 규약대로).
