@@ -151,7 +151,7 @@ else
       TIMED_OUT=1; WHY="시간 초과"          # fetch 없이 건너뜀
     else
       if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth=1"; else D=""; fi
-      perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
+      perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head --no-tags $D origin "$SHA" 2>/dev/null; RC=$?
       if [ "$RC" = 142 ]; then
         TIMED_OUT=1; WHY="시간 초과"
       else
@@ -178,7 +178,7 @@ printf 'ENTRY\t%s\t%s\t%s\n' "$E" "${T:--}" "${WHY:--}"   # 엔트리마다 한 
 - **객체 유형이 commit일 때만 subtree를 조회한다.** `<sha>:dev-workflow`는 tree-ish를 모두 받으므로, 형식만 맞는 tree OID(예: 최신 커밋의 root tree)가 들어오면 설치 커밋 근거 없이 최신 subtree id가 나온다. fetch로 받아 온 경우에도 같은 검사를 다시 거친다.
 - **보강은 객체가 clone에 없는 엔트리만 한다** — 객체가 있는데 경로가 없으면 fetch로 풀리지 않는다. 네트워크 호출·clone 변화를 최소로 둔다.
 - **`--depth=1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다. **`=`로 붙여 한 토큰으로 쓴다** — zsh(macOS 기본 셸)는 따옴표 없는 `$D`를 단어로 쪼개지 않아 `--depth 1`이면 git이 `unknown option`(exit 129)으로 실패하고, 모든 shallow 보강이 "보강 fetch 실패"로 떨어진다(실측).
-- **`--no-write-fetch-head`** — 객체만 필요하다. clone은 공유 상태라, `FETCH_HEAD`를 덮어쓰면 동시에 도는 `/plugin update`·다른 doctor가 자기 fetch와 `FETCH_HEAD` 소비 사이에 옛 설치 sha를 소비할 수 있다. 최신 기준은 위에서 고정한 `$OID` 그대로다.
+- **`--no-write-fetch-head`** — 객체만 필요하다. clone은 공유 상태라, `FETCH_HEAD`를 덮어쓰면 동시에 도는 `/plugin update`·다른 doctor가 자기 fetch와 `FETCH_HEAD` 소비 사이에 옛 설치 sha를 소비할 수 있다. 최신 기준은 위에서 고정한 `$OID` 그대로다. **`--no-tags`**로 태그 자동 추적도 끈다 — sha 지목 fetch는 ref를 저장하지 않아 git 2.54에서는 태그가 생기지 않지만(실측), git 버전에 기대지 않고 ref 불변을 명시한다.
 - **상한 30초는 보강 fetch 전체의 공유 마감(`DL`)이다.** 각 fetch에는 남은 시간만 준다. 한 번이라도 상한(exit 142)에 걸리거나 남은 시간이 0 이하면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 여러 fetch가 상한 직전에 142가 아닌 코드로 실패해도 누적 추가 대기는 30초를 넘지 않고, 표 4행 출력이 보장된다.
 - `.git/shallow`는 갱신되므로 이 순간 같은 clone에서 `/plugin update`가 돌면 한쪽이 git 잠금 충돌로 실패할 수 있다 — 손상이 아니라 실패로 드러나고 재실행으로 풀린다(알고도 두는 위험).
 

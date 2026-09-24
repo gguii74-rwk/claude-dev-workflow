@@ -52,7 +52,7 @@ else
       TIMED_OUT=1; WHY="시간 초과"          # D10 — fetch 없이 건너뜀
     else
       if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth=1"; else D=""; fi
-      perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
+      perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head --no-tags $D origin "$SHA" 2>/dev/null; RC=$?
       if [ "$RC" = 142 ]; then
         TIMED_OUT=1; WHY="시간 초과"
       else
@@ -107,7 +107,7 @@ printf 'ENTRY\t%s\t%s\t%s\n' "$E" "${T:--}" "${WHY:--}"   # 엔트리마다 한 
 
 - **AC1**: shallow clone(tip 깊이 1)에서 tip보다 오래된 도달 가능한 설치 sha에 대해 3a 절차가 subtree id를 내고 1행이 최신/뒤처짐을 판정한다 — scratch `--depth 1` clone + `9613013` → `b0f5c02`.
 - **AC1·AC2·AC3는 bash와 zsh 두 셸로** SKILL.md 블록을 실행해 같은 결과여야 한다(macOS Bash 도구 기본 셸 = zsh).
-- **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지. · 보강 fetch 전에 `FETCH_HEAD`에 임의 값을 기록해 두면 fetch 뒤에도 그 값이 불변이고 subtree 조회는 성공한다(shallow·full 모두).
+- **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지. · 보강 fetch 전에 `FETCH_HEAD`에 임의 값을 기록해 두면 fetch 뒤에도 그 값이 불변이고 subtree 조회는 성공한다(shallow·full 모두). 태그를 포함한 전체 ref(`git show-ref`)도 fetch 전후 불변이다 — 보강 fetch는 `--no-tags`(태그가 설치 sha를 가리키는 원격에서 검증).
 - **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "보강 fetch 실패(원격에 없거나 접근 오류)" + "재시도 → 반복되면 스코프 갱신" 조치로 적힌다 · origin URL을 도달 불가 경로로 바꾼 scratch clone에서도 같은 사유다("원격에 없음"으로 단정하지 않는다) · 현재 커밋의 **root tree OID**는 fetch 없이 "설치 sha 객체 유형 이상" · scratch clone에서 `dev-workflow/`를 뺀 로컬 커밋의 sha는 "설치 커밋에 dev-workflow/ 없음" · 형식이 깨진 sha(`--upload-pack=x` 등)와 **로컬에서 해석은 되는 비정상 값(`HEAD`·`FETCH_HEAD`·clone tip의 7자리 짧은 sha)**은 **subtree 조회·fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"·"뒤처짐"이 나오지 않는다((b)). 블록은 **엔트리마다 `ENTRY<TAB><1번 출력 줄(KEY·scope·projectPath·version·sha)><TAB>T<TAB>WHY` 한 줄을 출력**한다(성공·각 실패 사유 모두 — 셸 변수는 실행 뒤 사라진다). 고른 마켓플레이스 키의 엔트리만 블록을 돌고, 같은 sha를 가진 다른 키 엔트리는 결과를 공유하지 않는다(판정 불가 — 대조 기준 미확보).
 - **AC4**: 뒤처짐 보조 근거가 `git diff --stat "$SHA" "$OID" -- dev-workflow/`이고, SKILL.md에 `log --oneline "$SHA..` 형태가 남지 않는다.
 - **AC5**: 보강 fetch가 시간 초과에 걸리거나 공유 deadline(`DL`)이 소진되면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적히고, 각 fetch의 alarm 값이 고정 30이 아니라 **남은 시간**이다 — SKILL.md 문면 확인(재현 조작 불요, D9).
