@@ -1,6 +1,6 @@
 # doctor 설치본 판정 — shallow 마켓플레이스 clone에서 옛 설치 sha 보강 조회
 
-- 단계: **3 harden-spec 종결 (2026-09-24, D1~D10)** → **4 review-loop(spec) 종결 (2026-09-24, C1 approve — 말미 ledger)** — 다음 = 7 impl. 경로 = **경량 — 4 수행, 5·6 생략**(D8, 6은 5 생략의 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 릴리스는 오르카 후계 세션 트랙 task-06 종결 **뒤**(D6).
+- 단계: **3 harden-spec 종결 (2026-09-24, D1~D10)** → **4 review-loop(spec) 종결 (2026-09-24, C1 approve)** → **7 impl `3d33b83` → 8 review-loop(impl) 종결 (2026-09-24, C1 approve)** — 말미 ledger 2종. 다음 = 9 릴리스(D6 — task-06 뒤). 경로 = **경량 — 4 수행, 5·6 생략**(D8, 6은 5 생략의 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 릴리스는 오르카 후계 세션 트랙 task-06 종결 **뒤**(D6).
 - 출처: 2026-09-24 맥북 `/dev-workflow:doctor` 실행 — ops-hub project 스코프(0.18.0 · `9613013`)가 **판정 불가**로 나왔다. 원인 = 마켓플레이스 clone이 shallow(`.git/shallow` = `3fbc355` 1줄)라 설치 sha 객체가 clone에 없다.
 - 대상: `dev-workflow/skills/doctor/SKILL.md` — 핵심 원칙의 fetch 예외 문단 1구절 · 점검 2의 "엔트리마다 설치본 subtree id" 절차와 보조 근거 · 조치 안내의 판정 불가 행.
 
@@ -185,6 +185,9 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 | R1 | 적대(자동) | 3 (high 1) | 0 → 1 | verdict needs-attention · 신규 1 · FIXED 1 |
 | R2 | 적대(자동) | 3 (high 1) | 1 → 2 | verdict needs-attention · 신규 1 · FIXED 1(R1-1 수정의 회귀 — 지적 내용이 달라 계열 반복 아님) · R1-1 적대 비재출현(R2, 참고 — 큐 유지) · 신호 1 미발화(3→3, 2점뿐) |
 | R3 | 적대(자동, 경계) | 4 (루프 실측 high 1 + medium 1) | 2 → 4 | verdict needs-attention · 신규 1(R3-1) + **루프 실측 발견 1**(zsh `--depth 1` 단어 분할 — 리뷰어 미검출, R3-1 재현 시도 중 발견) · FIXED 2 · 큐 2건(R1-1·R2-1) 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · R3-1은 계열 3회째·재현 안 됨 → 사용자 판정(FIXED) · **신호 1 발화(3→3→4)** → 확인 모드 진입 |
+| C1 | 확인(일반 1/2) | — | 4 → 0 | 완전 응답 · **소멸 4**(R1-1 `0d042e7` · R2-1 `c7065df` · 루프 실측 zsh `325ce87` · R3-1 `aedd0bb`) · 회귀 없음 · 감사 해당 없음(루프 직접 판정 0) · 신규 없음 · **verdict approve** · 확인 소진 1 → **성공 종료** |
+
+**종결(2026-09-24)**: 적대 3 · 확인 1 · score 3 → 3 → 4(전환 신호 1로 확인 진입) · FIXED 4(리뷰 3 + 루프 실측 1) · ACCEPTED/DEFERRED/OUT_OF_SCOPE/DUPLICATE 0 · 남은 low 0 · 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve. 다음 = 9 릴리스 patch 1.0.x(D6 — 오르카 후계 세션 트랙 task-06 종결 뒤) → push(사용자) → AC7 맥북 doctor 1회.
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
