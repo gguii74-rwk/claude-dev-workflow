@@ -191,6 +191,7 @@ C3 소멸 확인 1건: R5-3.
 | 2026-09-24 16:31 | `4770d6a` | GREEN 11/11 | impl R2-1 — C4 needle 1개 추가, `bc958e4` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN |
 | 2026-09-24 16:45 | `e9efda1` | GREEN 11/11 | impl R3-1·M3·M6 — C4 needle 4개 · C11 `CLAUDE_PLUGIN_DATA` 부재/빈 값 케이스(테스트 env에 명시 주입), `4770d6a` 훅에서 C4·C11 RED(pass 9 / fail 2) 확인 뒤 GREEN · 셸 env에서 변수를 빼도 GREEN · 실제 상태 파일 프로브 `GATE_OFF FOREIGN_ACTIVE=0`, 변수 제거 시 `STATE_UNREADABLE` exit 2 |
 | 2026-09-24 17:33 | `ec0d728` | GREEN 11/11 | AC6 1회차 2행 실패 복구(M1 재론) — C4 needle 교체 1·추가 1(생성 명령 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude`·주석), `3fbc355` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · 테스트 파일은 spark2 사본을 맥북 `.remember/hook-test-1.0.0/`로 복사해 실행 |
+| 2026-09-24 17:52 | `28a4f37` | GREEN 11/11 | impl F1-1 — C4 needle 경계 확장(`--json → 새 핸들`), `ec0d728` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · `node --check` 통과 |
 
 GREEN 원문:
 ````
@@ -251,6 +252,9 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | 훅 · [M1 재론 — AC6 1회차 2행 실패] 후계 claude가 기동 직후 탭 제목을 덮어써(`Claude Code` → 대화 요약) create 응답 유실 시 `terminal list` title 정확 조회가 0건 · 후계 제목 고정 | medium | FIXED `ec0d728` (**사용자 판정** — AC6 2행 실패 → 복구 절차, 수정 방식 선택) | M1(ACCEPTED)의 재론 조건 "실사용에서 발생"을 AC6 1회차가 실증(생성 5초 뒤 목록 title = `Claude Code`, 이후 `Review loop 재개 …`, 정확 조회 0건). 생성 명령 = `--command "CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude"` — 시험 터미널에서 대화 1턴 뒤에도 title 유지 실측. C4 needle 교체 1·추가 1(`3fbc355` RED → GREEN) |
+| 훅 · [F1-1] (2-1) 생성 명령 `--json` 바로 뒤에 설명 괄호가 붙어 명령 경계가 없음 — 복사 실행 시 bash `(` 구문 오류·zsh glob qualifier로 후계 생성 실패 · 명령을 종료하고 C4가 경계까지 검사 | medium | FIXED `28a4f37` (자동 모드) | `ec0d728`이 만든 결함(M1 재론 아님 — 리뷰어 명시). 설명문을 `생성(…):` 앞쪽으로 옮기고 C4 needle을 `--json → 새 핸들`까지 확장(`ec0d728` 훅 RED → GREEN 11/11), `node --check` 통과 |
+
+- F1 적대(자동, 소진 1/5, target `7948bef`): score 1(medium 1) · 미확인 FIXED 큐 1 → 2(M1 재론 · F1-1) · verdict needs-attention · 실행 로그 18건 · batch 적재 0 · 루프 직접 판정 0
 
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 맥북 오르카 세션이 기록
 
