@@ -62,15 +62,15 @@ export function decideNudge({ ratio, threshold, stopHookActive, lastNudgeStep, o
 
 task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함한다(테스트가 `includes`로 대조). 괄호는 spec 근거.
 
-- (2-0): `ORCA_CLI_COMMAND가 있으면 그 값, 없고 ORCA_DEV_REPO_ROOT가 있으면 orca-dev, 그 외 orca` · `"$CLI" terminal show --terminal "<옛 핸들>" --json` · `installed_plugins.json` · `resolveStateFile(process.cwd())` · `stopReviewGate===true?"GATE_ON":"GATE_OFF"` · `STATE_UNREADABLE` · `GATE_ON이면 자동 인계를 하지 않고 [폴백]` · `loadState` · `status --all` (R1-1·R6-2·C2)
-- (2-1): `[A-Za-z0-9._-]` · `전체 길이 ≤ 40` · `TITLE="${NAME:0:$((40 - ${#TOKEN} - 1))}-$TOKEN"` · `"$CLI" terminal create --worktree active --title "$TITLE" --command "CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude" --json → 새 핸들`(1.0.1 — impl M1 재론·F1-1: 후계 claude의 탭 제목 덮어쓰기 차단 + `--json` 뒤 명령 경계) · `result.startupTerminal.handle` · `"$CLI" terminal list --worktree active --json` · `정확히 1개가 아니면(0 또는 2+) [폴백]` · `successor` (R2-3·R3-1·R4-1·D7)
+- (2-0): `ORCA_CLI_COMMAND가 있으면 그 값, 없고 ORCA_DEV_REPO_ROOT가 있으면 orca-dev, 그 외 orca` · `"$CLI" terminal show --terminal "<옛 핸들>" --json` · `installed_plugins.json` · `resolveStateFile(process.cwd())` · `stopReviewGate===true?"GATE_ON":"GATE_OFF"` · `STATE_UNREADABLE` · `GATE_ON이면 자동 인계를 하지 않고 [폴백]` · `loadState` · `status --all` (R1-1·R6-2·C2) · `ⓓ 생성 전 목록` · `result.terminals[].handle` · `result.truncated`(1.0.2 — AC6 2회차 원인 B: 생성 전 핸들 집합 기록)
+- (2-1): `[A-Za-z0-9._-]` · `전체 길이 ≤ 40` · `TITLE="${NAME:0:$((40 - ${#TOKEN} - 1))}-$TOKEN"` · `"$CLI" terminal create --worktree active --title "$TITLE" --command claude --json → 새 핸들`(1.0.2 — AC6 2회차 원인 A: 1.0.1의 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`이 오르카 tui-idle 판정용 탭 제목 쓰기를 막아 (2-2)가 항상 시간 초과 → claude 그대로(D2), `--json` 뒤 명령 경계는 F1-1 유지) · `result.startupTerminal.handle` · `"$CLI" terminal list --worktree active --json` · `ⓓ에서 기록한 핸들 집합에 없는 새 핸들`(제목 회수 폐기 — 셸 PS1·claude가 제목을 덮어쓴다) · `정확히 1개가 아니면(0 또는 2+) [폴백]` · `successor` (R2-3·R3-1·R4-1·D7)
 - (2-2): `"$CLI" terminal wait --terminal "<새 핸들>" --for tui-idle --timeout-ms 90000 --json` · `--timeout-ms 180000`
 - (2-3): `cat > ".remember/successor-$TOKEN.prompt" <<'SUCCESSOR_PROMPT_EOF'` · `--wait-submit 15 --json --text "$(cat ".remember/successor-$TOKEN.prompt")"` · `result.send.prompt.stages에 turn_started` · `--wait-submit 30 --retry-request <id>` (R2-2·R1-2)
 - (2-4) 템플릿: `[0번째 동작 — 공유 브로커 단일 실행권 검사]` · `FOREIGN_ACTIVE` · `15초 간격` · `상한 10분` · `[첫 동작 — 옛 세션 정상 종료]` · `--terminal 생략 금지` · `"$CLI" terminal send --terminal "<옛 핸들>" --text "/exit" --enter --json` · `"$CLI" terminal wait --terminal "<옛 핸들>" --for exit --timeout-ms 30000 --json` · `tui-idle 불인정` · `Resume this session with` · `"$CLI" terminal close --terminal "<옛 핸들>" --json` · `close도 codex 시작도 하지 말고` · `닫기가 실패하면 사용자에게 알리고 codex 라운드를 시작하지 마라` · `다른 단계(spec→plan, plan→impl)의 시작이면 시작하지 말고 사용자에게 확인하라` · `/review-loop --resume` (R5-3·R6-1a·R2-1·R5-2·C1·D4·D9)
 - (2-5): `(2-5) turn_started를 확인했으면 더 아무것도 하지 말고 턴을 끝내세요`
-- [폴백]: `[폴백] 조건 4종: (a)` · `(b) (2-2) wait satisfied:false` · `(c) (2-3) turn_started 미확인` · `(d) CLI 실행 오류` · `재생성과 /clear 안내를 모두 차단` · `미전달이 확정되기 전(재관찰·재조정 중)에는 후계를 닫지 마세요` · `"$CLI" terminal wait --terminal "<새 핸들>" --for exit --timeout-ms 30000 --json` · `/exit 처리 증거 없이 close하지 마세요` · `소멸을 확인하고` · `소멸이 확인된 경우에만` · `/clear를 안내하지 말고 차단 상태` · CLEAR (F2·R1-3·D10·plan R4-1 — 정리 미확인이면 안내 없이 보고·정지)
+- [폴백]: `[폴백] 조건 4종: (a)` · `(b) (2-2) wait satisfied:false` · `(c) (2-3) turn_started 미확인` · `(d) CLI 실행 오류` · `생성 전후 핸들 집합 차분으로 회수` · `재생성과 /clear 안내를 모두 차단` · `미전달이 확정되기 전(재관찰·재조정 중)에는 후계를 닫지 마세요` · `"$CLI" terminal wait --terminal "<새 핸들>" --for exit --timeout-ms 30000 --json` · `/exit 처리 증거 없이 close하지 마세요` · `소멸을 확인하고` · `소멸이 확인된 경우에만` · `/clear를 안내하지 말고 차단 상태` · CLEAR (F2·R1-3·D10·plan R4-1 — 정리 미확인이면 안내 없이 보고·정지)
 - 변수 보존(plan R5-2): `자리표시자입니다 — 도구 호출마다 셸이 새로 시작` · `리터럴로 치환해 실행하라` — `$CLI`·`$TOKEN`·`$TITLE`·`<새 핸들>`은 문면상 자리표시자이고 실행 시 리터럴 치환(또는 같은 호출 안 해소·사용)을 지시한다.
-- 부정 요건: `자가 /clear는 불가` 0건 · `"$CLI" terminal (send|wait|close|read|show)` 뒤에 ` --terminal ` 없는 것 0건 · 옛 핸들 바인딩은 값 리터럴(`--terminal "term_…"`), 새 핸들은 `"<새 핸들>"` 자리표시자만 · 안전 문자 집합 밖 `ORCA_TERMINAL_HANDLE`은 오르카 경로에 들어가지 않는다(`resolveOrcaHandle` → null, E2E C8).
+- 부정 요건: `자가 /clear는 불가` 0건 · `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`·`title이 정확히`·`title 정확 조회` 0건(1.0.2) · `"$CLI" terminal (send|wait|close|read|show)` 뒤에 ` --terminal ` 없는 것 0건 · 옛 핸들 바인딩은 값 리터럴(`--terminal "term_…"`), 새 핸들은 `"<새 핸들>"` 자리표시자만 · 안전 문자 집합 밖 `ORCA_TERMINAL_HANDLE`은 오르카 경로에 들어가지 않는다(`resolveOrcaHandle` → null, E2E C8).
 
 `<옛 핸들>`은 실제 값(`orcaHandle`)으로 치환된 상태. 프롬프트 파일은 **줄바꿈 없이 한 줄**로 쓰라고 지시한다(TUI에 줄바꿈이 조기 제출로 들어갈 위험 제거 — F6 관찰 항목).
 
@@ -78,7 +78,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 
 - 파일: `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs` — `.remember/`는 gitignore(= claude-memories 심링크)라 repo 파일이 아니다(0.18.0 `harness-0.18.0`과 같은 위치 규약). "스크래치패드 실행"의 취지(repo에 테스트 파일 없음)를 충족하면서 세션·머신을 넘어 재실행할 수 있다.
 - 실행: `HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs`
-- 케이스 11개(C1~C11): C1·C2 비오르카 고정 문자열 · C3 비오르카 부정 · C4 오르카 needle 전부 · C5 재넛지 (2) 동일 · C6 `--terminal` 바인딩 · C7 판정 로직 회귀(stopHookActive 포함) · C8 E2E(`ORCA_TERMINAL_HANDLE` 유무·빈 문자열·안전 문자 집합 밖 핸들·stop_hook_active) · C9 제목 절단·정확 조회(bash 실행) · C10 셸 안전(bash 실행, 대조군 포함) · C11 상태 프로브 fail-closed(bash 실행 — reason에서 잘라낸 `STATE_PROBE_CMD`를 가짜 companion 루트·상태 파일로 실행: `[]`·비JSON·`{}`·`config`/`jobs` 한쪽 누락·`jobs` 비배열·`jobs[]` 항목 이탈·`config` 비객체·`stopReviewGate` 부재/비boolean(`"true"`·`1`) → `STATE_UNREADABLE` exit 2, 정상 객체(`saveState` 형태) → `GATE_ON FOREIGN_ACTIVE=1` / `GATE_OFF FOREIGN_ACTIVE=0`, 파일 부재 → `GATE_OFF FOREIGN_ACTIVE=0`).
+- 케이스 11개(C1~C11): C1·C2 비오르카 고정 문자열 · C3 비오르카 부정 · C4 오르카 needle 전부 · C5 재넛지 (2) 동일 · C6 `--terminal` 바인딩 · C7 판정 로직 회귀(stopHookActive 포함) · C8 E2E(`ORCA_TERMINAL_HANDLE` 유무·빈 문자열·안전 문자 집합 밖 핸들·stop_hook_active) · C9 제목 절단(bash 실행 — 1.0.2부터 제목은 표시용, 정확 조회 단언 삭제) · C10 셸 안전(bash 실행, 대조군 포함) · C11 상태 프로브 fail-closed(bash 실행 — reason에서 잘라낸 `STATE_PROBE_CMD`를 가짜 companion 루트·상태 파일로 실행: `[]`·비JSON·`{}`·`config`/`jobs` 한쪽 누락·`jobs` 비배열·`jobs[]` 항목 이탈·`config` 비객체·`stopReviewGate` 부재/비boolean(`"true"`·`1`) → `STATE_UNREADABLE` exit 2, 정상 객체(`saveState` 형태) → `GATE_ON FOREIGN_ACTIVE=1` / `GATE_OFF FOREIGN_ACTIVE=0`, 파일 부재 → `GATE_OFF FOREIGN_ACTIVE=0`).
 - 기대: 0.19.0 훅 = **RED 4 pass / 7 fail**(C3·C7·C9·C10만 통과) → task-02 후 **GREEN 11/11**.
 - **기록(AC5)** = 이 엔트리포인트 말미 `## 훅 테스트 기록 (AC5, D5)` 절 — task-02가 TAP 출력 원문(`ok 1 …` ~ `# fail 0`)을 인용해 커밋한다. review-loop(impl)에서 훅이 다시 바뀌면 재실행해 같은 절에 추가한다(spec "impl ledger에 기록"의 구체 위치 — review-loop(impl) ledger는 이 절을 참조).
 
@@ -192,8 +192,9 @@ C3 소멸 확인 1건: R5-3.
 | 2026-09-24 16:45 | `e9efda1` | GREEN 11/11 | impl R3-1·M3·M6 — C4 needle 4개 · C11 `CLAUDE_PLUGIN_DATA` 부재/빈 값 케이스(테스트 env에 명시 주입), `4770d6a` 훅에서 C4·C11 RED(pass 9 / fail 2) 확인 뒤 GREEN · 셸 env에서 변수를 빼도 GREEN · 실제 상태 파일 프로브 `GATE_OFF FOREIGN_ACTIVE=0`, 변수 제거 시 `STATE_UNREADABLE` exit 2 |
 | 2026-09-24 17:33 | `ec0d728` | GREEN 11/11 | AC6 1회차 2행 실패 복구(M1 재론) — C4 needle 교체 1·추가 1(생성 명령 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude`·주석), `3fbc355` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · 테스트 파일은 spark2 사본을 맥북 `.remember/hook-test-1.0.0/`로 복사해 실행 |
 | 2026-09-24 17:52 | `28a4f37` | GREEN 11/11 | impl F1-1 — C4 needle 경계 확장(`--json → 새 핸들`), `ec0d728` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · `node --check` 통과 |
+| 2026-09-24 19:45 | `8874868` | GREEN 11/11 | AC6 2회차 2·3행 실패 복구 — C4 needle 교체 1(`--command claude --json → 새 핸들`)·추가 5(ⓓ 생성 전 목록·`result.terminals[].handle`·`result.truncated`·핸들 집합 차분 2)·부정 3(`CLAUDE_CODE_DISABLE_TERMINAL_TITLE`·`title이 정확히`·`title 정확 조회` 0건), C9 제목 정확 조회 단언 삭제(제목은 표시용), `74c0f4d`(1.0.1) 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · `node --check` 통과 · spark2 외부 정본이 1.0.0판으로 남아 있어(1.0.1 복구는 맥북 사본) 이번에 현행화 · task-01 원문 재생성 테스트도 1.0.2 GREEN 11/11 · 1.0.1 C4 RED · **spark2 bash 실측**(19:43, 이 repo 워크트리): ⓓ 목록 ok·`truncated:false` → `create --command claude` → `tui-idle` `satisfied:true` 1초 → 생성 뒤 목록의 새 핸들 1건 = create 응답 핸들(그 시점 title 이미 `✳ Claude Code`) → `/exit` accepted → `--for exit` 시간 초과 → read 셸 프롬프트 복귀 → close ok → list 소멸 |
 
-GREEN 원문:
+GREEN 원문(최신 = `8874868`):
 ````
 ok 1 - C1 비오르카 최초 넛지 = 고정 문자열
 ok 2 - C2 비오르카 재넛지 = 고정 문자열
@@ -203,7 +204,7 @@ ok 5 - C5 오르카 재넛지 = 최초와 같은 (2) (D6: 지시 동일 + 사실
 ok 6 - C6 오르카 reason 안의 send/wait/close/read/show 전부 --terminal 바인딩(옛 핸들 또는 새 핸들)
 ok 7 - C7 판정 로직 불변(orcaHandle 유무와 무관)
 ok 8 - C8 E2E ORCA_TERMINAL_HANDLE 유무·안전 문자 집합으로 (2)가 갈린다
-ok 9 - C9 40자 초과 작업명에서도 토큰이 온전히 남고 title 정확 조회가 1건
+ok 9 - C9 40자 초과 작업명에서도 토큰이 온전히 남는다
 ok 10 - C10 정규화된 제목은 $()·백틱·따옴표가 없어 셸 큰따옴표 안에서 원문 그대로다
 ok 11 - C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE(exit 2)로 차단한다
 # tests 11
@@ -263,6 +264,12 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 
 **재진입 종결(2026-09-24)**: 적대 3 + 확인 1 = 총 4라운드(실행 실패 0) · 미판정 blocking 0 · 미확인 FIXED 큐 0 · 최종 verdict = FC1 merge-ready: yes. score 이력 1 → 1 → 0(신호 2로 확인 진입). disposition 집계(고유 fingerprint 4): FIXED 3(사용자 판정 1 M1 재론 · 자동 2 F1-1·F2-2) · ACCEPTED 1(F2-1, 루프 판정 — FC1 감사 타당) · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · low 0. 루프 건강: 재론률 0/4 · 철회 조항 0 · 사람개입률 1/4. 훅 테스트 최종 GREEN 11/11(`28a4f37`, 위 기록 절). **다음** = F2-1 보완 = `release: 1.0.1` 커밋 → push(사용자) → 맥북 `/plugin update` → 재시작 → `/dev-workflow:doctor` → AC6 2회차(task-06 단계 1부터).
 
+**재진입 2 — AC6 2회차 실패 복구(2026-09-24 spark2, task-06 복구 절차 R5-3)**: main 체크아웃(동시 진행 루프 없음) · base = `74c0f4d`(1.0.1 릴리스, SHA 고정 — 범위에 plan 문면 `b7a6014` 포함) · 예산 max 5 · confirm 2 · auto 3 · 보안 크리티컬 아님 · 게이트 = 훅 테스트 GREEN 11/11(`8874868`, 위 기록 절 — spark2 bash 실측 포함) + task-01 원문 재생성 GREEN. 라운드 표기 = `G<n>`(적대)·`GC<n>`(확인) — 위 R/C·F/FC와 구분.
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| 훅 · [AC6 2회차 2·3행 실패] 1.0.1 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`이 오르카 `tui-idle` 판정용 탭 제목 쓰기를 막아 (2-2) 기동 대기가 항상 시간 초과(3행) + bash PS1이 `--title`을 즉시 덮어써 create 응답 유실 시 제목 정확 조회 회수 불성립(2행) · claude 그대로 생성(D2) + 생성 전후 핸들 집합 차분 회수 | high | FIXED `8874868` · README 3종 `ca9d6ca` · 계약 동기화(SC-5·SC-6·AC6 2행 기대·task-01/02 원문·spec F2/F5/AC2) (**브리프 지시** — AC6 2회차 실패 → 복구 절차, 설계 = 브리프 검토 방향 A+B) | AC6 2회차 비고(원인 A 대조 프로브 45s timeout vs 1s · 원인 B `~/.bashrc` PS1 OSC 0). 이 수정은 재진입 1의 M1 재론 FIXED `ec0d728`(환경변수 접두)를 **철회**한다 — 그 수정이 A의 원인. (2-0)ⓓ 생성 전 목록(ok·`truncated:false` 아니면 폴백 — 후계 생성 전이라 정리 없음) · (2-1) 유실 시 재조회해 새 핸들 정확 1개만 회수, 0·2+·조회 실패·`truncated:true`면 폴백(차단 보고) · 제목은 표시용. C4 needle 교체 1·추가 5·부정 3, C9 정확 조회 단언 삭제(`74c0f4d` RED → GREEN). spark2 bash 실측: 새 핸들 1건 = create 핸들, tui-idle 1초 |
+
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 spark2 오르카 세션이 기록
 
 **대상** = 릴리스된 최신 1.0.x **설치본**(최소 1.0.0 — AC6 실패 복구 뒤에는 그 patch, task-06 복구 절차)으로 오르카 터미널에서 도는 **실제 트랙**의 세션 1회(수동 선적용 아님). 넛지 → 핸드오프 → 후계 스폰 → 옛 세션 종료(SessionEnd 정리) → 후계가 review-loop §0 스냅샷 대조로 재개. `CLAUDE_CTX_THRESHOLD`를 낮춰 재현한다(예: `orca terminal create --worktree active --title "ac6-old" --command "CLAUDE_CTX_THRESHOLD=0.05 claude" --json`) — 실 40%까지 기다릴 필요 없다(spec §6).
@@ -274,7 +281,7 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 | # | 관찰 항목 | 기대 | 관찰(명령 출력·시각) | 결과 |
 |---|---|---|---|---|
 | 1 | (2-0) 사전 검증·게이트 | `terminal show` ok:true · `GATE_OFF FOREIGN_ACTIVE=0` | | |
-| 2 | (2-1) 제목 정규화·토큰 | 제목 `[A-Za-z0-9._-]`만, ≤40, 끝 토큰 온전 · `terminal list` title 정확 1건 | | |
+| 2 | (2-1) 제목 정규화·토큰 | 제목 `[A-Za-z0-9._-]`만, ≤40, 끝 토큰 온전 · (2-0)ⓓ 생성 전 목록 ok·`truncated:false` · 생성 뒤 `terminal list`에서 생성 전 목록에 없던 새 핸들 정확 1건 = create 응답 핸들(1.0.2 — 제목 정확 조회 폐기) | | |
 | 3 | (2-2) 기동 대기 | `result.wait.satisfied: true` (90s 이내) | | |
 | 4 | (2-3) 전달 | `result.send.prompt.stages`에 `turn_started` · `--retry-request` 사용 여부 | | |
 | 5 | (2-5) 옛 세션 정지 | send 뒤 옛 세션 추가 턴 0(재넛지 없음 — `stop_hook_active` 통과) | | |
