@@ -136,6 +136,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 |---|---|---|---|---|
 | R1 | 적대(자동) | 5 (medium 5) | 0 → 5 | verdict needs-attention · 신규 5 · FIXED 5 `49806b1`(R1-1 재평가 high→medium) · batch 적재 0 · 루프 직접 판정 0 |
 | R2 | 적대(자동) | 3 (medium 3) | 5 → 8 | verdict needs-attention · 신규 3 · FIXED 3 `d722293` · R1 큐 5건 적대 비재출현(R2, 참고 — 큐 유지) · batch 적재 0 · 루프 직접 판정 0 · 신호 미발화(5→3 감소) |
+| R3 | 적대(자동, 경계) | 5 (high 1·medium 2) | 8 → 11 | verdict needs-attention · 신규 3 · FIXED 3 `378c92e`(R3-1·R3-2 재평가 high→medium) · 큐 8건 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 신호 1 미발화(5→3→5) · 신호 2 미발화 → 정밀 모드 R4 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -147,4 +148,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | task-05 · [R2-1] task-05가 impl 검토(8단계)보다 먼저 릴리스되도록 배치(deps=04만, 미존재 impl ledger 뒤에 절 추가) · SDD 범위 task-01~04 + review-loop(impl) 종결을 명시적 선행 게이트로 | medium | FIXED `d722293` | 엔트리포인트 경로·task 표 deps·"SDD 실행 범위 = task-01~04" 절, task-05 목적·Deps·단계 1 게이트(`## 적대검증 ledger (impl)` 존재 + 종결 기록)·Cautions. task 수는 5 유지(완료 기록 계약을 같은 표에서 받기 위해) |
 | task-02 · [R2-2] `config.stopReviewGate` 중첩 타입 이탈(문자열 `"true"`)이 `===true` 비교로 GATE_OFF 통과 · 필드 존재 시 boolean 검사 + job 항목 스키마 + C11 케이스 | medium | FIXED `d722293` | `jobsOk`(항목 객체·`status` 문자열)·`cfgOk`(`stopReviewGate` 있으면 boolean) 헬퍼 → 불일치 `STATE_UNREADABLE` exit 2. SC-4·SC-6·Cautions 갱신, C11 bad 케이스 4종 추가(`[null]`·`status:1`·`"true"`·`1`). R1-2와 같은 영역이나 컨테이너 검사 ≠ 중첩 필드 검사(별도 fingerprint) |
 | task-05 · [R2-3] AC6 11행·4머신 grep 게이트가 문서 전체 숫자 행·이름 1개로 통과 · 절 범위 추출 + 머신별 개별 grep | medium | FIXED `d722293` | awk로 AC6 절만 추출해 행 번호 `1,…,11` 정확 대조(task 표 행 제외), 4머신 `grep -q` 각각 OK, ledger(impl) 존재 grep 추가. task-05 표 원문으로 실행 확인 |
+| task-02 · [R3-1] 상태 파일의 필수 필드(`config`·`jobs`) 누락(`{}`)을 빈 상태로 오인 · 파일이 있으면 두 필드 필수 + C11 누락 케이스 | medium(재평가 ← high: companion `saveState`는 항상 `{version,config,jobs}`를 쓰므로 누락 = 부분 손상뿐, 검사 1줄) | FIXED `378c92e` | `jobsOk`·`cfgOk`에서 `undefined` 허용 제거, `stopReviewGate` boolean 필수. SC-4·SC-6·Cautions 갱신, C11 bad 케이스 `{}`·한쪽 누락·`config:{}` 추가, 정상 케이스는 `saveState` 형태. 실제 상태 파일(`keys: version,config,jobs`)로 필수 요구가 정상 경로를 막지 않음 확인 |
+| task-05 · [R3-2] impl 검토 종결 게이트가 impl ledger 헤더 이후 어디든 `종결` 1회로 통과 · 절 범위 한정 + 종결 표지·verdict·미판정 0·큐 0 명시 검사 | medium(재평가 ← high: 사람/세션이 순서대로 실행하는 9단계 게이트, 문면 결함) | FIXED `378c92e` | awk로 `## 적대검증 ledger (impl)`~다음 `##` 범위만, `**종결(` 행이 `미확인 FIXED 큐 0`·`미판정 blocking 0`·`verdict approve|빠른 종료`를 모두 담아야 1(단계 1 + AC). spec ledger 종결 행으로 1, impl 절 부재로 0 실행 확인 |
+| task-05 · [R3-3] AC6 표가 비어도 task-05가 `[x]`가 되어 트랙 완료로 복구됨 · AC6 실측을 별도 완료 행으로 + 11행 채움·eval 부기 게이트 | high | FIXED `378c92e` | task-06(AC6 실사용 기록) 신설 — Deps 05+push+맥북 갱신, SDD 범위 밖, AC = 11행 관찰 열 비어 있지 않고 결과 열 `통과`(빈 표 0 · 10통과+1실패 10 · 11통과 11 실행 확인) + eval 보고서 부기 grep·커밋. task 표 06행·AC6 매핑(05 `[x]` ≠ AC6)·SC-7·task-05 목적/Cautions/안내 동기. 트랙 완료 = 06행 `[x]` |
 
