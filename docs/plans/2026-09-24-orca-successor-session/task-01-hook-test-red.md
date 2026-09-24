@@ -21,6 +21,8 @@
 
 ### 1. 테스트 파일 작성
 
+> **정본 안내(2026-09-24, impl F2-2)**: 아래 원문은 task-01 생성 시점 스냅샷 + 1.0.1 생성 명령 동기화 줄이다. impl 라운드(I1·M4·R1-1·R2-1·batch·C11)에서 추가된 needle·케이스는 외부 정본 `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs`에만 있다(D5 — repo 파일 아님, 변경 이력 = 엔트리포인트 `## 훅 테스트 기록`). 테스트를 다시 만들 때는 외부 정본을 쓴다 — 이 원문으로 재생성해도 1.0.1 훅에서 GREEN 11/11이나 impl 라운드 회귀는 잡지 못한다.
+
 ```bash
 mkdir -p .remember/hook-test-1.0.0
 cat > .remember/hook-test-1.0.0/context-threshold-hook.test.mjs <<'TEST_EOF'
@@ -88,7 +90,9 @@ const NEEDLES = [
   "[A-Za-z0-9._-]",
   "전체 길이 ≤ 40",
   'TITLE="${NAME:0:$((40 - ${#TOKEN} - 1))}-$TOKEN"',
-  '"$CLI" terminal create --worktree active --title "$TITLE" --command claude --json',
+  // 1.0.1(AC6 1회차 2행 실패 복구 — impl M1 재론·F1-1): 환경변수 접두 + --json 뒤 명령 경계
+  '"$CLI" terminal create --worktree active --title "$TITLE" --command "CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude" --json → 새 핸들',
+  "탭 제목을 덮어쓰지 않게",
   "result.startupTerminal.handle",
   '"$CLI" terminal list --worktree active --json',
   "정확히 1개가 아니면(0 또는 2+) [폴백]",
