@@ -125,3 +125,19 @@
 > **이번 트랙 확정 결정 = D1~D12(§4, 2026-09-24 harden-spec, 전부 사용자 확정)** — 적대검증(4단계~)에서 재론하지 않는다. 특히: D1 같은 체크아웃(워크트리 핑퐁 불채택) · D2 `claude` 그대로 · D3 `/exit`→close 순서(후계 첫 동작) · D4 단계 경계 불가침 · D5 테스트 repo 파일 없음 · D8 스위치 없음 · D11 완료 조건 맥북 1회.
 >
 > **승계 기결정**: 08-09 D3·D4·D5·D6·D10·D24·D26(넛지 구간·재넛지·플래그) · 0.18.0 D1·D25·D26·D27(백그라운드 대기·문구 동일·필드 불변·하네스 2케이스) · 08-13 사용자 합의(사람 게이트는 넘기지 않는다).
+
+## 적대검증 ledger (spec)
+
+루프 시작 2026-09-24 · base = origin/main `ee0a356` · 예산 max 5 · confirm 2 · auto 3 · 보안 크리티컬 아님(일반 트랙). score 산식 = critical 4 · high 3 · medium 1(§2c 분류 직후·수정 전 스냅샷, 미확인 FIXED 큐 제외).
+
+| R | 모드 | score | 미확인 FIXED 큐 | 비고 |
+|---|---|---|---|---|
+| R1 | 적대(자동) | 5 (high 1·medium 2) | 0 → 3 | verdict needs-attention · 신규 3 · FIXED 3 |
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| spec:F1 · CLI 해소 규칙이 현재 Orca 인스턴스를 보장하지 않는다 · 해소 순서 명시 + 생성 전 핸들 조회 검증 | medium(재평가 ← high: 관리 터미널에서만 발화) | FIXED `6546ef3` | F1 (2) 0단계 신설: `ORCA_CLI_COMMAND`→`orca-dev`→`orca` + `terminal show` 사전 검증, 실패 시 F2. AC2 반영 |
+| spec:F1/F2 · accepted:true만으로 인계 확정 — 전달 유실·상호 종료 경쟁 · turn_started 확인 + --retry-request 재조정 + 미전달 확정 전 후계 유지 | high | FIXED `6546ef3` | F1 (3)(5) `turn_started` 기준, `--retry-request` 1회 재관찰(재전송 금지). F2에 "미전달 확정 전 후계 미종료" 명시. AC1·AC2 반영 |
+| spec:F2 · 폴백이 시작된 claude를 SIGKILL해 고아 상태 · claude 기동 확인 시 /exit→종료 대기→close + list 소멸 검증 | medium(재평가 ← high: 코덱스 미실행이라 브로커 없음) | FIXED `6546ef3` | F2 정리 방식: 기동 이력 있으면 `/exit`→tui-idle→close, 없으면 close 직접, `terminal list` 소멸 확인·실패 시 차단 보고. AC2 반영 |
+
+미확인 FIXED 큐 = 위 3건(소멸 확인 대기). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
