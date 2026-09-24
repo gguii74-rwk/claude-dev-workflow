@@ -1,0 +1,118 @@
+# doctor 설치본 판정 — shallow 마켓플레이스 clone에서 옛 설치 sha 보강 조회
+
+- 단계: **3 harden-spec 종결 (2026-09-24, D1~D10)** — 다음 = 4 review-loop(spec). 경로 = **경량 — 4 수행, 5·6 생략**(D8, 6은 5 생략의 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 릴리스는 오르카 후계 세션 트랙 task-06 종결 **뒤**(D6).
+- 출처: 2026-09-24 맥북 `/dev-workflow:doctor` 실행 — ops-hub project 스코프(0.18.0 · `9613013`)가 **판정 불가**로 나왔다. 원인 = 마켓플레이스 clone이 shallow(`.git/shallow` = `3fbc355` 1줄)라 설치 sha 객체가 clone에 없다.
+- 대상: `dev-workflow/skills/doctor/SKILL.md` — 핵심 원칙의 fetch 예외 문단 1구절 · 점검 2의 "엔트리마다 설치본 subtree id" 절차와 보조 근거 · 조치 안내의 판정 불가 행.
+
+## 1. 문제
+
+doctor 점검 1행의 존재 이유는 **"이 설치본이 뒤처졌나"**에 답하는 것이다. 그런데 마켓플레이스 clone은 shallow다(실측: `git rev-parse --is-shallow-repository` = `true`, shallow root = 원격 tip 1개). `/plugin update`가 clone을 tip 깊이 1로 맞추므로, **tip이 아닌 커밋에 고정된 설치 엔트리는 거의 항상 clone에 객체가 없다** → `git rev-parse "$SHA:dev-workflow"` 실패 → (b)에 따라 **판정 불가**.
+
+결과적으로 1행은 사실상 "최신" 또는 "판정 불가" 두 값만 낸다 — **뒤처진 설치본일수록 판정 불가**가 된다. 스코프가 갈리는 다중 설치(user 1.0.0 + ops-hub project 0.18.0)가 정확히 이 경우이고, 스코프 간 드리프트도 같은 subtree id를 쓰므로 판정 불가로 따라 떨어진다. 조치 안내는 "재시도"뿐이라 재시도해도 같은 결과가 반복된다.
+
+실측 근거(2026-09-24, scratch shallow clone `--depth 1` of `gguii74-rwk/claude-dev-workflow`):
+
+- 초기: `git cat-file -t 9613013` → `Not a valid object name`
+- `git fetch -q --depth 1 origin 961301371a61974b80a24b4a1e8c7cceecabb688` → 약 1.1초, 성공(GitHub은 도달 가능한 커밋의 sha 지목 fetch를 허용)
+- 이후 `git rev-parse 9613013…:dev-workflow` → `b0f5c02…`(개발 repo에서 같은 값 확인) — 최신 `fad6f81…`과 달라 **뒤처짐** 판정 가능
+- 부작용: `.git/shallow`에 `9613013…`이 한 줄 추가된다(작업 트리·ref 불변).
+
+## 2. 목표 / 범위 / 비목표
+
+**목표** — 설치 sha가 shallow clone에 없어서 생기는 판정 불가를 없애, 원격에 도달 가능한 모든 설치 엔트리에 대해 최신/뒤처짐을 판정한다.
+
+**범위** — 점검 2의 엔트리별 subtree 조회에 보강 fetch 추가, 보조 근거를 트리 비교로 교체, 판정 불가 사유·조치의 원인별 분리, 핵심 원칙 fetch 예외 문단에 1구절.
+
+**비목표** —
+- 원격 최신 기준(`ls-remote` → fetch → `$OID`) 절차 무변경.
+- clone을 unshallow하지 않는다(전체 이력 다운로드 — 진단 비용·clone 상태 변화가 과함).
+- 별도 임시 clone을 만들지 않는다(D1 — 마켓플레이스 clone에 받는다).
+- 다른 마켓플레이스 키·필드 결측 등 기존 판정 불가 분기 무변경.
+- 점검 1·3·4 무변경. 스크립트·훅 추가 없음(doctor 산출물 = `SKILL.md` 하나).
+
+## 3. 설계
+
+### 3a. 설치 sha 보강 fetch (D1·D2·D3·D10)
+
+엔트리별 `git rev-parse "$SHA:dev-workflow"`가 **실패한 엔트리만**(D2) 그 sha를 지목해 1회 fetch한 뒤 다시 조회한다.
+
+```bash
+T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+if [ -z "$T" ] && printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$' && [ -z "$TIMED_OUT" ]; then
+  if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
+  perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q $D origin "$SHA" 2>/dev/null; RC=$?
+  [ "$RC" = 142 ] && TIMED_OUT=1
+  T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+fi
+```
+
+- **sha 형식 검사(D3)**: `^[0-9a-f]{40}$`가 아니면 fetch하지 않는다 — 레지스트리 값이 옵션 모양(`--upload-pack=…`)이면 git이 옵션으로 해석할 수 있다. 판정 불가 사유 = **"설치 sha 형식 이상"**.
+- **`--depth 1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다.
+- **시간 초과 1회면 나머지 건너뜀(D10)**: 보강 fetch가 상한(exit 142)에 걸리면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 최악 추가 대기 30초 고정.
+- 기존 네트워크 규약(`GIT_TERMINAL_PROMPT=0` · perl wall-clock 상한 · stderr `2>/dev/null`) 그대로.
+- 보강 fetch는 `FETCH_HEAD`를 덮어쓰지만 무해하다 — 최신 기준은 이미 고정한 `$OID`를 쓴다(SKILL.md 점검 2 "고정한 `$OID`" 문단).
+- 스코프 간 드리프트는 같은 subtree id를 비교하므로 보강으로 함께 판정 가능해진다(별도 변경 없음).
+
+### 3b. 판정 불가 사유·조치의 원인별 분리 (D4)
+
+보강 뒤에도 `T`가 비면 판정 불가이고, 사유와 조치를 원인별로 나눈다. **어느 경우에도 "최신"·"뒤처짐"이라 단정하지 않는다**((b)).
+
+| 원인 | 판정 불가 사유 | 조치 |
+|---|---|---|
+| sha 형식 이상 | 설치 sha 형식 이상 | 그 스코프 갱신 명령(조치 표의 스코프별 행) |
+| 보강 fetch 시간 초과(exit 142) 또는 D10으로 건너뜀 | 시간 초과 | 재시도 |
+| fetch는 끝났는데 객체 없음 | 설치된 커밋이 원격에 없음(force-push 등) | 그 스코프 갱신 명령 — 재시도로는 해소되지 않는다 |
+
+같은 실행에서 `ls-remote`·기본 브랜치 fetch가 이미 성공했으므로, 시간 초과가 아닌 실패는 네트워크보다 원격 부재로 읽는다.
+
+### 3c. 보조 근거를 트리 비교로 (D5)
+
+`git log --oneline "$SHA..$OID" -- dev-workflow/`는 shallow 경계에서 이력이 잘려 **`$OID` 커밋 하나만** 나오는 등 오해를 부른다. 보조 근거를 **`git diff --stat "$SHA" "$OID" -- dev-workflow/`**로 교체한다 — 두 트리만 있으면 되고, 판정 규칙 (a)(트리 비교가 1차, 로그는 되돌림 이력에서 거짓 뒤처짐)와 같은 축이다. 커밋 제목은 보이지 않게 된다(수용).
+
+### 3d. fetch 예외의 범위 (D1)
+
+이전 doctor spec(`2026-08-09-doctor-marker-description.md`) D9의 "마켓플레이스 clone `fetch`는 진단 필수 조회로 예외"에 **설치 sha 지목 fetch도 포함**한다 — 객체와 shallow root 1줄이 늘 뿐 작업 트리·ref는 불변이다. SKILL.md 핵심 원칙의 예외 문단에 이 구절을 1개 덧붙인다.
+
+## 4. Acceptance Criteria
+
+- **AC1**: shallow clone(tip 깊이 1)에서 tip보다 오래된 도달 가능한 설치 sha에 대해 3a 절차가 subtree id를 내고 1행이 최신/뒤처짐을 판정한다 — scratch `--depth 1` clone + `9613013` → `b0f5c02`.
+- **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지.
+- **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "설치된 커밋이 원격에 없음" + 스코프 갱신 조치로 적힌다 · 형식이 깨진 sha(`--upload-pack=x` 등)는 **fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"이 나오지 않는다((b)).
+- **AC4**: 뒤처짐 보조 근거가 `git diff --stat "$SHA" "$OID" -- dev-workflow/`이고, SKILL.md에 `log --oneline "$SHA..` 형태가 남지 않는다.
+- **AC5**: 보강 fetch가 시간 초과에 걸리면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적힌다 — SKILL.md 문면 확인(재현 조작 불요, D9).
+- **AC6**: 변경 파일 = doctor `SKILL.md` + 이 spec(+ 릴리스 시 plugin.json·README 규약대로).
+- **AC7**(릴리스 뒤): 맥북 `/dev-workflow:doctor` 1회 — ops-hub project 엔트리가 판정 불가 대신 최신/뒤처짐으로 나온다(그 시점 설치 상태 기준). 이어서 `/plugin update` 1회가 늘어난 shallow root를 가진 clone에서 정상 동작한다(잔여 리스크 종결).
+
+## 5. 결정사항
+
+harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
+
+## 6. 미해결 질문
+
+없음 — 초안 §6의 2건은 D2·D7로 닫혔다.
+
+## 잔여 리스크 (DEFERRED)
+
+- **DEFERRED(사용자 유예): 없음** — 판단 갭 10건 전건 질문·확정(D1~D10).
+- **검증 필요(실측)**: shallow root가 늘어난 clone에서 이후 `/plugin update`(Claude Code의 마켓플레이스 갱신)가 정상 동작하는지 — Claude Code 내부 동작이라 repo 조회로 닫을 수 없다. AC7에서 1회 관찰로 닫는다.
+
+## 재논의 금지(기결정)
+
+> 표기: 접두어 없는 **D<n>은 이 트랙의 결정**이다. 이전 doctor 트랙 결정은 `doctor D<n>`으로 쓴다(`2026-08-09-doctor-marker-description.md`).
+
+**승계 기결정 (재론 금지)** — doctor **D3**(이 머신 vs 마켓플레이스 최신만) · doctor **D5**(`dev-workflow/` subtree 비교, raw sha 비교 폐기) · doctor **D6·D11**(근거 없으면 판정 불가, version 폴백 금지) · doctor **D9**(읽기 전용 = 사용자 작업물·설정 불가침, clone fetch 예외 — 이 트랙 D1이 범위를 확장) · 네트워크 규약(`GIT_TERMINAL_PROMPT=0` · perl alarm 상한 · stderr `2>/dev/null` — doctor impl fp-7b-I7·I9) · 원격 OID 고정(fp-7b-I14) · 교훈 원칙 **L1**(실측 없이 규약을 키우지 않는다).
+
+**이번 트랙 확정 (2026-09-24 사용자 판정)**:
+
+| # | 결정 | 근거 |
+|---|---|---|
+| D1 | **설치 sha 지목 fetch를 doctor D9 예외 안에 넣는다** — 마켓플레이스 clone에 받는다(임시 clone 없음) | 진단 필수 조회이고 작업 트리·ref·사용자 설정 불변. 뒤처짐을 판정하는 유일한 경로. `/plugin update` 영향은 잔여 리스크(AC7) |
+| D2 | **보강 fetch는 subtree 조회에 실패한 엔트리만** | 네트워크 호출·clone 변화 최소 |
+| D3 | **sha가 `^[0-9a-f]{40}$`일 때만 fetch** — 아니면 판정 불가(설치 sha 형식 이상) | 레지스트리 값이 옵션 모양이면 git 옵션 주입 경로. 한 줄 검사로 차단 |
+| D4 | **판정 불가 사유·조치를 원인별로 분리** — 시간 초과 = 재시도 / 원격에 없음·형식 이상 = 그 스코프 갱신 명령, "뒤처짐" 단정 금지 | 커밋이 사라진 경우 재시도 반복 루프 차단 |
+| D5 | **보조 근거 = `git diff --stat "$SHA" "$OID" -- dev-workflow/`로 교체**(log 폐기) | shallow에서 log가 잘려 오해 유발. 트리 비교는 규칙 (a)와 같은 축. 커밋 제목 소실 수용 |
+| D6 | **릴리스 = 오르카 후계 세션 트랙 task-06 종결 뒤** | AC6 증거 버전(1.0.0)·복구 patch 번호(1.0.1~)와 섞이지 않게 |
+| D7 | **버전 = patch(1.0.x)** — 번호는 릴리스 시점의 다음 patch | 의도된 동작(뒤처짐 판정)의 결함 수정 |
+| D8 | **경로 = 경량 — 4 수행, 5·6 생략**(6은 자동 귀결), planless(impl ledger = 이 spec 말미) | 변경이 SKILL.md 한 절·사용자 작업물·권한·데이터 비접촉. 이전 doctor 트랙과 같은 경로 |
+| D9 | **검증 게이트 = scratch clone 실측(AC1~AC3) + 문면 확인(AC4·AC5) + 릴리스 뒤 맥북 doctor 1회(AC7)** — writing-skills TDD 없음 | 변경이 명령 절차라 실측이 더 직접적 |
+| D10 | **보강 fetch 시간 초과 1회면 나머지 엔트리는 fetch 없이 판정 불가(시간 초과)** | 네트워크 정지 시 최악 추가 대기를 30초로 고정 — 표 4행 출력 보장(doctor 부분 실패 계속 원칙) |
