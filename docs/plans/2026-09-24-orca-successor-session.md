@@ -138,6 +138,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | R1 | 적대(자동) | 5 (medium 5) | 0 → 5 | verdict needs-attention · 신규 5 · FIXED 5 `49806b1`(R1-1 재평가 high→medium) · batch 적재 0 · 루프 직접 판정 0 |
 | R2 | 적대(자동) | 3 (medium 3) | 5 → 8 | verdict needs-attention · 신규 3 · FIXED 3 `d722293` · R1 큐 5건 적대 비재출현(R2, 참고 — 큐 유지) · batch 적재 0 · 루프 직접 판정 0 · 신호 미발화(5→3 감소) |
 | R3 | 적대(자동, 경계) | 5 (high 1·medium 2) | 8 → 11 | verdict needs-attention · 신규 3 · FIXED 3 `378c92e`(R3-1·R3-2 재평가 high→medium) · 큐 8건 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 신호 1 미발화(5→3→5) · 신호 2 미발화 → 정밀 모드 R4 |
+| R4 | 적대(정밀) | 0 | 8 → 8 | verdict **approve** · 신규 0(샌드박스 EROFS/EPERM 개별 명령 실패 — 정적 검토 완료, 유효) · 큐 8건 적대 비재출현(R4, 참고 — 큐 유지) · 소진 4 · **신호 2 발화**(수정 큐 소진) → batch 적재 0 → **확인 모드 진입(C1)** |
 | R4 | 적대(정밀) | 5 (medium 5 — R4 4 + 루프 자체 발견 L1) | 11 → 16 | verdict needs-attention · 신규 4 + L1 · FIXED 5 `f0febc9`(R4-1·R4-2 재평가 high→medium) · 큐 11건 적대 비재출현(R4, 참고 — 큐 유지) · 소진 4 · **신호 1 발화**(5→3→5→5: s4≥s3≥s2) → batch 적재 0(flush 없음) → **확인 모드 진입(C1)** |
 | C1 | 확인 | — | 16 → 2 | 완전 응답(16건 전부 명시) · **소멸 14**(R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1) · **blocking 재분류 2**(R3-2 종결 게이트가 생산자 계약 없는 형식 강제 → medium · R3-3 SDD 밖 task-05/06 완료 권위 미규정 → medium) · 회귀 = 재분류 2건과 동일 · 감사 해당 없음 · 신규 low 1(EOF 빈 줄 — DEFER_LOW, 부수 정리) · verdict merge-ready: no → 2건 FIXED `914a832` → **복귀 적대 1(R5, 상한 밖) → 재진입 확인(C2, 상한 밖)** · 확인 소진 1 · 복귀 사용 |
 | R5 | 적대(복귀, 상한 밖) | 3 (medium 3) | 2 → 5 | verdict needs-attention · 신규 3 · FIXED 3 `3def2a0` · 큐 2건 적대 비재출현(R5, 참고) · 루프 직접 판정 0 · 카운터 불변(예약분) → 재진입 확인 C2(상한 밖) |
@@ -236,3 +237,5 @@ review-loop(impl)에서 훅이 다시 바뀌면 재실행해 이 표에 행을 �
 | 훅 · [이월 M5] 첫 동작 전 옛 핸들 목록 부재 = 닫힌 것으로 보고 진행(D9 순서와 다름) | low(SDD minor) | ACCEPTED (**사용자 판정** batch) | 사용자가 옛 탭을 직접 닫는 흔한 경우에 자연스럽고 D9 취지(없으면 진행)와 일치 · 핸들 변경(오르카 재시작) 중 옛 claude 생존은 드묾 |
 
 **이월 소항목 — R1~R3 ESCALATE(batch-pending) → R3 batch flush에서 전부 사용자 판정으로 닫힘(위 표), 원문 = SDD ledger 사본 `.remember/sdd-2026-09-24-orca-successor-session-progress.md`**: M1 `terminal list` title은 Claude Code가 덮어쓴 실시간 제목이라 토큰 정확 조회 0건 가능(실측: 이 세션 탭 제목 "◐ 같은 작업 이어서 진행") · M2 `CLAUDE_PLUGIN_DATA` 부재 시 `/tmp/codex-companion` 폴백으로 GATE_OFF · M3 고아 running 잡이 매번 10분 대기 — 보고에 잡 id · M5 "첫 동작 전 목록 부재 = 진행"이 D9 순서와 다름 · M6 `successor-*.prompt` 미삭제 · task-01:325·task-02:400 AC `grep -c 'hook-test'` 오탐 문면 · F6 관찰: 실제 세션 /exit에 "Resume this session with" 표지 출력 여부.
+
+**확인 모드 진입(C1, 2026-09-24)**: 적대 4라운드 소진(max 5 중) · 신호 2 발화 · 미확인 FIXED 큐 8(plan 이월 `d5ae7c9` · R1-1 · R2-1 · R3-1 · M3 · M6 · AC 오탐 · F6) · 루프 직접 판정 0(임무 ③ 감사 대상 없음 — 전 판정이 사용자 판정) · 확인 예산 2 · 복귀 미사용.
