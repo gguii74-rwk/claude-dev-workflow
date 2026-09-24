@@ -134,6 +134,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | R | 모드 | score | 미확인 FIXED 큐 | 비고 |
 |---|---|---|---|---|
 | R1 | 적대(자동) | 5 (medium 5) | 0 → 5 | verdict needs-attention · 신규 5 · FIXED 5 `49806b1`(R1-1 재평가 high→medium) · batch 적재 0 · 루프 직접 판정 0 |
+| R2 | 적대(자동) | 3 (medium 3) | 5 → 8 | verdict needs-attention · 신규 3 · FIXED 3 `d722293` · R1 큐 5건 적대 비재출현(R2, 참고 — 큐 유지) · batch 적재 0 · 루프 직접 판정 0 · 신호 미발화(5→3 감소) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -142,4 +143,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | task-05 · [R1-3] F6 진행 중 넛지 검증(11행)을 "미발생"으로 생략해도 AC6 통과 · 11행 필수 + 재현 절차 | medium | FIXED `49806b1` | 11행 필수(통과 = 1~11), 조건 ③ 재현 = `CLAUDE_CTX_THRESHOLD=0.05`로 review-loop 시작 → §2b ③ 백그라운드 대기 턴의 Stop이 첫 넛지; 먼저 온 넛지면 임계 올려 재시작. SC-7·설치 안내 문안 동기 |
 | task-05 · [R1-4] AC6 메타문자 전달 검증이 정상 구현으로도 불성립(내용은 `<경로>`로 전달되지 않음) + 정규화 기대값 오기 · 프로브 재설계 + `ac6---echo-x---id--` | medium | FIXED `49806b1` | 전달 프로브 = 재개 프롬프트 템플릿 내장 `$(…)` 식(CLI·companion 해소식)이 확장 없이 도착하는지(`<경로>` 슬롯은 review-loop에서 고정 — spec F6 "경로" 항목의 구체화). 제목 기대값 정정(집합 밖 8자 → `-` 8개) |
 | task-04 · [R1-5] README 1.0.0 문단이 모든 실패에서 `/clear` 복귀를 약속(차단 경로 누락) · F2와 정확히 동기 | medium | FIXED `49806b1` | 3언어 문단: 정리·소멸 확인 뒤에만 `/clear` 안내, 후계 미확정(0/2+)·정리 미확인이면 차단 보고. 표·python 치환 원문 둘 다 갱신 |
+| task-05 · [R2-1] task-05가 impl 검토(8단계)보다 먼저 릴리스되도록 배치(deps=04만, 미존재 impl ledger 뒤에 절 추가) · SDD 범위 task-01~04 + review-loop(impl) 종결을 명시적 선행 게이트로 | medium | FIXED `d722293` | 엔트리포인트 경로·task 표 deps·"SDD 실행 범위 = task-01~04" 절, task-05 목적·Deps·단계 1 게이트(`## 적대검증 ledger (impl)` 존재 + 종결 기록)·Cautions. task 수는 5 유지(완료 기록 계약을 같은 표에서 받기 위해) |
+| task-02 · [R2-2] `config.stopReviewGate` 중첩 타입 이탈(문자열 `"true"`)이 `===true` 비교로 GATE_OFF 통과 · 필드 존재 시 boolean 검사 + job 항목 스키마 + C11 케이스 | medium | FIXED `d722293` | `jobsOk`(항목 객체·`status` 문자열)·`cfgOk`(`stopReviewGate` 있으면 boolean) 헬퍼 → 불일치 `STATE_UNREADABLE` exit 2. SC-4·SC-6·Cautions 갱신, C11 bad 케이스 4종 추가(`[null]`·`status:1`·`"true"`·`1`). R1-2와 같은 영역이나 컨테이너 검사 ≠ 중첩 필드 검사(별도 fingerprint) |
+| task-05 · [R2-3] AC6 11행·4머신 grep 게이트가 문서 전체 숫자 행·이름 1개로 통과 · 절 범위 추출 + 머신별 개별 grep | medium | FIXED `d722293` | awk로 AC6 절만 추출해 행 번호 `1,…,11` 정확 대조(task 표 행 제외), 4머신 `grep -q` 각각 OK, ledger(impl) 존재 grep 추가. task-05 표 원문으로 실행 확인 |
 
