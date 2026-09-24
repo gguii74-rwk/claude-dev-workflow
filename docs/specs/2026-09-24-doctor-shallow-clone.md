@@ -51,7 +51,7 @@ else
     if [ -n "$TIMED_OUT" ] || [ "$LEFT" -le 0 ]; then
       TIMED_OUT=1; WHY="시간 초과"          # D10 — fetch 없이 건너뜀
     else
-      if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
+      if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth=1"; else D=""; fi
       perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
       if [ "$RC" = 142 ]; then
         TIMED_OUT=1; WHY="시간 초과"
@@ -75,7 +75,7 @@ printf 'ENTRY\t%s\t%s\t%s\n' "$E" "${T:--}" "${WHY:--}"   # 엔트리마다 한 
 
 - **sha 형식 검사(D3)는 어떤 객체 조회보다 먼저**: `^[0-9a-f]{40}$`가 아니면 객체·subtree 조회도 fetch도 하지 않고 판정 불가 사유 = **"설치 sha 형식 이상"**. 조회 뒤에 검사하면 `HEAD`·`FETCH_HEAD`·해석 가능한 짧은 sha가 `rev-parse`를 통과해 형식 검사를 우회하고, 로컬 최신 revision을 가리킬 경우 거짓 "최신"이 나온다((b) 위반). 옵션 모양 값(`--upload-pack=…`)이 git 옵션으로 해석되는 경로도 같은 검사가 막는다. `gitCommitSha` **결측**은 기존 분기(필드 결측 → 판정 불가)가 이 검사보다 먼저다(비목표 — 무변경).
 - **객체 유형이 commit일 때만 subtree를 조회한다**(R2-1 사용자 판정): `<sha>:dev-workflow` 문법은 tree-ish를 모두 받으므로, 형식만 맞는 **tree OID**(예: 최신 커밋의 root tree)가 들어오면 설치 커밋 근거 없이 최신 subtree id가 나와 거짓 "최신"이 된다. fetch로 받아 온 경우에도 같은 검사를 다시 거친다. commit이 아니면 판정 불가 사유 = **"설치 sha 객체 유형 이상"**.
-- **`--depth 1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다.
+- **`--depth=1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다. `=`로 붙인 한 토큰이어야 zsh(단어 분할 없음)에서도 동작한다.
 - **시간 초과 1회면 나머지 건너뜀(D10)** — 상한 30초는 **보강 fetch 전체가 나눠 쓰는 공유 deadline**(`DL`)이다. 각 fetch에는 남은 시간만 alarm으로 준다. 보강 fetch가 상한(exit 142)에 걸리거나 남은 시간이 0 이하면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 여러 fetch가 상한 직전에 142가 아닌 코드로 실패해도 **누적 추가 대기는 30초를 넘지 않는다**.
 - 기존 네트워크 규약(`GIT_TERMINAL_PROMPT=0` · perl wall-clock 상한 · stderr `2>/dev/null`) 그대로.
 - **보강 fetch는 `FETCH_HEAD`를 쓰지 않는다(`--no-write-fetch-head`)** — 객체만 필요하고, 마켓플레이스 clone은 공유 상태라 동시에 도는 `/plugin update`·다른 doctor가 자기 fetch와 `FETCH_HEAD` 소비 사이에 덮어쓰인 옛 설치 sha를 소비할 수 있다. doctor 자신의 최신 기준은 원래대로 고정한 `$OID`를 쓴다(SKILL.md 점검 2 "고정한 `$OID`" 문단 — 기본 브랜치 fetch는 무변경).
@@ -106,6 +106,7 @@ printf 'ENTRY\t%s\t%s\t%s\n' "$E" "${T:--}" "${WHY:--}"   # 엔트리마다 한 
 ## 4. Acceptance Criteria
 
 - **AC1**: shallow clone(tip 깊이 1)에서 tip보다 오래된 도달 가능한 설치 sha에 대해 3a 절차가 subtree id를 내고 1행이 최신/뒤처짐을 판정한다 — scratch `--depth 1` clone + `9613013` → `b0f5c02`.
+- **AC1·AC2·AC3는 bash와 zsh 두 셸로** SKILL.md 블록을 실행해 같은 결과여야 한다(macOS Bash 도구 기본 셸 = zsh).
 - **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지. · 보강 fetch 전에 `FETCH_HEAD`에 임의 값을 기록해 두면 fetch 뒤에도 그 값이 불변이고 subtree 조회는 성공한다(shallow·full 모두).
 - **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "보강 fetch 실패(원격에 없거나 접근 오류)" + "재시도 → 반복되면 스코프 갱신" 조치로 적힌다 · origin URL을 도달 불가 경로로 바꾼 scratch clone에서도 같은 사유다("원격에 없음"으로 단정하지 않는다) · 현재 커밋의 **root tree OID**는 fetch 없이 "설치 sha 객체 유형 이상" · scratch clone에서 `dev-workflow/`를 뺀 로컬 커밋의 sha는 "설치 커밋에 dev-workflow/ 없음" · 형식이 깨진 sha(`--upload-pack=x` 등)와 **로컬에서 해석은 되는 비정상 값(`HEAD`·`FETCH_HEAD`·clone tip의 7자리 짧은 sha)**은 **subtree 조회·fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"·"뒤처짐"이 나오지 않는다((b)). 블록은 **엔트리마다 `ENTRY<TAB><1번 출력 줄(KEY·scope·projectPath·version·sha)><TAB>T<TAB>WHY` 한 줄을 출력**한다(성공·각 실패 사유 모두 — 셸 변수는 실행 뒤 사라진다). 고른 마켓플레이스 키의 엔트리만 블록을 돌고, 같은 sha를 가진 다른 키 엔트리는 결과를 공유하지 않는다(판정 불가 — 대조 기준 미확보).
 - **AC4**: 뒤처짐 보조 근거가 `git diff --stat "$SHA" "$OID" -- dev-workflow/`이고, SKILL.md에 `log --oneline "$SHA..` 형태가 남지 않는다.
