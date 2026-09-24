@@ -193,8 +193,9 @@ C3 소멸 확인 1건: R5-3.
 | 2026-09-24 17:33 | `ec0d728` | GREEN 11/11 | AC6 1회차 2행 실패 복구(M1 재론) — C4 needle 교체 1·추가 1(생성 명령 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude`·주석), `3fbc355` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · 테스트 파일은 spark2 사본을 맥북 `.remember/hook-test-1.0.0/`로 복사해 실행 |
 | 2026-09-24 17:52 | `28a4f37` | GREEN 11/11 | impl F1-1 — C4 needle 경계 확장(`--json → 새 핸들`), `ec0d728` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · `node --check` 통과 |
 | 2026-09-24 19:45 | `8874868` | GREEN 11/11 | AC6 2회차 2·3행 실패 복구 — C4 needle 교체 1(`--command claude --json → 새 핸들`)·추가 5(ⓓ 생성 전 목록·`result.terminals[].handle`·`result.truncated`·핸들 집합 차분 2)·부정 3(`CLAUDE_CODE_DISABLE_TERMINAL_TITLE`·`title이 정확히`·`title 정확 조회` 0건), C9 제목 정확 조회 단언 삭제(제목은 표시용), `74c0f4d`(1.0.1) 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · `node --check` 통과 · spark2 외부 정본이 1.0.0판으로 남아 있어(1.0.1 복구는 맥북 사본) 이번에 현행화 · task-01 원문 재생성 테스트도 1.0.2 GREEN 11/11 · 1.0.1 C4 RED · **spark2 bash 실측**(19:43, 이 repo 워크트리): ⓓ 목록 ok·`truncated:false` → `create --command claude` → `tui-idle` `satisfied:true` 1초 → 생성 뒤 목록의 새 핸들 1건 = create 응답 핸들(그 시점 title 이미 `✳ Claude Code`) → `/exit` accepted → `--for exit` 시간 초과 → read 셸 프롬프트 복귀 → close ok → list 소멸 |
+| 2026-09-24 19:50 | `2717496` | GREEN 11/11 | impl G1-1 — C4 needle 교체 1(`생성 전후 핸들 집합 차분으로 후보만 산출`)·추가 2(`후보가 1개여도 채택하지 않습니다`·정리 예외)·부정 2(`정확히 1개가 아니면`·`회수를 먼저 시도`), `c2ce2de` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · `node --check` 통과 · task-01 원문 재생성 GREEN 11/11 |
 
-GREEN 원문(최신 = `8874868`):
+GREEN 원문(최신 = `2717496`):
 ````
 ok 1 - C1 비오르카 최초 넛지 = 고정 문자열
 ok 2 - C2 비오르카 재넛지 = 고정 문자열
@@ -269,6 +270,9 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | 훅 · [AC6 2회차 2·3행 실패] 1.0.1 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`이 오르카 `tui-idle` 판정용 탭 제목 쓰기를 막아 (2-2) 기동 대기가 항상 시간 초과(3행) + bash PS1이 `--title`을 즉시 덮어써 create 응답 유실 시 제목 정확 조회 회수 불성립(2행) · claude 그대로 생성(D2) + 생성 전후 핸들 집합 차분 회수 | high | FIXED `8874868` · README 3종 `ca9d6ca` · 계약 동기화(SC-5·SC-6·AC6 2행 기대·task-01/02 원문·spec F2/F5/AC2) (**브리프 지시** — AC6 2회차 실패 → 복구 절차, 설계 = 브리프 검토 방향 A+B) | AC6 2회차 비고(원인 A 대조 프로브 45s timeout vs 1s · 원인 B `~/.bashrc` PS1 OSC 0). 이 수정은 재진입 1의 M1 재론 FIXED `ec0d728`(환경변수 접두)를 **철회**한다 — 그 수정이 A의 원인. (2-0)ⓓ 생성 전 목록(ok·`truncated:false` 아니면 폴백 — 후계 생성 전이라 정리 없음) · (2-1) 유실 시 재조회해 새 핸들 정확 1개만 회수, 0·2+·조회 실패·`truncated:true`면 폴백(차단 보고) · 제목은 표시용. C4 needle 교체 1·추가 5·부정 3, C9 정확 조회 단언 삭제(`74c0f4d` RED → GREEN). spark2 bash 실측: 새 핸들 1건 = create 핸들, tui-idle 1초 |
+| 훅 · [G1-1] create 응답 유실 시 생성 전후 핸들 차분의 새 핸들 1개를 후계로 채택하나 생성 요청과 연결하는 불변 식별 증거가 없어, create 실패·응답 유실 사이 사용자·다른 세션이 연 무관한 탭을 후계로 오인(프롬프트 전송·폴백 close) · 단일 후보도 채택 금지·차단 보고 | high | FIXED `2717496` · 동기화 `c620ef6` (자동 모드) | 오르카 `terminal show`/`list` 필드(handle·ptyId·tabId·title·preview 등)에 생성 요청 id가 없음을 확인 — 불변 식별자 부재. (2-1) 유실 시 차분은 보고용 후보만, 1개여도 전송·/exit·close 안 함 → [폴백] (d) 보고·정지(새 핸들을 모르므로 반쪽 정리 예외 명시). C4 needle 2(단일 후보 채택 금지·정리 예외)·교체 1·부정 2(`정확히 1개가 아니면`·`회수를 먼저 시도`) — `c2ce2de` 훅 RED(pass 10 / fail 1) → GREEN 11/11 · task-01 원문 재생성 GREEN · README 3종 동기 |
+
+- G1 적대(자동, 소진 1/5, target `c2ce2de`): score 3(high 1) · 미확인 FIXED 큐 1 → 2(AC6 2회차 복구 · G1-1) · verdict needs-attention · 실행 로그 9건(테스트 4건 EROFS/EPERM — 정적 검토 완료, 유효) · batch 적재 0 · 루프 직접 판정 0
 
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 spark2 오르카 세션이 기록
 
