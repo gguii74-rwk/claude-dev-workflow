@@ -44,7 +44,7 @@ else
   T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
   if [ -z "$T" ] && [ -z "$TIMED_OUT" ]; then
     if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
-    perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q $D origin "$SHA" 2>/dev/null; RC=$?
+    perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
     [ "$RC" = 142 ] && TIMED_OUT=1
     T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
   fi
@@ -55,7 +55,7 @@ fi
 - **`--depth 1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다.
 - **시간 초과 1회면 나머지 건너뜀(D10)**: 보강 fetch가 상한(exit 142)에 걸리면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 최악 추가 대기 30초 고정.
 - 기존 네트워크 규약(`GIT_TERMINAL_PROMPT=0` · perl wall-clock 상한 · stderr `2>/dev/null`) 그대로.
-- 보강 fetch는 `FETCH_HEAD`를 덮어쓰지만 무해하다 — 최신 기준은 이미 고정한 `$OID`를 쓴다(SKILL.md 점검 2 "고정한 `$OID`" 문단).
+- **보강 fetch는 `FETCH_HEAD`를 쓰지 않는다(`--no-write-fetch-head`)** — 객체만 필요하고, 마켓플레이스 clone은 공유 상태라 동시에 도는 `/plugin update`·다른 doctor가 자기 fetch와 `FETCH_HEAD` 소비 사이에 덮어쓰인 옛 설치 sha를 소비할 수 있다. doctor 자신의 최신 기준은 원래대로 고정한 `$OID`를 쓴다(SKILL.md 점검 2 "고정한 `$OID`" 문단 — 기본 브랜치 fetch는 무변경).
 - 스코프 간 드리프트는 같은 subtree id를 비교하므로 보강으로 함께 판정 가능해진다(별도 변경 없음).
 
 ### 3b. 판정 불가 사유·조치의 원인별 분리 (D4)
@@ -81,7 +81,7 @@ fi
 ## 4. Acceptance Criteria
 
 - **AC1**: shallow clone(tip 깊이 1)에서 tip보다 오래된 도달 가능한 설치 sha에 대해 3a 절차가 subtree id를 내고 1행이 최신/뒤처짐을 판정한다 — scratch `--depth 1` clone + `9613013` → `b0f5c02`.
-- **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지.
+- **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지. · 보강 fetch 전에 `FETCH_HEAD`에 임의 값을 기록해 두면 fetch 뒤에도 그 값이 불변이고 subtree 조회는 성공한다(shallow·full 모두).
 - **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "설치된 커밋이 원격에 없음" + 스코프 갱신 조치로 적힌다 · 형식이 깨진 sha(`--upload-pack=x` 등)와 **로컬에서 해석은 되는 비정상 값(`HEAD`·`FETCH_HEAD`·clone tip의 7자리 짧은 sha)**은 **subtree 조회·fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"·"뒤처짐"이 나오지 않는다((b)).
 - **AC4**: 뒤처짐 보조 근거가 `git diff --stat "$SHA" "$OID" -- dev-workflow/`이고, SKILL.md에 `log --oneline "$SHA..` 형태가 남지 않는다.
 - **AC5**: 보강 fetch가 시간 초과에 걸리면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적힌다 — SKILL.md 문면 확인(재현 조작 불요, D9).
