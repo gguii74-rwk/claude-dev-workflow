@@ -137,6 +137,7 @@
 | R1 | 적대(자동) | 5 (high 1·medium 2) | 0 → 3 | verdict needs-attention · 신규 3 · FIXED 3 |
 | R2 | 적대(자동) | 7 (high 2·medium 1) | 3 → 6 | verdict needs-attention · 신규 3 · FIXED 3 · R1 큐 3건 적대 비재출현(R2, 참고 — 큐 유지) |
 | R3 | 적대(자동, 경계) | 1 (medium 1) | 6 → 7 | 1차 실행 실패(본문 없음 — `orca terminal list` 실패 직후 종료, 소진 미반영, 잡 cancel, 사용자 판단으로 재실행) · 재실행 verdict needs-attention · 신규 1 · FIXED 1 · 큐 6건 적대 비재출현(R3, 참고) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 전환 신호 미발화 → 정밀 모드 R4 |
+| R4 | 적대(정밀) | 1 (medium 1) | 7 → 8 | verdict needs-attention · 신규 1 · FIXED 1 · 큐 7건 적대 비재출현(R4, 참고) · 신호 1 미발화(7→1→1) · 신호 2 미발화(수정 큐 1) · 소진 4 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -150,4 +151,6 @@
 
 | spec:F1 · 동적 탭 제목을 통한 셸 명령 치환 · 제목 안전 문자 집합 정규화(또는 파일 전달) | medium(재평가 ← high: 제목은 모델이 짓는 짧은 문자열, 정규화 1줄) | FIXED `5548688` | F1 (1) `[A-Za-z0-9._-]` 정규화·≤40. AC1·AC2·F5 셸 안전 케이스. R2-2와 별개 sink(`--title`) |
 
-미확인 FIXED 큐 = 위 7건(R1 3 + R2 3 + R3 1, 소멸 확인 대기). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
+| spec:F1 · 40자 제목 제한이 응답 유실 회수용 토큰을 잘라낸다 · 토큰 길이 예약 후 작업명만 절단 | medium | FIXED `09e2c67` | F1 (1) 예약·절단 규칙. AC2·F5 장문 작업명 케이스. R2-3·R3-1 조합 결함(재진술 아님) |
+
+미확인 FIXED 큐 = 위 8건(R1 3 + R2 3 + R3 1 + R4 1, 소멸 확인 대기). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
