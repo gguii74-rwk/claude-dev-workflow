@@ -26,7 +26,7 @@ git status --short | grep -v '^??' | wc -l                          # 0 — clea
 grep -n '"version"' dev-workflow/.claude-plugin/plugin.json          # "0.19.0"
 git log --oneline | grep -c 'release: 1.0.0'                         # 0 — 선점 없음
 grep -c '^## 적대검증 ledger (impl)' docs/plans/2026-09-24-orca-successor-session.md   # 1 — review-loop(impl) 절 존재(없으면 멈춘다: 8단계 미종결)
-awk '/^## 적대검증 ledger \(impl\)/{f=1;next} /^## /{f=0} f' docs/plans/2026-09-24-orca-successor-session.md | grep -E '^\*\*종결\(' | grep '미확인 FIXED 큐 0' | grep '미판정 blocking 0' | grep -cE 'verdict approve|빠른 종료'   # 1 — impl ledger 절 범위 안의 종결 행(review-loop ledger 관례: `**종결(날짜)**: … 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve` — spec ledger 종결 행과 같은 형식, 빠른 종료면 verdict 대신 `빠른 종료`)이 성공 불변식 3종을 모두 담는다. 0이면 8단계 미종결 — 멈춘다
+awk '/^## 적대검증 ledger \(impl\)/{f=1;next} /^## /{f=0} f' docs/plans/2026-09-24-orca-successor-session.md | grep -E '^\*\*종결\(' | grep '미확인 FIXED 큐 0' | grep '미판정 blocking 0' | grep -cE 'verdict approve|빠른 종료'   # 1 — impl ledger 절 범위 안의 종결 행이 성공 불변식 3종을 모두 담는다. 형식은 엔트리포인트 상단 "impl ledger 종결 행 계약"이 생산자(review-loop(impl) §4 종료 요약)에 요구한다: `**종결(날짜)**: … 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve`(빠른 종료면 `빠른 종료`). 0이면 8단계 미종결이거나 종결 행이 계약 형식이 아님 — 둘 다 멈춘다(형식 불일치면 impl ledger 종결 행을 계약대로 고친 뒤 재검사)
 sed -i '' 's/"version": "0.19.0"/"version": "1.0.0"/' dev-workflow/.claude-plugin/plugin.json    # Linux: sed -i
 grep -n '"version"' dev-workflow/.claude-plugin/plugin.json          # "1.0.0"
 node -e 'JSON.parse(require("fs").readFileSync("dev-workflow/.claude-plugin/plugin.json","utf8")); console.log("json ok")'
@@ -109,6 +109,7 @@ git status --short | grep -v '^??' | wc -l                                  # 0
 ## Cautions
 
 - **review-loop(impl) 성공 종료 전에 이 task를 실행하지 않는다 — SDD가 task-04 직후 표의 deps만 보고 디스패치해도 거부한다. 이유: plan R2-1 — 엔트리포인트 순서 7 impl → 8 review-loop(impl) → 9 릴리스. 검토 전 1.0.0 커밋은 검토 결과로 다시 바뀔 수 있는 버전을 릴리스로 못 박는다.**
+- **완료 기록 = 엔트리포인트 task 표 05행 `[x]`·outcome + 그 파일 커밋(단계 4 릴리스 커밋에 함께 실어도 된다). SDD progress ledger에는 쓰지 않는다. 이유: plan C1 재분류 R3-3 — 이 task는 SDD 밖이라 convergence 규칙의 대상이 아니고, 완료 권위는 커밋된 표 + 이 AC다.**
 - **push하지 않는다. 이유: 이 트랙은 spec부터 미push로 진행했고 push 시점은 사용자 판단이다.**
 - **AC6 표를 여기서 채우지 않는다(채우기 = task-06). 이유: 릴리스 후 1.0.0 설치본으로 실제 트랙 세션에서 관찰한 값만 근거다 — 빈 표 + 절차가 이 task의 산출물이고, 이 task의 `[x]`는 AC6 완료를 뜻하지 않는다(task 표 06행이 따로 있다, plan R3-3).**
 - **AC6 통과 전 "트랙 완료"를 선언하지 않는다. 이유: D11 — 맥북 실사용 1회가 완료 조건. 9단계 완료 신호는 AC6 표가 채워진 커밋이다.**

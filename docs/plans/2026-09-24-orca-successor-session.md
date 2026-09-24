@@ -1,6 +1,6 @@
 # 오르카 후계 세션 스폰 (1.0.0) — 구현 계획 엔트리포인트
 
-- **spec**: `docs/specs/2026-09-24-orca-successor-session.md` (F1~F6 · D1~D12 · AC1~AC6). **spec ledger = spec 말미 `## 적대검증 ledger (spec)`** — 단일 원본, 여기에 복제하지 않는다. plan·impl ledger는 review-loop가 **이 문서 말미**에 만든다(`## 적대검증 ledger (plan)` · `## 적대검증 ledger (impl)`).
+- **spec**: `docs/specs/2026-09-24-orca-successor-session.md` (F1~F6 · D1~D12 · AC1~AC6). **spec ledger = spec 말미 `## 적대검증 ledger (spec)`** — 단일 원본, 여기에 복제하지 않는다. plan·impl ledger는 review-loop가 **이 문서 말미**에 만든다(`## 적대검증 ledger (plan)` · `## 적대검증 ledger (impl)`). **impl ledger 종결 행 계약(생산자 측 — task-05 게이트가 소비)**: review-loop(impl)는 성공 종료 시 impl ledger 절 안에 `**종결(YYYY-MM-DD)**: `로 시작하는 한 줄을 쓰고, 그 줄에 `미확인 FIXED 큐 0` · `미판정 blocking 0` · `최종 verdict approve`(확인 라운드 없는 빠른 종료면 `빠른 종료`) 세 문구를 그대로 담는다 — spec ledger 종결 행(spec :180)과 같은 형식. 이 문구가 하나라도 없으면 task-05 단계 1 게이트가 0을 내고 멈추므로, impl 루프 종료 요약(§4)을 쓸 때 이 형식을 따른다(plan C1 재분류 R3-2).
 - **Goal**: 오르카 터미널에서 돌던 세션이 컨텍스트 넛지를 받으면 `/clear` 안내 대신 **같은 체크아웃에 후계 claude 터미널을 띄워 재개 프롬프트를 보내고 정지**하게 하고, 후계가 옛 세션을 정상 종료(`/exit`→`--for exit` 대기→close)시킨 뒤 이어가게 한다. 오르카 밖은 (0)의 인계 문장 1개를 제외하고 0.19.0과 바이트 동일. 1.0.0으로 릴리스한다.
 - **Architecture**: 산출물은 **훅 코드 1파일 + 규약 문면**이다 — `context-threshold-hook.mjs`의 `decideNudge`가 `orcaHandle`로 (2)를 가른다(순수 함수, 판정 로직 불변). 옛 세션·후계가 실행할 명령은 훅 reason 문면이 플래그까지 지시한다(D6 — 훅은 오르카·codex 상태를 직접 조회하지 않는다: codex 상태 디렉터리는 codex 플러그인의 `CLAUDE_PLUGIN_DATA`에 묶여 있어 다른 플러그인의 훅 프로세스에서 해소를 보장할 수 없고, 세션의 Bash에는 codex SessionStart 훅이 그 값을 심어 준다 — 실측 probe-A). review-loop SKILL.md는 (0) 문장 바이트 동일 + §2i 표 3행 경로 ① 조건화만. 검증 = `.remember/` 아래 `node --test`(D5, repo 파일 없음) + grep 대조.
 - **Tech stack**: Node ESM 훅(`node --test` 내장 러너, 외부 의존 없음) · Markdown 스킬 문서 · bash · Orca CLI 1.4.209(`terminal create/show/list/wait/send/read/close`, send 영수증 = `result.send.accepted`·`result.send.prompt.{requestId,stages}`, wait = `result.wait.satisfied`) · codex companion 1.0.6(`scripts/lib/state.mjs`의 `resolveStateFile(cwd)`, 상태 파일 `state.json`의 `config.stopReviewGate`·`jobs[].{status,sessionId}`).
@@ -102,7 +102,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 
 **AC ↔ task**: AC1·AC2 → 02(01 테스트 C1~C6·C8) · AC3 → 03 · AC4 → 04(README)·05(plugin.json·4머신) · AC5 → 02(기록 절) · AC6 → 06(실사용 기록 — 트랙 완료 조건; 05는 빈 표·절차만 — 05의 `[x]`는 AC6 완료가 아니다).
 
-**SDD 실행 범위 = task-01~04.** task-05(릴리스)·task-06(AC6 실측)은 9단계 이후라 SDD가 디스패치하지 않는다 — 8단계 review-loop(impl)가 성공 종료(엔트리포인트 말미 `## 적대검증 ledger (impl)` 종결 행)한 뒤 그 세션 또는 새 세션이 task-05를, 릴리스·push·맥북 갱신 뒤 맥북 세션이 task-06을 단독 실행한다. 표에 두는 이유는 완료 기록(status·outcome)을 같은 표에서 받기 위해서다(plan R2-1·R3-3). 트랙 완료 = 06행 `[x]`.
+**SDD 실행 범위 = task-01~04.** task-05(릴리스)·task-06(AC6 실측)은 9단계 이후라 SDD가 디스패치하지 않는다 — 8단계 review-loop(impl)가 성공 종료(엔트리포인트 말미 `## 적대검증 ledger (impl)` 종결 행)한 뒤 그 세션 또는 새 세션이 task-05를, 릴리스·push·맥북 갱신 뒤 맥북 세션이 task-06을 단독 실행한다. 표에 두는 이유는 완료 기록(status·outcome)을 같은 표에서 받기 위해서다(plan R2-1·R3-3). 트랙 완료 = 06행 `[x]`. **task-05·06의 완료 권위 = 이 커밋된 task 표 + 각 task의 AC**(SDD progress ledger에는 기록하지 않는다 — SDD 밖이라 계약 블록의 convergence 규칙, 즉 "ledger 완료 기록 부재 → `[ ]` 복원"의 대상이 아니다; 그 규칙은 SDD 실행 범위 task-01~04에만 적용한다). 실행자는 task-05/06 완료 시 표 행 `[x]`·outcome을 쓰고 이 파일을 즉시 커밋한다(계약 ④와 같은 기록, ledger 기록만 생략). task-06 착수나 어떤 복구 절차도 task-05 행을 되돌리지 않는다(plan C1 재분류 R3-3).
 
 **review-loop(impl) 입도**: 통합 1회(task-01~04, 코드 1파일 — task-05·06은 그 뒤). base = 구현 착수 직전 main SHA(plan 종결 커밋). **8단계 impl 게이트**: 이 repo는 npm이 아니므로 RL 게이트 4종 대신 **SC-6 GREEN 기록 + 각 task AC grep**으로 갈음한다(dev-cycle 규약 · spec §6).
 
@@ -159,4 +159,3 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | task-05/06 · [L1, 루프 자체 발견] AC6 10행 셀의 `\|\|`가 task-06 AC awk 열을 밀고, macOS BSD awk가 한글 `==`를 locale collation으로 비교해 `"실패"=="통과"`가 참 · 셀 세로줄 금지 + NF 검사 + `LC_ALL=C` | medium | FIXED `f0febc9` | 10행 문구 `… )`로, task-05 통과 규칙·task-06 Cautions에 셀 `\|` 금지, AC에 `NF != 7` 0 검사와 `LC_ALL=C awk`(실측 awk 20200816: `LANG=en_US.UTF-8`에서 `("실패"=="통과")`=1, `LC_ALL=C`=0). python 생성 표로 11/10/10/0 확인 |
 
 **확인 모드 진입(C1, 2026-09-24)**: 적대 4라운드 소진(max 5 중) · 신호 1 발화 · 미확인 FIXED 큐 16(R1 5 · R2 3 · R3 3 · R4 4 · L1 1) · 루프 직접 판정 0(임무 ③ 감사 대상 없음 — 사용자 기결정 D1~D12·spec 승계 ACCEPTED/OUT_OF_SCOPE는 대상 아님) · 확인 예산 2 · 복귀 미사용.
-
