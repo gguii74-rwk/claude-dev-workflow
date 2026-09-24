@@ -4,7 +4,7 @@
 
 ## Files
 
-- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 24,800B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
+- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 25,800B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
 - Modify: `docs/plans/2026-09-24-orca-successor-session.md` — 말미에 `## 훅 테스트 기록 (AC5, D5)` 절 추가(§6)
 - Test: `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs`(task-01) — RED → GREEN
 
@@ -93,6 +93,8 @@ export function computeContextUsage(transcriptText, env = {}) {
 // codex companion 루트 = 레지스트리 해소(review-loop §2b ①과 같은 우선순위: cwd 일치 project/local > user > managed).
 // 상태 프로브 = 상태 파일을 직접 한 번 읽어 JSON.parse한 동일 객체에서 config.stopReviewGate와 jobs를 함께 읽는다
 // (loadState는 읽기·파싱 실패를 기본값으로 숨기고, status --all은 자기 세션 잡만 보여준다 — 둘 다 쓰지 않는다).
+// 부재 판정은 readFileSync의 ENOENT만이다 — existsSync는 권한(EACCES)·경로(EISDIR 등) 오류도 false로 축약해 "파일 없음"으로
+// 오인시킨다(plan R5-1). ENOENT 외 읽기 오류 = STATE_UNREADABLE(exit 2).
 // 루트가 객체가 아니거나(배열 포함 — typeof []도 "object"다) jobs가 배열이 아니거나 config가 객체가 아니면
 // STATE_UNREADABLE(exit 2) — 손상·스키마 이탈도 fail-closed(빈 잡·GATE_OFF로 오인하지 않는다). 중첩 필드도 같다:
 // 파일이 있으면 config·jobs 둘 다 필수(companion saveState는 항상 {version,config,jobs}를 쓴다 — 하나라도 없으면 부분
@@ -107,8 +109,8 @@ const COMPANION_ROOT_CMD =
   `if(!a||!fs.existsSync(p.join(a.installPath,"scripts","lib","state.mjs")))process.exit(1);console.log(a.installPath)' "$P" "$PWD") || echo RESOLVE_FAIL`;
 const STATE_PROBE_CMD =
   `node -e 'const fs=require("fs");import(require("url").pathToFileURL(process.argv[1]+"/scripts/lib/state.mjs").href).then(m=>{` +
-  `const f=m.resolveStateFile(process.cwd());if(!fs.existsSync(f)){console.log("GATE_OFF FOREIGN_ACTIVE=0");return}` +
-  `let s;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch{s=null}` +
+  `const f=m.resolveStateFile(process.cwd());let raw;try{raw=fs.readFileSync(f,"utf8")}catch(e){if(e&&e.code==="ENOENT"){console.log("GATE_OFF FOREIGN_ACTIVE=0");return}console.log("STATE_UNREADABLE");process.exit(2)}` +
+  `let s;try{s=JSON.parse(raw)}catch{s=null}` +
   `const obj=v=>!!v&&typeof v==="object"&&!Array.isArray(v);` +
   `const jobsOk=v=>Array.isArray(v)&&v.every(j=>obj(j)&&typeof j.status==="string");` +
   `const cfgOk=v=>obj(v)&&typeof v.stopReviewGate==="boolean";` +
@@ -123,7 +125,7 @@ const CLI_RESOLVE_CMD = `CLI="\${ORCA_CLI_COMMAND:-$( [ -n "$ORCA_DEV_REPO_ROOT"
 function orcaHandoff(h) {
   const successorPrompt =
     `핸드오프 파일 <경로>를 읽고 같은 작업을 이어서 진행하라. 너는 오르카 터미널에서 옛 세션(핸들 ${h})의 후계로 띄워진 claude 세션이다. 반드시 아래 순서대로 하고, 그 전에는 codex를 실행하지 마라. ` +
-    `CLI 해소 = ORCA_CLI_COMMAND가 있으면 그 값, 없고 ORCA_DEV_REPO_ROOT가 있으면 orca-dev, 그 외 orca: ${CLI_RESOLVE_CMD}. ` +
+    `CLI 해소 = ORCA_CLI_COMMAND가 있으면 그 값, 없고 ORCA_DEV_REPO_ROOT가 있으면 orca-dev, 그 외 orca: ${CLI_RESOLVE_CMD}. 아래의 $CLI는 자리표시자다 — 도구 호출 사이에 셸 변수는 남지 않으니 해소한 실행 파일 값을 리터럴로 치환해 실행하라(빈 값이면 실행하지 말고 다시 해소). ` +
     `[0번째 동작 — 공유 브로커 단일 실행권 검사] /exit를 보내기 전에 이 폴더의 codex 상태 파일을 직접 한 번 읽어(cwd = repo 루트) queued/running 잡 중 자기 세션 외(sessionId ≠ CODEX_COMPANION_SESSION_ID)의 것을 센다 — codex-companion status --all은 자기 세션 잡만 보여주고 loadState는 파싱 실패를 빈 목록으로 숨기므로 둘 다 쓰지 않는다: ${COMPANION_ROOT_CMD}; ${STATE_PROBE_CMD}. ` +
     `출력의 FOREIGN_ACTIVE가 0이 아니면 15초 간격으로 다시 세어 0이 될 때까지 기다린다(상한 10분 = 40회). 상한에 닿으면 사용자에게 보고하고 /exit와 codex 시작을 모두 보류하라 — 옛 세션의 SessionEnd가 폴더 공유 브로커를 내려 그 잡을 죽인다. STATE_UNREADABLE(읽기·파싱 실패)은 "잡 없음"이 아니라 차단이다 — 사용자에게 보고하고 보류하라. RESOLVE_FAIL도 보고·보류. 파일 부재 = 잡 없음(GATE_OFF FOREIGN_ACTIVE=0). ` +
     `[첫 동작 — 옛 세션 정상 종료] 세 명령 모두 --terminal "${h}"에 바인딩한다(--terminal 생략 금지 — 생략하면 활성 터미널이 대상이 되어 너 자신이나 무관한 탭을 닫는다): ` +
@@ -134,11 +136,11 @@ function orcaHandoff(h) {
     `[단계 경계] 핸드오프의 다음 액션이 다른 단계(spec→plan, plan→impl)의 시작이면 시작하지 말고 사용자에게 확인하라.`;
 
   return (
-    `(2) 이 세션은 오르카 터미널(핸들 ${h})에서 실행 중이므로 /clear 안내 대신 같은 체크아웃에 후계 claude 세션을 직접 띄워 인계합니다. 아래 (2-0)~(2-5)를 순서대로 수행하고, 각 단계의 성공 조건을 확인한 뒤에만 다음으로 넘어가세요. 어느 단계든 실패하면 [폴백]으로 갑니다. 셸 안전: 프롬프트·제목·경로를 셸 문자열에 직접 보간하지 마세요(백틱·$(…)·따옴표가 로컬에서 실행되거나 인자가 깨집니다) — 프롬프트는 파일로, 제목은 안전 문자 집합으로. ` +
+    `(2) 이 세션은 오르카 터미널(핸들 ${h})에서 실행 중이므로 /clear 안내 대신 같은 체크아웃에 후계 claude 세션을 직접 띄워 인계합니다. 아래 (2-0)~(2-5)를 순서대로 수행하고, 각 단계의 성공 조건을 확인한 뒤에만 다음으로 넘어가세요. 어느 단계든 실패하면 [폴백]으로 갑니다. 셸 안전: 프롬프트·제목·경로를 셸 문자열에 직접 보간하지 마세요(백틱·$(…)·따옴표가 로컬에서 실행되거나 인자가 깨집니다) — 프롬프트는 파일로, 제목은 안전 문자 집합으로. 변수 보존: 아래 명령의 $CLI·$TOKEN·$TITLE·<새 핸들>은 자리표시자입니다 — 도구 호출마다 셸이 새로 시작되어 변수가 남지 않으므로, 실행할 때는 해소된 실제 값을 리터럴로 치환한 완결 명령으로 실행하거나 해소와 사용을 같은 호출 안에 두세요. 빈 값이 들어간 명령(예: successor-.prompt, 실행 파일 없는 terminal …)은 실행하지 마세요. ` +
     `(2-0) 사전 조건. ⓐ CLI 해소: ORCA_CLI_COMMAND가 있으면 그 값, 없고 ORCA_DEV_REPO_ROOT가 있으면 orca-dev, 그 외 orca — ${CLI_RESOLVE_CMD}. ` +
     `ⓑ 사전 검증: "$CLI" terminal show --terminal "${h}" --json 의 ok가 true가 아니면 그 CLI는 현재 인스턴스가 아닙니다 — 후계를 만들지 말고 [폴백]. ` +
     `ⓒ codex Stop review gate: 이 폴더의 codex 상태 파일을 직접 한 번 읽어 판정합니다(codex-companion의 loadState·status 서브커맨드는 실패를 기본값으로 숨기거나 자기 세션 잡만 보여주므로 쓰지 않습니다) — companion 루트 해소 뒤 상태 프로브: ${COMPANION_ROOT_CMD}; ${STATE_PROBE_CMD}. ` +
-    `출력이 GATE_ON이면 자동 인계를 하지 않고 [폴백](그 게이트는 stop_hook_active를 보지 않고 동기 codex 작업 뒤 block을 돌려줄 수 있어 후계의 /exit가 그 턴을 끊습니다). STATE_UNREADABLE(읽기·파싱 실패)·RESOLVE_FAIL도 [폴백]. 파일 부재 = GATE_OFF·잡 없음. GATE_OFF일 때만 (2-1)로 진행합니다. ` +
+    `출력이 GATE_ON이면 자동 인계를 하지 않고 [폴백](그 게이트는 stop_hook_active를 보지 않고 동기 codex 작업 뒤 block을 돌려줄 수 있어 후계의 /exit가 그 턴을 끊습니다). STATE_UNREADABLE(읽기·파싱 실패 — 부재(ENOENT)만 잡 없음이고 권한·경로 오류는 차단)·RESOLVE_FAIL도 [폴백]. 파일 부재 = GATE_OFF·잡 없음. GATE_OFF일 때만 (2-1)로 진행합니다. ` +
     `(2-1) 후계 생성. 토큰 = 이 세션이 만든 고유 상관 문자열(영숫자·하이픈만): TOKEN="$(date +%H%M%S)$(LC_ALL=C tr -dc a-z0-9 </dev/urandom | head -c 4)". 작업명 = 현재 작업을 요약한 짧은 이름을 [A-Za-z0-9._-] 문자만으로 짓고(그 외 문자는 -로 치환 — 공백·따옴표·백틱·$(…)를 남기지 않습니다), 마땅치 않으면 successor. 제목 = <작업명>-<토큰>, 전체 길이 ≤ 40 — 토큰과 하이픈 길이를 먼저 예약하고 작업명만 잘라 토큰을 온전히 붙입니다: NAME=<작업명>; TITLE="\${NAME:0:$((40 - \${#TOKEN} - 1))}-$TOKEN". ` +
     `생성: "$CLI" terminal create --worktree active --title "$TITLE" --command claude --json → 새 핸들 = result.startupTerminal.handle(없으면 result.terminal.handle). 응답·JSON이 유실되면 재생성하지 말고 "$CLI" terminal list --worktree active --json 에서 title이 정확히 "$TITLE"인 항목으로 핸들을 회수합니다 — 정확히 1개가 아니면(0 또는 2+) [폴백](차단 보고). ` +
     `(2-2) 기동 대기: "$CLI" terminal wait --terminal "<새 핸들>" --for tui-idle --timeout-ms 90000 --json → result.wait.satisfied가 true여야 합니다. false면 --timeout-ms 180000으로 1회 재시도, 그래도 false면 [폴백]. ` +
@@ -415,5 +417,6 @@ git status --short | grep -v '^??' | wc -l                                # 0
 - **제목 절단을 `${TITLE:0:40}`처럼 제목 전체에 걸지 않는다. 이유: R4-1 — 토큰이 잘리면 `terminal list` 정확 조회가 막힌다. 작업명만 `40 - ${#TOKEN} - 1`로 자른다.**
 - **프롬프트를 `--text "<문자열 직접>"`로 보내는 예시를 넣지 않는다. 이유: R2-2 — 파일 + `"$(cat …)"`만. 파일 내용은 줄바꿈 없이 한 줄(SC-5).**
 - **[폴백] 끝의 CLEAR 안내를 "소멸이 확인된 경우에만"에서 무조건("그런 다음")으로 되돌리지 않는다. 이유: plan R4-1 — 정리 미확인 상태에서 /clear로 재개하면 남은 후계가 재개 세션에 /exit를 보낸다(spec F2 fail-closed · task-04 README 문장과 동기). C4 needle 2종이 잡는다.**
+- **`$CLI`·`$TOKEN`·`$TITLE` 자리표시자 고지("도구 호출마다 셸이 새로 시작")를 빼지 않는다. 이유: plan R5-2 — 각 단계는 별도 Bash 호출로 실행되므로 셸 변수가 남지 않아 `"" terminal …`·`successor-.prompt` 같은 빈 값 명령이 실행된다(orca-cli 스킬도 실행 파일을 변수로 두지 말라고 한다). C4 needle 2종이 잡는다.**
 - **끄기 스위치(env·설정)를 더하지 않는다. 이유: D8.**
 - **테스트 파일을 통과시키려고 테스트를 고치지 않는다. 이유: task-01 계약 — needle은 spec FIXED 행에 대응한다. 훅 문면이 needle을 포함하도록 고친다.**

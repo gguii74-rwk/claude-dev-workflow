@@ -47,7 +47,9 @@ for f in README.md README.ko.md README.ja.md; do grep -c 'ORCA_TERMINAL_HANDLE' 
 ```markdown
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 맥북 오르카 세션이 기록
 
-**대상** = 1.0.0 **설치본**으로 오르카 터미널에서 도는 **실제 트랙**의 세션 1회(수동 선적용 아님). 넛지 → 핸드오프 → 후계 스폰 → 옛 세션 종료(SessionEnd 정리) → 후계가 review-loop §0 스냅샷 대조로 재개. `CLAUDE_CTX_THRESHOLD`를 낮춰 재현한다(예: `orca terminal create --worktree active --title "ac6-old" --command "CLAUDE_CTX_THRESHOLD=0.05 claude" --json`) — 실 40%까지 기다릴 필요 없다(spec §6).
+**대상** = 릴리스된 최신 1.0.x **설치본**(최소 1.0.0 — AC6 실패 복구 뒤에는 그 patch, task-06 복구 절차)으로 오르카 터미널에서 도는 **실제 트랙**의 세션 1회(수동 선적용 아님). 넛지 → 핸드오프 → 후계 스폰 → 옛 세션 종료(SessionEnd 정리) → 후계가 review-loop §0 스냅샷 대조로 재개. `CLAUDE_CTX_THRESHOLD`를 낮춰 재현한다(예: `orca terminal create --worktree active --title "ac6-old" --command "CLAUDE_CTX_THRESHOLD=0.05 claude" --json`) — 실 40%까지 기다릴 필요 없다(spec §6).
+
+**설치 버전**: <task-06이 맥북 `/dev-workflow:doctor` 출력의 설치본 버전으로 채운다 — 예 `1.0.0`>
 
 **조건**(F6): ① 넛지 시점에 **다른 탭이 활성**인 상태(후계의 첫 동작이 옛 핸들만 닫는지, R2-1) ② 메타문자 케이스 2종 — (제목, R3-1) 작업명 후보 `ac6 $(echo x) \`id\`` → 제목이 `ac6---echo-x---id--<토큰>`으로 정규화되는지(집합 밖 문자 8개 — 공백·`$`·`(`·공백·`)`·공백·백틱·백틱 — 가 각각 `-` 하나로 치환되고 토큰 앞 하이픈이 붙는다). (전달, R2-2) 재개 프롬프트 **템플릿 자체**가 셸 메타문자를 담고 있다 — CLI 해소식 `$( [ -n "$ORCA_DEV_REPO_ROOT" ] && echo orca-dev || echo orca )`와 companion 해소식 `$(node -e '…' "$P" "$PWD")`. 후계가 받은 프롬프트(`"$CLI" terminal read --terminal "<새 핸들>" --json` 또는 후계 화면)에 이 식들이 **확장되지 않은 원문 그대로**(`CLI="orca"`·경로값으로 바뀐 흔적 없음) 있는지 본다. `<경로>` 슬롯은 review-loop 트랙에서 루프 파일 경로로 고정이라 메타문자를 넣을 수 없다 — 템플릿 내장 식이 spec F6 "경로" 프로브를 대신한다. ③ **필수** — codex 라운드(review-loop 백그라운드 대기) 또는 서브에이전트가 진행 중일 때 넛지가 오면 완료 알림까지 새 단위 없이 기다렸다가 결과 기록 → 스폰 순서를 지키는지(§2i 진행 중 라운드 분기, 파일럿 미측정 3). 재현: 옛 세션을 `CLAUDE_CTX_THRESHOLD=0.05`로 띄우고 review-loop를 시작하면 §0~§2b가 한 턴 안에서 라운드 기동까지 가고 §2b ③ 백그라운드 대기로 턴이 끝나는 그 Stop이 첫 넛지다(통상 경로). 넛지가 라운드 진행 중이 아닌 턴에서 먼저 왔으면 그 세션은 ③ 미충족 — 임계를 올려(예: 0.1) 다시 시작한다. "미발생"으로 넘기지 않는다. **review-loop 대상**(plan R4-3): 이 트랙은 그 시점에 종결돼 있으므로 이 트랙의 plan/impl ledger에 라운드를 추가하지 않는다 — AC6의 루프는 그 시점에 착수하는 **다른 실제 트랙**(후보: 0.18.0 트랙 AC11 실측 후속 · ops-hub 등 다음 작업)의 phase 산출물 문서에서 §0 "loop 파일 없음 → 새 루프"로 연다. 대상은 지금 확정할 수 없다(실사용 조건 D11이 실제 트랙을 요구) — 대신 9행 관찰 열에 repo · phase · ledger 문서 경로 · 해소된 base SHA · 루프 파일 경로(`.remember/loop-<ledger basename>-<phase>.md`)를 적어 재현을 결정적으로 만든다.
 
@@ -70,7 +72,7 @@ for f in README.md README.ko.md README.ja.md; do grep -c 'ORCA_TERMINAL_HANDLE' 
 - 채우는 절차·주체 = **task-06**(맥북에서 그 세션을 관찰한 사람/후계 세션 — 이 파일 커밋). task-06의 통과 커밋이 **트랙 완료**(dev-cycle 9단계 완료 신호). 결과 열은 `통과`/`실패`만(task-06 AC가 센다).
 - spark2·Windows는 트랙 밖(D11 후속) — 각 머신 첫 넛지 때 1·3·4행(`ORCA_TERMINAL_HANDLE` 존재 · `orca`/`ORCA_CLI_COMMAND` 해소 · `--wait-submit` 지원)만 확인하고 실패 시 폴백으로 현행 동작임을 기록한다.
 
-**설치 갱신(4머신) — 순서가 게이트다(plan R4-2)**: ① push(사용자 판단) → ② **맥북만** `/plugin update dev-workflow@claude-dev-workflow` → 재시작 → `/dev-workflow:doctor`(설치본 1.0.0) → ③ task-06(AC6 실사용 확인) 통과 → ④ 나머지 3머신(OMEN `D:\workspace` · 그램 `C:\workspace` · spark2 `~/workspace`) 같은 절차로 갱신. AC6가 실패하면 원인 수정 → patch 릴리스(1.0.1) → 맥북 재검증 → 그 뒤 3머신. project 스코프로 고정된 repo(ops-hub 등)는 그 repo 안에서 `claude plugin update dev-workflow@claude-dev-workflow --scope project`.
+**설치 갱신(4머신) — 순서가 게이트다(plan R4-2)**: ① push(사용자 판단) → ② **맥북만** `/plugin update dev-workflow@claude-dev-workflow` → 재시작 → `/dev-workflow:doctor`(설치본 1.0.0) → ③ task-06(AC6 실사용 확인) 통과 → ④ 나머지 3머신(OMEN `D:\workspace` · 그램 `C:\workspace` · spark2 `~/workspace`) 같은 절차로 갱신. AC6가 실패하면 task-06 복구 절차(원인 수정 → review-loop(impl) 재진입 → patch bump·push → 맥북 갱신 → AC6 재실행; 증거 버전 = 그 patch) → 그 뒤 3머신. project 스코프로 고정된 repo(ops-hub 등)는 그 repo 안에서 `claude plugin update dev-workflow@claude-dev-workflow --scope project`.
 ```
 
 ### 4. 릴리스 커밋
@@ -86,7 +88,7 @@ git log -1 --format=%B | grep -ciE '^(co-authored-by|claude-session): |generated
 ```
 1.0.0 릴리스 커밋이 로컬 main에 있습니다(미push — push는 사용자 판단). 배포 순서 = 게이트:
   ① push → ② 맥북만: /plugin update dev-workflow@claude-dev-workflow → 재시작 → /dev-workflow:doctor (설치본 1.0.0)
-  → ③ task-06 AC6 통과 → ④ 나머지 3머신(OMEN D:\workspace · 그램 C:\workspace · spark2 ~/workspace) 같은 절차. AC6 실패면 patch(1.0.1) → 맥북 재검증 뒤 3머신.
+  → ③ task-06 AC6 통과 → ④ 나머지 3머신(OMEN D:\workspace · 그램 C:\workspace · spark2 ~/workspace) 같은 절차. AC6 실패면 task-06 복구 절차(수정 → impl 재검토 → patch bump·push → 맥북 갱신 → 재실행) 뒤 3머신.
 project 스코프 repo는 그 안에서 --scope project.
 트랙 완료 조건(AC6): 맥북 오르카에서 1.0.0 설치본으로 실제 트랙 세션 1회 — CLAUDE_CTX_THRESHOLD를 낮춰 넛지 → 후계 스폰 → 옛 세션 /exit→close → §0 재개. 다른 탭을 활성으로 두고, 작업명에 백틱·$(…)·공백을 섞고, review-loop 라운드가 백그라운드로 도는 중에 넛지가 오게 해서(11행 필수). plan 엔트리포인트 §AC6 표 11행 기록 → eval 보고서 ORCA-SUCCESSOR-2026-09-24.md 부기 = task-06(그 커밋이 트랙 완료).
 spark2·Windows는 트랙 밖(D11) — 각 머신 첫 넛지 때 확인, 실패 시 폴백으로 현행 동작.

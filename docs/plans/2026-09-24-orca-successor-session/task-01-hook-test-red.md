@@ -129,6 +129,9 @@ const NEEDLES = [
   `"$CLI" terminal wait --terminal "<새 핸들>" --for exit --timeout-ms 30000 --json`,
   "/exit 처리 증거 없이 close하지 마세요",
   "소멸을 확인하고",
+  // 변수 보존(plan R5-2): $CLI·$TOKEN·$TITLE은 자리표시자 — 도구 호출 사이에 셸 변수가 남지 않는다
+  "자리표시자입니다 — 도구 호출마다 셸이 새로 시작",
+  "리터럴로 치환해 실행하라",
   "소멸이 확인된 경우에만",
   "/clear를 안내하지 말고 차단 상태",
   `"이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요"라고 안내하세요`,
@@ -257,11 +260,18 @@ test("C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE
     mkdirSync(join(dir, "cr", "scripts", "lib"), { recursive: true });
     writeFileSync(join(dir, "cr", "scripts", "lib", "state.mjs"), "export function resolveStateFile() { return process.env.FAKE_STATE_FILE; }\n");
     const f = join(dir, "state.json");
-    const run = (content) => {
-      if (content === null) rmSync(f, { force: true }); else writeFileSync(f, content);
-      const p = spawnSync("bash", ["-c", probe], { env: { ...process.env, CR: join(dir, "cr"), FAKE_STATE_FILE: f, CODEX_COMPANION_SESSION_ID: "me" }, encoding: "utf8" });
+    const probeAt = (file) => {
+      const p = spawnSync("bash", ["-c", probe], { env: { ...process.env, CR: join(dir, "cr"), FAKE_STATE_FILE: file, CODEX_COMPANION_SESSION_ID: "me" }, encoding: "utf8" });
       return [p.stdout.trim(), p.status];
     };
+    const run = (content) => {
+      if (content === null) rmSync(f, { force: true }); else writeFileSync(f, content);
+      return probeAt(f);
+    };
+    // 부재 = ENOENT만(부모 디렉터리 없음 포함). 경로가 디렉터리(EISDIR)면 부재가 아니라 읽기 오류 → 차단(R5-1)
+    assert.deepEqual(probeAt(join(dir, "nope", "state.json")), ["GATE_OFF FOREIGN_ACTIVE=0", 0]);
+    mkdirSync(join(dir, "state-dir"));
+    assert.deepEqual(probeAt(join(dir, "state-dir")), ["STATE_UNREADABLE", 2]);
     assert.deepEqual(run(null), ["GATE_OFF FOREIGN_ACTIVE=0", 0]); // 파일 부재 = 잡 없음
     assert.deepEqual(run('{"config":{"stopReviewGate":true},"jobs":[{"status":"running","sessionId":"other"},{"status":"queued","sessionId":"me"},{"status":"done","sessionId":"x"}]}'), ["GATE_ON FOREIGN_ACTIVE=1", 0]);
     assert.deepEqual(run('{"version":1,"config":{"stopReviewGate":false},"jobs":[]}'), ["GATE_OFF FOREIGN_ACTIVE=0", 0]); // companion saveState 형태
@@ -274,7 +284,7 @@ test("C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE
   }
 });
 TEST_EOF
-wc -l .remember/hook-test-1.0.0/context-threshold-hook.test.mjs    # 249
+wc -l .remember/hook-test-1.0.0/context-threshold-hook.test.mjs    # 259
 ```
 
 ### 2. RED 확인 (0.19.0 훅)
