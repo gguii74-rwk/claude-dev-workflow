@@ -11,7 +11,7 @@ description: Use when the dev-workflow pipeline's own environment looks broken �
 
 **진단 전용이다 — 사용자 작업물·설정을 쓰지 않는다.** repo 파일·CLAUDE.md·settings.json·설치본 어느 것도 고치지 않고, 갱신·인증·설정 쓰기도 하지 않는다. 발견한 이상은 **기존 경로로 위임**한다(`/plugin update` · `/codex:setup` · `/dev-workflow:setup`).
 
-유일한 예외는 마켓플레이스 clone의 `git fetch`다 — **진단에 필수인 조회 행위**이고 상위 clone의 작업 트리를 바꾸지 않는다. fetch 없이 판정하면 clone이 뒤처진 만큼 상시 "판정 불가"가 나온다.
+유일한 예외는 마켓플레이스 clone의 `git fetch`다 — **진단에 필수인 조회 행위**이고 상위 clone의 작업 트리를 바꾸지 않는다. fetch 없이 판정하면 clone이 뒤처진 만큼 상시 "판정 불가"가 나온다. **설치 sha를 지목한 보강 fetch도 이 예외에 든다**(점검 2) — 객체와 shallow root 1줄이 늘 뿐 작업 트리·ref·`FETCH_HEAD`는 그대로다.
 
 **이 머신 하나만 본다.** 다른 머신은 진단하지 않는다 — 머신 간 정렬은 "각 머신이 각자 돌린다"로 달성한다.
 
@@ -118,7 +118,7 @@ git -C "$C" rev-parse "$OID:dev-workflow"          # 최신 subtree id — 엔�
 
 **`dev-workflow@` 키가 둘 이상이면 한 기준을 나머지에 돌려 쓰지 않는다.** 1번 출력 1열에 서로 다른 마켓플레이스가 섞여 있으면(본가 + fork 등) 위 절차는 **그중 한 키에 대해서만** 유효하다. 나머지 키의 엔트리는 **`판정 불가`(다른 마켓플레이스 — 대조 기준 미확보)** 로 남기고, 근거 칸에 **어느 마켓플레이스가 대조되지 않았는지** 적는다. 한 clone의 최신 id를 다른 마켓플레이스의 sha와 맞대면, 이력이 갈린 경우엔 sha를 못 찾아 판정 불가가 되지만 **이력을 공유하는 fork라면 거짓 "최신"이 나온다** — 뒤쪽이 (b) 위반이라 안전한 쪽으로 이탈한다.
 
-**fetch 종료코드에 기대지 않는다 — 원격 OID와 대조한다.** `ls-remote --symref`는 ref 이름과 **그 OID를 함께** 준다. 이게 필요한 이유는 실패가 조용하기 때문이다: `$HB`가 비어 있으면 `git fetch -q origin ""`가 **exit 0으로 아무 것도 하지 않고 지나가고 낡은 `FETCH_HEAD`가 그대로 남는다**(실측). 그 값을 최신 기준으로 삼으면 **뒤처진 설치본이 "최신"으로 보고**되는데, 그건 규칙 (b)가 막으려던 바로 그 오답이다. 그래서 fetch 뒤 `FETCH_HEAD`가 **`ls-remote`가 준 OID와 같은지** 확인하고 다르면 판정 불가로 끝낸다. 이후 subtree 비교와 보조 로그는 `FETCH_HEAD`가 아니라 **고정한 `$OID`**를 쓴다 — 동시에 다른 fetch가 끼어들어도 기준이 흔들리지 않는다.
+**fetch 종료코드에 기대지 않는다 — 원격 OID와 대조한다.** `ls-remote --symref`는 ref 이름과 **그 OID를 함께** 준다. 이게 필요한 이유는 실패가 조용하기 때문이다: `$HB`가 비어 있으면 `git fetch -q origin ""`가 **exit 0으로 아무 것도 하지 않고 지나가고 낡은 `FETCH_HEAD`가 그대로 남는다**(실측). 그 값을 최신 기준으로 삼으면 **뒤처진 설치본이 "최신"으로 보고**되는데, 그건 규칙 (b)가 막으려던 바로 그 오답이다. 그래서 fetch 뒤 `FETCH_HEAD`가 **`ls-remote`가 준 OID와 같은지** 확인하고 다르면 판정 불가로 끝낸다. 이후 subtree 비교와 보조 근거는 `FETCH_HEAD`가 아니라 **고정한 `$OID`**를 쓴다 — 동시에 다른 fetch가 끼어들어도 기준이 흔들리지 않는다.
 
 **기본 브랜치를 로컬에서 유도하지 않는다.** clone의 fetch refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라(실측), 평범한 `git fetch origin`은 **`origin/HEAD`를 갱신하지도, 다른 브랜치를 가져오지도 않는다**. 원격 기본 브랜치가 바뀌면 로컬 `origin/HEAD`는 옛 `origin/main`을 계속 가리키고, 낡은 기준과 비교한 결과가 **"최신"으로 오판**된다. 그래서 `ls-remote --symref`로 **원격에 직접 묻고** 그 브랜치를 지목해 fetch한 뒤 `FETCH_HEAD`에서 subtree를 읽는다 — 새 remote-tracking ref를 만들지 않으므로 clone에 남는 상태가 늘지 않는다. 원격 HEAD를 못 읽으면 **`main`으로 추정하지 말고 판정 불가**다((b)).
 
@@ -132,19 +132,72 @@ git -C "$C" rev-parse "$OID:dev-workflow"          # 최신 subtree id — 엔�
 
 상한에 걸린 경우는 마켓플레이스 **판정 불가**로 적고 나머지 프로브와 4행 출력을 계속한다.
 
-그다음 **1번이 낸 엔트리마다** 설치본 subtree id를 낸다(엔트리가 여럿이면 각각 돌린다 — 한 번만 돌리면 나머지 스코프가 판정 없이 남는다):
+그다음 **1번이 낸 엔트리마다** 설치본 subtree id `T`를 낸다(엔트리가 여럿이면 각각 돌린다 — 한 번만 돌리면 나머지 스코프가 판정 없이 남는다). **엔트리 전부를 한 번의 셸 실행 안에서 돈다** — `DL`·`TIMED_OUT`이 엔트리 사이에 이어져야 아래 공유 상한이 성립한다. 1번 출력의 sha 열이 `-`(결측)인 엔트리는 이 블록을 돌리지 않고 **판정 불가(필드 결측)**로 적는다((b)).
 
 ```bash
-git -C "$C" rev-parse "$SHA:dev-workflow"          # SHA = 그 엔트리의 gitCommitSha
+export GIT_TERMINAL_PROMPT=0
+# 엔트리 순회 전에 1회 — 보강 fetch 전체가 나눠 쓰는 공유 상한
+DL=$(( $(date +%s) + 30 )); TIMED_OUT=""
+
+# 엔트리마다 (SHA = 그 엔트리의 gitCommitSha) — 끝에 T가 비면 WHY가 판정 불가 사유
+T=""; WHY=""
+if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+  WHY="설치 sha 형식 이상"                 # 객체 조회도 fetch도 하지 않는다
+else
+  TY="$(git -C "$C" cat-file -t "$SHA" 2>/dev/null)"
+  if [ -z "$TY" ]; then                    # 객체가 clone에 없는 엔트리만 보강
+    LEFT=$(( DL - $(date +%s) ))
+    if [ -n "$TIMED_OUT" ] || [ "$LEFT" -le 0 ]; then
+      TIMED_OUT=1; WHY="시간 초과"          # fetch 없이 건너뜀
+    else
+      if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
+      perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
+      if [ "$RC" = 142 ]; then
+        TIMED_OUT=1; WHY="시간 초과"
+      else
+        TY="$(git -C "$C" cat-file -t "$SHA" 2>/dev/null)"
+        [ -n "$TY" ] || WHY="보강 fetch 실패"   # RC 무관 — 원격 부재와 접근 오류를 가르지 않는다
+      fi
+    fi
+  fi
+  if [ -z "$WHY" ]; then
+    if [ "$TY" != commit ]; then
+      WHY="설치 sha 객체 유형 이상"          # tree·tag·blob — subtree를 조회하지 않는다
+    else
+      T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+      [ -n "$T" ] || WHY="설치 커밋에 dev-workflow/ 없음"
+    fi
+  fi
+fi
 ```
 
-어떤 엔트리든 최신 id와 **다를 때만** 무엇이 달라졌는지 보조 근거를 붙인다:
+**보강 fetch가 필요한 이유 — 마켓플레이스 clone은 shallow다.** `/plugin update`가 clone을 원격 tip 깊이 1로 맞추므로(실측: `.git/shallow` = tip 1줄), tip이 아닌 커밋에 고정된 설치 엔트리는 거의 항상 clone에 객체가 없다. 보강이 없으면 **뒤처진 설치본일수록 판정 불가**가 된다 — 1행이 답해야 할 바로 그 경우다. GitHub는 도달 가능한 커밋의 sha 지목 fetch를 허용한다(실측 약 1초).
+
+- **sha 형식 검사가 어떤 객체 조회보다 먼저다.** 조회 뒤에 검사하면 `HEAD`·`FETCH_HEAD`·해석 가능한 짧은 sha가 조회를 통과해 검사를 우회하고, 로컬 최신을 가리키면 거짓 "최신"이 나온다((b) 위반). 옵션 모양 값(`--upload-pack=…`)이 git 옵션으로 해석되는 경로도 같은 검사가 막는다.
+- **객체 유형이 commit일 때만 subtree를 조회한다.** `<sha>:dev-workflow`는 tree-ish를 모두 받으므로, 형식만 맞는 tree OID(예: 최신 커밋의 root tree)가 들어오면 설치 커밋 근거 없이 최신 subtree id가 나온다. fetch로 받아 온 경우에도 같은 검사를 다시 거친다.
+- **보강은 객체가 clone에 없는 엔트리만 한다** — 객체가 있는데 경로가 없으면 fetch로 풀리지 않는다. 네트워크 호출·clone 변화를 최소로 둔다.
+- **`--depth 1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다.
+- **`--no-write-fetch-head`** — 객체만 필요하다. clone은 공유 상태라, `FETCH_HEAD`를 덮어쓰면 동시에 도는 `/plugin update`·다른 doctor가 자기 fetch와 `FETCH_HEAD` 소비 사이에 옛 설치 sha를 소비할 수 있다. 최신 기준은 위에서 고정한 `$OID` 그대로다.
+- **상한 30초는 보강 fetch 전체의 공유 마감(`DL`)이다.** 각 fetch에는 남은 시간만 준다. 한 번이라도 상한(exit 142)에 걸리거나 남은 시간이 0 이하면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 여러 fetch가 상한 직전에 142가 아닌 코드로 실패해도 누적 추가 대기는 30초를 넘지 않고, 표 4행 출력이 보장된다.
+- `.git/shallow`는 갱신되므로 이 순간 같은 clone에서 `/plugin update`가 돌면 한쪽이 git 잠금 충돌로 실패할 수 있다 — 손상이 아니라 실패로 드러나고 재실행으로 풀린다(알고도 두는 위험).
+
+**`T`가 비면 판정 불가이고, 사유(`WHY`)별로 조치가 갈린다.** 어느 경우에도 "최신"·"뒤처짐"이라 단정하지 않는다((b)).
+
+| `WHY` | 조치 |
+|---|---|
+| 설치 sha 형식 이상 · 설치 sha 객체 유형 이상 · 설치 커밋에 dev-workflow/ 없음 | 그 스코프 갱신 명령(아래 조치 표의 스코프별 행) — 레지스트리 값 자체가 판정 근거가 못 된다 |
+| 시간 초과 | 재시도 |
+| 보강 fetch 실패 | 재시도 — **같은 결과가 반복되면** 그 스코프 갱신 명령 |
+
+**시간 초과가 아닌 fetch 실패는 원인을 단정하지 않는다.** 같은 결과(객체 없음)가 force-push로 커밋이 원격에서 사라진 경우에도, 인증·잠금·디스크 오류 같은 일시 장애에도 나온다 — 종료코드·빈 결과로는 둘을 가를 수 없고, git 오류 문구 판별은 git·호스트 버전에 따라 깨진다. "재시도 → 반복되면 갱신"이면 일시 장애는 재시도로 풀리고, 원격 부재는 재시도가 무한 반복되지 않는다.
+
+어떤 엔트리든 `T`가 최신 id와 **다를 때만** 무엇이 달라졌는지 보조 근거를 붙인다:
 
 ```bash
-git -C "$C" log --oneline "$SHA..$OID" -- dev-workflow/
+git -C "$C" diff --stat "$SHA" "$OID" -- dev-workflow/
 ```
 
-**우변을 비워 두지 않는다.** `"$SHA.."`처럼 우변이 없으면 git이 **로컬 `HEAD`**로 채우는데, clone의 로컬 HEAD는 방금 받은 원격 최신과 다를 수 있다(이 머신에서도 1커밋 뒤처져 있었다 — fetch는 체크아웃 브랜치를 전진시키지 않는다). 그러면 원격의 최신 변경이 로그에서 통째로 빠지거나 근거가 빈칸으로 나온다. 기준은 위에서 subtree를 읽은 것과 **같은 `$OID`**여야 한다.
+**보조 근거는 두 트리의 비교다 — 이력을 걷지 않는다.** shallow clone에서는 이력이 shallow 경계에서 잘려 커밋 로그가 `$OID` 하나만 내는 등 오해를 부른다. `diff --stat`은 두 커밋의 트리만 있으면 되고, (a)의 1차 판정(트리 비교)과 같은 축이다. 커밋 제목은 보이지 않는다. **우변은 비워 두지 않고 `$OID`로 고정한다** — 로컬 `HEAD`는 방금 받은 원격 최신과 다를 수 있다(fetch는 체크아웃 브랜치를 전진시키지 않는다).
 
 ### 3. codex — 신호 3종까지만
 
@@ -227,7 +280,7 @@ for (const f of process.argv.slice(1)) {
 
 **(a) 버전 뒤처짐·스코프 드리프트는 `dev-workflow/` subtree 비교로 판정한다.**
 
-- 1차 판정은 항상 **subtree object id 비교**다(`git rev-parse <sha>:dev-workflow`). 같으면 내용이 동일하므로 **뒤처짐 없음 / 드리프트 없음**이다. `git log`는 다를 때만 붙이는 **보조 근거**다.
+- 1차 판정은 항상 **subtree object id 비교**다(`git rev-parse <sha>:dev-workflow`). 같으면 내용이 동일하므로 **뒤처짐 없음 / 드리프트 없음**이다. `git diff --stat`은 다를 때만 붙이는 **보조 근거**다.
 - **raw sha를 비교하지 않는다.** 이 repo는 `docs/specs` 커밋이 압도적이라 sha 비교는 커밋할 때마다 거짓 경보한다. 늑대소년이 되면 진짜 뒤처짐도 무시된다.
 - **로그로 판정하지 않는다.** `git log A..B -- <path>`는 *그 경로를 건드린 커밋을 세는 것*이지 최종 트리를 비교하지 않는다. 변경 후 되돌린 이력이 있으면 **트리는 같은데 로그는 남아** 거짓 뒤처짐이 된다.
 - **스코프 간 드리프트도 같은 방식**이다 — 설치 sha들을 raw로 비교하지 않고 **각 sha의 `dev-workflow/` subtree id가 모두 같은지**만 본다.
@@ -287,7 +340,7 @@ for (const f of process.argv.slice(1)) {
 | **local-scope 뒤처짐** | 같은 규칙이다 — 그 repo 안에서 `--scope local`을 명시한다. 스코프를 빠뜨리면 갱신은 안 됐는데 표에는 뒤처짐이 그대로 남아, 사용자가 같은 명령을 반복하게 된다 |
 | 미등록 · **미설치** | `/plugin marketplace add gguii74-rwk/claude-dev-workflow` → `/plugin install dev-workflow@claude-dev-workflow` (설치 경로가 같다) |
 | **스코프 간 드리프트** | 뒤처진 스코프의 안내를 따른다 — 드리프트는 그 갱신으로 해소된다. **모든 스코프가 최신인데 드리프트가 남으면** 근거를 다시 본다((b)의 판정 불가일 수 있다) |
-| 판정 불가 | 원인(네트워크·필드 결측)을 밝히고 재시도를 안내한다. **"최신"이라는 단어를 쓰지 않는다** |
+| 판정 불가 | 원인(네트워크·필드 결측)을 밝히고 재시도를 안내한다. **설치본 엔트리의 판정 불가는 점검 2의 `WHY`별 조치를 따른다**(형식·유형 이상·경로 없음 = 그 스코프 갱신 · 시간 초과 = 재시도 · 보강 fetch 실패 = 재시도 후 반복되면 갱신). **"최신"이라는 단어를 쓰지 않는다** |
 | codex 이상 | `/codex:setup`. 3종이 정상인데도 문제면 `codex doctor`. **단 `판정 불가`에는 `/codex:setup`을 안내하지 않는다** — codex가 아니라 레지스트리를 못 읽은 것이라 아래 `판정 불가` 행을 따른다 |
 | CTX_LIMIT 이상 | `/dev-workflow:setup`이 값을 묻고 settings.json에 쓴다. **doctor가 직접 쓰지 않는다.** 반영은 Claude Code 재시작 후. 단 **값의 출처가 환경변수면 settings.json에 써도 환경변수가 이긴다** — 그 경우 주입 지점(셸 프로필 등)을 함께 안내한다 |
 
