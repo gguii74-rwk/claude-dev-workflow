@@ -182,7 +182,9 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 | R | 모드 | score | 미확인 FIXED 큐 | 비고 |
 |---|---|---|---|---|
 | R1 | 적대(자동) | 3 (high 1) | 0 → 1 | verdict needs-attention · 신규 1 · FIXED 1 |
+| R2 | 적대(자동) | 3 (high 1) | 1 → 2 | verdict needs-attention · 신규 1 · FIXED 1(R1-1 수정의 회귀 — 지적 내용이 달라 계열 반복 아님) · R1-1 적대 비재출현(R2, 참고 — 큐 유지) · 신호 1 미발화(3→3, 2점뿐) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | impl:SKILL.md 점검 2 · 엔트리별 판정 결과(T·WHY)가 셸 밖으로 출력되지 않음 · 엔트리마다 sha/T/WHY 한 줄 출력 + AC | high | FIXED `0d042e7` | 블록 끝 `printf 'ENTRY\t…'` + 판정은 그 줄로 한다는 문단(SKILL.md) · spec §3a 동일 + AC3에 출력 요구. 실측: 성공 2·실패 5사유·시간 초과(DL 강제 소진) 전부 1줄 |
+| impl:SKILL.md 점검 2 · ENTRY 결과에서 마켓플레이스 식별자 유실 — 같은 sha의 본가/fork 엔트리에 결과 오결합 · KEY·안정 식별자 포함, 비선택 마켓플레이스는 대조 기준 미확보 | high | FIXED `c7065df` | ENTRY 줄 = 1번 출력 줄 전체(E) + T + WHY, "sha만으로 짝짓지 않는다" · 고른 KEY 엔트리만 블록 실행(다른 키 = 기존 판정 불가 문단). spec §3a·AC3 동기. 실측: 레지스트리 모사(본가 user·project · 같은 sha fork · 결측) 한 셸 순회 — 본가 2줄 ENTRY, fork·결측 제외 |
