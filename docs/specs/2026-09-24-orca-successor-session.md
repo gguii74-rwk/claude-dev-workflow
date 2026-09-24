@@ -44,7 +44,7 @@
   1. `<CLI> terminal create --worktree active --title "<작업명>-<토큰>" --command claude --json` → 새 핸들 = `startupTerminal.handle`(없으면 `terminal.handle`). **토큰** = 옛 세션이 만든 고유 상관 문자열(예: `HHMMSS` + 난수 4자, 영숫자·하이픈만)(R2-3). **제목 전체는 안전 문자 집합으로 정규화한다**(R3-1): `[A-Za-z0-9._-]` 외 문자는 `-`로 치환, 제목 전체 길이 ≤ 40 — **`-<토큰>` 길이를 먼저 예약하고 작업명 부분만 절단한 뒤 토큰을 온전히 붙인다**(R4-1: 토큰이 잘리면 응답 유실 회수가 막힌다). 제목은 셸 큰따옴표 안에 들어가므로 `$()`·백틱·따옴표·공백을 남기지 않는다(D7의 "짧은 작업명"은 이 정규화를 거친 값). 응답·JSON이 유실되면 재생성하지 말고 `<CLI> terminal list --worktree active --json`에서 title의 토큰으로 **정확 조회**해 핸들을 회수한다 — 결과가 정확히 1개가 아니면(0 또는 2+) F2(차단 보고).
   2. `... terminal wait --terminal <새 핸들> --for tui-idle --timeout-ms 90000 --json` → `satisfied:true` 확인. false면 timeout 2배로 1회 재시도, 그래도 false면 F2.
   3. 재개 프롬프트는 **파일로 조립한다**(R2-2): `.remember/successor-<토큰>.prompt`에 quoted heredoc으로 쓰고(파일명의 토큰은 정규화된 값) `<CLI> terminal send --terminal <새 핸들> --enter --wait-submit 15 --json --text "$(cat "<파일>")"`로 전달 — 파일 내용은 셸에서 재평가되지 않는다(RL §2b focus 전달과 같은 패턴). 프롬프트·제목·경로를 셸 문자열에 직접 보간하지 않는다(백틱·`$(…)`·따옴표가 로컬에서 실행되거나 인자가 깨진다). → 영수증의 **`turn_started` 단계**를 확인해야 인계 확정(R1-2 — `accepted:true`는 입력 수락일 뿐 턴 시작 증명이 아니다). `input_accepted`에서 멈추면 **재전송하지 말고** 같은 영수증의 request id로 `--wait-submit 30 --retry-request <id>` 1회 재관찰. 응답 유실 등 모호한 전송 오류도 같은 `--retry-request`로 재조정한다. 재관찰 뒤에도 `turn_started`가 없으면 F2.
-  4. 재개 프롬프트(훅이 템플릿 제공) = "핸드오프 파일 <경로>를 읽고 같은 작업을 이어서 진행. **첫 동작**(R2-1 — 세 명령 모두 옛 핸들에 바인딩, `--terminal` 생략 금지 — 생략하면 활성 터미널이 대상이 되어 후계 자신이나 무관한 탭을 닫는다): `<CLI> terminal send --terminal <옛 핸들> --text "/exit" --enter --json` → `<CLI> terminal wait --terminal <옛 핸들> --for tui-idle --timeout-ms 30000 --json` → `<CLI> terminal close --terminal <옛 핸들> --json` (CLI 해소는 0단계와 같은 순서). 그 전에는 codex를 실행하지 마라. 옛 핸들이 `terminal list`에 없으면 이미 닫힌 것으로 보고 진행하고, 있는데 닫기가 실패하면 사용자에게 알리고 codex 라운드를 시작하지 마라(D9). **핸드오프의 다음 액션이 다른 단계(spec→plan, plan→impl)의 시작이면 시작하지 말고 사용자에게 확인하라**(D4)." 경로 = 핸드오프 규약 파일(기본 `.remember/remember.md`, review-loop면 루프 파일). `--title` = 모델이 현재 작업을 요약한 짧은 이름, 마땅치 않으면 `successor`(D7).
+  4. 재개 프롬프트(훅이 템플릿 제공) = "핸드오프 파일 <경로>를 읽고 같은 작업을 이어서 진행. **첫 동작**(R2-1 — 세 명령 모두 옛 핸들에 바인딩, `--terminal` 생략 금지 — 생략하면 활성 터미널이 대상이 되어 후계 자신이나 무관한 탭을 닫는다): `<CLI> terminal send --terminal <옛 핸들> --text "/exit" --enter --json` → `<CLI> terminal wait --terminal <옛 핸들> --for tui-idle --timeout-ms 30000 --json` → `<CLI> terminal close --terminal <옛 핸들> --json` (CLI 해소는 0단계와 같은 순서). **각 단계의 성공 조건**(R5-2): `/exit` send 영수증 `accepted:true` → wait `satisfied:true` 또는 `terminal read`에 셸 프롬프트 복귀 증거 → close `ok:true` → `terminal list`에 옛 핸들 부재. 어느 단계가 실패하거나 모호하면(예: send 실패인데 옛 세션이 이미 idle이라 wait만 통과) **close도 codex 시작도 하지 말고** 상태를 사용자에게 보고하라(close만 하면 SessionEnd가 건너뛰어져 브로커·잡이 고아가 된다). 그 전에는 codex를 실행하지 마라. 옛 핸들이 `terminal list`에 없으면 이미 닫힌 것으로 보고 진행하고, 있는데 닫기가 실패하면 사용자에게 알리고 codex 라운드를 시작하지 마라(D9). **핸드오프의 다음 액션이 다른 단계(spec→plan, plan→impl)의 시작이면 시작하지 말고 사용자에게 확인하라**(D4)." 경로 = 핸드오프 규약 파일(기본 `.remember/remember.md`, review-loop면 루프 파일). `--title` = 모델이 현재 작업을 요약한 짧은 이름, 마땅치 않으면 `successor`(D7).
   5. `turn_started`를 확인했으면 **더 아무것도 하지 말고 턴을 끝낸다** — 후계가 이 세션을 닫는다. 자기 터미널을 스스로 닫지 않는다.
 - 정지 보장: 그 다음 Stop은 `stop_hook_active`로 훅이 통과(exit 0)하므로 재넛지 없이 idle. 후계의 `/exit`로 종료.
 - 재넛지(15%p 구간) 변형도 같은 (2)를 붙인다(현행 D6 원칙: 재넛지 = 지시 동일 + 사실 추가).
@@ -56,12 +56,13 @@
 ### F3. review-loop 문구
 
 - §2b (1) 인용문("…그때 /clear를 안내하라")을 훅 (0)과 같은 새 문장으로 — 바이트 동일 규정 유지.
-- §2i 표 3행 "/clear 후 `/review-loop --resume`로 이어가세요" 안내를 "넛지 (2)의 인계 절차(오르카면 후계 스폰, 아니면 /clear 안내)"로 조건화. 재개 프롬프트에 `--resume` 지시가 들어가야 하므로 §2i가 재개 프롬프트 문구를 정한다(훅 템플릿의 "같은 작업을 이어서" 자리에 review-loop 루프 파일 경로 + `/review-loop --resume`).
+- §2i 표 3행 "/clear 후 `/review-loop --resume`로 이어가세요" 안내를 **경로 ①(컨텍스트 넛지)에서만** "넛지 (2)의 인계 절차(오르카면 후계 스폰, 아니면 /clear 안내)"로 조건화한다. **경로 ②(사용자가 "지금 멈추고 직접 본다" 선택)·③(폴백② 새 세션 확인)은 현행 수동 재개 안내 그대로** — 사용자가 멈추기로 한 직후 자동으로 이어가면 사람 게이트를 넘는다(R5-1, D4와 같은 취지). 재개 프롬프트에 `--resume` 지시가 들어가야 하므로 §2i가 재개 프롬프트 문구를 정한다(훅 템플릿의 "같은 작업을 이어서" 자리에 review-loop 루프 파일 경로 + `/review-loop --resume`).
 - 그 외 `/clear` 언급(단계 경계·§2b 완료 전 금지)은 불변.
 
 ### F4. 문서·릴리스 1.0.0
 
 - README 3종 §8 끝에 1.0.0 문단(같은 위치): 오르카 터미널이면 후계를 직접 띄우고 정지 · 후계 첫 동작 = 옛 세션 `/exit`→close · 실패 시 /clear 안내로 복귀 · 단계 경계는 대상 밖.
+- README 3종 §주의의 전역 설치 문구("user 스코프 훅이 모든 프로젝트에서 실행돼도 `.remember/`를 쓰지 않는 프로젝트에서는 문구만 맞지 않고 동작은 무해")를 교체한다(R5-4): 오르카 터미널에서는 넛지 뒤 터미널 생성·프롬프트 파일 쓰기·옛 세션 종료가 자동으로 일어난다는 사실과, 오르카 밖에서는 현행과 같다는 것을 명시.
 - `plugin.json` `1.0.0`. 사용자 결정: 이 반영으로 정식 1.0.0.
 - 설치 갱신 안내 4머신(맥북·OMEN·그램·spark2).
 
@@ -69,7 +70,7 @@
 
 스크래치패드에서 `node --test`로 돌리고 GREEN 출력을 impl ledger에 기록한다. 케이스:
 - 비오르카: 최초·재넛지 reason이 (0) 인계 문장 교체분을 제외하고 현행 문자열과 동일(고정 문자열 스냅샷).
-- 오르카: reason에 사전 검증(`terminal show`)·create/wait/send 명령 · `ORCA_TERMINAL_HANDLE` 값 · 제목 정규화 규칙(`[A-Za-z0-9._-]`)·토큰과 `terminal list` 회수 · 프롬프트 파일 + `"$(cat …)"` 전달 문구 · `turn_started` 확인과 `--retry-request` 재관찰 · 첫 동작 세 명령 전부에 `--terminal <옛 핸들>` · 폴백 조건 4종과 정리 방식이 있고, "자가 /clear는 불가" 문장이 없다. 재개 프롬프트 템플릿 안에 `--terminal` 없는 send/wait/close가 0건.
+- 오르카: reason에 사전 검증(`terminal show`)·create/wait/send 명령 · `ORCA_TERMINAL_HANDLE` 값 · 제목 정규화 규칙(`[A-Za-z0-9._-]`)·토큰과 `terminal list` 회수 · 프롬프트 파일 + `"$(cat …)"` 전달 문구 · `turn_started` 확인과 `--retry-request` 재관찰 · 첫 동작 세 명령 전부에 `--terminal <옛 핸들>`과 단계별 성공 조건·실패 시 차단(R5-2) · 폴백 조건 4종과 정리 방식이 있고, "자가 /clear는 불가" 문장이 없다. 재개 프롬프트 템플릿 안에 `--terminal` 없는 send/wait/close가 0건.
 - `stopHookActive`·구간 로직은 기존 동작 불변(기존 케이스 유지).
 - 제목 절단: 40자를 넘는 작업명에서도 제목 끝의 토큰이 온전히 남고 `terminal list` 정확 조회가 되는 케이스(R4-1).
 - 셸 안전: 문구가 지시하는 제목 정규화 규칙을 `$(printf SUBSTITUTED)`·백틱·따옴표가 든 입력에 적용했을 때 치환이 일어나지 않음을 스크래치 셸에서 확인(R3-1).
@@ -101,8 +102,8 @@
 
 - **AC1 (F1)**: `ORCA_TERMINAL_HANDLE` 미설정 시 `decideNudge` reason이 0.19.0과 동일하되 (0)의 인계 문장 1개만 신규 문장으로 바뀐다(최초·재넛지, 고정 문자열 대조). 설정 시 reason에 (2) 0~5 항목이 있고 옛 핸들 값이 그대로 들어가며 "자가 /clear는 불가" 문장이 없다.
 - **AC2 (F2)**: 오르카 reason에 CLI 해소 순서와 사전 검증(R1-1) · 제목 상관 토큰·응답 유실 시 `terminal list` 정확 조회·미확정 시 재생성/안내 차단(R2-3) · 프롬프트 파일 전달·보간 금지(R2-2) · 제목 안전 문자 집합 정규화(R3-1)·토큰 길이 예약 후 작업명만 절단(R4-1) · 첫 동작 세 명령의 `--terminal <옛 핸들>` 바인딩(R2-1) · `turn_started` 확인·`--retry-request` 재관찰·미전달 확정 전 후계 유지(R1-2) · 폴백 조건 4종 · 반쪽 터미널 정리 방식(`/exit`→close 또는 직접 close)과 `terminal list` 소멸 확인·실패 시 차단 보고(R1-3) · 복귀 문장이 명시된다. 재개 프롬프트 템플릿에 단계 경계 확인(D4)·닫기 실패 처리(D9)·탭 제목 규칙(D7)이 들어간다.
-- **AC3 (F3)**: RL §2b (1) 인용문 = 훅 (0) 문장(바이트 동일, grep 대조). §2i 표 3행이 조건화되고 재개 프롬프트에 `--resume`가 들어간다. 단계 경계 `/clear` 문장은 불변.
-- **AC4 (F4)**: `plugin.json` `1.0.0` · README 3종 같은 위치에 1.0.0 문단 · 설치 갱신 안내 4머신.
+- **AC3 (F3)**: RL §2b (1) 인용문 = 훅 (0) 문장(바이트 동일, grep 대조). §2i 표 3행이 **경로 ①에만** 조건화되고(경로 ②·③은 현행 문장 유지 — 세 경로의 기대 동작을 §2i에 각각 명시) 재개 프롬프트에 `--resume`가 들어간다. 단계 경계 `/clear` 문장은 불변.
+- **AC4 (F4)**: `plugin.json` `1.0.0` · README 3종 같은 위치에 1.0.0 문단 · 설치 갱신 안내 4머신 · README 3종에서 "동작은 무해"류 전역 설치 문구 0건(교체 확인, R5-4).
 - **AC5 (F5)**: 스크래치 `node --test` GREEN 기록이 impl ledger에 있다(케이스 ≥ 5, 출력 원문 인용). repo에 테스트 파일이 추가되지 않는다(D5).
 - **AC6 (F6, 트랙 완료 조건)**: 실사용 1회 기록 — 후계가 옛 세션을 정리하고 §0 대조를 통과해 라운드를 이어감.
 
