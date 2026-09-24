@@ -140,6 +140,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | R3 | 적대(자동, 경계) | 5 (high 1·medium 2) | 8 → 11 | verdict needs-attention · 신규 3 · FIXED 3 `378c92e`(R3-1·R3-2 재평가 high→medium) · 큐 8건 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 신호 1 미발화(5→3→5) · 신호 2 미발화 → 정밀 모드 R4 |
 | R4 | 적대(정밀) | 5 (medium 5 — R4 4 + 루프 자체 발견 L1) | 11 → 16 | verdict needs-attention · 신규 4 + L1 · FIXED 5 `f0febc9`(R4-1·R4-2 재평가 high→medium) · 큐 11건 적대 비재출현(R4, 참고 — 큐 유지) · 소진 4 · **신호 1 발화**(5→3→5→5: s4≥s3≥s2) → batch 적재 0(flush 없음) → **확인 모드 진입(C1)** |
 | C1 | 확인 | — | 16 → 2 | 완전 응답(16건 전부 명시) · **소멸 14**(R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1) · **blocking 재분류 2**(R3-2 종결 게이트가 생산자 계약 없는 형식 강제 → medium · R3-3 SDD 밖 task-05/06 완료 권위 미규정 → medium) · 회귀 = 재분류 2건과 동일 · 감사 해당 없음 · 신규 low 1(EOF 빈 줄 — DEFER_LOW, 부수 정리) · verdict merge-ready: no → 2건 FIXED `914a832` → **복귀 적대 1(R5, 상한 밖) → 재진입 확인(C2, 상한 밖)** · 확인 소진 1 · 복귀 사용 |
+| R5 | 적대(복귀, 상한 밖) | 3 (medium 3) | 2 → 5 | verdict needs-attention · 신규 3 · FIXED 3 `3def2a0` · 큐 2건 적대 비재출현(R5, 참고) · 루프 직접 판정 0 · 카운터 불변(예약분) → 재진입 확인 C2(상한 밖) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -165,3 +166,6 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | 엔트리포인트 · [C1 재분류 R3-3] SDD 밖 task-05·06에 progress ledger 완료 기록 절차가 없어 convergence 규칙이 `[x]`를 되돌릴 수 있음 · 완료 권위 예외 명시 | medium | FIXED `914a832` (재편입) | "SDD 실행 범위" 문단: task-05/06 완료 권위 = 커밋된 task 표 + AC, progress ledger 기록 없음, convergence 규칙(task-01~04 한정) 대상 아님, 표 행 `[x]`·outcome + 즉시 커밋. task-05/06 Cautions 동기 |
 
 C1 소멸 확인 14건: R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1. low 1(EOF 빈 줄) = DEFER_LOW(같은 커밋에서 부수 정리).
+| task-02 · [R5-1] `existsSync` false가 권한·경로 오류를 파일 부재로 축약해 GATE_OFF(fail-open) · `readFileSync` 직접 시도, ENOENT만 부재 | medium | FIXED `3def2a0` | 프로브: `readFileSync` catch에서 `e.code==="ENOENT"`만 `GATE_OFF FOREIGN_ACTIVE=0`, 그 외 `STATE_UNREADABLE` exit 2. SC-4·(2-0)ⓒ 문면·주석 갱신. C11에 부모 디렉터리 부재(ENOENT → GATE_OFF)·경로가 디렉터리(EISDIR → 차단) 케이스 |
+| task-02 · [R5-2] `$CLI`·`$TOKEN`·`$TITLE`이 도구 호출 사이에 사라져 빈 값 명령이 실행됨 · 독립 셸에서 완결(리터럴 치환·상태 저장) + 테스트 | medium | FIXED `3def2a0` | (2) 셸 안전 문장에 "변수 보존: 자리표시자 — 도구 호출마다 셸이 새로 시작 → 해소된 실제 값을 리터럴로 치환한 완결 명령 또는 같은 호출 안 해소·사용, 빈 값 명령 실행 금지"; 재개 프롬프트에도 `$CLI` 자리표시자 고지. SC-5 변수 보존 항목·C4 needle 2종·Cautions. 상태 파일 대안은 채택 안 함(문면 지시로 충분, G1·G2) |
+| task-05/06 · [R5-3] AC6가 1.0.0 고정이라 실패 후 patch(1.0.1) 재검증이 task-06을 완료할 수 없음 · 대상 버전 매개변수화 + 설치 버전 기록 + 복구 절차 | medium | FIXED `3def2a0` | AC6 절 대상 = 릴리스된 최신 1.0.x(최소 1.0.0), `**설치 버전**:` 줄(자리표시자 → task-06이 doctor 값으로 채움, AC grep `1\.0\.[0-9]+` — 자리표시자 0/채움 1 실측). task-06 목적·Prep·복구 절차(수정 → impl 재검토 → patch bump·push → 맥북 갱신 → 재실행)·커밋 문구 `<설치 버전>`·Cautions, task-05 설치 갱신 문단·안내 문안, SC-7 동기 |
