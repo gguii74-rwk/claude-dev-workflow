@@ -189,6 +189,7 @@ C3 소멸 확인 1건: R5-3.
 | 2026-09-24 16:02 | `b11fef6` | GREEN 11/11 | 최종 리뷰 I1·M4 수정 — C4 needle 2개 추가(테스트 파일 .remember/), 비오르카 reason 수정 전과 동일 |
 | 2026-09-24 16:25 | `bc958e4` | GREEN 11/11 | impl R1-1 — C4 needle 3개 추가, `b11fef6` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · 비오르카 reason 불변 |
 | 2026-09-24 16:31 | `4770d6a` | GREEN 11/11 | impl R2-1 — C4 needle 1개 추가, `bc958e4` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN |
+| 2026-09-24 16:45 | `e9efda1` | GREEN 11/11 | impl R3-1·M3·M6 — C4 needle 4개 · C11 `CLAUDE_PLUGIN_DATA` 부재/빈 값 케이스(테스트 env에 명시 주입), `4770d6a` 훅에서 C4·C11 RED(pass 9 / fail 2) 확인 뒤 GREEN · 셸 env에서 변수를 빼도 GREEN · 실제 상태 파일 프로브 `GATE_OFF FOREIGN_ACTIVE=0`, 변수 제거 시 `STATE_UNREADABLE` exit 2 |
 
 GREEN 원문:
 ````
@@ -218,6 +219,7 @@ review-loop(impl)에서 훅이 다시 바뀌면 재실행해 이 표에 행을 �
 |---|---|---|---|---|
 | R1 | 적대(자동) | 4 (high 1 · medium 1) | 1 → 2 | verdict needs-attention · 신규 1(R1-1, 즉시 ESCALATE — 데이터 유실군 → 사용자 FIXED `bc958e4`·`3165932`) · 이월 I2 즉시 ESCALATE → 사용자 ACCEPTED(README 보완 `3165932`) · 이월 소항목 7건 batch-pending · plan 이월 큐 1건(`d5ae7c9`) 적대 비재출현(R1, 참고 — 큐 유지) · 루프 직접 판정 0 |
 | R2 | 적대(자동) | 1 (medium 1) | 2 → 3 | verdict needs-attention · 신규 1 · FIXED `4770d6a` · 큐 2건(`d5ae7c9`·R1-1) 적대 비재출현(R2, 참고 — 큐 유지) · batch 적재 0(신규) · 루프 직접 판정 0 · 신호 미발화(4→1 감소) |
+| R3 | 적대(자동, 경계) | 3 (high 1) | 3 → 8 | verdict needs-attention · 신규 1(R3-1 = 이월 M2와 동일 → 병합) · 소진 3 = auto 경계 → **batch flush**(이월 소항목 7건 + R3-1 일괄 제시, 사용자 판정: FIXED 5 `e9efda1`·`336f19e` · ACCEPTED 2) · 큐 3건 적대 비재출현(R3, 참고 — 큐 유지) · 루프 직접 판정 0 · 신호 미발화(4→1→3) → 정밀 모드 R4. 이월 소항목은 R1부터 SDD minor 등급으로 score 제외, 사용자 FIXED 판정 시 medium으로 재평가해 큐 편입 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -225,5 +227,12 @@ review-loop(impl)에서 훅이 다시 바뀌면 재실행해 이 표에 행을 �
 | 훅 · [R1-1] 폴백의 후계 /exit(와 뒤따르는 /clear)에 공유 브로커 잡 검사가 없어 다른 세션의 실행 중 codex 잡이 죽음 · 정리 전 queued/running 검사, 활성이면 대기, 조회 실패·상한 초과면 /exit·close·/clear 보류 | high | FIXED `bc958e4` · README 동기 `3165932` (**사용자 판정** 즉시 ESCALATE→FIXED) | codex 1.0.6 `handleSessionEnd`가 세션 무관하게 `loadBrokerSession(cwd)` 브로커를 shutdown함을 소스로 확인. (2-1) 뒤 [폴백] 정리 앞에 `COMPANION_ROOT_CMD; STATE_PROBE_CMD` → FOREIGN_ACTIVE≠0 15초 간격 최대 10분 · 상한·STATE_UNREADABLE·RESOLVE_FAIL → 보류·차단 보고. (2-0) 폴백은 사용자 판정(M4)대로 정리 없이 CLEAR 유지. C4 needle 3개(HEAD 훅 RED → GREEN 11/11) |
 | 훅 · [이월 I2] `ORCA_TERMINAL_HANDLE`이 자식 프로세스에 상속되어 오르카 탭 속 중첩 claude(`claude -p`·tmux)가 넛지 시 부모 탭에 /exit | medium | ACCEPTED (**사용자 판정**) · 보완 = README 3종 주의 절 경고 `3165932` | 오르카 `terminal show`에 pid 없음(실측) → 소유 증명 수단 부재 · 발생 조건 드묾 · L1(실측 뒤 성장). 재론 조건 = 실사용에서 중첩 claude 오인 사례 발생 |
 | 훅 · [R2-1] 폴백의 빈 후계 정리가 종료 표지+셸 프롬프트를 요구하나 프롬프트 미전달 빈 세션은 표지를 출력하지 않아(실측) 정리·/clear 안내가 항상 차단 · 빈 후계 전용 종료 증거 정의 | medium | FIXED `4770d6a` | SDD 실측(빈 세션 /exit → 셸 프롬프트 복귀·표지 없음·--for exit 31초 timeout) 근거. 폴백 정리 ② = 시간 초과 뒤 read에서 claude 화면 소멸 + 셸 프롬프트 복귀만으로 충분, 옛 세션 종료(첫 동작 ②) 조건 불변. C4 needle 1개(이전 훅 RED → GREEN 11/11) |
+| 훅 · [R3-1 = 이월 M2] `CLAUDE_PLUGIN_DATA` 부재 시 companion이 tmpdir 폴백 경로를 해소해 ENOENT → GATE_OFF FOREIGN_ACTIVE=0(fail-open) · 변수 부재·빈 값이면 STATE_UNREADABLE | high | FIXED `e9efda1` (**사용자 판정** batch) | companion 1.0.6 `state.mjs` `FALLBACK_STATE_ROOT_DIR = os.tmpdir()/codex-companion` 확인. 프로브 첫 줄에 변수 검사 → exit 2, (2-0)ⓒ 문면 동기. C11 부재/빈 값 케이스(RED → GREEN), 실제 세션 프로브 정상 경로 불변 |
+| 훅 · [이월 M3] 고아 running 잡이면 후계가 매번 10분 대기 후 보고만(원인 잡 불명) · 상한 보고에 잡 id | medium(재평가 ← SDD minor: 수정 반영) | FIXED `e9efda1` (**사용자 판정** batch) | 0번째 동작·폴백 브로커 검사 두 곳의 상한 보고에 해당 queued/running 잡 id·status·sessionId(고아 판단·cancel용). C4 needle 2개 |
+| 훅 · [이월 M6] `.remember/successor-*.prompt` 미삭제로 누적 · 전달 확인 뒤 삭제 | medium(재평가 ← SDD minor: 수정 반영) | FIXED `e9efda1` (**사용자 판정** batch) | (2-3) turn_started 확인 뒤 `rm -f`, [폴백]이면 진단용 보존. README 3종 주의 절 "디렉터리와 파일" → 디렉터리(파일은 실패 시에만) 동기. C4 needle 1개 |
+| plan · [이월] task-01:325·task-02:400 AC `grep -c 'hook-test'`가 plan 파일명에 걸려 항상 1 · `hook-test-1.0.0/` | medium(재평가 ← SDD Ruling: 수정 반영) | FIXED `336f19e` (**사용자 판정** batch) | 두 줄 패턴 교체, 실행 결과 0 |
+| plan · [이월 F6 관찰] 대화가 있는 세션의 /exit 종료 표지(`Resume this session with`) 출력 미관찰 · AC6에 관찰 기록 | medium(재평가: 수정 반영) | FIXED `336f19e` (**사용자 판정** batch) | 질문 문면의 "5행"이 아니라 옛 세션 종료 증거를 다루는 **7행**에 반영(기대값이 I1 수정 전 `--for exit satisfied`만이던 것도 함께 정정 — 시간 초과 뒤 read 종료 표지+셸 프롬프트, 표지 출력 여부 기록). 행 NF 7 확인 |
+| 훅 · [이월 M1] `terminal list` title은 Claude Code가 덮어쓴 실시간 제목이라 create 응답 유실 시 토큰 정확 조회 0건 가능 | low(SDD minor) | ACCEPTED (**사용자 판정** batch) | 실패 시 차단 보고(fail-closed) · create 응답 유실 자체가 드묾 · 대체 식별 수단은 새 설계·실측 필요. 재론 조건 = 실사용에서 응답 유실 발생 |
+| 훅 · [이월 M5] 첫 동작 전 옛 핸들 목록 부재 = 닫힌 것으로 보고 진행(D9 순서와 다름) | low(SDD minor) | ACCEPTED (**사용자 판정** batch) | 사용자가 옛 탭을 직접 닫는 흔한 경우에 자연스럽고 D9 취지(없으면 진행)와 일치 · 핸들 변경(오르카 재시작) 중 옛 claude 생존은 드묾 |
 
-**이월 소항목 — ESCALATE(batch-pending, 사용자 판정 대상, 원문 = SDD ledger 사본 `.remember/sdd-2026-09-24-orca-successor-session-progress.md`)**: M1 `terminal list` title은 Claude Code가 덮어쓴 실시간 제목이라 토큰 정확 조회 0건 가능(실측: 이 세션 탭 제목 "◐ 같은 작업 이어서 진행") · M2 `CLAUDE_PLUGIN_DATA` 부재 시 `/tmp/codex-companion` 폴백으로 GATE_OFF · M3 고아 running 잡이 매번 10분 대기 — 보고에 잡 id · M5 "첫 동작 전 목록 부재 = 진행"이 D9 순서와 다름 · M6 `successor-*.prompt` 미삭제 · task-01:325·task-02:400 AC `grep -c 'hook-test'` 오탐 문면 · F6 관찰: 실제 세션 /exit에 "Resume this session with" 표지 출력 여부.
+**이월 소항목 — R1~R3 ESCALATE(batch-pending) → R3 batch flush에서 전부 사용자 판정으로 닫힘(위 표), 원문 = SDD ledger 사본 `.remember/sdd-2026-09-24-orca-successor-session-progress.md`**: M1 `terminal list` title은 Claude Code가 덮어쓴 실시간 제목이라 토큰 정확 조회 0건 가능(실측: 이 세션 탭 제목 "◐ 같은 작업 이어서 진행") · M2 `CLAUDE_PLUGIN_DATA` 부재 시 `/tmp/codex-companion` 폴백으로 GATE_OFF · M3 고아 running 잡이 매번 10분 대기 — 보고에 잡 id · M5 "첫 동작 전 목록 부재 = 진행"이 D9 순서와 다름 · M6 `successor-*.prompt` 미삭제 · task-01:325·task-02:400 AC `grep -c 'hook-test'` 오탐 문면 · F6 관찰: 실제 세션 /exit에 "Resume this session with" 표지 출력 여부.
