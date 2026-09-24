@@ -135,6 +135,7 @@
 |---|---|---|---|---|
 | R1 | 적대(자동) | 5 (high 1·medium 2) | 0 → 3 | verdict needs-attention · 신규 3 · FIXED 3 |
 | R2 | 적대(자동) | 7 (high 2·medium 1) | 3 → 6 | verdict needs-attention · 신규 3 · FIXED 3 · R1 큐 3건 적대 비재출현(R2, 참고 — 큐 유지) |
+| R3 | 적대(자동, 경계) | 1 (medium 1) | 6 → 7 | 1차 실행 실패(본문 없음 — `orca terminal list` 실패 직후 종료, 소진 미반영, 잡 cancel, 사용자 판단으로 재실행) · 재실행 verdict needs-attention · 신규 1 · FIXED 1 · 큐 6건 적대 비재출현(R3, 참고) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 전환 신호 미발화 → 정밀 모드 R4 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -146,4 +147,6 @@
 | spec:F1 · 동적 프롬프트를 셸 문자열로 전달하면 명령 치환이 실행된다 · 파일 조립 + argv 전달 | high | FIXED `bdadf55` | F1 (3) `.remember/successor-<토큰>.prompt` quoted heredoc + `--text "$(cat …)"`(RL §2b 패턴), 보간 금지. AC2·AC6 메타문자 케이스 |
 | spec:F1/F2 · create 응답 유실 시 생성된 후계를 식별해 정리할 수 없다 · 상관 토큰 + list 정확 조회 + 미확정 시 차단 | medium | FIXED `bdadf55` | F1 (1) 제목 `<작업명>-<토큰>`, 유실 시 `terminal list` 정확 조회(1개 아니면 F2). F2 (d) 재생성·`/clear` 안내 차단 + 후보 보고. D7과 양립(작업명 유지 + 접미) |
 
-미확인 FIXED 큐 = 위 6건(R1 3 + R2 3, 소멸 확인 대기). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
+| spec:F1 · 동적 탭 제목을 통한 셸 명령 치환 · 제목 안전 문자 집합 정규화(또는 파일 전달) | medium(재평가 ← high: 제목은 모델이 짓는 짧은 문자열, 정규화 1줄) | FIXED `5548688` | F1 (1) `[A-Za-z0-9._-]` 정규화·≤40. AC1·AC2·F5 셸 안전 케이스. R2-2와 별개 sink(`--title`) |
+
+미확인 FIXED 큐 = 위 7건(R1 3 + R2 3 + R3 1, 소멸 확인 대기). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
