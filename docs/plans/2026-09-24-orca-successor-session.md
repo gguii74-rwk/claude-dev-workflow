@@ -105,7 +105,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 
 **SDD 실행 범위 = task-01~04.** task-05(릴리스)·task-06(AC6 실측)은 9단계 이후라 SDD가 디스패치하지 않는다 — 8단계 review-loop(impl)가 성공 종료(엔트리포인트 말미 `## 적대검증 ledger (impl)` 종결 행)한 뒤 그 세션 또는 새 세션이 task-05를, 릴리스·push·맥북 갱신 뒤 맥북 세션이 task-06을 단독 실행한다. 표에 두는 이유는 완료 기록(status·outcome)을 같은 표에서 받기 위해서다(plan R2-1·R3-3). 트랙 완료 = 06행 `[x]`. **task-05·06의 완료 권위 = 이 커밋된 task 표 + 각 task의 AC**(SDD progress ledger에는 기록하지 않는다 — SDD 밖이라 계약 블록의 convergence 규칙, 즉 "ledger 완료 기록 부재 → `[ ]` 복원"의 대상이 아니다; 그 규칙은 SDD 실행 범위 task-01~04에만 적용한다). 실행자는 task-05/06 완료 시 표 행 `[x]`·outcome을 쓰고 이 파일을 즉시 커밋한다(계약 ④와 같은 기록, ledger 기록만 생략). task-06 착수나 어떤 복구 절차도 task-05 행을 되돌리지 않는다(plan C1 재분류 R3-3).
 
-**review-loop(impl) 입도**: 통합 1회(task-01~04, 코드 1파일 — task-05·06은 그 뒤). base = 구현 착수 직전 main SHA(plan 종결 커밋). **8단계 impl 게이트**: 이 repo는 npm이 아니므로 RL 게이트 4종 대신 **SC-6 GREEN 기록 + 각 task AC grep**으로 갈음한다(dev-cycle 규약 · spec §6).
+**review-loop(impl) 입도**: 통합 1회(task-01~04, 코드 1파일 — task-05·06은 그 뒤). base = 구현 착수 직전 main SHA(plan 종결 커밋). **필수 확인 항목(plan 루프 폴백 ① 이월)**: task-06 AC의 커밋 제목 버전 대조 검사(`d5ae7c9`)가 실제로 자리표시자·다른 버전을 0으로 판별하는지 — impl 루프의 확인 라운드 프롬프트 ②(미확인 FIXED 큐)에 원 지적(plan ledger C3 회귀 행)과 함께 첨부한다. **8단계 impl 게이트**: 이 repo는 npm이 아니므로 RL 게이트 4종 대신 **SC-6 GREEN 기록 + 각 task AC grep**으로 갈음한다(dev-cycle 규약 · spec §6).
 
 **트랙 밖(여기서 하지 않는다)**: spark2·Windows 오르카 환경 확인(D11 후속 — 각 머신 첫 넛지 때) · codex 브로커 참조 계수·drain/lease API(OUT_OF_SCOPE) · 0.18.0 트랙 AC11(별도 미결).
 
@@ -142,6 +142,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | C1 | 확인 | — | 16 → 2 | 완전 응답(16건 전부 명시) · **소멸 14**(R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1) · **blocking 재분류 2**(R3-2 종결 게이트가 생산자 계약 없는 형식 강제 → medium · R3-3 SDD 밖 task-05/06 완료 권위 미규정 → medium) · 회귀 = 재분류 2건과 동일 · 감사 해당 없음 · 신규 low 1(EOF 빈 줄 — DEFER_LOW, 부수 정리) · verdict merge-ready: no → 2건 FIXED `914a832` → **복귀 적대 1(R5, 상한 밖) → 재진입 확인(C2, 상한 밖)** · 확인 소진 1 · 복귀 사용 |
 | R5 | 적대(복귀, 상한 밖) | 3 (medium 3) | 2 → 5 | verdict needs-attention · 신규 3 · FIXED 3 `3def2a0` · 큐 2건 적대 비재출현(R5, 참고) · 루프 직접 판정 0 · 카운터 불변(예약분) → 재진입 확인 C2(상한 밖) |
 | C2 | 확인(재진입, 상한 밖) | — | 5 → 1 | 완전 응답 · **소멸 4**(C1-R3-2 · C1-R3-3 · R5-1 · R5-2) · **잔존 1**(R5-3 — eval 부기 지시문 `1.0.0 설치본` 고정·eval AC 버전 미대조, medium) · 회귀 = 잔존과 동일 · 감사 해당 없음 · 신규 없음 · verdict merge-ready: no → **재진입 재발 = ESCALATE(즉시)** → 사용자 판정 **FIXED `27652ed` + 일반 확인 1회(C3, 예산 잔여 1)** · 카운터 불변(예약분) · whole-branch 리뷰 권고는 종료 보고에 기재 |
+| C3 | 확인(일반 2/2) | — | 1 → 0 → 1 | 완전 응답 · **소멸 1**(R5-3) · **회귀 1**(task-06 AC 커밋 제목 검사가 버전 미대조, medium) · 감사 해당 없음 · 신규 없음 · verdict merge-ready: no → 확인 예산 소진·복귀 사용 완료 → **ESCALATE(즉시)** → 사용자 판정 **FIXED `d5ae7c9` + 폴백 ①(review-loop(impl) 필수 확인 항목으로 이월)** · 확인 소진 2 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -171,3 +172,8 @@ C1 소멸 확인 14건: R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1. low 1
 | task-02 · [R5-2] `$CLI`·`$TOKEN`·`$TITLE`이 도구 호출 사이에 사라져 빈 값 명령이 실행됨 · 독립 셸에서 완결(리터럴 치환·상태 저장) + 테스트 | medium | FIXED `3def2a0` | (2) 셸 안전 문장에 "변수 보존: 자리표시자 — 도구 호출마다 셸이 새로 시작 → 해소된 실제 값을 리터럴로 치환한 완결 명령 또는 같은 호출 안 해소·사용, 빈 값 명령 실행 금지"; 재개 프롬프트에도 `$CLI` 자리표시자 고지. SC-5 변수 보존 항목·C4 needle 2종·Cautions. 상태 파일 대안은 채택 안 함(문면 지시로 충분, G1·G2) |
 | task-05/06 · [R5-3] AC6가 1.0.0 고정이라 실패 후 patch(1.0.1) 재검증이 task-06을 완료할 수 없음 · 대상 버전 매개변수화 + 설치 버전 기록 + 복구 절차 | medium | FIXED `3def2a0` | AC6 절 대상 = 릴리스된 최신 1.0.x(최소 1.0.0), `**설치 버전**:` 줄(자리표시자 → task-06이 doctor 값으로 채움, AC grep `1\.0\.[0-9]+` — 자리표시자 0/채움 1 실측). task-06 목적·Prep·복구 절차(수정 → impl 재검토 → patch bump·push → 맥북 갱신 → 재실행)·커밋 문구 `<설치 버전>`·Cautions, task-05 설치 갱신 문단·안내 문안, SC-7 동기 |
 | task-06 · [C2 잔존 R5-3] eval 부기 소절 제목이 `1.0.0 설치본`으로 고정·eval AC가 버전 미대조 · `<설치 버전>` 매개변수화 + eval 버전 = AC6 절 설치 버전 대조 | medium | FIXED `27652ed` (**사용자 판정** ESCALATE→FIXED, 재편입) | 단계 3 주석 `<설치 버전>`(세 곳 동일 요구), AC `V=$(… 설치 버전 …)` 추출 후 `grep -c "AC6 실측([날짜], $V 설치본)"` ≥1(스크래치: 1.0.1/1.0.1 → 1, 1.0.1/1.0.0 → 0), Cautions |
+| task-06 · [C3 회귀] AC 커밋 제목 검사가 버전 없이 문구만 대조(자리표시자 미치환도 통과) · `$V` 대조 | medium | FIXED `d5ae7c9` (**사용자 판정** ESCALATE→FIXED) — **미확인, 폴백 ① 이월** | AC 마지막 검사 = `grep -cF "AC6 실사용 확인 기록 — 맥북 오르카 $V 설치본"`(스크래치: 1.0.1 일치 1 · 자리표시자 0 · 1.0.0 0). 소멸 확인은 review-loop(impl) 확인 프롬프트의 필수 항목(아래 이월) |
+
+C3 소멸 확인 1건: R5-3.
+
+**종결(2026-09-24)**: 적대 4 + 복귀 적대 1 · 확인 1 + 재진입 확인 1 + 일반 확인 1 = 총 8라운드(실행 실패 0). 미판정 blocking 0 · **미확인 FIXED 큐 1**(C3 회귀 `d5ae7c9` — 확인 예산 소진으로 **폴백 ①: review-loop(impl) 필수 확인 항목으로 이월**, 사용자 판정) · 최종 verdict = C3 merge-ready: no(그 1건이 사유이며 사용자 FIXED로 닫힘 — 확인은 impl 루프 몫). disposition 집계(고유 fingerprint 21): FIXED 21(그중 재분류·회귀 후 재수정 4: C1 재분류 2 · C2 잔존 1 · C3 회귀 1; 사용자 판정 2: C2 잔존 · C3 회귀) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · low 1(EOF 빈 줄, 부수 정리) · ESCALATE 2건 전부 사용자가 FIXED로 닫음. 루프 건강: 재론률 0/21 · 철회 조항 0 · 사람개입률 2/21. **다음 phase 승계**: 재논의 금지 블록(D1~D12 + spec 2행)은 이 문서 상단에 이미 있음 · 이 루프의 ACCEPTED/OUT_OF_SCOPE/DEFERRED 0 · **review-loop(impl) 필수 확인 항목(폴백 ①)**: task-06 AC 커밋 제목 버전 대조 `d5ae7c9`의 소멸 확인 — impl 확인 프롬프트 ②에 첨부. **권고**: 재진입 확인(C2)과 일반 확인(C3)이 연속으로 새 blocking을 냈다(모두 task-05/06 AC6 게이트 문면) — 규정에 따라 **새 세션 whole-branch 리뷰 1회 권고**(impl 착수 전, 대상 = plan 전체; 사용자 판단).
