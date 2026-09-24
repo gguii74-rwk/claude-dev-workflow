@@ -145,6 +145,7 @@
 | C1 | 확인 | — | 12 → 3 | 완전 응답 · **소멸 9**(#1·2·4·5·6·7·8·9·12) · **blocking 재분류 3**(#3·#10 `/exit` 완료 증거로 tui-idle 부적합 → medium/high, #11 `status --all` 자기 세션 필터 → high) · 회귀 없음 · 감사 해당 없음 · 신규 없음 · verdict needs-attention → 3건 FIXED `fe3e3a9` → **복귀 적대 1(R6, 상한 밖) → 재진입 확인(C2, 상한 밖)** · 확인 소진 1 · 복귀 사용 |
 | R6 | 적대(복귀, 상한 밖) | 6 (high 2) | 2행 → 4행 | verdict needs-attention · 신규 2 · FIXED 2 `35a58a5` · **루프 직접 판정 2**(ACCEPTED 경쟁 창 · OUT_OF_SCOPE drain/lease) → C2 우선 감사 · 카운터 불변(예약분) |
 | C2 | 확인(재진입, 상한 밖) | — | 4행 → 1행 | 완전 응답 · 소멸 2(행 1·2) · **blocking 재분류 2**(행 3·4 — 검증 후 `loadState` 재읽기 fail-open, 같은 뿌리) · 감사 (a) ACCEPTED 경쟁 창 **이의**(보완 연결 부재) → **사용자 재판정: 보완 표현 삭제·ACCEPTED 유지** · (b) OUT_OF_SCOPE 타당 · 신규 없음 · verdict needs-attention → **재진입 blocking = ESCALATE → 사용자: FIXED `e1cb24e`** → 일반 확인 예산 잔여 1로 C3 · 카운터 불변(예약분) |
+| C3 | 확인(일반 2/2) | — | 1행 → 0 | 완전 응답 · 소멸 1(행 3·4) · 회귀 없음 · 감사 OUT_OF_SCOPE 타당(C2 유지) · 신규 없음 · **verdict approve** · 확인 소진 2 → **성공 종료**(미판정 0·큐 0·verdict 통과) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -174,4 +175,6 @@
 
 C1 소멸 확인 9건: #1 CLI 검증 · #2 turn_started · #4 핸들 바인딩 · #5 프롬프트 파일 · #6 상관 토큰 · #7 제목 정규화 · #8 토큰 예약 · #9 경로 ① 한정 · #12 README 문구. | spec:F1 · [C2 재분류 행 3·4] 검증 후 `loadState` 재읽기로 config·jobs fail-open 잔존 · 직접 파싱 동일 객체 소비, 실패 = F2/차단 | high | FIXED `e1cb24e` (사용자 판정 ESCALATE→FIXED, 재편입) | F1 0단계·0번째 동작 조회 문면 교체. AC2 |
 
-C2 소멸 확인 2건: 행 1(/exit 완료 증거) · 행 2(status --all 필터). **미확인 FIXED 큐 = 1행(C2 재분류 행 3·4)** — C3 대상(일반 예산). 루프 직접 판정 = 1(OUT_OF_SCOPE drain/lease — C2 감사 타당). low = 0. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
+C2 소멸 확인 2건: 행 1(/exit 완료 증거) · 행 2(status --all 필터). C3 소멸 확인 1건: 행 3·4(직접 파싱 동일 객체 소비).
+
+**종결(2026-09-24)**: 적대 5 + 복귀 적대 1 · 확인 2 + 재진입 확인 1 = 총 9라운드(+R3 1차 실행 실패 재실행 1). 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve(C3). disposition 집계(고유 fingerprint 14): FIXED 12(그중 3건은 확인 라운드 재분류 후 재수정) · ACCEPTED 1(R6-1b, 사용자 재판정) · OUT_OF_SCOPE 1(drain/lease, 루프 판정·감사 타당) · DEFERRED_TO_IMPL 0 · DUPLICATE 0 · low 0. ESCALATE 3건(R5-3 · C2 재분류 · C2 감사 이의) 전부 사용자가 닫음. 루프 건강: 재론률 0/14 · 철회 조항 0 · 사람개입률 3/14. 다음 phase 승계: 재논의 금지 블록(D1~D12) + 위 ACCEPTED·OUT_OF_SCOPE 2행을 plan 엔트리포인트 상단에 옮겨 적는다. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
