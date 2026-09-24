@@ -141,6 +141,7 @@
 | R3 | 적대(자동, 경계) | 1 (medium 1) | 6 → 7 | 1차 실행 실패(본문 없음 — `orca terminal list` 실패 직후 종료, 소진 미반영, 잡 cancel, 사용자 판단으로 재실행) · 재실행 verdict needs-attention · 신규 1 · FIXED 1 · 큐 6건 적대 비재출현(R3, 참고) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 전환 신호 미발화 → 정밀 모드 R4 |
 | R4 | 적대(정밀) | 1 (medium 1) | 7 → 8 | verdict needs-attention · 신규 1 · FIXED 1 · 큐 7건 적대 비재출현(R4, 참고) · 신호 1 미발화(7→1→1) · 신호 2 미발화(수정 큐 1) · 소진 4 |
 | R5 | 적대(정밀) | 10 (high 3·medium 1) | 8 → 12 | verdict needs-attention · 신규 4 · FIXED 4(R5-3은 사용자 판정) · 큐 8건 적대 비재출현(R5, 참고) · **소진 5 = max → 신호 3 발화** · batch 적재 0 → 확인 모드 진입 |
+| C1 | 확인 | — | 12 → 3 | 완전 응답 · **소멸 9**(#1·2·4·5·6·7·8·9·12) · **blocking 재분류 3**(#3·#10 `/exit` 완료 증거로 tui-idle 부적합 → medium/high, #11 `status --all` 자기 세션 필터 → high) · 회귀 없음 · 감사 해당 없음 · 신규 없음 · verdict needs-attention → 3건 FIXED `fe3e3a9` → **복귀 적대 1(R6, 상한 밖) → 재진입 확인(C2, 상한 밖)** · 확인 소진 1 · 복귀 사용 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -161,4 +162,7 @@
 | spec:F1 · 공유 브로커를 쓰는 제3 세션을 종료 절차가 끊는다 · 종료 전 폴더 잡 확인·대기 | high | FIXED `b5ef8e9` (**사용자 판정** — 선택지 FIXED/ACCEPTED/OUT_OF_SCOPE 중 FIXED) | F1 (4) 0번째 동작: `status --all --json`으로 자기 세션 외 running 잡 확인, 완료 대기(15초 폴링·상한 10분), 상한 시 보고·보류. 브로커 참조 계수 = 범위 밖 후속(잔여 리스크 기록) |
 | spec:F4 · README 전역 설치 경고가 1.0.0 동작과 모순 · "동작은 무해" 문구 교체 | medium | FIXED `b4ced82` | F4 README 3종 §주의 문구 교체. AC4 "동작은 무해" 0건 대조 |
 
-미확인 FIXED 큐 = 위 12건(R1 3 + R2 3 + R3 1 + R4 1 + R5 4, 소멸 확인 대기). 루프 직접 판정 = 0(R5-3은 사용자 판정 — 감사 대상 아님). low = 0. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
+| spec:F1/F2 · [C1 재분류 #3·#10] `/exit` 완료 증거 — tui-idle은 이미 idle인 옛 세션에서 즉시 만족 · `--for exit` 또는 종료 표지+셸 프롬프트 필수, 증거 없이 close 금지 | high | FIXED `fe3e3a9` (재편입) | F1 (4) wait `--for exit`, 성공 조건 개정. F2 정리 방식 동기 |
+| spec:F1 · [C1 재분류 #11] `status --all`은 자기 세션 잡만 표시 · 상태 파일 `loadState(cwd).jobs`로 타 세션 running 잡 조회 | high | FIXED `fe3e3a9` (재편입) | F1 (4) 0번째 동작 조회 수단 교체(state.mjs). AC2 |
+
+C1 소멸 확인 9건: #1 CLI 검증 · #2 turn_started · #4 핸들 바인딩 · #5 프롬프트 파일 · #6 상관 토큰 · #7 제목 정규화 · #8 토큰 예약 · #9 경로 ① 한정 · #12 README 문구. **미확인 FIXED 큐 = 재편입 3건(#3·#10 → 1행, #11)** — C2 대상. 루프 직접 판정 = 0. low = 0. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
