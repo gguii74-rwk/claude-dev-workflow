@@ -37,23 +37,32 @@ doctor 점검 1행의 존재 이유는 **"이 설치본이 뒤처졌나"**에 �
 엔트리별 `git rev-parse "$SHA:dev-workflow"`가 **실패한 엔트리만**(D2) 그 sha를 지목해 1회 fetch한 뒤 다시 조회한다.
 
 ```bash
+# 엔트리 순회 전에 1회 — 보강 fetch 전체가 나눠 쓰는 공유 상한(D10)
+DL=$(( $(date +%s) + 30 ))
+
+# 엔트리마다
 T=""
 if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
   :   # 판정 불가(설치 sha 형식 이상) — rev-parse도 fetch도 하지 않는다
 else
   T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
   if [ -z "$T" ] && [ -z "$TIMED_OUT" ]; then
-    if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
-    perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
-    [ "$RC" = 142 ] && TIMED_OUT=1
-    T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+    LEFT=$(( DL - $(date +%s) ))
+    if [ "$LEFT" -le 0 ]; then
+      TIMED_OUT=1   # 공유 상한 소진 — 이 엔트리부터 fetch 없이 판정 불가(시간 초과)
+    else
+      if [ "$(git -C "$C" rev-parse --is-shallow-repository)" = true ]; then D="--depth 1"; else D=""; fi
+      perl -e 'alarm shift; exec @ARGV' "$LEFT" git -C "$C" fetch -q --no-write-fetch-head $D origin "$SHA" 2>/dev/null; RC=$?
+      [ "$RC" = 142 ] && TIMED_OUT=1
+      T="$(git -C "$C" rev-parse "$SHA:dev-workflow" 2>/dev/null)" || T=""
+    fi
   fi
 fi
 ```
 
 - **sha 형식 검사(D3)는 어떤 `rev-parse`보다 먼저**: `^[0-9a-f]{40}$`가 아니면 subtree 조회도 fetch도 하지 않고 판정 불가 사유 = **"설치 sha 형식 이상"**. 조회 뒤에 검사하면 `HEAD`·`FETCH_HEAD`·해석 가능한 짧은 sha가 `rev-parse`를 통과해 형식 검사를 우회하고, 로컬 최신 revision을 가리킬 경우 거짓 "최신"이 나온다((b) 위반). 옵션 모양 값(`--upload-pack=…`)이 git 옵션으로 해석되는 경로도 같은 검사가 막는다. `gitCommitSha` **결측**은 기존 분기(필드 결측 → 판정 불가)가 이 검사보다 먼저다(비목표 — 무변경).
 - **`--depth 1`은 clone이 이미 shallow일 때만** 붙인다 — full clone에 붙이면 clone을 shallow로 바꾼다.
-- **시간 초과 1회면 나머지 건너뜀(D10)**: 보강 fetch가 상한(exit 142)에 걸리면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 최악 추가 대기 30초 고정.
+- **시간 초과 1회면 나머지 건너뜀(D10)** — 상한 30초는 **보강 fetch 전체가 나눠 쓰는 공유 deadline**(`DL`)이다. 각 fetch에는 남은 시간만 alarm으로 준다. 보강 fetch가 상한(exit 142)에 걸리거나 남은 시간이 0 이하면 네트워크 정지로 보고, 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적는다 — 여러 fetch가 상한 직전에 142가 아닌 코드로 실패해도 **누적 추가 대기는 30초를 넘지 않는다**.
 - 기존 네트워크 규약(`GIT_TERMINAL_PROMPT=0` · perl wall-clock 상한 · stderr `2>/dev/null`) 그대로.
 - **보강 fetch는 `FETCH_HEAD`를 쓰지 않는다(`--no-write-fetch-head`)** — 객체만 필요하고, 마켓플레이스 clone은 공유 상태라 동시에 도는 `/plugin update`·다른 doctor가 자기 fetch와 `FETCH_HEAD` 소비 사이에 덮어쓰인 옛 설치 sha를 소비할 수 있다. doctor 자신의 최신 기준은 원래대로 고정한 `$OID`를 쓴다(SKILL.md 점검 2 "고정한 `$OID`" 문단 — 기본 브랜치 fetch는 무변경).
 - 스코프 간 드리프트는 같은 subtree id를 비교하므로 보강으로 함께 판정 가능해진다(별도 변경 없음).
@@ -84,7 +93,7 @@ fi
 - **AC2**: full clone에서는 보강 fetch가 `--depth`를 붙이지 않는다 — 실행 뒤 `git rev-parse --is-shallow-repository`가 `false` 유지. · 보강 fetch 전에 `FETCH_HEAD`에 임의 값을 기록해 두면 fetch 뒤에도 그 값이 불변이고 subtree 조회는 성공한다(shallow·full 모두).
 - **AC3**: 원격에 없는 가짜 40자 sha는 상한 안에 끝나고 판정 불가 + "설치된 커밋이 원격에 없음" + 스코프 갱신 조치로 적힌다 · 형식이 깨진 sha(`--upload-pack=x` 등)와 **로컬에서 해석은 되는 비정상 값(`HEAD`·`FETCH_HEAD`·clone tip의 7자리 짧은 sha)**은 **subtree 조회·fetch를 실행하지 않고** "설치 sha 형식 이상"으로 적힌다 — 어느 경우도 "최신"·"뒤처짐"이 나오지 않는다((b)).
 - **AC4**: 뒤처짐 보조 근거가 `git diff --stat "$SHA" "$OID" -- dev-workflow/`이고, SKILL.md에 `log --oneline "$SHA..` 형태가 남지 않는다.
-- **AC5**: 보강 fetch가 시간 초과에 걸리면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적힌다 — SKILL.md 문면 확인(재현 조작 불요, D9).
+- **AC5**: 보강 fetch가 시간 초과에 걸리거나 공유 deadline(`DL`)이 소진되면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적히고, 각 fetch의 alarm 값이 고정 30이 아니라 **남은 시간**이다 — SKILL.md 문면 확인(재현 조작 불요, D9).
 - **AC6**: 변경 파일 = doctor `SKILL.md` + 이 spec(+ 릴리스 시 plugin.json·README 규약대로).
 - **AC7**(릴리스 뒤): 맥북 `/dev-workflow:doctor` 1회 — ops-hub project 엔트리가 판정 불가 대신 최신/뒤처짐으로 나온다(그 시점 설치 상태 기준). 이어서 `/plugin update` 1회가 늘어난 shallow root를 가진 clone에서 정상 동작한다(잔여 리스크 종결).
 
