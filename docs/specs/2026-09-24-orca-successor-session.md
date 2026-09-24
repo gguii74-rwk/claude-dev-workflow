@@ -143,6 +143,7 @@
 | R4 | 적대(정밀) | 1 (medium 1) | 7 → 8 | verdict needs-attention · 신규 1 · FIXED 1 · 큐 7건 적대 비재출현(R4, 참고) · 신호 1 미발화(7→1→1) · 신호 2 미발화(수정 큐 1) · 소진 4 |
 | R5 | 적대(정밀) | 10 (high 3·medium 1) | 8 → 12 | verdict needs-attention · 신규 4 · FIXED 4(R5-3은 사용자 판정) · 큐 8건 적대 비재출현(R5, 참고) · **소진 5 = max → 신호 3 발화** · batch 적재 0 → 확인 모드 진입 |
 | C1 | 확인 | — | 12 → 3 | 완전 응답 · **소멸 9**(#1·2·4·5·6·7·8·9·12) · **blocking 재분류 3**(#3·#10 `/exit` 완료 증거로 tui-idle 부적합 → medium/high, #11 `status --all` 자기 세션 필터 → high) · 회귀 없음 · 감사 해당 없음 · 신규 없음 · verdict needs-attention → 3건 FIXED `fe3e3a9` → **복귀 적대 1(R6, 상한 밖) → 재진입 확인(C2, 상한 밖)** · 확인 소진 1 · 복귀 사용 |
+| R6 | 적대(복귀, 상한 밖) | 6 (high 2) | 2행 → 4행 | verdict needs-attention · 신규 2 · FIXED 2 `35a58a5` · **루프 직접 판정 2**(ACCEPTED 경쟁 창 · OUT_OF_SCOPE drain/lease) → C2 우선 감사 · 카운터 불변(예약분) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -166,4 +167,8 @@
 | spec:F1/F2 · [C1 재분류 #3·#10] `/exit` 완료 증거 — tui-idle은 이미 idle인 옛 세션에서 즉시 만족 · `--for exit` 또는 종료 표지+셸 프롬프트 필수, 증거 없이 close 금지 | high | FIXED `fe3e3a9` (재편입) | F1 (4) wait `--for exit`, 성공 조건 개정. F2 정리 방식 동기 |
 | spec:F1 · [C1 재분류 #11] `status --all`은 자기 세션 잡만 표시 · 상태 파일 `loadState(cwd).jobs`로 타 세션 running 잡 조회 | high | FIXED `fe3e3a9` (재편입) | F1 (4) 0번째 동작 조회 수단 교체(state.mjs). AC2 |
 
-C1 소멸 확인 9건: #1 CLI 검증 · #2 turn_started · #4 핸들 바인딩 · #5 프롬프트 파일 · #6 상관 토큰 · #7 제목 정규화 · #8 토큰 예약 · #9 경로 ① 한정 · #12 README 문구. **미확인 FIXED 큐 = 재편입 3건(#3·#10 → 1행, #11)** — C2 대상. 루프 직접 판정 = 0. low = 0. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
+| spec:F1 · [R6-1a] 잡 상태 읽기·파싱 실패가 빈 목록(fail-open) · 파싱 실패 = 차단 | medium(분리) | FIXED `35a58a5` | F1 (4) 0번째 동작: 상태 파일 직접 JSON.parse, 실패 시 보고·보류 |
+| spec:F1 · [R6-1b] 잡 검사와 SessionEnd 사이 경쟁 창(TOCTOU) · drain/lease API | high | **ACCEPTED [루프 판정]** + drain/lease는 **OUT_OF_SCOPE [루프 판정]** | 이유: 같은 폴더 동시 세션은 규약상 드묾·현행 사람 `/clear`와 동일 위험·수초 창. 보완 = F6 관찰. lease API = codex 플러그인 소관(잔여 리스크 기록). **C2 우선 감사 대상** |
+| spec:F1 · [R6-2] codex Stop review gate가 stop_hook_active를 안 보고 block 가능 · 자동 인계 사전 조건 | medium(재평가 ← high: 게이트는 기본 꺼짐·이 저장소 꺼짐) | FIXED `35a58a5` | F1 (2) 0단계 사전 조건: `config.stopReviewGate===true`면 F2. AC2 |
+
+C1 소멸 확인 9건: #1 CLI 검증 · #2 turn_started · #4 핸들 바인딩 · #5 프롬프트 파일 · #6 상관 토큰 · #7 제목 정규화 · #8 토큰 예약 · #9 경로 ① 한정 · #12 README 문구. **미확인 FIXED 큐 = C1 재편입 2행(#3·#10, #11) + R6 2행(R6-1a, R6-2) = 4행** — C2 대상. **루프 직접 판정 = 2**(R6-1b ACCEPTED·OUT_OF_SCOPE) — C2 임무 ③ 우선 감사. low = 0. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
