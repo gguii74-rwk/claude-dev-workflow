@@ -246,6 +246,12 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 
 **종결(2026-09-24)**: 적대 4 + 확인 1 = 총 5라운드(실행 실패 0) · 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve(C1 merge-ready: yes). score 이력 4 → 1 → 3 → 0(신호 2로 확인 진입). disposition 집계(고유 fingerprint 11, plan 이월 1 포함): FIXED 8(자동 1 R2-1 · 사용자 판정 7) · ACCEPTED 3(I2·M1·M5, 전부 사용자 판정) · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · low 0. 루프 건강: 재론률 0/11 · 철회 조항 0 · 사람개입률 9/11(이월 소항목이 사용자 판정 대상으로 지정돼 들어온 영향). **task-05 인계**: ACCEPTED 3건의 재론 조건은 각 행에 기재(I2 = 중첩 claude 오인 사례 · M1 = create 응답 유실 발생 · M5 = 해당 없음), README 3종 주의 절에 I2 경고 반영. AC6(task-06) 7행에 종료 표지 출력 관찰 추가(F6). 훅 테스트 최종 GREEN 11/11(`e9efda1`, 위 기록 절).
 
+**재진입 — AC6 1회차 실패 복구(2026-09-24, task-06 복구 절차 R5-3)**: 워크트리 브랜치 `worktree-fix-ac6-successor-title`(main에서 doctor spec 루프가 동시 진행 중이라 리뷰 범위 분리) · base = `3fbc355`(1.0.0 릴리스, SHA 고정) · 예산 max 5 · confirm 2 · auto 3 · 보안 크리티컬 아님 · 게이트 = 훅 테스트 GREEN 11/11(`ec0d728`, 위 기록 절) + task AC. 라운드 표기 = `F<n>`(적대)·`FC<n>`(확인) — 위 R/C와 구분.
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| 훅 · [M1 재론 — AC6 1회차 2행 실패] 후계 claude가 기동 직후 탭 제목을 덮어써(`Claude Code` → 대화 요약) create 응답 유실 시 `terminal list` title 정확 조회가 0건 · 후계 제목 고정 | medium | FIXED `ec0d728` (**사용자 판정** — AC6 2행 실패 → 복구 절차, 수정 방식 선택) | M1(ACCEPTED)의 재론 조건 "실사용에서 발생"을 AC6 1회차가 실증(생성 5초 뒤 목록 title = `Claude Code`, 이후 `Review loop 재개 …`, 정확 조회 0건). 생성 명령 = `--command "CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude"` — 시험 터미널에서 대화 1턴 뒤에도 title 유지 실측. C4 needle 교체 1·추가 1(`3fbc355` RED → GREEN) |
+
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 맥북 오르카 세션이 기록
 
 **대상** = 릴리스된 최신 1.0.x **설치본**(최소 1.0.0 — AC6 실패 복구 뒤에는 그 patch, task-06 복구 절차)으로 오르카 터미널에서 도는 **실제 트랙**의 세션 1회(수동 선적용 아님). 넛지 → 핸드오프 → 후계 스폰 → 옛 세션 종료(SessionEnd 정리) → 후계가 review-loop §0 스냅샷 대조로 재개. `CLAUDE_CTX_THRESHOLD`를 낮춰 재현한다(예: `orca terminal create --worktree active --title "ac6-old" --command "CLAUDE_CTX_THRESHOLD=0.05 claude" --json`) — 실 40%까지 기다릴 필요 없다(spec §6).
