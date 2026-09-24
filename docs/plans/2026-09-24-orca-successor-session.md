@@ -258,6 +258,7 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 
 - F1 적대(자동, 소진 1/5, target `7948bef`): score 1(medium 1) · 미확인 FIXED 큐 1 → 2(M1 재론 · F1-1) · verdict needs-attention · 실행 로그 18건 · batch 적재 0 · 루프 직접 판정 0
 - F2 적대(자동, 소진 2/5, target `070bd9d`): score 1(medium 1 — F2-1 high는 이번 라운드에 ACCEPTED로 닫혀 스냅샷 제외) · 미확인 FIXED 큐 2 → 3(+F2-2) · verdict needs-attention · 실행 로그 40건 · M1 재론·F1-1 적대 비재출현(F2, 참고 — 큐 유지) · batch 적재 0 · 루프 직접 판정 1(F2-1)
+- F3 적대(자동 경계, 소진 3/5, target `b99059f`): 신규 0 · verdict **approve** · 실행 로그 24건 · score 0 · 미확인 FIXED 큐 3 유지 · 큐 3건 적대 비재출현(F3, 참고 — 큐 유지) · 소진 3 = auto 경계 → batch flush(적재 0건) · **신호 2 발화**(수정 큐 소진) → **확인 모드 진입(FC1)** — 임무 ① 큐 3(M1 재론 · F1-1 · F2-2) · 임무 ③ 루프 직접 판정 1(F2-1, 우선 감사) · 확인 예산 2 · 복귀 미사용
 
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 맥북 오르카 세션이 기록
 
