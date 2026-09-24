@@ -174,3 +174,15 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 | spec:3a · 보강 fetch가 FETCH_HEAD를 덮어써 공유 clone의 동시 작업 교란 · `--no-write-fetch-head` + FETCH_HEAD 불변 AC | medium | FIXED `ab85cd7` | D1 재론 아님(pseudo-ref 쓰기만 제거). §3a 코드·불릿 교체, AC2에 FETCH_HEAD 불변 검증. 실측: git 2.54 scratch shallow clone에서 FETCH_HEAD 불변 + subtree 조회 성공 |
 | spec:3a · 30초 총 대기 상한이 실제로는 엔트리마다 반복 · 보강 전체 공유 deadline, 각 fetch엔 남은 시간만 | medium | FIXED `eb00247` | D10 재론 아님(D10 "최악 추가 대기 30초 고정"의 미구현). §3a `DL` 공유 deadline + alarm "$LEFT" · AC5 남은 시간 alarm 문면 |
 | spec:3a · FETCH_HEAD 보호만으로 공유 shallow clone 동시 fetch가 안전하지 않음(`.git/shallow` 쓰기 경쟁) · 직렬화·대기·재시도 규약 + 동시 실행 AC | medium | ACCEPTED(사용자 판정 — batch R3) | R2-2와 같은 "공유 clone 동시 fetch" 계열 2회째. 이유: 동시 실행 드묾 · git 잠금으로 손상 아닌 한쪽 실패 · 재실행으로 해소 · 기존 기본 브랜치 fetch도 동일 · `/plugin update` 쪽 직렬화 통제 불가. 보완 단계 = AC7 관찰(재논의 금지 블록 등재) |
+
+## 적대검증 ledger (impl)
+
+루프 시작 2026-09-24 · base = spec 종결 `99b59be`(SHA 고정) · 예산 max 5 · confirm 2 · auto 3 · 보안 크리티컬 아님. 게이트 = D9(npm 없음 — scratch GitHub shallow·full clone에서 SKILL.md 블록 그대로 실행한 AC1~AC3 + 문면 AC4~AC6). score 산식 = spec ledger와 같음.
+
+| R | 모드 | score | 미확인 FIXED 큐 | 비고 |
+|---|---|---|---|---|
+| R1 | 적대(자동) | 3 (high 1) | 0 → 1 | verdict needs-attention · 신규 1 · FIXED 1 |
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| impl:SKILL.md 점검 2 · 엔트리별 판정 결과(T·WHY)가 셸 밖으로 출력되지 않음 · 엔트리마다 sha/T/WHY 한 줄 출력 + AC | high | FIXED `0d042e7` | 블록 끝 `printf 'ENTRY\t…'` + 판정은 그 줄로 한다는 문단(SKILL.md) · spec §3a 동일 + AC3에 출력 요구. 실측: 성공 2·실패 5사유·시간 초과(DL 강제 소진) 전부 1줄 |
