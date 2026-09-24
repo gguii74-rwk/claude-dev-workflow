@@ -40,17 +40,18 @@
 - `orcaHandle == null` → 그 한 문장 외에는 현행 reason **바이트 동일**(회귀 기준). (2)는 현행 /clear 안내 그대로.
 - `orcaHandle != null` → (0)(1)은 위와 같고 (2)를 아래로 교체.
 - 새 (2) 골격(오르카 경로):
-  1. `${ORCA_CLI_COMMAND:-orca} terminal create --worktree active --title <작업명> --command claude --json` → 새 핸들 = `startupTerminal.handle`(없으면 `terminal.handle`).
+  0. **CLI 해소·사전 검증**(R1-1): 실행 파일 = orca-cli 스킬 순서 — `ORCA_CLI_COMMAND`가 있으면 그 값, 없고 `ORCA_DEV_REPO_ROOT`가 있으면 `orca-dev`, 그 외 `orca`. 이어서 `<CLI> terminal show --terminal $ORCA_TERMINAL_HANDLE --json`이 `ok:true`가 아니면 그 CLI는 현재 인스턴스가 아니다 — 후계를 만들지 않고 F2.
+  1. `<CLI> terminal create --worktree active --title <작업명> --command claude --json` → 새 핸들 = `startupTerminal.handle`(없으면 `terminal.handle`).
   2. `... terminal wait --terminal <새 핸들> --for tui-idle --timeout-ms 90000 --json` → `satisfied:true` 확인. false면 timeout 2배로 1회 재시도, 그래도 false면 F2.
-  3. `... terminal send --terminal <새 핸들> --enter --wait-submit 15 --json --text "<재개 프롬프트>"` → `accepted:true` 확인. false면 F2.
+  3. `... terminal send --terminal <새 핸들> --enter --wait-submit 15 --json --text "<재개 프롬프트>"` → 영수증의 **`turn_started` 단계**를 확인해야 인계 확정(R1-2 — `accepted:true`는 입력 수락일 뿐 턴 시작 증명이 아니다). `input_accepted`에서 멈추면 **재전송하지 말고** 같은 영수증의 request id로 `--wait-submit 30 --retry-request <id>` 1회 재관찰. 응답 유실 등 모호한 전송 오류도 같은 `--retry-request`로 재조정한다. 재관찰 뒤에도 `turn_started`가 없으면 F2.
   4. 재개 프롬프트(훅이 템플릿 제공) = "핸드오프 파일 <경로>를 읽고 같은 작업을 이어서 진행. **첫 동작**: 옛 터미널 `<ORCA_TERMINAL_HANDLE>`에 `/exit`를 보내고(`terminal send --text "/exit" --enter`) `tui-idle` 대기 뒤 `terminal close`. 그 전에는 codex를 실행하지 마라. 옛 핸들이 `terminal list`에 없으면 이미 닫힌 것으로 보고 진행하고, 있는데 닫기가 실패하면 사용자에게 알리고 codex 라운드를 시작하지 마라(D9). **핸드오프의 다음 액션이 다른 단계(spec→plan, plan→impl)의 시작이면 시작하지 말고 사용자에게 확인하라**(D4)." 경로 = 핸드오프 규약 파일(기본 `.remember/remember.md`, review-loop면 루프 파일). `--title` = 모델이 현재 작업을 요약한 짧은 이름, 마땅치 않으면 `successor`(D7).
-  5. `accepted:true`를 확인했으면 **더 아무것도 하지 말고 턴을 끝낸다** — 후계가 이 세션을 닫는다. 자기 터미널을 스스로 닫지 않는다.
+  5. `turn_started`를 확인했으면 **더 아무것도 하지 말고 턴을 끝낸다** — 후계가 이 세션을 닫는다. 자기 터미널을 스스로 닫지 않는다.
 - 정지 보장: 그 다음 Stop은 `stop_hook_active`로 훅이 통과(exit 0)하므로 재넛지 없이 idle. 후계의 `/exit`로 종료.
 - 재넛지(15%p 구간) 변형도 같은 (2)를 붙인다(현행 D6 원칙: 재넛지 = 지시 동일 + 사실 추가).
 
 ### F2. 실패 폴백
 
-wait `satisfied:false`(재시도 후) 또는 send `accepted:false` 또는 CLI 실행 오류 → 후계를 만들지 못한 것으로 보고 현행 문장("이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요")을 사용자에게 안내한다. 만들다 만 터미널이 있으면 옛 세션이 폴백 안내 전에 `terminal close`로 닫는다(D10 — 아직 일한 것이 없어 잃을 게 없다). fail-closed.
+폴백 조건 4종: (a) 사전 검증 실패(F1 0) · (b) wait `satisfied:false`(재시도 후) · (c) `turn_started` 미확인(재관찰 후) · (d) CLI 실행 오류(재조정 후). **미전달이 확정되기 전(재관찰·재조정 중)에는 후계를 닫지 않는다**(R1-2 — 후계가 이미 프롬프트를 받아 옛 세션에 `/exit`를 보내는 중일 수 있다). 확정되면 후계를 만들지 못한 것으로 보고 현행 문장("이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요")을 사용자에게 안내한다. 만들다 만 터미널은 옛 세션이 폴백 안내 전에 정리한다(D10 — 정리 주체). **정리 방식**(R1-3): claude가 뜬 이력이 있으면(wait `satisfied:true`였거나 `terminal read`에 claude 프롬프트가 보이면) `/exit` 전송 → tui-idle(셸 복귀) 대기 → `terminal close`; 뜨지 않았으면 `terminal close` 직접. 어느 쪽이든 `terminal list`로 소멸을 확인하고, 실패하면 `/clear` 안내 전에 차단 상태(핸들·원인)를 사용자에게 보고한다. fail-closed.
 
 ### F3. review-loop 문구
 
@@ -68,7 +69,7 @@ wait `satisfied:false`(재시도 후) 또는 send `accepted:false` 또는 CLI �
 
 스크래치패드에서 `node --test`로 돌리고 GREEN 출력을 impl ledger에 기록한다. 케이스:
 - 비오르카: 최초·재넛지 reason이 (0) 인계 문장 교체분을 제외하고 현행 문자열과 동일(고정 문자열 스냅샷).
-- 오르카: reason에 create/wait/send 3명령 · `ORCA_TERMINAL_HANDLE` 값 · `/exit` 첫 동작 · 폴백 문장이 있고, "자가 /clear는 불가" 문장이 없다.
+- 오르카: reason에 사전 검증(`terminal show`)·create/wait/send 명령 · `ORCA_TERMINAL_HANDLE` 값 · `turn_started` 확인과 `--retry-request` 재관찰 · `/exit` 첫 동작 · 폴백 조건 4종과 정리 방식이 있고, "자가 /clear는 불가" 문장이 없다.
 - `stopHookActive`·구간 로직은 기존 동작 불변(기존 케이스 유지).
 
 ### F6. 실사용 확인 (트랙 완료 조건)
@@ -96,8 +97,8 @@ wait `satisfied:false`(재시도 후) 또는 send `accepted:false` 또는 CLI �
 
 ## 5. Acceptance Criteria (harden 확정)
 
-- **AC1 (F1)**: `ORCA_TERMINAL_HANDLE` 미설정 시 `decideNudge` reason이 0.19.0과 동일하되 (0)의 인계 문장 1개만 신규 문장으로 바뀐다(최초·재넛지, 고정 문자열 대조). 설정 시 reason에 (2) 5항목이 있고 옛 핸들 값이 그대로 들어가며 "자가 /clear는 불가" 문장이 없다.
-- **AC2 (F2)**: 오르카 reason에 폴백 조건 3종(wait false·send false·CLI 오류)·반쪽 터미널 close·복귀 문장이 명시된다. 재개 프롬프트 템플릿에 단계 경계 확인(D4)·닫기 실패 처리(D9)·탭 제목 규칙(D7)이 들어간다.
+- **AC1 (F1)**: `ORCA_TERMINAL_HANDLE` 미설정 시 `decideNudge` reason이 0.19.0과 동일하되 (0)의 인계 문장 1개만 신규 문장으로 바뀐다(최초·재넛지, 고정 문자열 대조). 설정 시 reason에 (2) 0~5 항목이 있고 옛 핸들 값이 그대로 들어가며 "자가 /clear는 불가" 문장이 없다.
+- **AC2 (F2)**: 오르카 reason에 CLI 해소 순서와 사전 검증(R1-1) · `turn_started` 확인·`--retry-request` 재관찰·미전달 확정 전 후계 유지(R1-2) · 폴백 조건 4종 · 반쪽 터미널 정리 방식(`/exit`→close 또는 직접 close)과 `terminal list` 소멸 확인·실패 시 차단 보고(R1-3) · 복귀 문장이 명시된다. 재개 프롬프트 템플릿에 단계 경계 확인(D4)·닫기 실패 처리(D9)·탭 제목 규칙(D7)이 들어간다.
 - **AC3 (F3)**: RL §2b (1) 인용문 = 훅 (0) 문장(바이트 동일, grep 대조). §2i 표 3행이 조건화되고 재개 프롬프트에 `--resume`가 들어간다. 단계 경계 `/clear` 문장은 불변.
 - **AC4 (F4)**: `plugin.json` `1.0.0` · README 3종 같은 위치에 1.0.0 문단 · 설치 갱신 안내 4머신.
 - **AC5 (F5)**: 스크래치 `node --test` GREEN 기록이 impl ledger에 있다(케이스 ≥ 5, 출력 원문 인용). repo에 테스트 파일이 추가되지 않는다(D5).
