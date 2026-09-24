@@ -259,6 +259,9 @@ C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 �
 - F1 적대(자동, 소진 1/5, target `7948bef`): score 1(medium 1) · 미확인 FIXED 큐 1 → 2(M1 재론 · F1-1) · verdict needs-attention · 실행 로그 18건 · batch 적재 0 · 루프 직접 판정 0
 - F2 적대(자동, 소진 2/5, target `070bd9d`): score 1(medium 1 — F2-1 high는 이번 라운드에 ACCEPTED로 닫혀 스냅샷 제외) · 미확인 FIXED 큐 2 → 3(+F2-2) · verdict needs-attention · 실행 로그 40건 · M1 재론·F1-1 적대 비재출현(F2, 참고 — 큐 유지) · batch 적재 0 · 루프 직접 판정 1(F2-1)
 - F3 적대(자동 경계, 소진 3/5, target `b99059f`): 신규 0 · verdict **approve** · 실행 로그 24건 · score 0 · 미확인 FIXED 큐 3 유지 · 큐 3건 적대 비재출현(F3, 참고 — 큐 유지) · 소진 3 = auto 경계 → batch flush(적재 0건) · **신호 2 발화**(수정 큐 소진) → **확인 모드 진입(FC1)** — 임무 ① 큐 3(M1 재론 · F1-1 · F2-2) · 임무 ③ 루프 직접 판정 1(F2-1, 우선 감사) · 확인 예산 2 · 복귀 미사용
+- FC1 확인(일반 1/2, target `a9af227`): 완전 응답(Q1~Q3·감사·신규·verdict 전부 명시) · 실행 로그 42건 · **소멸 3**(M1 재론 `ec0d728` · F1-1 `28a4f37` · F2-2 `65b8a6b`) · 회귀 없음 · 판정 감사 F2-1 **타당**(task-06 순서상 1.0.0 manifest는 의도된 중간 상태) · 신규 없음 · **verdict merge-ready: yes** · 확인 소진 1
+
+**재진입 종결(2026-09-24)**: 적대 3 + 확인 1 = 총 4라운드(실행 실패 0) · 미판정 blocking 0 · 미확인 FIXED 큐 0 · 최종 verdict = FC1 merge-ready: yes. score 이력 1 → 1 → 0(신호 2로 확인 진입). disposition 집계(고유 fingerprint 4): FIXED 3(사용자 판정 1 M1 재론 · 자동 2 F1-1·F2-2) · ACCEPTED 1(F2-1, 루프 판정 — FC1 감사 타당) · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · low 0. 루프 건강: 재론률 0/4 · 철회 조항 0 · 사람개입률 1/4. 훅 테스트 최종 GREEN 11/11(`28a4f37`, 위 기록 절). **다음** = F2-1 보완 = `release: 1.0.1` 커밋 → push(사용자) → 맥북 `/plugin update` → 재시작 → `/dev-workflow:doctor` → AC6 2회차(task-06 단계 1부터).
 
 ## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 맥북 오르카 세션이 기록
 
