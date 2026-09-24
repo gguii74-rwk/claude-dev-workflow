@@ -90,7 +90,7 @@ const NEEDLES = [
   "ⓓ 생성 전 목록",
   "result.terminals[].handle",
   "result.truncated",
-  // (2-1) 토큰·제목 정규화·예약 절단·핸들 차분 회수 (R2-3·R3-1·R4-1)
+  // (2-1) 토큰·제목 정규화·예약 절단·핸들 차분 후보(채택 안 함) (R2-3·R3-1·R4-1·G1-1)
   "[A-Za-z0-9._-]",
   "전체 길이 ≤ 40",
   'TITLE="${NAME:0:$((40 - ${#TOKEN} - 1))}-$TOKEN"',
@@ -99,7 +99,9 @@ const NEEDLES = [
   "result.startupTerminal.handle",
   '"$CLI" terminal list --worktree active --json',
   "ⓓ에서 기록한 핸들 집합에 없는 새 핸들",
-  "정확히 1개가 아니면(0 또는 2+) [폴백]",
+  // impl G1-1: 생성 요청과 후보를 묶는 불변 식별자가 없다 — 후보가 1개여도 채택하지 않고 차단·보고
+  "후보가 1개여도 채택하지 않습니다",
+  "create 응답 유실은 예외 — 새 핸들을 모르므로 아래 정리 없이",
   "successor",
   // (2-2)
   '"$CLI" terminal wait --terminal "<새 핸들>" --for tui-idle --timeout-ms 90000 --json',
@@ -132,7 +134,7 @@ const NEEDLES = [
   "(b) (2-2) wait satisfied:false",
   "(c) (2-3) turn_started 미확인",
   "(d) CLI 실행 오류",
-  "생성 전후 핸들 집합 차분으로 회수",
+  "생성 전후 핸들 집합 차분으로 후보만 산출",
   "재생성과 /clear 안내를 모두 차단",
   "미전달이 확정되기 전(재관찰·재조정 중)에는 후계를 닫지 마세요",
   `"$CLI" terminal wait --terminal "<새 핸들>" --for exit --timeout-ms 30000 --json`,
@@ -156,7 +158,7 @@ test("C4 오르카 최초 넛지 — (2-0)~(2-5)·폴백·옛 핸들 그대로, 
   const missing = NEEDLES.filter((n) => !r.reason.includes(n));
   assert.deepEqual(missing, []);
   // 1.0.2: 탭 제목 쓰기 차단 환경변수(tui-idle 회귀)·제목 정확 조회 회수(셸이 덮어써 불성립)가 남아 있지 않다
-  const banned = ["CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "title이 정확히", "title 정확 조회"].filter((n) => r.reason.includes(n));
+  const banned = ["CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "title이 정확히", "title 정확 조회", "정확히 1개가 아니면", "회수를 먼저 시도"].filter((n) => r.reason.includes(n));
   assert.deepEqual(banned, []);
 });
 
@@ -236,7 +238,7 @@ test("C8 E2E ORCA_TERMINAL_HANDLE 유무·안전 문자 집합으로 (2)가 갈�
   }
 });
 
-// ── 제목 규칙(문구가 지시하는 셸 식)을 실제 bash에서: 토큰 예약 절단(R4-1). 제목은 표시용(1.0.2 — 회수는 핸들 차분) ──
+// ── 제목 규칙(문구가 지시하는 셸 식)을 실제 bash에서: 토큰 예약 절단(R4-1). 제목은 표시용(1.0.2 — 응답 유실 시 핸들 차분은 보고용 후보) ──
 test("C9 40자 초과 작업명에서도 토큰이 온전히 남는다", () => {
   const NAME = "review-loop-impl-round-3-ledger-fix-and-readme-sync-long-name"; // 62자
   const TOKEN = "213045ab7k";
