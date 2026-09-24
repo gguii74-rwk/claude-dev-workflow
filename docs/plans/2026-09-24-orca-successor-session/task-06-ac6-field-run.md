@@ -54,7 +54,7 @@ awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -cE '^\*\*설
 awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -E '^\| [0-9]+ \|' | LC_ALL=C awk -F'|' 'NF != 7' | wc -l | tr -d ' '   # 0 (모든 행이 5열 — 셀 안 `|`로 열이 밀린 행 없음, plan L1)
 V=$(awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -oE '^\*\*설치 버전\*\*: 1\.0\.[0-9]+$' | sed 's/.*: //'); echo "V=$V"; grep -c "AC6 실측([0-9-]*, $V 설치본)" ~/workspace/dev-workflow-eval/report/ORCA-SUCCESSOR-2026-09-24.md   # ≥ 1 (eval 부기 소절의 버전 = AC6 절 설치 버전 — V가 비면 0, 다른 버전이면 0)
 git -C ~/workspace/dev-workflow-eval log --oneline -1 -- report/ORCA-SUCCESSOR-2026-09-24.md            # 부기 커밋 1줄(이 task 시점 이후)
-git log -1 --format=%s | grep -c 'AC6 실사용 확인 기록'                                                 # 1
+V=$(awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -oE '^\*\*설치 버전\*\*: 1\.0\.[0-9]+$' | sed 's/.*: //'); git log -1 --format=%s | grep -cF "AC6 실사용 확인 기록 — 맥북 오르카 $V 설치본"   # 1 (커밋 제목의 버전 = 표 버전 — 자리표시자 미치환·다른 버전이면 0)
 git status --short | grep -v '^??' | wc -l                                                              # 0
 ```
 
