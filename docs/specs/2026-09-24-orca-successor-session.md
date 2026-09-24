@@ -133,6 +133,7 @@
 | R | 모드 | score | 미확인 FIXED 큐 | 비고 |
 |---|---|---|---|---|
 | R1 | 적대(자동) | 5 (high 1·medium 2) | 0 → 3 | verdict needs-attention · 신규 3 · FIXED 3 |
+| R2 | 적대(자동) | 7 (high 2·medium 1) | 3 → 6 | verdict needs-attention · 신규 3 · FIXED 3 · R1 큐 3건 적대 비재출현(R2, 참고 — 큐 유지) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -140,4 +141,8 @@
 | spec:F1/F2 · accepted:true만으로 인계 확정 — 전달 유실·상호 종료 경쟁 · turn_started 확인 + --retry-request 재조정 + 미전달 확정 전 후계 유지 | high | FIXED `6546ef3` | F1 (3)(5) `turn_started` 기준, `--retry-request` 1회 재관찰(재전송 금지). F2에 "미전달 확정 전 후계 미종료" 명시. AC1·AC2 반영 |
 | spec:F2 · 폴백이 시작된 claude를 SIGKILL해 고아 상태 · claude 기동 확인 시 /exit→종료 대기→close + list 소멸 검증 | medium(재평가 ← high: 코덱스 미실행이라 브로커 없음) | FIXED `6546ef3` | F2 정리 방식: 기동 이력 있으면 `/exit`→tui-idle→close, 없으면 close 직접, `terminal list` 소멸 확인·실패 시 차단 보고. AC2 반영 |
 
-미확인 FIXED 큐 = 위 3건(소멸 확인 대기). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
+| spec:F1 · 종료 명령이 옛 터미널 핸들에 바인딩되지 않았다 · send/wait/close 전부 `<CLI> … --terminal <옛 핸들>` 명시 | high | FIXED `bdadf55` | F1 (4) 첫 동작 세 명령 완전 표기 + `--terminal` 생략 금지 사유. AC1 "템플릿 안 `--terminal` 없는 명령 0건" · AC6 다른 탭 활성 상태 조건 |
+| spec:F1 · 동적 프롬프트를 셸 문자열로 전달하면 명령 치환이 실행된다 · 파일 조립 + argv 전달 | high | FIXED `bdadf55` | F1 (3) `.remember/successor-<토큰>.prompt` quoted heredoc + `--text "$(cat …)"`(RL §2b 패턴), 보간 금지. AC2·AC6 메타문자 케이스 |
+| spec:F1/F2 · create 응답 유실 시 생성된 후계를 식별해 정리할 수 없다 · 상관 토큰 + list 정확 조회 + 미확정 시 차단 | medium | FIXED `bdadf55` | F1 (1) 제목 `<작업명>-<토큰>`, 유실 시 `terminal list` 정확 조회(1개 아니면 F2). F2 (d) 재생성·`/clear` 안내 차단 + 후보 보고. D7과 양립(작업명 유지 + 접미) |
+
+미확인 FIXED 큐 = 위 6건(R1 3 + R2 3, 소멸 확인 대기). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED/DUPLICATE) = 0. low = 0.
