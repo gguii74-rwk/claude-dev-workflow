@@ -190,6 +190,7 @@ C3 소멸 확인 1건: R5-3.
 | 2026-09-24 16:25 | `bc958e4` | GREEN 11/11 | impl R1-1 — C4 needle 3개 추가, `b11fef6` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · 비오르카 reason 불변 |
 | 2026-09-24 16:31 | `4770d6a` | GREEN 11/11 | impl R2-1 — C4 needle 1개 추가, `bc958e4` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN |
 | 2026-09-24 16:45 | `e9efda1` | GREEN 11/11 | impl R3-1·M3·M6 — C4 needle 4개 · C11 `CLAUDE_PLUGIN_DATA` 부재/빈 값 케이스(테스트 env에 명시 주입), `4770d6a` 훅에서 C4·C11 RED(pass 9 / fail 2) 확인 뒤 GREEN · 셸 env에서 변수를 빼도 GREEN · 실제 상태 파일 프로브 `GATE_OFF FOREIGN_ACTIVE=0`, 변수 제거 시 `STATE_UNREADABLE` exit 2 |
+| 2026-09-24 17:33 | `ec0d728` | GREEN 11/11 | AC6 1회차 2행 실패 복구(M1 재론) — C4 needle 교체 1·추가 1(생성 명령 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 claude`·주석), `3fbc355` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · 테스트 파일은 spark2 사본을 맥북 `.remember/hook-test-1.0.0/`로 복사해 실행 |
 
 GREEN 원문:
 ````
