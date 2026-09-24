@@ -138,6 +138,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | R2 | 적대(자동) | 3 (medium 3) | 5 → 8 | verdict needs-attention · 신규 3 · FIXED 3 `d722293` · R1 큐 5건 적대 비재출현(R2, 참고 — 큐 유지) · batch 적재 0 · 루프 직접 판정 0 · 신호 미발화(5→3 감소) |
 | R3 | 적대(자동, 경계) | 5 (high 1·medium 2) | 8 → 11 | verdict needs-attention · 신규 3 · FIXED 3 `378c92e`(R3-1·R3-2 재평가 high→medium) · 큐 8건 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · 신호 1 미발화(5→3→5) · 신호 2 미발화 → 정밀 모드 R4 |
 | R4 | 적대(정밀) | 5 (medium 5 — R4 4 + 루프 자체 발견 L1) | 11 → 16 | verdict needs-attention · 신규 4 + L1 · FIXED 5 `f0febc9`(R4-1·R4-2 재평가 high→medium) · 큐 11건 적대 비재출현(R4, 참고 — 큐 유지) · 소진 4 · **신호 1 발화**(5→3→5→5: s4≥s3≥s2) → batch 적재 0(flush 없음) → **확인 모드 진입(C1)** |
+| C1 | 확인 | — | 16 → 2 | 완전 응답(16건 전부 명시) · **소멸 14**(R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1) · **blocking 재분류 2**(R3-2 종결 게이트가 생산자 계약 없는 형식 강제 → medium · R3-3 SDD 밖 task-05/06 완료 권위 미규정 → medium) · 회귀 = 재분류 2건과 동일 · 감사 해당 없음 · 신규 low 1(EOF 빈 줄 — DEFER_LOW, 부수 정리) · verdict merge-ready: no → 2건 FIXED `914a832` → **복귀 적대 1(R5, 상한 밖) → 재진입 확인(C2, 상한 밖)** · 확인 소진 1 · 복귀 사용 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
@@ -159,3 +160,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | task-05/06 · [L1, 루프 자체 발견] AC6 10행 셀의 `\|\|`가 task-06 AC awk 열을 밀고, macOS BSD awk가 한글 `==`를 locale collation으로 비교해 `"실패"=="통과"`가 참 · 셀 세로줄 금지 + NF 검사 + `LC_ALL=C` | medium | FIXED `f0febc9` | 10행 문구 `… )`로, task-05 통과 규칙·task-06 Cautions에 셀 `\|` 금지, AC에 `NF != 7` 0 검사와 `LC_ALL=C awk`(실측 awk 20200816: `LANG=en_US.UTF-8`에서 `("실패"=="통과")`=1, `LC_ALL=C`=0). python 생성 표로 11/10/10/0 확인 |
 
 **확인 모드 진입(C1, 2026-09-24)**: 적대 4라운드 소진(max 5 중) · 신호 1 발화 · 미확인 FIXED 큐 16(R1 5 · R2 3 · R3 3 · R4 4 · L1 1) · 루프 직접 판정 0(임무 ③ 감사 대상 없음 — 사용자 기결정 D1~D12·spec 승계 ACCEPTED/OUT_OF_SCOPE는 대상 아님) · 확인 예산 2 · 복귀 미사용.
+| task-05 · [C1 재분류 R3-2] 종결 게이트가 생산자(review-loop(impl))에 계약되지 않은 `**종결(`·`verdict approve\|빠른 종료` 형식을 강제 · 종결 행 형식을 생산자 계약으로 명시 | medium | FIXED `914a832` (재편입) | 엔트리포인트 상단 "impl ledger 종결 행 계약" 신설(3문구 + 빠른 종료 대안, spec :180 형식) — review-loop(impl) §4 종료 요약이 따른다. task-05 단계 1 주석이 계약을 가리키고 형식 불일치 시 종결 행 수정 후 재검사 |
+| 엔트리포인트 · [C1 재분류 R3-3] SDD 밖 task-05·06에 progress ledger 완료 기록 절차가 없어 convergence 규칙이 `[x]`를 되돌릴 수 있음 · 완료 권위 예외 명시 | medium | FIXED `914a832` (재편입) | "SDD 실행 범위" 문단: task-05/06 완료 권위 = 커밋된 task 표 + AC, progress ledger 기록 없음, convergence 규칙(task-01~04 한정) 대상 아님, 표 행 `[x]`·outcome + 즉시 커밋. task-05/06 Cautions 동기 |
+
+C1 소멸 확인 14건: R1-1~R1-5 · R2-1~R2-3 · R3-1 · R4-1~R4-4 · L1. low 1(EOF 빈 줄) = DEFER_LOW(같은 커밋에서 부수 정리).
