@@ -98,7 +98,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | 02 | 훅 오르카 분기·후계 스폰 절차·폴백 → GREEN + AC5 기록 (F1·F2·F5) | [x] | [task-02](2026-09-24-orca-successor-session/task-02-hook-successor-spawn.md) | 01 | 훅 `958c1e5`(25,808B, plan 원문 바이트 동일) · GREEN 11/11 · 비오르카 reason diff = (0) 1문장 · 스니펫 `GATE_OFF FOREIGN_ACTIVE=0`·`CLI=orca`·`LEN=40` · AC5 기록 절 `7d64e3b` |
 | 03 | RL §2b (1) 문장 + §2i 표 3행 경로 ① 조건화 (F3) | [x] | [task-03](2026-09-24-orca-successor-session/task-03-review-loop-handoff-wording.md) | 02 | `2d13115` — §2b (1) 인용문 = 훅 (0) 바이트 동일(BYTE_SAME) · §2i 3행 경로 ①만 조건화, ②·③ 수동 유지 · 불변 앵커 4종·표 0~4행 유지 · 71,120B |
 | 04 | README 3종 §8 1.0.0 문단 + §주의 전역 설치 문구 교체 (F4) | [x] | [task-04](2026-09-24-orca-successor-session/task-04-readme-sync.md) | 03 | `18b1416` — 3언어 §8 1.0.0 문단 205행 동일(SAME_POSITION) · §주의 불릿 교체, "동작은 무해"류 0건 · 문구 plan 원문 정확 일치 |
-| 05 | 릴리스 1.0.0 + 4머신 갱신 안내 + AC6 빈 표·절차 절 (F4·F6) — **9단계, SDD 디스패치 대상 아님** | [ ] | [task-05](2026-09-24-orca-successor-session/task-05-release-1-0-0.md) | 04 + review-loop(impl) 종결 | |
+| 05 | 릴리스 1.0.0 + 4머신 갱신 안내 + AC6 빈 표·절차 절 (F4·F6) — **9단계, SDD 디스패치 대상 아님** | [x] | [task-05](2026-09-24-orca-successor-session/task-05-release-1-0-0.md) | 04 + review-loop(impl) 종결 | 릴리스 커밋(`release: 1.0.0`) — plugin.json 0.19.0→1.0.0 · 게이트 impl ledger 종결 행 1 · no-AI-trace 0(`92e1374..HEAD`) · README 3종 `ORCA_TERMINAL_HANDLE` 각 1 · AC6 빈 표 11행·절차 절 추가(채우기 = task-06, 이 `[x]`는 AC6 완료 아님) · 미push |
 | 06 | AC6 실사용 확인 기록 — **트랙 완료 조건** (F6·D11) — **릴리스·push·맥북 갱신 뒤, SDD 디스패치 대상 아님** | [ ] | [task-06](2026-09-24-orca-successor-session/task-06-ac6-field-run.md) | 05 + push + 맥북 설치 갱신 | |
 
 **AC ↔ task**: AC1·AC2 → 02(01 테스트 C1~C6·C8) · AC3 → 03 · AC4 → 04(README)·05(plugin.json·4머신) · AC5 → 02(기록 절) · AC6 → 06(실사용 기록 — 트랙 완료 조건; 05는 빈 표·절차만 — 05의 `[x]`는 AC6 완료가 아니다).
@@ -244,3 +244,32 @@ review-loop(impl)에서 훅이 다시 바뀌면 재실행해 이 표에 행을 �
 C1 소멸 확인 8건: plan 이월 C3 회귀(`d5ae7c9` — **폴백 ① 이월 필수 확인 항목 해소**) · R1-1 · R2-1 · R3-1(=M2) · M3 · M6 · AC 오탐 · F6.
 
 **종결(2026-09-24)**: 적대 4 + 확인 1 = 총 5라운드(실행 실패 0) · 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve(C1 merge-ready: yes). score 이력 4 → 1 → 3 → 0(신호 2로 확인 진입). disposition 집계(고유 fingerprint 11, plan 이월 1 포함): FIXED 8(자동 1 R2-1 · 사용자 판정 7) · ACCEPTED 3(I2·M1·M5, 전부 사용자 판정) · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · low 0. 루프 건강: 재론률 0/11 · 철회 조항 0 · 사람개입률 9/11(이월 소항목이 사용자 판정 대상으로 지정돼 들어온 영향). **task-05 인계**: ACCEPTED 3건의 재론 조건은 각 행에 기재(I2 = 중첩 claude 오인 사례 · M1 = create 응답 유실 발생 · M5 = 해당 없음), README 3종 주의 절에 I2 경고 반영. AC6(task-06) 7행에 종료 표지 출력 관찰 추가(F6). 훅 테스트 최종 GREEN 11/11(`e9efda1`, 위 기록 절).
+
+## AC6 실사용 확인 (트랙 완료 조건, D11) — 릴리스 후 맥북 오르카 세션이 기록
+
+**대상** = 릴리스된 최신 1.0.x **설치본**(최소 1.0.0 — AC6 실패 복구 뒤에는 그 patch, task-06 복구 절차)으로 오르카 터미널에서 도는 **실제 트랙**의 세션 1회(수동 선적용 아님). 넛지 → 핸드오프 → 후계 스폰 → 옛 세션 종료(SessionEnd 정리) → 후계가 review-loop §0 스냅샷 대조로 재개. `CLAUDE_CTX_THRESHOLD`를 낮춰 재현한다(예: `orca terminal create --worktree active --title "ac6-old" --command "CLAUDE_CTX_THRESHOLD=0.05 claude" --json`) — 실 40%까지 기다릴 필요 없다(spec §6).
+
+**설치 버전**: <task-06이 맥북 `/dev-workflow:doctor` 출력의 설치본 버전으로 채운다 — 예 `1.0.0`>
+
+**조건**(F6): ① 넛지 시점에 **다른 탭이 활성**인 상태(후계의 첫 동작이 옛 핸들만 닫는지, R2-1) ② 메타문자 케이스 2종 — (제목, R3-1) 작업명 후보 `ac6 $(echo x) \`id\`` → 제목이 `ac6---echo-x---id--<토큰>`으로 정규화되는지(집합 밖 문자 8개 — 공백·`$`·`(`·공백·`)`·공백·백틱·백틱 — 가 각각 `-` 하나로 치환되고 토큰 앞 하이픈이 붙는다). (전달, R2-2) 재개 프롬프트 **템플릿 자체**가 셸 메타문자를 담고 있다 — CLI 해소식 `$( [ -n "$ORCA_DEV_REPO_ROOT" ] && echo orca-dev || echo orca )`와 companion 해소식 `$(node -e '…' "$P" "$PWD")`. 후계가 받은 프롬프트(`"$CLI" terminal read --terminal "<새 핸들>" --json` 또는 후계 화면)에 이 식들이 **확장되지 않은 원문 그대로**(`CLI="orca"`·경로값으로 바뀐 흔적 없음) 있는지 본다. `<경로>` 슬롯은 review-loop 트랙에서 루프 파일 경로로 고정이라 메타문자를 넣을 수 없다 — 템플릿 내장 식이 spec F6 "경로" 프로브를 대신한다. ③ **필수** — codex 라운드(review-loop 백그라운드 대기) 또는 서브에이전트가 진행 중일 때 넛지가 오면 완료 알림까지 새 단위 없이 기다렸다가 결과 기록 → 스폰 순서를 지키는지(§2i 진행 중 라운드 분기, 파일럿 미측정 3). 재현: 옛 세션을 `CLAUDE_CTX_THRESHOLD=0.05`로 띄우고 review-loop를 시작하면 §0~§2b가 한 턴 안에서 라운드 기동까지 가고 §2b ③ 백그라운드 대기로 턴이 끝나는 그 Stop이 첫 넛지다(통상 경로). 넛지가 라운드 진행 중이 아닌 턴에서 먼저 왔으면 그 세션은 ③ 미충족 — 임계를 올려(예: 0.1) 다시 시작한다. "미발생"으로 넘기지 않는다. **review-loop 대상**(plan R4-3): 이 트랙은 그 시점에 종결돼 있으므로 이 트랙의 plan/impl ledger에 라운드를 추가하지 않는다 — AC6의 루프는 그 시점에 착수하는 **다른 실제 트랙**(후보: 0.18.0 트랙 AC11 실측 후속 · ops-hub 등 다음 작업)의 phase 산출물 문서에서 §0 "loop 파일 없음 → 새 루프"로 연다. 대상은 지금 확정할 수 없다(실사용 조건 D11이 실제 트랙을 요구) — 대신 9행 관찰 열에 repo · phase · ledger 문서 경로 · 해소된 base SHA · 루프 파일 경로(`.remember/loop-<ledger basename>-<phase>.md`)를 적어 재현을 결정적으로 만든다.
+
+| # | 관찰 항목 | 기대 | 관찰(명령 출력·시각) | 결과 |
+|---|---|---|---|---|
+| 1 | (2-0) 사전 검증·게이트 | `terminal show` ok:true · `GATE_OFF FOREIGN_ACTIVE=0` | | |
+| 2 | (2-1) 제목 정규화·토큰 | 제목 `[A-Za-z0-9._-]`만, ≤40, 끝 토큰 온전 · `terminal list` title 정확 1건 | | |
+| 3 | (2-2) 기동 대기 | `result.wait.satisfied: true` (90s 이내) | | |
+| 4 | (2-3) 전달 | `result.send.prompt.stages`에 `turn_started` · `--retry-request` 사용 여부 | | |
+| 5 | (2-5) 옛 세션 정지 | send 뒤 옛 세션 추가 턴 0(재넛지 없음 — `stop_hook_active` 통과) | | |
+| 6 | 후계 0번째 동작 | `FOREIGN_ACTIVE=0` 확인 후 진행(대기 발생 시 횟수) | | |
+| 7 | 후계 첫 동작 — 옛 핸들만 | `/exit` accepted → `--for exit` satisfied, 또는 시간 초과(보통) 뒤 `terminal read` 끝줄에 종료 표지 `Resume this session with`와 셸 프롬프트 둘 다 — **표지 출력 여부를 관찰 열에 기록**(빈 세션은 표지 없음이 실측, 대화가 있는 세션은 미관찰 — impl 이월 F6) → close ok → list에 옛 핸들 없음 · **활성 탭·다른 탭 무사** | | |
+| 8 | SessionEnd 정리 | 옛 세션 codex 상태 디렉터리: `broker.json` 소멸 · 옛 세션 잡 0(파일럿 E5와 동일) | | |
+| 9 | §0 대조·라운드 이어감 | 후계가 `/review-loop --resume`(또는 핸드오프)로 §0 스냅샷 통과 · 다음 단위 시작 · 단계 경계면 사용자 확인(D4). 관찰 열에 대상 트랙의 repo · phase · ledger 문서 · base SHA · 루프 파일 경로 기록(이 트랙 ledger 재사용 아님) | | |
+| 10 | 메타문자 원문 전달 | 후계가 받은 프롬프트에 CLI 해소식 `$( [ -n "$ORCA_DEV_REPO_ROOT" ] && echo orca-dev … )`(원문은 조건 ② — 셀 안에 세로줄을 쓰지 않는다)·`$(node -e` 원문 그대로 · `CLI="orca"` 등으로 확장된 흔적 없음 · 옛 세션 로컬 실행 흔적 없음 | | |
+| 11 | codex 라운드/서브에이전트 진행 중 넛지 (**필수**) | 라운드 진행 중 Stop에서 넛지 → 완료 알림까지 새 단위 없음 → 응답 결과를 루프 파일 `## 미해결 ledger`에 미판정으로, `## 다음 액션`에 수신 라운드 번호·판정 정책(수신 시점 모드)·미처리 단계를 기록 → 스폰(§2i 진행 중 라운드 분기) | | |
+
+- 통과 = 1~11 전부 기대와 일치(11 포함 — 파일럿 미측정 3건은 9·11행이 닫는다, "미발생" 불허). 표 셀 안에 세로줄(`|`)을 쓰지 않는다 — task-06 AC가 `|`로 열을 센다(plan L1). 어느 행이든 폴백이 발생했으면 그 원인·정리 결과(반쪽 터미널 소멸 확인)를 관찰 열에 적고 **통과로 세지 않는다** — 폴백 경로 관찰은 별도 줄(비고)로 남긴다.
+- 채워진 뒤 `~/workspace/dev-workflow-eval/report/ORCA-SUCCESSOR-2026-09-24.md` §미측정에 결과를 부기한다(파일럿 미측정 3건 종결 — eval repo 별도 커밋).
+- 채우는 절차·주체 = **task-06**(맥북에서 그 세션을 관찰한 사람/후계 세션 — 이 파일 커밋). task-06의 통과 커밋이 **트랙 완료**(dev-cycle 9단계 완료 신호). 결과 열은 `통과`/`실패`만(task-06 AC가 센다).
+- spark2·Windows는 트랙 밖(D11 후속) — 각 머신 첫 넛지 때 1·3·4행(`ORCA_TERMINAL_HANDLE` 존재 · `orca`/`ORCA_CLI_COMMAND` 해소 · `--wait-submit` 지원)만 확인하고 실패 시 폴백으로 현행 동작임을 기록한다.
+
+**설치 갱신(4머신) — 순서가 게이트다(plan R4-2)**: ① push(사용자 판단) → ② **맥북만** `/plugin update dev-workflow@claude-dev-workflow` → 재시작 → `/dev-workflow:doctor`(설치본 1.0.0) → ③ task-06(AC6 실사용 확인) 통과 → ④ 나머지 3머신(OMEN `D:\workspace` · 그램 `C:\workspace` · spark2 `~/workspace`) 같은 절차로 갱신. AC6가 실패하면 task-06 복구 절차(원인 수정 → review-loop(impl) 재진입 → patch bump·push → 맥북 갱신 → AC6 재실행; 증거 버전 = 그 patch) → 그 뒤 3머신. project 스코프로 고정된 repo(ops-hub 등)는 그 repo 안에서 `claude plugin update dev-workflow@claude-dev-workflow --scope project`.
