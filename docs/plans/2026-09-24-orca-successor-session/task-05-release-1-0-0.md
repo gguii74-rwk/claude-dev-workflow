@@ -1,6 +1,6 @@
 # task-05 — 릴리스 1.0.0 + 설치 갱신 안내(4머신) + AC6 실사용 기록 절 (F4·F6, D11)
 
-**목적**(9단계 — **review-loop(impl) 성공 종료 뒤** 단독 실행, SDD 범위 밖): `plugin.json`을 1.0.0으로 올려 릴리스 커밋을 만들고, 트랙 전체 커밋의 no-AI-trace를 확인하고, 4머신 설치 갱신 안내와 **트랙 완료 조건 AC6**(맥북 오르카 실사용 1회)의 기록 절을 엔트리포인트에 남긴다. push는 사용자 판단(트랙 내내 미push 관례).
+**목적**(9단계 — **review-loop(impl) 성공 종료 뒤** 단독 실행, SDD 범위 밖): `plugin.json`을 1.0.0으로 올려 릴리스 커밋을 만들고, 트랙 전체 커밋의 no-AI-trace를 확인하고, 4머신 설치 갱신 안내와 **트랙 완료 조건 AC6**(맥북 오르카 실사용 1회)의 **빈 표·절차 절**을 엔트리포인트에 남긴다. 표를 채우는 것은 task-06이다 — 이 task는 릴리스 커밋으로 완료되고 트랙 완료는 task-06 커밋이다(plan R3-3). push는 사용자 판단(트랙 내내 미push 관례).
 
 ## Files
 
@@ -26,7 +26,7 @@ git status --short | grep -v '^??' | wc -l                          # 0 — clea
 grep -n '"version"' dev-workflow/.claude-plugin/plugin.json          # "0.19.0"
 git log --oneline | grep -c 'release: 1.0.0'                         # 0 — 선점 없음
 grep -c '^## 적대검증 ledger (impl)' docs/plans/2026-09-24-orca-successor-session.md   # 1 — review-loop(impl) 절 존재(없으면 멈춘다: 8단계 미종결)
-awk '/^## 적대검증 ledger \(impl\)/{f=1} f' docs/plans/2026-09-24-orca-successor-session.md | grep -c '종결'   # ≥1 — 성공 종료 기록
+awk '/^## 적대검증 ledger \(impl\)/{f=1;next} /^## /{f=0} f' docs/plans/2026-09-24-orca-successor-session.md | grep -E '^\*\*종결\(' | grep '미확인 FIXED 큐 0' | grep '미판정 blocking 0' | grep -cE 'verdict approve|빠른 종료'   # 1 — impl ledger 절 범위 안의 종결 행(review-loop ledger 관례: `**종결(날짜)**: … 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve` — spec ledger 종결 행과 같은 형식, 빠른 종료면 verdict 대신 `빠른 종료`)이 성공 불변식 3종을 모두 담는다. 0이면 8단계 미종결 — 멈춘다
 sed -i '' 's/"version": "0.19.0"/"version": "1.0.0"/' dev-workflow/.claude-plugin/plugin.json    # Linux: sed -i
 grep -n '"version"' dev-workflow/.claude-plugin/plugin.json          # "1.0.0"
 node -e 'JSON.parse(require("fs").readFileSync("dev-workflow/.claude-plugin/plugin.json","utf8")); console.log("json ok")'
@@ -67,7 +67,7 @@ for f in README.md README.ko.md README.ja.md; do grep -c 'ORCA_TERMINAL_HANDLE' 
 
 - 통과 = 1~11 전부 기대와 일치(11 포함 — 파일럿 미측정 3건은 9·11행이 닫는다, "미발생" 불허). 어느 행이든 폴백이 발생했으면 그 원인·정리 결과(반쪽 터미널 소멸 확인)를 관찰 열에 적고 **통과로 세지 않는다** — 폴백 경로 관찰은 별도 줄(비고)로 남긴다.
 - 채워진 뒤 `~/workspace/dev-workflow-eval/report/ORCA-SUCCESSOR-2026-09-24.md` §미측정에 결과를 부기한다(파일럿 미측정 3건 종결 — eval repo 별도 커밋).
-- 통과 커밋이 **트랙 완료**(dev-cycle 9단계 완료 신호). 채우는 주체 = 맥북에서 그 세션을 관찰한 사람/후계 세션(이 파일 커밋).
+- 채우는 절차·주체 = **task-06**(맥북에서 그 세션을 관찰한 사람/후계 세션 — 이 파일 커밋). task-06의 통과 커밋이 **트랙 완료**(dev-cycle 9단계 완료 신호). 결과 열은 `통과`/`실패`만(task-06 AC가 센다).
 - spark2·Windows는 트랙 밖(D11 후속) — 각 머신 첫 넛지 때 1·3·4행(`ORCA_TERMINAL_HANDLE` 존재 · `orca`/`ORCA_CLI_COMMAND` 해소 · `--wait-submit` 지원)만 확인하고 실패 시 폴백으로 현행 동작임을 기록한다.
 
 **설치 갱신(4머신)**: push 뒤 각 머신에서 `/plugin update dev-workflow@claude-dev-workflow` → 재시작 → `/dev-workflow:doctor`(설치본 1.0.0). 대상: 맥북(`~/workspace`) · OMEN(`D:\workspace`) · 그램(`C:\workspace`) · spark2(`~/workspace`). project 스코프로 고정된 repo(ops-hub 등)는 그 repo 안에서 `claude plugin update dev-workflow@claude-dev-workflow --scope project`.
@@ -87,7 +87,7 @@ git log -1 --format=%B | grep -ciE '^(co-authored-by|claude-session): |generated
 1.0.0 릴리스 커밋이 로컬 main에 있습니다(미push — push는 사용자 판단). push 뒤 각 머신에서:
   /plugin update dev-workflow@claude-dev-workflow  →  재시작  →  /dev-workflow:doctor (설치본 1.0.0)
 대상: 맥북(~/workspace) · OMEN(D:\workspace) · 그램(C:\workspace) · spark2(~/workspace). project 스코프 repo는 그 안에서 --scope project.
-트랙 완료 조건(AC6): 맥북 오르카에서 1.0.0 설치본으로 실제 트랙 세션 1회 — CLAUDE_CTX_THRESHOLD를 낮춰 넛지 → 후계 스폰 → 옛 세션 /exit→close → §0 재개. 다른 탭을 활성으로 두고, 작업명에 백틱·$(…)·공백을 섞고, review-loop 라운드가 백그라운드로 도는 중에 넛지가 오게 해서(11행 필수). plan 엔트리포인트 §AC6 표 11행 기록 → eval 보고서 ORCA-SUCCESSOR-2026-09-24.md 부기.
+트랙 완료 조건(AC6): 맥북 오르카에서 1.0.0 설치본으로 실제 트랙 세션 1회 — CLAUDE_CTX_THRESHOLD를 낮춰 넛지 → 후계 스폰 → 옛 세션 /exit→close → §0 재개. 다른 탭을 활성으로 두고, 작업명에 백틱·$(…)·공백을 섞고, review-loop 라운드가 백그라운드로 도는 중에 넛지가 오게 해서(11행 필수). plan 엔트리포인트 §AC6 표 11행 기록 → eval 보고서 ORCA-SUCCESSOR-2026-09-24.md 부기 = task-06(그 커밋이 트랙 완료).
 spark2·Windows는 트랙 밖(D11) — 각 머신 첫 넛지 때 확인, 실패 시 폴백으로 현행 동작.
 ```
 
@@ -100,6 +100,7 @@ grep -c '^## AC6 실사용 확인' docs/plans/2026-09-24-orca-successor-session.
 awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' docs/plans/2026-09-24-orca-successor-session.md | grep -E '^\| [0-9]+ \|' | cut -d'|' -f2 | tr -d ' ' | paste -sd, -   # 1,2,3,4,5,6,7,8,9,10,11 (AC6 절 범위만 — task 표 행을 세지 않는다, 정확히 11행)
 for m in 맥북 OMEN 그램 spark2; do grep -q "$m" docs/plans/2026-09-24-orca-successor-session.md && echo "$m OK" || echo "$m MISSING"; done   # 4줄 전부 OK (머신별 개별 검사)
 grep -c '^## 적대검증 ledger (impl)' docs/plans/2026-09-24-orca-successor-session.md   # 1 (impl 검토 뒤 릴리스 — Deps)
+awk '/^## 적대검증 ledger \(impl\)/{f=1;next} /^## /{f=0} f' docs/plans/2026-09-24-orca-successor-session.md | grep -E '^\*\*종결\(' | grep '미확인 FIXED 큐 0' | grep '미판정 blocking 0' | grep -cE 'verdict approve|빠른 종료'   # 1 (성공 종료 불변식 3종 — 단계 1과 같은 검사)
 BASE=$(git log --format=%H --grep='ledger(spec) C3 기록·종결' -1); git log --format=%B $BASE..HEAD | grep -ciE '^(co-authored-by|claude-session): |generated with \[claude code\]\('   # 0
 git status --short | grep -v '^??' | wc -l                                  # 0
 ```
@@ -108,7 +109,7 @@ git status --short | grep -v '^??' | wc -l                                  # 0
 
 - **review-loop(impl) 성공 종료 전에 이 task를 실행하지 않는다 — SDD가 task-04 직후 표의 deps만 보고 디스패치해도 거부한다. 이유: plan R2-1 — 엔트리포인트 순서 7 impl → 8 review-loop(impl) → 9 릴리스. 검토 전 1.0.0 커밋은 검토 결과로 다시 바뀔 수 있는 버전을 릴리스로 못 박는다.**
 - **push하지 않는다. 이유: 이 트랙은 spec부터 미push로 진행했고 push 시점은 사용자 판단이다.**
-- **AC6 표를 여기서 채우지 않는다. 이유: 릴리스 후 1.0.0 설치본으로 실제 트랙 세션에서 관찰한 값만 근거다 — 빈 표 + 절차가 이 task의 산출물이다.**
+- **AC6 표를 여기서 채우지 않는다(채우기 = task-06). 이유: 릴리스 후 1.0.0 설치본으로 실제 트랙 세션에서 관찰한 값만 근거다 — 빈 표 + 절차가 이 task의 산출물이고, 이 task의 `[x]`는 AC6 완료를 뜻하지 않는다(task 표 06행이 따로 있다, plan R3-3).**
 - **AC6 통과 전 "트랙 완료"를 선언하지 않는다. 이유: D11 — 맥북 실사용 1회가 완료 조건. 9단계 완료 신호는 AC6 표가 채워진 커밋이다.**
 - **plugin.json 외 marketplace.json·description·keywords를 손대지 않는다. 이유: 릴리스 표면은 version bump + README(task-04)만(spec §2 F4).**
 - **버전을 0.20.0으로 낮추지 않는다. 이유: 사용자 결정(2026-09-24) — 이 반영으로 정식 1.0.0.**

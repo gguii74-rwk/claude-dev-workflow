@@ -4,7 +4,7 @@
 
 ## Files
 
-- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 24,400B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
+- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 24,500B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
 - Modify: `docs/plans/2026-09-24-orca-successor-session.md` — 말미에 `## 훅 테스트 기록 (AC5, D5)` 절 추가(§6)
 - Test: `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs`(task-01) — RED → GREEN
 
@@ -95,8 +95,10 @@ export function computeContextUsage(transcriptText, env = {}) {
 // (loadState는 읽기·파싱 실패를 기본값으로 숨기고, status --all은 자기 세션 잡만 보여준다 — 둘 다 쓰지 않는다).
 // 루트가 객체가 아니거나(배열 포함 — typeof []도 "object"다) jobs가 배열이 아니거나 config가 객체가 아니면
 // STATE_UNREADABLE(exit 2) — 손상·스키마 이탈도 fail-closed(빈 잡·GATE_OFF로 오인하지 않는다). 중첩 필드도 같다:
-// jobs[] 항목은 객체이고 status가 문자열, config.stopReviewGate는 있으면 boolean — 문자열 "true"는 companion Stop 훅이
-// truthy로 소비해 게이트가 켜진 것과 같으므로 ===true 비교로 GATE_OFF를 내면 사전 조건이 우회된다(plan R2-2).
+// 파일이 있으면 config·jobs 둘 다 필수(companion saveState는 항상 {version,config,jobs}를 쓴다 — 하나라도 없으면 부분
+// 손상이지 빈 상태가 아니다, plan R3-1). jobs[] 항목은 객체이고 status가 문자열, config.stopReviewGate는 boolean 필수 —
+// 문자열 "true"는 companion Stop 훅이 truthy로 소비해 게이트가 켜진 것과 같으므로 ===true 비교로 GATE_OFF를 내면
+// 사전 조건이 우회된다(plan R2-2).
 const COMPANION_ROOT_CMD =
   `P="\${CLAUDE_CODE_PLUGIN_CACHE_DIR:-\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"; ` +
   `CR=$(node -e 'const fs=require("fs"),p=require("path");let d;try{d=JSON.parse(fs.readFileSync(p.join(process.argv[1],"installed_plugins.json"),"utf8"))}catch{process.exit(1)};` +
@@ -108,11 +110,11 @@ const STATE_PROBE_CMD =
   `const f=m.resolveStateFile(process.cwd());if(!fs.existsSync(f)){console.log("GATE_OFF FOREIGN_ACTIVE=0");return}` +
   `let s;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch{s=null}` +
   `const obj=v=>!!v&&typeof v==="object"&&!Array.isArray(v);` +
-  `const jobsOk=v=>v===undefined||(Array.isArray(v)&&v.every(j=>obj(j)&&typeof j.status==="string"));` +
-  `const cfgOk=v=>v===undefined||(obj(v)&&(v.stopReviewGate===undefined||typeof v.stopReviewGate==="boolean"));` +
+  `const jobsOk=v=>Array.isArray(v)&&v.every(j=>obj(j)&&typeof j.status==="string");` +
+  `const cfgOk=v=>obj(v)&&typeof v.stopReviewGate==="boolean";` +
   `if(!obj(s)||!jobsOk(s.jobs)||!cfgOk(s.config)){console.log("STATE_UNREADABLE");process.exit(2)}` +
   `const me=process.env.CODEX_COMPANION_SESSION_ID||"";` +
-  `const n=(s.jobs||[]).filter(j=>(j.status==="queued"||j.status==="running")&&j.sessionId!==me).length;` +
+  `const n=s.jobs.filter(j=>(j.status==="queued"||j.status==="running")&&j.sessionId!==me).length;` +
   `console.log((s.config&&s.config.stopReviewGate===true?"GATE_ON":"GATE_OFF")+" FOREIGN_ACTIVE="+n)}).catch(()=>{console.log("STATE_UNREADABLE");process.exit(2)})' "$CR"`;
 const CLI_RESOLVE_CMD = `CLI="\${ORCA_CLI_COMMAND:-$( [ -n "$ORCA_DEV_REPO_ROOT" ] && echo orca-dev || echo orca )}"`;
 
@@ -408,7 +410,7 @@ git status --short | grep -v '^??' | wc -l                                # 0
 - **옛 세션 종료 대기를 `--for tui-idle`로 되돌리지 않는다. 이유: C1-#10 — 옛 세션은 이미 idle이라 즉시 만족돼 증거가 못 된다. `--for exit` 또는 종료 표지 + 셸 프롬프트.**
 - **`STATE_PROBE_CMD`에서 파싱 실패를 `GATE_OFF`/빈 잡으로 돌리지 않는다. 이유: R6-1a·C2 — fail-closed(`STATE_UNREADABLE` exit 2 = 폴백/차단).**
 - **`resolveOrcaHandle`의 안전 문자 집합 검사를 빼거나 "비어 있지 않으면 통과"로 되돌리지 않는다. 이유: plan R1-1 — 핸들은 (2)의 셸 명령에 `--terminal "<핸들>"`로 그대로 보간되므로 오염된 값(따옴표·`$(…)`·백틱)이 옛 세션·후계에서 실행된다. 실제 핸들(`term_<uuid>`)은 집합 안이라 정상 경로는 바뀌지 않는다. C8이 잡는다.**
-- **`STATE_PROBE_CMD`의 루트 배열·`jobs` 비배열·`config` 비객체 검사(R1-2)와 중첩 필드 검사 — `jobs[]` 항목 객체·`status` 문자열, `config.stopReviewGate` boolean(R2-2) — 를 빼지 않는다. 이유: `typeof [] === "object"`라 `[]`가 `GATE_OFF FOREIGN_ACTIVE=0`으로 통과하고, `"stopReviewGate":"true"`는 companion이 truthy로 켜진 게이트인데 `===true` 비교만으로는 GATE_OFF가 된다(fail-open). C11이 잡는다.**
+- **`STATE_PROBE_CMD`의 루트 배열·`jobs` 비배열·`config` 비객체 검사(R1-2)와 중첩 필드 검사 — `jobs[]` 항목 객체·`status` 문자열, `config.stopReviewGate` boolean(R2-2) — 와 **두 필드 필수**(파일이 있으면 `config`·`jobs` 누락 = `STATE_UNREADABLE`, R3-1 — companion `saveState`는 항상 둘 다 쓴다) 를 빼지 않는다. 이유: `typeof [] === "object"`라 `[]`가 `GATE_OFF FOREIGN_ACTIVE=0`으로 통과하고, `"stopReviewGate":"true"`는 companion이 truthy로 켜진 게이트인데 `===true` 비교만으로는 GATE_OFF가 된다(fail-open). C11이 잡는다.**
 - **`loadState(cwd)`·`codex-companion.mjs status --all`을 조회 수단으로 쓰지 않는다. 이유: C1-#11(`status --all`은 자기 세션 잡만 필터) · C2(`loadState`는 파싱 실패를 기본값으로 숨긴다).**
 - **제목 절단을 `${TITLE:0:40}`처럼 제목 전체에 걸지 않는다. 이유: R4-1 — 토큰이 잘리면 `terminal list` 정확 조회가 막힌다. 작업명만 `40 - ${#TOKEN} - 1`로 자른다.**
 - **프롬프트를 `--text "<문자열 직접>"`로 보내는 예시를 넣지 않는다. 이유: R2-2 — 파일 + `"$(cat …)"`만. 파일 내용은 줄바꿈 없이 한 줄(SC-5).**
