@@ -202,6 +202,8 @@ CLAUDE_CTX_LIMIT=200000     # set the context token limit explicitly
                             # models — the window size is not knowable at runtime, so it is not detected
 ```
 
+Since 1.0.0, in an **Orca terminal** (a session with `ORCA_TERMINAL_HANDLE`), the nudge's `/clear` guidance becomes an **automatic handover**: after writing the handoff, the session spawns a successor `claude` terminal in the same checkout (titled `<task>-<token>`), assembles the resume prompt as a file (`.remember/successor-<token>.prompt`), sends it, and stops. The successor's first action is to shut the old session down cleanly (send `/exit` → wait for exit → `terminal close`), and it runs no codex before that. If any step — preflight, create, boot, delivery — fails, the session first cleans up the half-made terminal and confirms it is gone, and only then shows the current `/clear` guidance; if the successor cannot be pinned down (create response lost, 0 or 2+ matching titles) or the cleanup cannot be confirmed, it reports the blocked state instead of guiding `/clear`. Stage boundaries (spec→plan, plan→impl) are out of scope: the successor does not start another stage and asks you instead. Outside Orca, nothing changes.
+
 ## Auto-prompting the plugin when a repo is cloned
 
 To automatically prompt collaborators to install this plugin when they clone and trust a repo, declare the marketplace and enablement in that repo's `.claude/settings.json`:
@@ -234,7 +236,7 @@ Declaring `openai-codex` alongside lets the cross-marketplace dependency (codex)
 
 ## Caveats
 
-- Installed at user scope, the context-threshold Stop hook runs in **every project**. The nudge message tells you to write a handoff to `.remember/remember.md`; in projects that don't use `.remember/`, only that wording is off — the behavior is harmless.
+- Installed at user scope, the context-threshold Stop hook runs in **every project**. The nudge message tells you to write a handoff to `.remember/remember.md`, and **in an Orca terminal it goes further: after the nudge, a successor terminal is created, a `.remember/successor-<token>.prompt` file is written, and the old session is shut down (`/exit`) automatically** — in projects that don't use `.remember/`, that directory and file will still appear. Outside Orca, only the guidance text is shown and nothing runs automatically (same as before).
 - `writing-plans-split` assumes a repo that uses the split-plan convention. In repos using single plan files, just use `superpowers:writing-plans` as is.
 
 ## Development / Release
