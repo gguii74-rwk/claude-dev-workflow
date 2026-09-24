@@ -184,8 +184,11 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 |---|---|---|---|---|
 | R1 | 적대(자동) | 3 (high 1) | 0 → 1 | verdict needs-attention · 신규 1 · FIXED 1 |
 | R2 | 적대(자동) | 3 (high 1) | 1 → 2 | verdict needs-attention · 신규 1 · FIXED 1(R1-1 수정의 회귀 — 지적 내용이 달라 계열 반복 아님) · R1-1 적대 비재출현(R2, 참고 — 큐 유지) · 신호 1 미발화(3→3, 2점뿐) |
+| R3 | 적대(자동, 경계) | 4 (루프 실측 high 1 + medium 1) | 2 → 4 | verdict needs-attention · 신규 1(R3-1) + **루프 실측 발견 1**(zsh `--depth 1` 단어 분할 — 리뷰어 미검출, R3-1 재현 시도 중 발견) · FIXED 2 · 큐 2건(R1-1·R2-1) 적대 비재출현(R3, 참고 — 큐 유지) · 소진 3 = auto 경계, batch 적재 0 → flush 없음 · R3-1은 계열 3회째·재현 안 됨 → 사용자 판정(FIXED) · **신호 1 발화(3→3→4)** → 확인 모드 진입 |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | impl:SKILL.md 점검 2 · 엔트리별 판정 결과(T·WHY)가 셸 밖으로 출력되지 않음 · 엔트리마다 sha/T/WHY 한 줄 출력 + AC | high | FIXED `0d042e7` | 블록 끝 `printf 'ENTRY\t…'` + 판정은 그 줄로 한다는 문단(SKILL.md) · spec §3a 동일 + AC3에 출력 요구. 실측: 성공 2·실패 5사유·시간 초과(DL 강제 소진) 전부 1줄 |
 | impl:SKILL.md 점검 2 · ENTRY 결과에서 마켓플레이스 식별자 유실 — 같은 sha의 본가/fork 엔트리에 결과 오결합 · KEY·안정 식별자 포함, 비선택 마켓플레이스는 대조 기준 미확보 | high | FIXED `c7065df` | ENTRY 줄 = 1번 출력 줄 전체(E) + T + WHY, "sha만으로 짝짓지 않는다" · 고른 KEY 엔트리만 블록 실행(다른 키 = 기존 판정 불가 문단). spec §3a·AC3 동기. 실측: 레지스트리 모사(본가 user·project · 같은 sha fork · 결측) 한 셸 순회 — 본가 2줄 ENTRY, fork·결측 제외 |
+| impl:SKILL.md 점검 2 · [루프 실측] zsh에서 `D="--depth 1"`이 단어 분할되지 않아 shallow 보강 fetch가 `unknown option`(exit 129)으로 전부 실패 · `--depth=1` 한 토큰 + AC1~AC3 bash·zsh 양쪽 | high | FIXED `325ce87` | 리뷰어 미검출, 루프가 R3-1 재현 중 zsh로 실행해 발견. 앞선 AC 실측은 bash로 돌려 놓쳤다. 불릿에 한 토큰 이유 · spec AC에 두 셸 실행 요구. 실측: GitHub shallow·full × bash·zsh 모두 9613013 → b0f5c02 |
+| impl:SKILL.md 점검 2 · 보강 fetch가 태그 자동 추적으로 태그 ref를 기록할 수 있음 · `--no-tags` + show-ref 전후 불변 AC | medium | FIXED `aedd0bb`(사용자 판정) | "공유 clone 부작용" 계열 3회째 + 재현 안 됨(태그가 설치 sha를 가리키는 원격, bash·zsh × shallow·full × 경량·주석 8사례 모두 태그 미생성·ref 불변, git 2.54) → 사용자가 방어적 `--no-tags` 채택. 적용 뒤 같은 8사례 재실측 불변 |
