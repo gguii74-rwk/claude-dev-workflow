@@ -322,7 +322,7 @@ git status --short | wc -l        # 0 — .remember/는 gitignore
 ```bash
 [ -f .remember/hook-test-1.0.0/context-threshold-hook.test.mjs ] && echo FILE_OK
 git status --short | wc -l                                                      # 0 (D5·AC5 — repo 파일 없음)
-git ls-files | grep -c 'hook-test'                                              # 0
+git ls-files | grep -c 'hook-test-1.0.0/'                                       # 0
 HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^# (pass|fail)'   # "# pass 4" / "# fail 7"
 grep -c '^test("C' .remember/hook-test-1.0.0/context-threshold-hook.test.mjs   # 11 (AC5 케이스 ≥ 5)
 ```

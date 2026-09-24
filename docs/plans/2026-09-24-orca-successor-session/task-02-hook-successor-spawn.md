@@ -397,7 +397,7 @@ grep -c 'const obj=v=>!!v&&typeof v==="object"&&!Array.isArray(v)' $K     # 1  (
 grep -c 'typeof v.stopReviewGate==="boolean"' $K                          # 1  (중첩 필드 타입 검사, plan R2-2)
 grep -c 'const COMPANION_ROOT_CMD\|const STATE_PROBE_CMD\|const CLI_RESOLVE_CMD' $K   # 3 (SC-4)
 grep -o 'SUCCESSOR_PROMPT_EOF' $K | wc -l                                # 2 (heredoc 열고 닫기, R2-2)
-git ls-files | grep -c 'hook-test'                                        # 0 (D5)
+git ls-files | grep -c 'hook-test-1.0.0/'                                 # 0 (D5)
 grep -c '^## 훅 테스트 기록 (AC5, D5)' docs/plans/2026-09-24-orca-successor-session.md   # 1
 grep -c '^# pass 11' docs/plans/2026-09-24-orca-successor-session.md      # 1 (TAP 원문 인용)
 git status --short | grep -v '^??' | wc -l                                # 0

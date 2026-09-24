@@ -61,7 +61,7 @@ for f in README.md README.ko.md README.ja.md; do grep -c 'ORCA_TERMINAL_HANDLE' 
 | 4 | (2-3) 전달 | `result.send.prompt.stages`에 `turn_started` · `--retry-request` 사용 여부 | | |
 | 5 | (2-5) 옛 세션 정지 | send 뒤 옛 세션 추가 턴 0(재넛지 없음 — `stop_hook_active` 통과) | | |
 | 6 | 후계 0번째 동작 | `FOREIGN_ACTIVE=0` 확인 후 진행(대기 발생 시 횟수) | | |
-| 7 | 후계 첫 동작 — 옛 핸들만 | `/exit` accepted → `--for exit` satisfied → close ok → list에 옛 핸들 없음 · **활성 탭·다른 탭 무사** | | |
+| 7 | 후계 첫 동작 — 옛 핸들만 | `/exit` accepted → `--for exit` satisfied, 또는 시간 초과(보통) 뒤 `terminal read` 끝줄에 종료 표지 `Resume this session with`와 셸 프롬프트 둘 다 — **표지 출력 여부를 관찰 열에 기록**(빈 세션은 표지 없음이 실측, 대화가 있는 세션은 미관찰 — impl 이월 F6) → close ok → list에 옛 핸들 없음 · **활성 탭·다른 탭 무사** | | |
 | 8 | SessionEnd 정리 | 옛 세션 codex 상태 디렉터리: `broker.json` 소멸 · 옛 세션 잡 0(파일럿 E5와 동일) | | |
 | 9 | §0 대조·라운드 이어감 | 후계가 `/review-loop --resume`(또는 핸드오프)로 §0 스냅샷 통과 · 다음 단위 시작 · 단계 경계면 사용자 확인(D4). 관찰 열에 대상 트랙의 repo · phase · ledger 문서 · base SHA · 루프 파일 경로 기록(이 트랙 ledger 재사용 아님) | | |
 | 10 | 메타문자 원문 전달 | 후계가 받은 프롬프트에 CLI 해소식 `$( [ -n "$ORCA_DEV_REPO_ROOT" ] && echo orca-dev … )`(원문은 조건 ② — 셀 안에 세로줄을 쓰지 않는다)·`$(node -e` 원문 그대로 · `CLI="orca"` 등으로 확장된 흔적 없음 · 옛 세션 로컬 실행 흔적 없음 | | |
