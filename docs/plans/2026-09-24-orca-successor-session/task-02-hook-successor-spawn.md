@@ -1,10 +1,10 @@
 # task-02 — 훅 오르카 분기·후계 스폰 절차·폴백 → GREEN + AC5 기록 (F1·F2·F5)
 
-**목적**: `decideNudge`에 `orcaHandle` 인자를 더해 (2)를 가른다 — 오르카면 후계 스폰·인계 절차(2-0)~(2-5)와 [폴백], 아니면 0.19.0 그대로. (0)의 마지막 문장은 양 경로 공통 SC-2 HOOK-②로 교체. `main()`은 `ORCA_TERMINAL_HANDLE`을 넘긴다. task-01 테스트를 GREEN 10/10으로 만들고, 문면이 지시하는 셸 스니펫을 실제로 실행해 확인한 뒤, 엔트리포인트에 AC5 기록 절을 쓴다.
+**목적**: `decideNudge`에 `orcaHandle` 인자를 더해 (2)를 가른다 — 오르카면 후계 스폰·인계 절차(2-0)~(2-5)와 [폴백], 아니면 0.19.0 그대로. (0)의 마지막 문장은 양 경로 공통 SC-2 HOOK-②로 교체. `main()`은 `ORCA_TERMINAL_HANDLE`을 넘긴다. task-01 테스트를 GREEN 11/11로 만들고, 문면이 지시하는 셸 스니펫을 실제로 실행해 확인한 뒤, 엔트리포인트에 AC5 기록 절을 쓴다.
 
 ## Files
 
-- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 23,000B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
+- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 23,900B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
 - Modify: `docs/plans/2026-09-24-orca-successor-session.md` — 말미에 `## 훅 테스트 기록 (AC5, D5)` 절 추가(§6)
 - Test: `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs`(task-01) — RED → GREEN
 
@@ -23,7 +23,7 @@ task-01.
 ### 1. RED 확인
 
 ```bash
-HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^# (pass|fail)'   # pass 4 / fail 6
+HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^# (pass|fail)'   # pass 4 / fail 7
 ```
 
 ### 2. 훅 파일 전체 교체
@@ -93,6 +93,8 @@ export function computeContextUsage(transcriptText, env = {}) {
 // codex companion 루트 = 레지스트리 해소(review-loop §2b ①과 같은 우선순위: cwd 일치 project/local > user > managed).
 // 상태 프로브 = 상태 파일을 직접 한 번 읽어 JSON.parse한 동일 객체에서 config.stopReviewGate와 jobs를 함께 읽는다
 // (loadState는 읽기·파싱 실패를 기본값으로 숨기고, status --all은 자기 세션 잡만 보여준다 — 둘 다 쓰지 않는다).
+// 루트가 객체가 아니거나(배열 포함 — typeof []도 "object"다) jobs가 배열이 아니거나 config가 객체가 아니면
+// STATE_UNREADABLE(exit 2) — 손상·스키마 이탈도 fail-closed(빈 잡·GATE_OFF로 오인하지 않는다).
 const COMPANION_ROOT_CMD =
   `P="\${CLAUDE_CODE_PLUGIN_CACHE_DIR:-\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"; ` +
   `CR=$(node -e 'const fs=require("fs"),p=require("path");let d;try{d=JSON.parse(fs.readFileSync(p.join(process.argv[1],"installed_plugins.json"),"utf8"))}catch{process.exit(1)};` +
@@ -102,9 +104,11 @@ const COMPANION_ROOT_CMD =
 const STATE_PROBE_CMD =
   `node -e 'const fs=require("fs");import(require("url").pathToFileURL(process.argv[1]+"/scripts/lib/state.mjs").href).then(m=>{` +
   `const f=m.resolveStateFile(process.cwd());if(!fs.existsSync(f)){console.log("GATE_OFF FOREIGN_ACTIVE=0");return}` +
-  `let s;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch{s=null}if(!s||typeof s!=="object"){console.log("STATE_UNREADABLE");process.exit(2)}` +
+  `let s;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch{s=null}` +
+  `const obj=v=>!!v&&typeof v==="object"&&!Array.isArray(v);` +
+  `if(!obj(s)||(s.jobs!==undefined&&!Array.isArray(s.jobs))||(s.config!==undefined&&!obj(s.config))){console.log("STATE_UNREADABLE");process.exit(2)}` +
   `const me=process.env.CODEX_COMPANION_SESSION_ID||"";` +
-  `const n=(Array.isArray(s.jobs)?s.jobs:[]).filter(j=>(j.status==="queued"||j.status==="running")&&j.sessionId!==me).length;` +
+  `const n=(s.jobs||[]).filter(j=>(j.status==="queued"||j.status==="running")&&j.sessionId!==me).length;` +
   `console.log((s.config&&s.config.stopReviewGate===true?"GATE_ON":"GATE_OFF")+" FOREIGN_ACTIVE="+n)}).catch(()=>{console.log("STATE_UNREADABLE");process.exit(2)})' "$CR"`;
 const CLI_RESOLVE_CMD = `CLI="\${ORCA_CLI_COMMAND:-$( [ -n "$ORCA_DEV_REPO_ROOT" ] && echo orca-dev || echo orca )}"`;
 
@@ -146,7 +150,7 @@ function orcaHandoff(h) {
 // lastNudgeStep = 마지막으로 넛지한 구간 인덱스(아직 없으면 null).
 // nextStep = 호출자가 영속화해야 할 다음 상태(null이면 "아직 넛지 없음" = 플래그 삭제).
 // 넛지하지 않는 호출에서도 nextStep이 바뀔 수 있다(아래 주기 재초기화) — 호출자는 항상 반영해야 한다.
-// orcaHandle = ORCA_TERMINAL_HANDLE(비어 있지 않은 문자열)이면 오르카 경로 (2), null이면 현행 /clear 안내.
+// orcaHandle = ORCA_TERMINAL_HANDLE(안전 문자 집합에 맞는 비어 있지 않은 문자열 — resolveOrcaHandle)이면 오르카 경로 (2), null이면 현행 /clear 안내.
 export function decideNudge({ ratio, threshold, stopHookActive, lastNudgeStep, orcaHandle = null }) {
   const keep = (step) => ({ shouldNudge: false, reason: "", nextStep: step });
   if (stopHookActive) return keep(lastNudgeStep);
@@ -235,10 +239,12 @@ function resolveThreshold() {
 }
 
 // 훅 프로세스는 claude의 환경을 물려받는다 — 오르카가 띄운 세션이면 ORCA_TERMINAL_HANDLE이 있다(실측 A).
-// 빈 문자열은 미설정과 같다(오르카 밖 경로).
+// 빈 문자열은 미설정과 같다(오르카 밖 경로). 값은 (2)의 셸 명령에 --terminal "<핸들>"로 그대로 들어가므로
+// 제목과 같은 안전 문자 집합([A-Za-z0-9._-])만 허용한다 — 따옴표·$(…)·백틱·공백·개행이 든 값은 오르카 핸들이
+// 아니라 오염된 환경이다: 후계를 띄우지 않고 오르카 밖 경로(/clear 안내)로 보낸다(실제 핸들 = term_<uuid>, 집합 안).
 function resolveOrcaHandle(env) {
-  const h = env.ORCA_TERMINAL_HANDLE;
-  return typeof h === "string" && h.trim() !== "" ? h.trim() : null;
+  const h = typeof env.ORCA_TERMINAL_HANDLE === "string" ? env.ORCA_TERMINAL_HANDLE.trim() : "";
+  return /^[A-Za-z0-9._-]+$/.test(h) ? h : null;
 }
 
 function main() {
@@ -304,7 +310,7 @@ HOOK_EOF
 
 ```bash
 HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^(ok|not ok|# (tests|pass|fail))'
-# 기대: ok 1 ~ ok 10, "# pass 10", "# fail 0"
+# 기대: ok 1 ~ ok 11, "# pass 11", "# fail 0"
 # 비오르카 회귀: 0.19.0 훅과 reason diff = (0) 문장 1개
 git show HEAD:dev-workflow/hooks/scripts/context-threshold-hook.mjs > /tmp/hook-0.19.0.mjs
 diff <(node -e 'import("/tmp/hook-0.19.0.mjs").then(m=>console.log(m.decideNudge({ratio:0.5,threshold:0.4,stopHookActive:false,lastNudgeStep:null}).reason))') \
@@ -345,8 +351,8 @@ node -e 'import("./dev-workflow/hooks/scripts/context-threshold-hook.mjs").then(
 
 | 일시 | 훅 커밋 | 결과 | 비고 |
 |---|---|---|---|
-| <YYYY-MM-DD HH:MM> | 0.19.0 `92e1374` | RED 4 pass / 6 fail | C3·C7·C9·C10 자동 보완(현행에서도 통과) |
-| <YYYY-MM-DD HH:MM> | <이 task 커밋 SHA — 단계 7 뒤 채운다> | GREEN 10/10 | 스니펫 실행: `GATE_OFF FOREIGN_ACTIVE=0` · `CLI=orca` · `LEN=40` |
+| <YYYY-MM-DD HH:MM> | 0.19.0 `92e1374` | RED 4 pass / 7 fail | C3·C7·C9·C10 자동 보완(현행에서도 통과) · C11은 오르카 문면 부재로 실패 |
+| <YYYY-MM-DD HH:MM> | <이 task 커밋 SHA — 단계 7 뒤 채운다> | GREEN 11/11 | 스니펫 실행: `GATE_OFF FOREIGN_ACTIVE=0` · `CLI=orca` · `LEN=40` |
 
 GREEN 원문:
 ```
@@ -364,7 +370,7 @@ git commit -m "feat(hook): 오르카 터미널이면 넛지 (2) = 후계 세션 
 SHA=$(git rev-parse --short HEAD)
 # 단계 6의 표 2행 "<이 task 커밋 SHA>"를 $SHA로 치환한 뒤:
 git add docs/plans/2026-09-24-orca-successor-session.md
-git commit -m "docs(plan): 훅 테스트 기록 절 — RED 4/6(0.19.0) → GREEN 10/10($SHA), TAP 원문 인용 (AC5)"
+git commit -m "docs(plan): 훅 테스트 기록 절 — RED 4/7(0.19.0) → GREEN 11/11($SHA), TAP 원문 인용 (AC5)"
 git log -2 --format=%B | grep -ciE '^(co-authored-by|claude-session): |generated with \[claude code\]\('   # 0
 ```
 
@@ -372,17 +378,19 @@ git log -2 --format=%B | grep -ciE '^(co-authored-by|claude-session): |generated
 
 ```bash
 K=dev-workflow/hooks/scripts/context-threshold-hook.mjs
-HOOK="$PWD/$K" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^# (pass|fail)'   # pass 10 / fail 0  (AC1·AC2·AC5)
+HOOK="$PWD/$K" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^# (pass|fail)'   # pass 11 / fail 0  (AC1·AC2·AC5)
 grep -c 'orcaHandle = null' $K                                            # 1  (SC-3 시그니처)
 grep -c '그때 넛지 (2)의 인계 절차를 따르라' $K                             # 1  (SC-2 HOOK-②)
 grep -c '그때 /clear를 안내하라' $K                                        # 0
 grep -c '자가 /clear는 불가하므로 실제 초기화는 사용자가 합니다' $K          # 1  (비오르카 (2)에만)
 grep -c 'resolveOrcaHandle(process.env)' $K                               # 1
+grep -c '/^\[A-Za-z0-9._-\]+$/.test(h)' $K                                 # 1  (핸들 안전 문자 집합, plan R1-1)
+grep -c 'const obj=v=>!!v&&typeof v==="object"&&!Array.isArray(v)' $K     # 1  (상태 프로브 스키마 검사, plan R1-2)
 grep -c 'const COMPANION_ROOT_CMD\|const STATE_PROBE_CMD\|const CLI_RESOLVE_CMD' $K   # 3 (SC-4)
 grep -o 'SUCCESSOR_PROMPT_EOF' $K | wc -l                                # 2 (heredoc 열고 닫기, R2-2)
 git ls-files | grep -c 'hook-test'                                        # 0 (D5)
 grep -c '^## 훅 테스트 기록 (AC5, D5)' docs/plans/2026-09-24-orca-successor-session.md   # 1
-grep -c '^# pass 10' docs/plans/2026-09-24-orca-successor-session.md      # 1 (TAP 원문 인용)
+grep -c '^# pass 11' docs/plans/2026-09-24-orca-successor-session.md      # 1 (TAP 원문 인용)
 git status --short | grep -v '^??' | wc -l                                # 0
 ```
 
@@ -394,6 +402,8 @@ git status --short | grep -v '^??' | wc -l                                # 0
 - **재개 프롬프트 템플릿 안의 send/wait/close/read에서 `--terminal "${h}"`를 빼거나 "활성 터미널"로 바꾸지 않는다. 이유: R2-1 — 생략하면 후계 자신이나 무관한 탭을 닫는다. C6이 잡는다.**
 - **옛 세션 종료 대기를 `--for tui-idle`로 되돌리지 않는다. 이유: C1-#10 — 옛 세션은 이미 idle이라 즉시 만족돼 증거가 못 된다. `--for exit` 또는 종료 표지 + 셸 프롬프트.**
 - **`STATE_PROBE_CMD`에서 파싱 실패를 `GATE_OFF`/빈 잡으로 돌리지 않는다. 이유: R6-1a·C2 — fail-closed(`STATE_UNREADABLE` exit 2 = 폴백/차단).**
+- **`resolveOrcaHandle`의 안전 문자 집합 검사를 빼거나 "비어 있지 않으면 통과"로 되돌리지 않는다. 이유: plan R1-1 — 핸들은 (2)의 셸 명령에 `--terminal "<핸들>"`로 그대로 보간되므로 오염된 값(따옴표·`$(…)`·백틱)이 옛 세션·후계에서 실행된다. 실제 핸들(`term_<uuid>`)은 집합 안이라 정상 경로는 바뀌지 않는다. C8이 잡는다.**
+- **`STATE_PROBE_CMD`의 루트 배열·`jobs` 비배열·`config` 비객체 검사를 빼지 않는다. 이유: plan R1-2 — `typeof [] === "object"`라 `[]`가 `GATE_OFF FOREIGN_ACTIVE=0`으로 통과한다(fail-open). C11이 잡는다.**
 - **`loadState(cwd)`·`codex-companion.mjs status --all`을 조회 수단으로 쓰지 않는다. 이유: C1-#11(`status --all`은 자기 세션 잡만 필터) · C2(`loadState`는 파싱 실패를 기본값으로 숨긴다).**
 - **제목 절단을 `${TITLE:0:40}`처럼 제목 전체에 걸지 않는다. 이유: R4-1 — 토큰이 잘리면 `terminal list` 정확 조회가 막힌다. 작업명만 `40 - ${#TOKEN} - 1`로 자른다.**
 - **프롬프트를 `--text "<문자열 직접>"`로 보내는 예시를 넣지 않는다. 이유: R2-2 — 파일 + `"$(cat …)"`만. 파일 내용은 줄바꿈 없이 한 줄(SC-5).**

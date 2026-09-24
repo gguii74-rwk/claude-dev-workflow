@@ -37,7 +37,9 @@ RL 크기 상한은 이 트랙에 **없다** — 0.18.0 D34(≤69,066B)는 그 �
 ```js
 export function decideNudge({ ratio, threshold, stopHookActive, lastNudgeStep, orcaHandle = null })
 // orcaHandle: string|null. main()은 resolveOrcaHandle(process.env)를 넘긴다 —
-//   ORCA_TERMINAL_HANDLE이 비어 있지 않은 문자열이면 trim한 값, 아니면 null(빈 문자열 = 미설정).
+//   ORCA_TERMINAL_HANDLE을 trim한 값이 /^[A-Za-z0-9._-]+$/에 맞으면 그 값, 아니면 null(빈 문자열 = 미설정 ·
+//   따옴표·$(…)·백틱·공백이 든 값 = 오염된 환경 → 오르카 밖 경로). 값은 (2)의 셸 명령에 --terminal "<핸들>"로
+//   그대로 들어가므로 제목과 같은 안전 문자 집합만 허용한다(실제 핸들 term_<uuid>는 집합 안. plan R1-1).
 // 반환 { shouldNudge, reason, nextStep } — 필드·판정 로직(current·due·reset·nextStep) 불변.
 // reason = `${head} 멈추기 전에: ` + unit + handoff + handover
 //   unit·handoff = 0.19.0과 동일(unit의 ② 마지막 문장만 HOOK-②로 교체)
@@ -52,7 +54,7 @@ export function decideNudge({ ratio, threshold, stopHookActive, lastNudgeStep, o
 |---|---|---|
 | `CLI_RESOLVE_CMD` | `CLI="${ORCA_CLI_COMMAND:-$( [ -n "$ORCA_DEV_REPO_ROOT" ] && echo orca-dev \|\| echo orca )}"` — orca-cli 스킬 순서(R1-1) | `$CLI` = 실행 파일 |
 | `COMPANION_ROOT_CMD` | RL §2b ①과 같은 레지스트리 해소(cwd 일치 project/local > user > managed), 존재 확인 대상만 `scripts/lib/state.mjs` | `$CR` = companion 루트, 실패 시 `RESOLVE_FAIL` 출력 |
-| `STATE_PROBE_CMD` | `resolveStateFile(process.cwd())`로 얻은 상태 파일을 **직접 한 번** 읽어 `JSON.parse`한 동일 객체에서 `config.stopReviewGate`와 `jobs`를 함께 읽는다(`loadState`·`status --all` 불사용, C2) | 한 줄 `GATE_ON\|GATE_OFF FOREIGN_ACTIVE=<n>` (n = `status ∈ {queued,running}` ∧ `sessionId ≠ $CODEX_COMPANION_SESSION_ID` 잡 수). 파일 부재 = `GATE_OFF FOREIGN_ACTIVE=0`. 읽기·파싱 실패·비객체·import 실패 = `STATE_UNREADABLE` + exit 2 |
+| `STATE_PROBE_CMD` | `resolveStateFile(process.cwd())`로 얻은 상태 파일을 **직접 한 번** 읽어 `JSON.parse`한 동일 객체에서 `config.stopReviewGate`와 `jobs`를 함께 읽는다(`loadState`·`status --all` 불사용, C2) | 한 줄 `GATE_ON\|GATE_OFF FOREIGN_ACTIVE=<n>` (n = `status ∈ {queued,running}` ∧ `sessionId ≠ $CODEX_COMPANION_SESSION_ID` 잡 수). 파일 부재 = `GATE_OFF FOREIGN_ACTIVE=0`. 읽기·파싱 실패·import 실패·루트 비객체(배열 포함)·`jobs` 비배열·`config` 비객체 = `STATE_UNREADABLE` + exit 2(스키마 이탈도 fail-closed — plan R1-2) |
 
 사용처: 옛 세션 (2-0)ⓒ(GATE_ON·STATE_UNREADABLE·RESOLVE_FAIL → 폴백) · 후계 0번째 동작(FOREIGN_ACTIVE≠0 → 15초 간격 대기, 상한 10분=40회 · STATE_UNREADABLE·RESOLVE_FAIL → 보고·보류). 실측(2026-09-24 이 repo): `GATE_OFF FOREIGN_ACTIVE=0`, exit 0.
 
@@ -67,7 +69,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 - (2-4) 템플릿: `[0번째 동작 — 공유 브로커 단일 실행권 검사]` · `FOREIGN_ACTIVE` · `15초 간격` · `상한 10분` · `[첫 동작 — 옛 세션 정상 종료]` · `--terminal 생략 금지` · `"$CLI" terminal send --terminal "<옛 핸들>" --text "/exit" --enter --json` · `"$CLI" terminal wait --terminal "<옛 핸들>" --for exit --timeout-ms 30000 --json` · `tui-idle 불인정` · `Resume this session with` · `"$CLI" terminal close --terminal "<옛 핸들>" --json` · `close도 codex 시작도 하지 말고` · `닫기가 실패하면 사용자에게 알리고 codex 라운드를 시작하지 마라` · `다른 단계(spec→plan, plan→impl)의 시작이면 시작하지 말고 사용자에게 확인하라` · `/review-loop --resume` (R5-3·R6-1a·R2-1·R5-2·C1·D4·D9)
 - (2-5): `(2-5) turn_started를 확인했으면 더 아무것도 하지 말고 턴을 끝내세요`
 - [폴백]: `[폴백] 조건 4종: (a)` · `(b) (2-2) wait satisfied:false` · `(c) (2-3) turn_started 미확인` · `(d) CLI 실행 오류` · `재생성과 /clear 안내를 모두 차단` · `미전달이 확정되기 전(재관찰·재조정 중)에는 후계를 닫지 마세요` · `"$CLI" terminal wait --terminal "<새 핸들>" --for exit --timeout-ms 30000 --json` · `/exit 처리 증거 없이 close하지 마세요` · `소멸을 확인하고` · CLEAR (F2·R1-3·D10)
-- 부정 요건: `자가 /clear는 불가` 0건 · `"$CLI" terminal (send|wait|close|read|show)` 뒤에 ` --terminal ` 없는 것 0건 · 옛 핸들 바인딩은 값 리터럴(`--terminal "term_…"`), 새 핸들은 `"<새 핸들>"` 자리표시자만.
+- 부정 요건: `자가 /clear는 불가` 0건 · `"$CLI" terminal (send|wait|close|read|show)` 뒤에 ` --terminal ` 없는 것 0건 · 옛 핸들 바인딩은 값 리터럴(`--terminal "term_…"`), 새 핸들은 `"<새 핸들>"` 자리표시자만 · 안전 문자 집합 밖 `ORCA_TERMINAL_HANDLE`은 오르카 경로에 들어가지 않는다(`resolveOrcaHandle` → null, E2E C8).
 
 `<옛 핸들>`은 실제 값(`orcaHandle`)으로 치환된 상태. 프롬프트 파일은 **줄바꿈 없이 한 줄**로 쓰라고 지시한다(TUI에 줄바꿈이 조기 제출로 들어갈 위험 제거 — F6 관찰 항목).
 
@@ -75,13 +77,13 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 
 - 파일: `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs` — `.remember/`는 gitignore(= claude-memories 심링크)라 repo 파일이 아니다(0.18.0 `harness-0.18.0`과 같은 위치 규약). "스크래치패드 실행"의 취지(repo에 테스트 파일 없음)를 충족하면서 세션·머신을 넘어 재실행할 수 있다.
 - 실행: `HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs`
-- 케이스 10개(C1~C10): C1·C2 비오르카 고정 문자열 · C3 비오르카 부정 · C4 오르카 needle 전부 · C5 재넛지 (2) 동일 · C6 `--terminal` 바인딩 · C7 판정 로직 회귀(stopHookActive 포함) · C8 E2E(`ORCA_TERMINAL_HANDLE` 유무·빈 문자열·stop_hook_active) · C9 제목 절단·정확 조회(bash 실행) · C10 셸 안전(bash 실행, 대조군 포함).
-- 기대: 0.19.0 훅 = **RED 4 pass / 6 fail**(C3·C7·C9·C10만 통과) → task-02 후 **GREEN 10/10**.
+- 케이스 11개(C1~C11): C1·C2 비오르카 고정 문자열 · C3 비오르카 부정 · C4 오르카 needle 전부 · C5 재넛지 (2) 동일 · C6 `--terminal` 바인딩 · C7 판정 로직 회귀(stopHookActive 포함) · C8 E2E(`ORCA_TERMINAL_HANDLE` 유무·빈 문자열·안전 문자 집합 밖 핸들·stop_hook_active) · C9 제목 절단·정확 조회(bash 실행) · C10 셸 안전(bash 실행, 대조군 포함) · C11 상태 프로브 fail-closed(bash 실행 — reason에서 잘라낸 `STATE_PROBE_CMD`를 가짜 companion 루트·상태 파일로 실행: `[]`·비JSON·`jobs` 비배열·`config` 비객체 → `STATE_UNREADABLE` exit 2, 정상 객체 → `GATE_ON FOREIGN_ACTIVE=1`, 파일 부재 → `GATE_OFF FOREIGN_ACTIVE=0`).
+- 기대: 0.19.0 훅 = **RED 4 pass / 7 fail**(C3·C7·C9·C10만 통과) → task-02 후 **GREEN 11/11**.
 - **기록(AC5)** = 이 엔트리포인트 말미 `## 훅 테스트 기록 (AC5, D5)` 절 — task-02가 TAP 출력 원문(`ok 1 …` ~ `# fail 0`)을 인용해 커밋한다. review-loop(impl)에서 훅이 다시 바뀌면 재실행해 같은 절에 추가한다(spec "impl ledger에 기록"의 구체 위치 — review-loop(impl) ledger는 이 절을 참조).
 
 ### SC-7. AC6 실사용 확인 절 (task-05가 말미에 추가, 릴리스 후 맥북 세션이 채운다 — D11)
 
-절 제목 `## AC6 실사용 확인 (트랙 완료 조건, D11)`. 관찰 항목 표 11행(사전 검증 · 제목 정규화 · wait · turn_started · 옛 세션 정지 · 후계 0번째 · 첫 동작 옛 핸들만 · SessionEnd 정리 · §0 대조·라운드 이어감 · 메타문자 원문 전달 · 다른 탭 활성 유지). 채워진 뒤 eval repo `report/ORCA-SUCCESSOR-2026-09-24.md`에 부기(파일럿 미측정 3건 종결).
+절 제목 `## AC6 실사용 확인 (트랙 완료 조건, D11)`. 관찰 항목 표 11행(사전 검증 · 제목 정규화 · wait · turn_started · 옛 세션 정지 · 후계 0번째 · 첫 동작 옛 핸들만 · SessionEnd 정리 · §0 대조·라운드 이어감 · 메타문자 원문 전달 · 라운드 진행 중 넛지). **11행 전부 필수**(11행 "미발생" 불허 — spec F6 파일럿 미측정 3건은 9·11행이 닫는다, plan R1-3). 메타문자 전달 프로브 = 재개 프롬프트 템플릿에 내장된 `$(…)` 식(CLI·companion 해소식)이 확장 없이 도착하는지(`<경로>` 슬롯은 review-loop에서 고정 — plan R1-4). 채워진 뒤 eval repo `report/ORCA-SUCCESSOR-2026-09-24.md`에 부기(파일럿 미측정 3건 종결).
 
 ### SC-8. 커밋 규칙
 

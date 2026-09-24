@@ -1,6 +1,6 @@
 # task-01 — 훅 테스트 작성 + RED (F5, D5)
 
-**목적**: 1.0.0 훅 동작(비오르카 바이트 동일 · 오르카 (2-0)~(2-5)·폴백 · `--terminal` 바인딩 · 판정 로직 회귀 · E2E · 제목 절단 · 셸 안전)을 `node --test` 케이스 10개로 고정하고, 0.19.0 훅에서 **RED(4 pass / 6 fail)** 를 확인한다. repo에는 파일을 추가하지 않는다(D5) — `.remember/`(gitignore, claude-memories 심링크) 아래에 둔다.
+**목적**: 1.0.0 훅 동작(비오르카 바이트 동일 · 오르카 (2-0)~(2-5)·폴백 · `--terminal` 바인딩 · 판정 로직 회귀 · E2E(안전 문자 집합 밖 핸들 포함) · 제목 절단 · 셸 안전 · 상태 프로브 fail-closed)을 `node --test` 케이스 11개로 고정하고, 0.19.0 훅에서 **RED(4 pass / 7 fail)** 를 확인한다. repo에는 파일을 추가하지 않는다(D5) — `.remember/`(gitignore, claude-memories 심링크) 아래에 둔다.
 
 ## Files
 
@@ -29,7 +29,7 @@ cat > .remember/hook-test-1.0.0/context-threshold-hook.test.mjs <<'TEST_EOF'
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -182,7 +182,7 @@ test("C7 판정 로직 불변(orcaHandle 유무와 무관)", () => {
 });
 
 // ── E2E: main()이 ORCA_TERMINAL_HANDLE 값을 그대로 넘긴다(빈 문자열 = 미설정) ──
-test("C8 E2E ORCA_TERMINAL_HANDLE 유무로 (2)가 갈린다", () => {
+test("C8 E2E ORCA_TERMINAL_HANDLE 유무·안전 문자 집합으로 (2)가 갈린다", () => {
   const dir = mkdtempSync(join(tmpdir(), "ctx-hook-"));
   try {
     const transcript = join(dir, "t.jsonl");
@@ -201,6 +201,11 @@ test("C8 E2E ORCA_TERMINAL_HANDLE 유무로 (2)가 갈린다", () => {
     const plain = run({ ORCA_TERMINAL_HANDLE: "" }, "e2e-plain");
     const p = JSON.parse(plain.stdout);
     assert.ok(p.reason.endsWith(CLEAR));
+    // 안전 문자 집합([A-Za-z0-9._-]) 밖 핸들 = 오염된 환경 → 오르카 밖 경로. 셸 명령에 보간되지 않는다(R1-1)
+    const hostile = run({ ORCA_TERMINAL_HANDLE: 'term_bad"; printf INJECTED; #' }, "e2e-hostile");
+    const q = JSON.parse(hostile.stdout);
+    assert.ok(q.reason.endsWith(CLEAR));
+    assert.ok(!q.reason.includes("INJECTED") && !q.reason.includes("terminal create"));
     const stopped = spawnSync(process.execPath, [HOOK], {
       input: JSON.stringify({ stop_hook_active: true, transcript_path: transcript, session_id: "e2e-stop" }),
       env: { ...process.env, ORCA_TERMINAL_HANDLE: H },
@@ -210,7 +215,7 @@ test("C8 E2E ORCA_TERMINAL_HANDLE 유무로 (2)가 갈린다", () => {
     assert.equal(stopped.stdout, "");
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    for (const s of ["e2e-orca", "e2e-plain", "e2e-stop"]) rmSync(join(tmpdir(), `claude-ctx-nudge-${s}`), { force: true });
+    for (const s of ["e2e-orca", "e2e-plain", "e2e-hostile", "e2e-stop"]) rmSync(join(tmpdir(), `claude-ctx-nudge-${s}`), { force: true });
   }
 });
 
@@ -237,8 +242,36 @@ test("C10 정규화된 제목은 $()·백틱·따옴표가 없어 셸 큰따옴�
   const control = execFileSync("bash", ["-c", 'printf %s "$(printf SUBSTITUTED)"'], { encoding: "utf8" });
   assert.equal(control, "SUBSTITUTED"); // 대조군: 정규화 없이 큰따옴표에 넣으면 실행된다
 });
+
+// ── 상태 프로브 fail-closed(R6-1a·C2·plan R1-2): reason이 지시하는 STATE_PROBE_CMD를 가짜 companion 루트로 실제 실행 ──
+test("C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE(exit 2)로 차단한다", () => {
+  const r = first({ orcaHandle: H }).reason;
+  const a = r.indexOf("node -e 'const fs=require(\"fs\");import(");
+  const b = r.indexOf(". 출력이 GATE_ON", a);
+  assert.ok(a > 0 && b > a, "STATE_PROBE_CMD 위치");
+  const probe = r.slice(a, b); // `node -e '…' "$CR"` — CR은 env로 준다
+  const dir = mkdtempSync(join(tmpdir(), "ctx-probe-"));
+  try {
+    mkdirSync(join(dir, "cr", "scripts", "lib"), { recursive: true });
+    writeFileSync(join(dir, "cr", "scripts", "lib", "state.mjs"), "export function resolveStateFile() { return process.env.FAKE_STATE_FILE; }\n");
+    const f = join(dir, "state.json");
+    const run = (content) => {
+      if (content === null) rmSync(f, { force: true }); else writeFileSync(f, content);
+      const p = spawnSync("bash", ["-c", probe], { env: { ...process.env, CR: join(dir, "cr"), FAKE_STATE_FILE: f, CODEX_COMPANION_SESSION_ID: "me" }, encoding: "utf8" });
+      return [p.stdout.trim(), p.status];
+    };
+    assert.deepEqual(run(null), ["GATE_OFF FOREIGN_ACTIVE=0", 0]); // 파일 부재 = 잡 없음
+    assert.deepEqual(run('{"config":{"stopReviewGate":true},"jobs":[{"status":"running","sessionId":"other"},{"status":"queued","sessionId":"me"},{"status":"done","sessionId":"x"}]}'), ["GATE_ON FOREIGN_ACTIVE=1", 0]);
+    assert.deepEqual(run('{"jobs":[]}'), ["GATE_OFF FOREIGN_ACTIVE=0", 0]);
+    for (const bad of ["[]", "null", "42", "not json", '{"jobs":"x"}', '{"jobs":{}}', '{"config":[]}', '{"config":null}']) {
+      assert.deepEqual(run(bad), ["STATE_UNREADABLE", 2], bad);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 TEST_EOF
-wc -l .remember/hook-test-1.0.0/context-threshold-hook.test.mjs    # 213
+wc -l .remember/hook-test-1.0.0/context-threshold-hook.test.mjs    # 246
 ```
 
 ### 2. RED 확인 (0.19.0 훅)
@@ -255,14 +288,15 @@ not ok 4 - C4 오르카 최초 넛지 — (2-0)~(2-5)·폴백·옛 핸들 그대
 not ok 5 - C5 오르카 재넛지 = 최초와 같은 (2) (D6: 지시 동일 + 사실 추가)
 not ok 6 - C6 오르카 reason 안의 send/wait/close/read/show 전부 --terminal 바인딩(옛 핸들 또는 새 핸들)
 ok 7 - C7 판정 로직 불변(orcaHandle 유무와 무관)
-not ok 8 - C8 E2E ORCA_TERMINAL_HANDLE 유무로 (2)가 갈린다
+not ok 8 - C8 E2E ORCA_TERMINAL_HANDLE 유무·안전 문자 집합으로 (2)가 갈린다
 ok 9 - C9 40자 초과 작업명에서도 토큰이 온전히 남고 title 정확 조회가 1건
 ok 10 - C10 정규화된 제목은 $()·백틱·따옴표가 없어 셸 큰따옴표 안에서 원문 그대로다
-# tests 10
+not ok 11 - C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE(exit 2)로 차단한다
+# tests 11
 # pass 4
-# fail 6
+# fail 7
 ```
-C1·C2는 (0) 문장 교체 때문에, C4·C5·C6·C8은 오르카 분기 부재 때문에 실패한다. C3·C7·C9·C10은 현행에서도 통과하는 회귀·규칙 케이스다(자동 보완 — RED 미재현은 실패가 아니라 기록 대상).
+C1·C2는 (0) 문장 교체 때문에, C4·C5·C6·C8·C11은 오르카 분기 부재 때문에 실패한다(C11은 reason에 STATE_PROBE_CMD가 없어 위치 단언에서 실패). C3·C7·C9·C10은 현행에서도 통과하는 회귀·규칙 케이스다(자동 보완 — RED 미재현은 실패가 아니라 기록 대상).
 
 ### 3. repo 무변경 확인 (커밋 없음)
 
@@ -276,8 +310,8 @@ git status --short | wc -l        # 0 — .remember/는 gitignore
 [ -f .remember/hook-test-1.0.0/context-threshold-hook.test.mjs ] && echo FILE_OK
 git status --short | wc -l                                                      # 0 (D5·AC5 — repo 파일 없음)
 git ls-files | grep -c 'hook-test'                                              # 0
-HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^# (pass|fail)'   # "# pass 4" / "# fail 6"
-grep -c '^test("C' .remember/hook-test-1.0.0/context-threshold-hook.test.mjs   # 10 (AC5 케이스 ≥ 5)
+HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs 2>&1 | grep -E '^# (pass|fail)'   # "# pass 4" / "# fail 7"
+grep -c '^test("C' .remember/hook-test-1.0.0/context-threshold-hook.test.mjs   # 11 (AC5 케이스 ≥ 5)
 ```
 
 ## Cautions
