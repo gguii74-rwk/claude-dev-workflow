@@ -129,8 +129,11 @@ harden-spec 사용자 판정 2026-09-24(D1~D10). 정본은 §재논의 금지.
 | R | 모드 | score | 미확인 FIXED 큐 | 비고 |
 |---|---|---|---|---|
 | R1 | 적대(자동) | 4 (high 1·medium 1) | 0 → 1 | verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE(batch-pending) 1 · 응답 수신 후 옛 세션 컨텍스트 넛지로 일시중단 → 후계 세션이 판정(수신 시점 모드 = 자동·적대) |
+| R2 | 적대(자동) | 5 (high 1·medium 1 신규 + R1-2 미판정 medium 1) | 1 → 2 | 1차 실행 실패(본문 없음 — 잘린 요약 1줄만, 소진 미반영, 잡 잔존 없음, 사용자 판단으로 재실행 · 원문 `R2.out.fail1`) · 재실행 verdict needs-attention · 신규 2 · FIXED 1 · ESCALATE(batch-pending) 1 · R1-1 적대 비재출현(R2, 참고 — 큐 유지) · 신호 1 미발화(4→5, 2점뿐) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | spec:3a · SHA 형식 검사가 revision 해석보다 늦어 `HEAD`·짧은 sha가 검사를 우회해 거짓 "최신" · 모든 rev-parse 앞에서 형식 검사 | high | FIXED `510001f` | D3 재론 아님(D3 "아니면 판정 불가"의 미구현). §3a 코드 순서 교체(형식 불일치면 rev-parse·fetch 모두 생략) + 결측 분기 선행 명시. AC3에 `HEAD`·`FETCH_HEAD`·짧은 sha 추가 |
 | spec:3b · 빈 subtree 결과만으로 원격 커밋 부재를 단정 — 인증·잠금·디스크 오류·경로 부재도 "원격에 없음" · RC·commit·경로 상태 분리, 명시적 not-found 근거 있을 때만 "원격에 없음" | medium | ESCALATE(batch-pending) | D4 매핑 전제(§3b "ls-remote 성공 → 원격 부재로 읽음")를 건드림 + 선택지 2+(원인 묶기 / stderr 문구 판별 / 현행 수용). batch flush 때 사용자 판정 |
+| spec:3a · 40자리 tree OID가 설치 commit으로 오인되어 거짓 "최신" · 형식 검사 뒤 `cat-file -t`가 commit인지 확인(fetch 후 재확인), 아니면 "설치 sha 객체 유형 이상" | high | ESCALATE(batch-pending) | R1-1과 같은 계열(손상 레지스트리 값이 검사를 우회해 거짓 "최신") **2회째** → 규약상 더 고치지 않고 사용자 판정. 레지스트리 손상 방어 범위(형식만 / 객체 유형까지 / 수용) 선택 |
+| spec:3a · 보강 fetch가 FETCH_HEAD를 덮어써 공유 clone의 동시 작업 교란 · `--no-write-fetch-head` + FETCH_HEAD 불변 AC | medium | FIXED `ab85cd7` | D1 재론 아님(pseudo-ref 쓰기만 제거). §3a 코드·불릿 교체, AC2에 FETCH_HEAD 불변 검증. 실측: git 2.54 scratch shallow clone에서 FETCH_HEAD 불변 + subtree 조회 성공 |
