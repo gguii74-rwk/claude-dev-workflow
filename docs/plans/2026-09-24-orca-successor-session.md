@@ -95,7 +95,7 @@ task-02의 `orcaHandoff(h)` 출력은 아래를 **문자열 그대로** 포함�
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
 | 01 | 훅 테스트 작성 + RED (F5) | [x] | [task-01](2026-09-24-orca-successor-session/task-01-hook-test-red.md) | — | `.remember/hook-test-1.0.0/` 259행 11케이스, 0.19.0 훅 RED 4/7(C3·C7·C9·C10 통과) · repo 무변경(D5) · AC `grep -c 'hook-test'`는 plan 파일명 오탐 → `hook-test-1.0.0/`로 판정(0) |
-| 02 | 훅 오르카 분기·후계 스폰 절차·폴백 → GREEN + AC5 기록 (F1·F2·F5) | [ ] | [task-02](2026-09-24-orca-successor-session/task-02-hook-successor-spawn.md) | 01 | |
+| 02 | 훅 오르카 분기·후계 스폰 절차·폴백 → GREEN + AC5 기록 (F1·F2·F5) | [x] | [task-02](2026-09-24-orca-successor-session/task-02-hook-successor-spawn.md) | 01 | 훅 `958c1e5`(25,808B, plan 원문 바이트 동일) · GREEN 11/11 · 비오르카 reason diff = (0) 1문장 · 스니펫 `GATE_OFF FOREIGN_ACTIVE=0`·`CLI=orca`·`LEN=40` · AC5 기록 절 `7d64e3b` |
 | 03 | RL §2b (1) 문장 + §2i 표 3행 경로 ① 조건화 (F3) | [ ] | [task-03](2026-09-24-orca-successor-session/task-03-review-loop-handoff-wording.md) | 02 | |
 | 04 | README 3종 §8 1.0.0 문단 + §주의 전역 설치 문구 교체 (F4) | [ ] | [task-04](2026-09-24-orca-successor-session/task-04-readme-sync.md) | 03 | |
 | 05 | 릴리스 1.0.0 + 4머신 갱신 안내 + AC6 빈 표·절차 절 (F4·F6) — **9단계, SDD 디스패치 대상 아님** | [ ] | [task-05](2026-09-24-orca-successor-session/task-05-release-1-0-0.md) | 04 + review-loop(impl) 종결 | |
