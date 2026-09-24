@@ -188,6 +188,7 @@ C3 소멸 확인 1건: R5-3.
 | 2026-09-24 13:17 | `958c1e5` | GREEN 11/11 | 스니펫 실행: `GATE_OFF FOREIGN_ACTIVE=0` · `CLI=orca` · `LEN=40` |
 | 2026-09-24 16:02 | `b11fef6` | GREEN 11/11 | 최종 리뷰 I1·M4 수정 — C4 needle 2개 추가(테스트 파일 .remember/), 비오르카 reason 수정 전과 동일 |
 | 2026-09-24 16:25 | `bc958e4` | GREEN 11/11 | impl R1-1 — C4 needle 3개 추가, `b11fef6` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN · 비오르카 reason 불변 |
+| 2026-09-24 16:31 | `4770d6a` | GREEN 11/11 | impl R2-1 — C4 needle 1개 추가, `bc958e4` 훅에서 C4 RED(pass 10 / fail 1) 확인 뒤 GREEN |
 
 GREEN 원문:
 ````
@@ -216,11 +217,13 @@ review-loop(impl)에서 훅이 다시 바뀌면 재실행해 이 표에 행을 �
 | R | 모드 | score | 미확인 FIXED 큐 | 비고 |
 |---|---|---|---|---|
 | R1 | 적대(자동) | 4 (high 1 · medium 1) | 1 → 2 | verdict needs-attention · 신규 1(R1-1, 즉시 ESCALATE — 데이터 유실군 → 사용자 FIXED `bc958e4`·`3165932`) · 이월 I2 즉시 ESCALATE → 사용자 ACCEPTED(README 보완 `3165932`) · 이월 소항목 7건 batch-pending · plan 이월 큐 1건(`d5ae7c9`) 적대 비재출현(R1, 참고 — 큐 유지) · 루프 직접 판정 0 |
+| R2 | 적대(자동) | 1 (medium 1) | 2 → 3 | verdict needs-attention · 신규 1 · FIXED `4770d6a` · 큐 2건(`d5ae7c9`·R1-1) 적대 비재출현(R2, 참고 — 큐 유지) · batch 적재 0(신규) · 루프 직접 판정 0 · 신호 미발화(4→1 감소) |
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
 | plan 이월 · task-06 · [C3 회귀] AC 커밋 제목 검사가 버전 없이 문구만 대조 · `$V` 대조 | medium | FIXED `d5ae7c9`(plan 루프, 사용자 판정) — **미확인(폴백 ① 이월, 확인 라운드 필수 항목)** | plan ledger C3 행 원문 참조 |
 | 훅 · [R1-1] 폴백의 후계 /exit(와 뒤따르는 /clear)에 공유 브로커 잡 검사가 없어 다른 세션의 실행 중 codex 잡이 죽음 · 정리 전 queued/running 검사, 활성이면 대기, 조회 실패·상한 초과면 /exit·close·/clear 보류 | high | FIXED `bc958e4` · README 동기 `3165932` (**사용자 판정** 즉시 ESCALATE→FIXED) | codex 1.0.6 `handleSessionEnd`가 세션 무관하게 `loadBrokerSession(cwd)` 브로커를 shutdown함을 소스로 확인. (2-1) 뒤 [폴백] 정리 앞에 `COMPANION_ROOT_CMD; STATE_PROBE_CMD` → FOREIGN_ACTIVE≠0 15초 간격 최대 10분 · 상한·STATE_UNREADABLE·RESOLVE_FAIL → 보류·차단 보고. (2-0) 폴백은 사용자 판정(M4)대로 정리 없이 CLEAR 유지. C4 needle 3개(HEAD 훅 RED → GREEN 11/11) |
 | 훅 · [이월 I2] `ORCA_TERMINAL_HANDLE`이 자식 프로세스에 상속되어 오르카 탭 속 중첩 claude(`claude -p`·tmux)가 넛지 시 부모 탭에 /exit | medium | ACCEPTED (**사용자 판정**) · 보완 = README 3종 주의 절 경고 `3165932` | 오르카 `terminal show`에 pid 없음(실측) → 소유 증명 수단 부재 · 발생 조건 드묾 · L1(실측 뒤 성장). 재론 조건 = 실사용에서 중첩 claude 오인 사례 발생 |
+| 훅 · [R2-1] 폴백의 빈 후계 정리가 종료 표지+셸 프롬프트를 요구하나 프롬프트 미전달 빈 세션은 표지를 출력하지 않아(실측) 정리·/clear 안내가 항상 차단 · 빈 후계 전용 종료 증거 정의 | medium | FIXED `4770d6a` | SDD 실측(빈 세션 /exit → 셸 프롬프트 복귀·표지 없음·--for exit 31초 timeout) 근거. 폴백 정리 ② = 시간 초과 뒤 read에서 claude 화면 소멸 + 셸 프롬프트 복귀만으로 충분, 옛 세션 종료(첫 동작 ②) 조건 불변. C4 needle 1개(이전 훅 RED → GREEN 11/11) |
 
 **이월 소항목 — ESCALATE(batch-pending, 사용자 판정 대상, 원문 = SDD ledger 사본 `.remember/sdd-2026-09-24-orca-successor-session-progress.md`)**: M1 `terminal list` title은 Claude Code가 덮어쓴 실시간 제목이라 토큰 정확 조회 0건 가능(실측: 이 세션 탭 제목 "◐ 같은 작업 이어서 진행") · M2 `CLAUDE_PLUGIN_DATA` 부재 시 `/tmp/codex-companion` 폴백으로 GATE_OFF · M3 고아 running 잡이 매번 10분 대기 — 보고에 잡 id · M5 "첫 동작 전 목록 부재 = 진행"이 D9 순서와 다름 · M6 `successor-*.prompt` 미삭제 · task-01:325·task-02:400 AC `grep -c 'hook-test'` 오탐 문면 · F6 관찰: 실제 세션 /exit에 "Resume this session with" 표지 출력 여부.
