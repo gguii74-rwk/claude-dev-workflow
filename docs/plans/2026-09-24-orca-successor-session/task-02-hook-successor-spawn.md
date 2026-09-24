@@ -4,7 +4,7 @@
 
 ## Files
 
-- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 24,500B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
+- Modify: `dev-workflow/hooks/scripts/context-threshold-hook.mjs` — **파일 전체를 §2의 내용으로 교체**(10,071B → 약 24,800B). 바뀌는 구역: 헤더 주석(2~9행) · 상수 3종 + `orcaHandoff()` 신설(`computeContextUsage` 뒤) · `decideNudge` 시그니처·`unit` 마지막 문장·`handover` 분기 · `resolveOrcaHandle()` 신설 · `main()` 호출부 1줄. `computeContextUsage`·`flagPath`·`readStep`·`persistStep`·`resolveThreshold`·`invokedDirectly`는 바이트 동일.
 - Modify: `docs/plans/2026-09-24-orca-successor-session.md` — 말미에 `## 훅 테스트 기록 (AC5, D5)` 절 추가(§6)
 - Test: `.remember/hook-test-1.0.0/context-threshold-hook.test.mjs`(task-01) — RED → GREEN
 
@@ -148,7 +148,7 @@ function orcaHandoff(h) {
     `(2-5) turn_started를 확인했으면 더 아무것도 하지 말고 턴을 끝내세요 — 후계가 이 세션을 닫습니다. 자기 터미널을 스스로 닫지 않습니다. 사용자에게는 후계 핸들·제목 한 줄만 남기세요. ` +
     `[폴백] 조건 4종: (a) (2-0) 사전 검증 실패 · (b) (2-2) wait satisfied:false(재시도 후) · (c) (2-3) turn_started 미확인(재관찰 후) · (d) CLI 실행 오류(재조정 후 — create 응답 유실은 title 정확 조회로 회수를 먼저 시도하고, 핸들이 하나로 확정되지 않으면 재생성과 /clear 안내를 모두 차단하고 후보 핸들을 사용자에게 보고합니다). ` +
     `미전달이 확정되기 전(재관찰·재조정 중)에는 후계를 닫지 마세요 — 후계가 이미 프롬프트를 받아 이 세션에 /exit를 보내는 중일 수 있습니다. 확정되면 만들다 만 후계 터미널을 이 세션이 먼저 정리합니다: claude가 뜬 이력이 있으면(wait satisfied:true였거나 "$CLI" terminal read --terminal "<새 핸들>" --json 에 claude 프롬프트가 보이면) "$CLI" terminal send --terminal "<새 핸들>" --text "/exit" --enter --json → "$CLI" terminal wait --terminal "<새 핸들>" --for exit --timeout-ms 30000 --json(또는 "$CLI" terminal read --terminal "<새 핸들>" --json 의 종료 표지 + 셸 프롬프트 — tui-idle 불인정) → "$CLI" terminal close --terminal "<새 핸들>" --json; 뜨지 않았으면 close 직접. /exit 처리 증거 없이 close하지 마세요(증거가 없으면 사용자에게 보고). ` +
-    `어느 쪽이든 "$CLI" terminal list --worktree active --json 로 소멸을 확인하고, 실패하면 안내 전에 차단 상태(핸들·원인)를 사용자에게 보고하세요. 그런 다음 사용자에게 "이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요"라고 안내하세요.`
+    `어느 쪽이든 "$CLI" terminal list --worktree active --json 로 소멸을 확인하고, 소멸이 확인된 경우에만 사용자에게 "이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요"라고 안내하세요. 핸들이 목록에 남아 있거나 조회가 실패·모호하면 /clear를 안내하지 말고 차단 상태(핸들·원인)를 사용자에게 보고한 뒤 정지하세요 — 남은 후계가 뒤늦게 프롬프트를 처리해 /clear로 재개한 세션에 /exit를 보내거나 같은 작업을 중복 수행할 수 있습니다.`
   );
 }
 
@@ -414,5 +414,6 @@ git status --short | grep -v '^??' | wc -l                                # 0
 - **`loadState(cwd)`·`codex-companion.mjs status --all`을 조회 수단으로 쓰지 않는다. 이유: C1-#11(`status --all`은 자기 세션 잡만 필터) · C2(`loadState`는 파싱 실패를 기본값으로 숨긴다).**
 - **제목 절단을 `${TITLE:0:40}`처럼 제목 전체에 걸지 않는다. 이유: R4-1 — 토큰이 잘리면 `terminal list` 정확 조회가 막힌다. 작업명만 `40 - ${#TOKEN} - 1`로 자른다.**
 - **프롬프트를 `--text "<문자열 직접>"`로 보내는 예시를 넣지 않는다. 이유: R2-2 — 파일 + `"$(cat …)"`만. 파일 내용은 줄바꿈 없이 한 줄(SC-5).**
+- **[폴백] 끝의 CLEAR 안내를 "소멸이 확인된 경우에만"에서 무조건("그런 다음")으로 되돌리지 않는다. 이유: plan R4-1 — 정리 미확인 상태에서 /clear로 재개하면 남은 후계가 재개 세션에 /exit를 보낸다(spec F2 fail-closed · task-04 README 문장과 동기). C4 needle 2종이 잡는다.**
 - **끄기 스위치(env·설정)를 더하지 않는다. 이유: D8.**
 - **테스트 파일을 통과시키려고 테스트를 고치지 않는다. 이유: task-01 계약 — needle은 spec FIXED 행에 대응한다. 훅 문면이 needle을 포함하도록 고친다.**

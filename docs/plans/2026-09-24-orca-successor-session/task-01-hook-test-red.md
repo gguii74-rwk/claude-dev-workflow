@@ -129,6 +129,8 @@ const NEEDLES = [
   `"$CLI" terminal wait --terminal "<새 핸들>" --for exit --timeout-ms 30000 --json`,
   "/exit 처리 증거 없이 close하지 마세요",
   "소멸을 확인하고",
+  "소멸이 확인된 경우에만",
+  "/clear를 안내하지 말고 차단 상태",
   `"이어서 진행하려면 /clear 후 같은 작업을 다시 시작하세요"라고 안내하세요`,
 ];
 
@@ -272,7 +274,7 @@ test("C11 STATE_PROBE_CMD는 손상·스키마 이탈 상태를 STATE_UNREADABLE
   }
 });
 TEST_EOF
-wc -l .remember/hook-test-1.0.0/context-threshold-hook.test.mjs    # 247
+wc -l .remember/hook-test-1.0.0/context-threshold-hook.test.mjs    # 249
 ```
 
 ### 2. RED 확인 (0.19.0 훅)
