@@ -38,7 +38,7 @@ orca terminal create --worktree active --title "ac6-old" --command "CLAUDE_CTX_T
 
 ```bash
 grep -n '미측정' ~/workspace/dev-workflow-eval/report/ORCA-SUCCESSOR-2026-09-24.md | head        # 부기 위치
-# §미측정 아래에 "AC6 실측(YYYY-MM-DD, 1.0.0 설치본)" 소절 — 3건(§0 재개 · 실 흐름 · 진행 중 넛지) 결과 + plan 엔트리포인트 표 참조. eval repo에서 별도 커밋.
+# §미측정 아래에 "AC6 실측(YYYY-MM-DD, <설치 버전> 설치본)" 소절 — <설치 버전> = AC6 절 상단 `**설치 버전**:` 줄의 값(예 1.0.0, 복구 뒤엔 1.0.1) — 3건(§0 재개 · 실 흐름 · 진행 중 넛지) 결과 + plan 엔트리포인트 표 참조. eval repo에서 별도 커밋. 표·eval·커밋 세 곳의 버전이 같아야 한다(AC가 대조).
 git add docs/plans/2026-09-24-orca-successor-session.md
 git commit -m "docs(plan): AC6 실사용 확인 기록 — 맥북 오르카 <설치 버전> 설치본 실측 11행 통과 (트랙 완료, D11)"   # <설치 버전> = 절 상단 설치 버전 줄의 값
 git log -1 --format=%B | grep -ciE '^(co-authored-by|claude-session): |generated with \[claude code\]\('   # 0
@@ -52,7 +52,7 @@ awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -E '^\| [0-9]
 awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -E '^\| [0-9]+ \|' | wc -l | tr -d ' '   # 11 (행 수 불변)
 awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -cE '^\*\*설치 버전\*\*: 1\.0\.[0-9]+$'   # 1 (실제 설치 버전 기록 — 자리표시자 `<…>`면 0)
 awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -E '^\| [0-9]+ \|' | LC_ALL=C awk -F'|' 'NF != 7' | wc -l | tr -d ' '   # 0 (모든 행이 5열 — 셀 안 `|`로 열이 밀린 행 없음, plan L1)
-grep -c 'AC6 실측' ~/workspace/dev-workflow-eval/report/ORCA-SUCCESSOR-2026-09-24.md                    # ≥ 1 (eval 부기)
+V=$(awk '/^## AC6 실사용 확인/{f=1;next} /^## /{f=0} f' $P | grep -oE '^\*\*설치 버전\*\*: 1\.0\.[0-9]+$' | sed 's/.*: //'); echo "V=$V"; grep -c "AC6 실측([0-9-]*, $V 설치본)" ~/workspace/dev-workflow-eval/report/ORCA-SUCCESSOR-2026-09-24.md   # ≥ 1 (eval 부기 소절의 버전 = AC6 절 설치 버전 — V가 비면 0, 다른 버전이면 0)
 git -C ~/workspace/dev-workflow-eval log --oneline -1 -- report/ORCA-SUCCESSOR-2026-09-24.md            # 부기 커밋 1줄(이 task 시점 이후)
 git log -1 --format=%s | grep -c 'AC6 실사용 확인 기록'                                                 # 1
 git status --short | grep -v '^??' | wc -l                                                              # 0
@@ -64,6 +64,7 @@ git status --short | grep -v '^??' | wc -l                                      
 - **폴백이 난 회차를 통과로 세지 않는다. 이유: SC-7 — 폴백 관찰은 비고 줄, 표는 정상 인계 1회의 기록이다.**
 - **표 셀 안에 세로줄(`|`)을 쓰지 않는다(명령 출력의 `||`는 `…`로 줄인다). 이유: plan L1 — AC가 `|`로 열을 세므로 한 행이라도 열이 밀리면 통과 수가 줄어 미완료로 판정된다.**
 - **AC의 `LC_ALL=C awk`에서 `LC_ALL=C`를 빼지 않는다. 이유: plan L1 — macOS BSD awk(20200816)는 문자열 `==`에 locale collation을 써서 한글 `"실패" == "통과"`가 참이 된다(실측). 빼면 실패 행이 통과로 세어져 빈 증거로 완료가 된다.**
+- **eval 부기 소절 제목의 버전을 `1.0.0`으로 고정해 쓰지 않는다 — `**설치 버전**:` 줄의 값과 같아야 한다. 이유: plan C2 잔존 R5-3 — 복구 절차로 patch를 재검증한 회차에 eval만 1.0.0으로 적히면 증거 버전이 갈리고, AC가 그 대조로 막는다.**
 - **결과 열에 `통과`/`실패` 외 표현("OK", "미발생", "해당 없음")을 쓰지 않는다. 이유: AC가 문자열 `통과`를 세어 11이어야 완료다 — 다른 표기는 미완료로 판정된다.**
 - **11행을 "미발생"으로 넘기지 않는다. 이유: plan R1-3 — spec F6 파일럿 미측정 3건은 9·11행이 닫는다.**
 - **엔트리포인트 task 표의 이 행을 표가 채워지기 전에 `[x]`로 바꾸지 않는다. 이유: plan R3-3 — 완료 기록 계약(Execution contract ④)의 권위가 이 표라, 빈 증거로 `[x]`가 되면 트랙이 완료된 것으로 복구된다.**
