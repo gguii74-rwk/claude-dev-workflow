@@ -1,6 +1,6 @@
 # doctor 설치본 판정 — shallow 마켓플레이스 clone에서 옛 설치 sha 보강 조회
 
-- 단계: **3 harden-spec 종결 (2026-09-24, D1~D10)** → **4 review-loop(spec) 종결 (2026-09-24, C1 approve)** → **7 impl `3d33b83` → 8 review-loop(impl) 종결 (2026-09-24, C1 approve)** — 말미 ledger 2종. 다음 = 9 릴리스(D6 — task-06 뒤). 경로 = **경량 — 4 수행, 5·6 생략**(D8, 6은 5 생략의 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 릴리스는 오르카 후계 세션 트랙 task-06 종결 **뒤**(D6).
+- 단계: **3 harden-spec 종결 (2026-09-24, D1~D10)** → **4 review-loop(spec) 종결 (2026-09-24, C1 approve)** → **7 impl `3d33b83` → 8 review-loop(impl) 종결 (2026-09-24, C1 approve)** → **9 릴리스 1.0.3 (2026-10-10, task-06 종결 `162ab85` 뒤 — D6·D7)** — 말미 ledger 2종. 다음 = push → AC7(맥북 doctor 1회). 경로 = **경량 — 4 수행, 5·6 생략**(D8, 6은 5 생략의 자동 귀결). 3.5 비대상(화면 무관). planless — impl ledger 위치 = 이 spec 말미. 릴리스는 오르카 후계 세션 트랙 task-06 종결 **뒤**(D6).
 - 출처: 2026-09-24 맥북 `/dev-workflow:doctor` 실행 — ops-hub project 스코프(0.18.0 · `9613013`)가 **판정 불가**로 나왔다. 원인 = 마켓플레이스 clone이 shallow(`.git/shallow` = `3fbc355` 1줄)라 설치 sha 객체가 clone에 없다.
 - 대상: `dev-workflow/skills/doctor/SKILL.md` — 핵심 원칙의 fetch 예외 문단 1구절 · 점검 2의 "엔트리마다 설치본 subtree id" 절차와 보조 근거 · 조치 안내의 판정 불가 행.
 
