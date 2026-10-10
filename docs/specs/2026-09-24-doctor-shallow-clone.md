@@ -113,6 +113,7 @@ printf 'ENTRY\t%s\t%s\t%s\n' "$E" "${T:--}" "${WHY:--}"   # 엔트리마다 한 
 - **AC5**: 보강 fetch가 시간 초과에 걸리거나 공유 deadline(`DL`)이 소진되면 남은 엔트리는 fetch 없이 판정 불가(시간 초과)로 적히고, 각 fetch의 alarm 값이 고정 30이 아니라 **남은 시간**이다 — SKILL.md 문면 확인(재현 조작 불요, D9).
 - **AC6**: 변경 파일 = doctor `SKILL.md` + 이 spec(+ 릴리스 시 plugin.json·README 규약대로).
 - **AC7**(릴리스 뒤): 맥북 `/dev-workflow:doctor` 1회 — ops-hub project 엔트리가 판정 불가 대신 최신/뒤처짐으로 나온다(그 시점 설치 상태 기준). 이어서 `/plugin update` 1회가 늘어난 shallow root를 가진 clone에서 정상 동작한다(잔여 리스크 종결).
+  - **AC7 기록(2026-10-10, 맥북)**: 1.0.3 `549d249` 릴리스 뒤 사용자가 `/plugin update` → 재시작 → `/dev-workflow:doctor` 확인. 설치 기록 실측 = user·ops-hub project 엔트리 모두 1.0.3 `549d249cd`, 마켓플레이스 clone은 shallow 유지·HEAD `549d249`에서 `/plugin update` 정상(잔여 리스크 §128 종결). 한계: 갱신 직후라 두 엔트리 sha가 clone HEAD와 같아 보강 fetch 경로 자체는 이 관찰에서 발화하지 않았다(그 경로는 AC1~AC3 scratch 실측이 근거).
 
 ## 5. 결정사항
 
