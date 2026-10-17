@@ -52,14 +52,14 @@
 
 ### 3b. 위임 모드의 후계 인계 (D4)
 
-- `resolveOrcaHandle(env)`: `env.DEV_WORKFLOW_MODE === "delegated"`면 `null`을 돌려준다 → `decideNudge`는 **오르카 밖 경로와 바이트 동일한 넛지**((2) = `/clear` 안내)를 낸다. 그 외는 현행(핸들 안전 문자 집합 검사 포함). 변경 지점 1곳, `decideNudge`·인계 문면·(0)·(1) 무변경.
+- `resolveOrcaHandle(env)`: `typeof env.DEV_WORKFLOW_MODE === "string" && env.DEV_WORKFLOW_MODE.trim() === "delegated"`면(D3 — 앞뒤 공백·개행 제거 후 정확 일치) `null`을 돌려준다 → `decideNudge`는 **오르카 밖 경로와 바이트 동일한 넛지**((2) = `/clear` 안내)를 낸다. 그 외는 현행(핸들 안전 문자 집합 검사 포함). 변경 지점 1곳, `decideNudge`·인계 문면·(0)·(1) 무변경.
 - **review-loop §2i 순서 3 ① 재개 안내(이전 세션 G3)**: 현행 「오르카 터미널이면 후계를 스폰 / 오르카 밖이면 /clear 안내」를 **넛지 (2)의 내용 기준**으로 고친다 — 「(2)가 후계 생성 절차면 … / (2)가 /clear 안내면 …」. 위임 모드 세션은 오르카 안에서도 /clear 안내를 받으므로 환경 기준 문면은 틀린 안내가 된다.
 - 귀결: 오르카 밖(핸들 없음)에서 위임 모드는 no-op. 오염된 환경(핸들 안전 집합 이탈)과 위임은 같은 출력이라 로그만으로 구분되지 않는다 — 수용(G3, 값은 셸에서 확인).
 - 테스트: 기존 11케이스 GREEN 유지 + C8 패턴(E2E — `spawnSync(HOOK, {env})`)으로 AC1·AC2 케이스 추가. `resolveOrcaHandle`은 export하지 않는다(E2E로 충분).
 
 ## 4. Acceptance Criteria
 
-- **AC1 (훅 — 위임 opt-out, E2E)**: `ORCA_TERMINAL_HANDLE=term_x` + `DEV_WORKFLOW_MODE=delegated`로 임계 초과 입력을 주면 reason이 `ORCA_TERMINAL_HANDLE` 미설정 때의 reason과 **바이트 동일**하다.
+- **AC1 (훅 — 위임 opt-out, E2E)**: `ORCA_TERMINAL_HANDLE=term_x` + `DEV_WORKFLOW_MODE=delegated`로 임계 초과 입력을 주면 reason이 `ORCA_TERMINAL_HANDLE` 미설정 때의 reason과 **바이트 동일**하다. 앞뒤 공백·개행이 붙은 값(`' delegated '`·`'delegated\n'`)도 같다(D3 trim).
 - **AC2 (훅 — 기본 유지, E2E)**: `DEV_WORKFLOW_MODE` 미설정·빈 값·`DELEGATED`·`manual`·`orchestrated`·`off`면 현행 오르카 경로(reason에 `(2-0)`·핸들 포함).
 - **AC3 (훅 회귀)**: 기존 훅 테스트 11케이스(`.remember/hook-test-1.0.0/context-threshold-hook.test.mjs` — repo 파일 아님, 09-24 D5) GREEN 유지. **기준선 = spark2 사본**(1.0.2 문자열, md5 `be80d4e7…`, 11/11 GREEN) — 맥북 사본은 1.0.1 문자열이라 C4가 실패했고 2026-10-17 spark2 사본으로 교체해 11/11 확인. 실행 = `HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap <파일>`.
 - **AC4 (review-loop 문면)**: §인자에 `--security yes|no` 행(모드 독립 명시), §1 보안 자가 판정에 「인자 있으면 질문 없이 확정 · 출처 기록」, `no`+즉시군 「ledger 머리 1줄 + 시작 요약 1줄」, 재개 우선순위 3분기(불일치 확인 · 없으면 인자 · 둘 다 없으면 자가 판정), 잘못된 값 시작 전 중단, ledger 절 첫 줄·§4 종료 요약 기록, **§2i 순서 3 ①이 「넛지 (2)의 내용 기준」**(「오르카 터미널이면」 문구 제거) — 각 grep 1건 이상. §0·§2i 복원 필드의 「보안 크리티컬 트랙 판정 상태」가 출처를 포함한다고 명시.
