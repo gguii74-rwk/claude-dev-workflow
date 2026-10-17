@@ -1,6 +1,6 @@
 # 오케스트레이터 스킬(orchestrate) 도입 · 위임 모드 효과 2 — 위험군 외 추천 자동 채택 + 확인 대기 대장 (1.2.0)
 
-- 단계: **1–2 spec 초안 `e30cc1e` (2026-10-17) → 3 harden-spec 완료 (2026-10-17, 갭 대장 31건 — 사실 4건 조회 해소 · 판단 22건 질문 해소(추천과 다른 선택 1건 = H1, 재질문 1건 = H20) · 검증 필요(실측) 5건 · DEFERRED 0)** → 4 review-loop(spec) → 5 writing-plans-split → 6 review-loop(plan) → 7 impl(SDD) → 8 review-loop(impl) → 9 릴리스 1.2.0 → AC9 (i) 실측.
+- 단계: **1–2 spec 초안 `e30cc1e` (2026-10-17) → 3 harden-spec 완료 (2026-10-17, 갭 대장 31건 — 사실 4건 조회 해소 · 판단 22건 질문 해소(추천과 다른 선택 1건 = H1, 재질문 1건 = H20) · 검증 필요(실측) 5건 · DEFERRED 0)** → **4 review-loop(spec) 완료 (2026-10-17, 적대 5 + 복귀 1 · 확인 2 — FIXED 19(사용자 판정 4 = D41~D44) · 확인 verdict pass, ledger = 이 문서 말미)** → 5 writing-plans-split → 6 review-loop(plan) → 7 impl(SDD) → 8 review-loop(impl) → 9 릴리스 1.2.0 → AC9 (i) 실측.
 - 경로: **경량**(사용자 확인 2026-10-17, dev-cycle 1차 판정 — 접촉 표면 무신호: 스키마·권한·인증·보안 경계·외부 연동·데이터 손상·비가역 없음, 스킬 문면 + 플러그인 동봉 스크립트·템플릿). **생략 단계 없음** — 사용자 선택 2026-10-17(H1): 5 plan · 6 plan 적대검증을 **수행**한다(추천은 생략이었으나 변경 파일 ≈12종·신규 스크립트+테스트의 교차 정합성을 plan 검증이 한 번 더 본다). impl ledger = plan 엔트리포인트 말미. 확인 대기 대장 = spec·plan 각 문서 말미(§3l). 하한 3종 유지. 3.5 해당없음(화면 없음).
 - 출처: `docs/specs/2026-10-10-review-loop-security-arg-successor-optout.md` §1(0) 운영 배경 · §3m 확장 규칙 · §7 후속 · **메인 세션 운영 기록 2026-10-17**(원본 `.remember/orchestrator-ref/LESSONS-2026-10-17.md` + 실제 트랙 프롬프트 10건 + 즉석 감시 스크립트 `watch.py`·`rd.sh` — `.remember/`는 머신 간 비동기화라 아래 §1(0)에 요약) · ops-hub 10-10~17 실측(실세션 33 · 추천 수용 102/107 · 트랙 자가 인계 3, 메모리 `dev-workflow-opshub-usage-review-1010`) · dev-workflow-eval `report/UNATTENDED-2026-10-17.md` §0 분기 ①(핵심층 번복률 2.4%/4.3% · 배포 후 결함 0 · 미확인 2.4% · 번복 3건 전부 「루프 ACCEPTED → 확인 감사 이의 → 사용자 FIXED」) · eval `report/LESSONS-2026-08-12.md` L1~L5 · ops-hub 스킬 `claude-memories/ops-hub/skills/orca-worktree-ops/SKILL.md`(프로젝트 고유 실행 메모 — 플러그인으로 옮기지 않는 쪽) · `orca skills get orca-cli`(Orca 1.4.229 — 참조만) · harden 조회 2026-10-17(§1 끝 「조회 사실」).
 - 대상: **신규** `dev-workflow/skills/orchestrate/SKILL.md` + `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`) + `dev-workflow/skills/orchestrate/templates/track-prompt.md` + repo 루트 `tests/orchestrate/orchestrate.test.mjs`(플러그인 설치본 밖) · `dev-workflow/skills/review-loop/SKILL.md`(§사람에게 묻는 형식 ≈121–128행 · §ESCALATE 세분 ≈115–119 · §자동 모드 batch 제시 ≈134–137 · §0 통합 규칙·스냅샷 대조 ≈221–231 · §1 보안 자가 판정·2차 대조 ≈256–263 · §2d ≈336–337 · §확인 모드 ESCALATE ≈180 · §finding ledger 위치 ≈85 · §4 종료 요약 ≈421–432) · `dev-workflow/skills/dev-cycle/SKILL.md`(§경량 경로 확인 불가 폴백 ≈56 · 폴백 감사 기록 ≈57 · 가드 3 ≈91 · §세션 모드 선택 지점 · §판별 출력) · README 3종(`README.md`·`README.ko.md`·`README.ja.md` — 스킬 표 ≈12행 · 목차 ≈18–35 · 사용법 새 절(≈7 doctor 뒤) · `--auto-rounds` 행 ≈103 · 세션 모드 문단 ≈210 · 디렉터리 트리 ≈255 · 개발/릴리스 절 — 3언어 동일 구조) · `dev-workflow/.claude-plugin/plugin.json`(version 1.1.1→1.2.0 · description에 orchestrate) · `.claude-plugin/marketplace.json`(description) · `docs/specs/2026-10-10-review-loop-security-arg-successor-optout.md` §7(「→ 1.2.0 트랙」 포인터 1줄). **훅(`hooks/scripts/context-threshold-hook.mjs`) 무변경.**
@@ -204,7 +204,7 @@
 
 ## 재논의 금지(기결정)
 
-harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세·근거는 그 표). 1.1.0 spec D1~D12·1.1.1 spec D1~D12는 전제로 승계한다.
+harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세·근거는 그 표). D41~D44 = 4 review-loop(spec) 사용자 판정(근거 = 말미 ledger R2-3·R3-2·R3-3·R5-1). 1.1.0 spec D1~D12·1.1.1 spec D1~D12는 전제로 승계한다.
 
 | D | 결정(1줄) |
 |---|---|
@@ -248,6 +248,10 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 | D38 | 다중 트랙 허용 — 체크아웃당 1개, 규칙 3줄, 같은 체크아웃 둘 금지 (H20) |
 | D39 | 시작 때 메인 모드 자가 점검 1줄 (H21) |
 | D40 | 트랙 프롬프트 템플릿 동봉 (H22) |
+| D41 | `watch` 표지 소비 판정 = 메인이 처리한 마지막 표지 줄(`--consumed`) — 시작 화면 기준 아님 (review-loop(spec) R2-3 사용자 판정) |
+| D42 | 단계 종료 대장 번복 = 단계 미완료 → 그 phase 수정 규칙 + 최종 HEAD 재검증 뒤 완료·push, 수정분 소멸 확인은 다음 phase 루프 큐 승계(impl→릴리스는 새 세션 확인 1회) (R3-2 사용자 판정) |
+| D43 | 감사 기회 없는 확인 라운드의 자동 채택 = 채택하되 `감사 미수행(마지막 확인 뒤)` 표시로 단계 종료 대장 확인에 이월 (R3-3 사용자 판정) |
+| D44 | 메인 대리 채택의 감사 규칙 = 트랙 프롬프트 템플릿 고정 문구(대리 채택 줄)로 루프 실행 전 적용, 선택 뒤 1줄은 재확인용 (R5-1 사용자 판정) |
 
 ## 적대검증 ledger (spec)
 
@@ -265,6 +269,7 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 | R5 | 적대·정밀 | `3cf7784` | 0/1/1 (신규 2/잔존 0) — 큐 14건 적대 비재출현(R5), 큐 유지 | 4 | 14 → 16 | needs-attention |
 | C1 | 확인(예산 1/2) | `64d9aba` | 신규 0 · 잔존 1(R5-1 → high) · 감사 대상 없음 | — | 16 → 1 → (R5-1 재수정) 1 | **fail** (R5-1 잔존) |
 | R6 | 적대·복귀(예약분) | `d243ac6` | 0/2/1 (신규 3/잔존 0) — R5-1 재수정 적대 비재출현(R6), 큐 유지 | 7 (참고 — 전환 판정에 쓰지 않음) | 1 → 4 | needs-attention |
+| C2 | 확인·재진입(예약분) | `52102be` | 신규 0 · 잔존 0 · 감사 대상 없음 | — | 4 → 0 | **pass** |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -290,7 +295,11 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 
 - batch 제시(적대 소진 3 = auto-rounds, 2026-10-17): R2-3 · R3-2 · R3-3 전부 추천안 채택 → FIXED `6e1e55e`, 진행 질문 = 「모두 유지하고 계속」(자동 수정 R1~R3 유지). 이후 정밀 모드.
 - 미확인 FIXED 큐: R5-1(`fded2f3`) · R6-1 · R6-2 · R6-3(`fb52f1e`) — 4건. C1 이전 큐 16건 중 15건은 C1에서 소멸 확인.
-- 다음 = 재진입 확인 C2(복귀 예약분 — 확인 예산 잔여 1과 무관, 소진 카운트 불변). 여기서 또 blocking이 나오면 ESCALATE + 새 세션 whole-branch 리뷰 권고.
+- **C2 소멸 확인(완전 응답)**: R5-1 · R6-1 · R6-2 · R6-3 (4건 소멸). 판정 감사 = 대상 없음. 신규 finding 없음. verdict = pass.
+- **종결(성공, 확인 경유)**: 미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 verdict pass. 소진 = 적대 5/5 + 복귀 적대 1 · 확인 1/2 + 재진입 확인 1(예약분) · 복귀 사용 = 예.
+- **집계**: FIXED 19(루프 15 · 사용자 판정 4 = R2-3·R3-2·R3-3·R5-1 → D41~D44) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · ESCALATE 4(전부 사용자가 FIXED로 닫음) · low 0. 단계 경계 이월(ACCEPTED/DEFERRED/OUT_OF_SCOPE) 없음 — plan은 D41~D44를 재논의 금지로 승계한다.
+- **루프 건강**(분모 = blocking 19): 재론률 0/19 = 0% · 철회 조항 4(spec 원문 2 = fail-closed 대장 행·제목 기반 핸들 회수 / 루프 도입 2 = 시작 화면 표지 소비(R1-5→D41)·박스 부재만으로 종료(R2-1→R6-1)) · 사람개입률 4/19 = 21%.
+- 추천 자동 채택(위임): 해당 없음(설치본 1.1.1 — 효과 2 없음).
 - 전환: R5 응답으로 적대 소진 5 = max → 전환 신호 3(적대 예산 소진). batch 적재 0건 → 확인 모드 진입(C1, 확인 예산 2).
 - **C1 소멸 확인(완전 응답)**: R1-1 · R1-2 · R1-3 · R1-4 · R1-5 · R2-1 · R2-2 · R2-3 · R3-1 · R3-2 · R3-3 · R4-1 · R4-2 · R4-3 · R5-2 (15건 소멸). R5-1 잔존(신규 finding 절에 같은 지적 high로 재보고 — 신규 아님). 판정 감사 = 대상 없음. verdict = fail → R5-1 재판정(사용자) 뒤 FIXED `fded2f3` → **복귀**(적대 1 + 재진입 확인 1, 상한 밖 예약분 — 복귀 사용 = 예).
 - 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 없음. batch-pending ESCALATE: 없음.
