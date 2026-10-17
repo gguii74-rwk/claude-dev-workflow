@@ -106,7 +106,15 @@ D1~D12 + 기결정 대체 1건 — 아래 「재논의 금지(기결정)」 블�
 
 ## 적대검증 ledger (spec)
 
-(4 review-loop(spec)에서 기록)
+보안 크리티컬: no (호출자 지정) — 접촉면 무신호(리뷰 절차 스위치·훅 출력 분기). base = origin/main `c3337ed` · 예산 max 5 · confirm 2 · auto 3.
+
+| # | fingerprint | severity | disposition | 근거 |
+|---|---|---|---|---|
+| F1 | spec §3b · 훅 모드 비교에 trim 정규화 미반영(D3와 모순) · trim 후 정확 비교 + AC1 공백 케이스 | medium | FIXED `a81a591` | §3b 비교식 = `typeof … === "string" && ….trim() === "delegated"`, AC1에 `' delegated '`·`'delegated\n'` 추가. 미확인 FIXED 큐 |
+
+| 라운드 | 모드 | HEAD | 결과 | 전환용 score | 미확인 FIXED 큐 |
+|---|---|---|---|---|---|
+| R1 | 적대(자동) | `9781d98` | needs-attention · medium 1(신규 F1) | 1 | 1 (F1) |
 
 ## 적대검증 ledger (impl)
 
