@@ -1,6 +1,6 @@
 # task-02 — orchestrate.mjs 구현 (GREEN) (spec §3w · AC2·AC3·AC4)
 
-**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 28건을 통과시킨다.
+**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 31건을 통과시킨다.
 
 ## Files
 
@@ -26,7 +26,7 @@
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 28 · pass 0 · fail 28.
+기대: tests 31 · pass 0 · fail 31.
 
 ### 2. 스크립트 작성
 
@@ -53,6 +53,7 @@ const SPINNER_PREFIXES = ['✻', '✶', '✳', '✢', '·', '✽', '*'];
 const RESPONSE_BULLETS = /^[\s⏺●]+/;            // 응답 첫 줄 글머리표 — 표지 비교 전에 뗀다
 const CLAUDE_EXIT_MARK = 'Resume this session with';
 const SHELL_PROMPT_RE = /[%$#>]\s*$/;
+const HUD_MARK = '│';                           // 박스 아래 상태줄(HUD) 구분자 — 같은 끝 문자(%)를 쓰는 셸 프롬프트와 가른다
 const STALE_CODE = 'terminal_handle_stale';
 const TIMEOUT_CODE = 'timeout';
 const KEYS = { tab: '\t', 'shift-tab': '\x1b[Z', up: '\x1b[A', down: '\x1b[B' };
@@ -210,27 +211,35 @@ function alive(handle, env) {
   if (exitBelowBox && tail.index > exitIdx && SHELL_PROMPT_RE.test(tail.line)) {
     return [1, 'EXITED claude 종료 표지와 셸 프롬프트 복귀 — 셸만 남음'];
   }
-  const box = seps.length >= 2 && lines.slice(seps[seps.length - 2] + 1, lastSep).some((l) => l.trimStart().startsWith(PROMPT_CHAR));
-  // 질문·권한 창 = 박스 대신 뜨는 claude 입력 창. 창 문구 뒤 마지막 줄이 셸 프롬프트로 보이면(종료 안내 없이 셸 복귀한 잔존 화면) 생존으로 보지 않는다
+  // 종료 안내 없이 셸로 돌아간 잔존 화면(SIGKILL 등)은 생존으로 보지 않는다 — 입력 요소 뒤 마지막 줄이 셸 프롬프트 모양이면 제외
+  //   박스: 박스 아래 마지막 줄이 셸 프롬프트 모양 + HUD 구분자 없음 / 질문·권한 창: 창 문구 뒤 마지막 줄이 셸 프롬프트 모양
+  const box = seps.length >= 2 && lines.slice(seps[seps.length - 2] + 1, lastSep).some((l) => l.trimStart().startsWith(PROMPT_CHAR))
+    && !(tail.index > lastSep && SHELL_PROMPT_RE.test(tail.line) && !tail.line.includes(HUD_MARK));
   let dialogIdx = -1;
   lines.forEach((l, i) => { if ([...QUESTION_PATTERNS, ...PERMISSION_PATTERNS].some((p) => l.includes(p))) dialogIdx = i; });
   const dialog = dialogIdx >= 0 && !(tail.index > dialogIdx && SHELL_PROMPT_RE.test(tail.line));
-  if ((box || dialog) && !exitBelowBox) return [0, `ALIVE claude 입력 상태(${box ? '프롬프트 박스' : '질문·권한 창'})`];
+  // 화면 종류 = key가 묶음 전송 중 변화를 잡는 기준(R2-2)
+  const kind = box ? '프롬프트 박스' : PERMISSION_PATTERNS.some((p) => lines.join('\n').includes(p)) ? '권한 창' : '질문 창';
+  if ((box || dialog) && !exitBelowBox) return [0, `ALIVE claude 입력 상태(${kind})`, kind];
   return [2, 'UNREADABLE 생존·종료 어느 쪽도 확정할 수 없다 — 종료로 보지 않는다'];
 }
 
 async function key(handle, keys, env) {
   let sent = 0;
+  let firstKind = null;
   for (const k of keys) {
     // 키마다 전송 직전 생존 확인(spec §3o ③(a)) — 묶음 키 사이에 claude가 끝나면 나머지가 셸로 들어간다
-    let code, line;
+    let code, line, kind;
     try {
-      [code, line] = alive(handle, env);
+      [code, line, kind] = alive(handle, env);
     } catch (e) {
       if (!(e instanceof Fail)) throw e;
       [code, line] = [2, `ERR ${e.message}`];
     }
     if (code !== 0) throw new Fail(`전송 중단 — ${sent}/${keys.length}개 보낸 뒤 생존 확인 실패: ${line}`);
+    // 첫 키 때의 화면 종류가 바뀌면 멈춘다 — 사용자가 직접 답해 다음 창(권한 창 등)이 떴을 수 있다(D16·D23)
+    firstKind ??= kind;
+    if (kind !== firstKind) throw new Fail(`전송 중단 — ${sent}/${keys.length}개 보낸 뒤 화면 종류가 바뀌었다(${firstKind} → ${kind}) — 화면을 다시 읽고 판단하라`);
     const args = ['terminal', 'send', '--terminal', handle];
     if (k.text !== undefined) args.push('--text', k.text); // argv 직접 전달 — 셸 보간 없음
     else if (k.name === 'enter') args.push('--enter');
@@ -295,7 +304,7 @@ node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs && echo CHE
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `CHECK_OK` · tests 28 · pass 28 · fail 0(십수 초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 등).
+기대: `CHECK_OK` · tests 31 · pass 31 · fail 0(십수 초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 등).
 
 ### 4. 회귀 확인
 
@@ -311,15 +320,15 @@ git diff 151d9f0 -- dev-workflow/hooks | wc -l
 
 ```bash
 git add dev-workflow/skills/orchestrate/scripts/orchestrate.mjs
-git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 창 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = ERR); 테스트 28/28(spec §3w·AC2·AC3)"
+git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive·화면 종류 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = ERR); 테스트 31/31(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 28 · pass 28 · fail 0 (AC2·AC3).
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 31 · pass 31 · fail 0 (AC2·AC3).
 - `node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → exit 0 (AC4 일부).
 - `grep -c "shell: true" dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → `0` (셸 보간 없음).
-- 상수 자리: `grep -nE "^const (DONE_MARK|HANDOFF_MARK|QUESTION_PATTERNS|PERMISSION_PATTERNS|CLAUDE_EXIT_MARK|SHELL_PROMPT_RE) " dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → 6줄 (검증 필요(실측) 문자열의 갱신 자리 1곳 — spec 잔여 리스크 (1)(2)).
+- 상수 자리: `grep -nE "^const (DONE_MARK|HANDOFF_MARK|QUESTION_PATTERNS|PERMISSION_PATTERNS|CLAUDE_EXIT_MARK|SHELL_PROMPT_RE|HUD_MARK) " dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → 7줄 (검증 필요(실측) 문자열의 갱신 자리 1곳 — spec 잔여 리스크 (1)(2)).
 - 기준선 11/11 · 2/2, `git diff 151d9f0 -- dev-workflow/hooks` 빈 출력 (AC8).
 
 ## Cautions
@@ -330,6 +339,6 @@ git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르�
 - **화면 출처가 `screen`이 아닌 응답을 판독에 쓰지 마라.** 이유: 누적 스트림에는 프롬프트 박스가 없어 살아 있는 claude를 종료로 오판 → 중복 재개(spec R4-1).
 - **`alive`에서 「박스 없음」만으로 exit 1을 내지 마라.** 이유: 질문 창·출력 중 화면도 박스가 없다 — 종료는 「마지막 구분선 아래의 종료 표지 + 그 뒤 셸 프롬프트」 둘 다일 때만, 어느 쪽도 확정 못 하면 exit 2(spec R6-1).
 - **python 의존을 더하지 마라.** 이유: M10 — 스크립트는 Node 하나.
-- **`key`에서 생존 확인을 첫 키 한 번으로 줄이지 마라.** 이유: 묶음 키 사이에 claude가 끝나면 남은 text·enter가 셸에서 실행된다 — 키마다 `alive` 0일 때만 보내고, 아니면 보낸 개수를 담아 `ERR 전송 중단`(plan ledger R1-2).
-- **`alive`의 질문·권한 창 판정에서 「창 문구 뒤 셸 프롬프트」 검사를 빼지 마라.** 이유: 종료 안내 없이 셸로 돌아간 잔존 화면이 생존으로 읽혀 전송이 셸로 간다(plan ledger R1-1). 프롬프트 박스 화면에는 이 검사를 걸지 않는다 — 박스 아래 HUD 줄(`Context 17%`)이 같은 끝 문자를 써서 살아 있는 세션을 판독 불가로 만든다. 질문 창 아래에도 HUD가 보이면 판독 불가(안전한 쪽)가 되므로 실측 때 상수 자리에서 갱신(검증 필요(실측)).
+- **`key`에서 생존 확인을 첫 키 한 번으로 줄이지 마라.** 이유: 묶음 키 사이에 claude가 끝나면 남은 text·enter가 셸에서 실행된다 — 키마다 `alive` 0일 때만 보내고, 아니면 보낸 개수를 담아 `ERR 전송 중단`(plan ledger R1-2). **화면 종류(프롬프트 박스·질문 창·권한 창)가 첫 키 때와 달라져도 멈춘다** — 사용자가 직접 답해 권한 창이 뜨면 남은 enter가 권한을 승인한다(D23, plan ledger R2-2).
+- **`alive`의 「입력 요소 뒤 셸 프롬프트」 검사를 빼지 마라.** 이유: 종료 안내 없이(SIGKILL 등) 셸로 돌아간 잔존 화면이 생존으로 읽혀 전송이 셸로 간다(plan ledger R1-1·R2-1). 박스 아래 HUD 줄(`[Opus 5.5] │ Context 17%`)은 셸 프롬프트와 같은 끝 문자를 써서 `HUD_MARK`(`│`)로 가른다 — 구분자 없는 상태줄을 쓰는 환경이나 질문 창 아래에 HUD가 보이는 환경은 판독 불가(exit 2 — 안전한 쪽, 시끄럽게 멈춤)가 되므로 실측 때 상수 자리에서 갱신(검증 필요(실측)).
 - **오르카 호출에서 `timeout`을 빼지 마라.** 이유: 응답하지 않는 CLI 한 번이 watch 상한(580초)과 메인의 대기 상한(600초)을 무력화한다 — 호출 상한 8초 · 상한은 시작 자가 점검부터 잰다(plan ledger R1-4).

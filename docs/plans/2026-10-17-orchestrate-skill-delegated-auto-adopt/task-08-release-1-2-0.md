@@ -49,7 +49,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 wc -c < dev-workflow/skills/orchestrate/SKILL.md
 ```
 
-기대: pass 28 · fail 0 / `CHECK_OK` / pass 11 · fail 0 / pass 2 · fail 0 / `0` / `0` / ≤ 15360. 그리고 task-03 단계 3 · task-04 단계 3 · task-05 단계 3·4 · task-06 단계 3 · task-07 단계 5의 검증 블록을 그대로 다시 돌려 같은 기대 출력을 얻는다(impl 루프 FIXED가 문면을 바꿨을 수 있다).
+기대: pass 31 · fail 0 / `CHECK_OK` / pass 11 · fail 0 / pass 2 · fail 0 / `0` / `0` / ≤ 15360. 그리고 task-03 단계 3 · task-04 단계 3 · task-05 단계 3·4 · task-06 단계 3 · task-07 단계 5의 검증 블록을 그대로 다시 돌려 같은 기대 출력을 얻는다(impl 루프 FIXED가 문면을 바꿨을 수 있다).
 
 ### 4. 버전
 
