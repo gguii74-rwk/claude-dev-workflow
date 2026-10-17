@@ -1,6 +1,6 @@
 # SKILL.md 셸 블록의 위치 인자 표기가 스킬 인자로 치환되는 결함 (1.1.1 패치)
 
-- 단계: **1–2 spec 초안 (2026-10-17) → 3 harden-spec 완료 (2026-10-17, 갭 대장 22건 — 사실 13건 조회 해소 · 판단 9건 질문 해소 · DEFERRED 0)**
+- 단계: **1–2 spec 초안 (2026-10-17) → 3 harden-spec 완료 (2026-10-17, 갭 대장 22건 — 사실 13건 조회 해소 · 판단 9건 질문 해소 · DEFERRED 0)** → **4 review-loop(spec) 종결 (2026-10-17, 적대 1 · 빠른 종료 — R1 approve·finding 0, ledger = 이 문서 말미)**
 - 경로: **경량**(사용자 판정 2026-10-17 — 1.1.0 트랙 종결 핸드오프 「다음 실행 지점 1」) — D1. 생략은 **5 plan만**(6은 5가 해당없음이라 자동) · 4 spec 적대검증과 8 impl 적대검증은 수행 · impl ledger = 이 spec 말미 — D5.
 - review-loop 호출(4·8): **`--security yes`** + `--auto-rounds 1` 권고 — D4.
 - 출처: 1.1.0 트랙 AC6 (ii) 부수 발견(`docs/specs/2026-10-10-review-loop-security-arg-successor-optout.md` §4 AC6 기록 · §7 끝 줄) · 2026-10-17 맥북 실측(Claude Code 2.1.302, 아래 §1 사실) · Claude Code 공식 문서 `code.claude.com/docs/en/skills` 「Available string substitutions」 · Claude Code `CHANGELOG.md`(2.1.19 · 2.1.163 · 2.1.210 항목) · 이 맥북 세션 transcript(`~/.claude/projects/`, review-loop·doctor 실제 로드 기록).
@@ -112,3 +112,17 @@
 | D10 | 1.1.0 spec §7 끝 줄에 이 spec 포인터 1구절 | 사용자 판정 2026-10-17(harden G20). 선례: 1.1.0 트랙이 종결된 09-24 spec D8 행에 같은 방식 표기 |
 | D11 | review-loop·doctor §인자 문면 무변경(`ARGUMENTS:` 덧붙임 복귀 안내 없음) | 사용자 판정 2026-10-17(harden G21). Claude Code 기본 동작이고, 모델은 지금도 인자를 읽어 왔다(래퍼 실행 13/13). 규칙 추가의 입증 사례 없음 |
 | D12 | 향후 `${N}` 치환 변화 = 잔여 리스크 기록만(doctor 탐지 항목 없음) | 사용자 판정 2026-10-17(harden G22). 근거 없는 가정 · L1 |
+
+## 적대검증 ledger (spec)
+
+보안 크리티컬: yes (사용자 판정(spec D4)) — 고치는 줄이 review-loop 래퍼의 주입 방어 줄. base = `3ffcfdd`(트랙 시작 전 HEAD — 리뷰 diff = spec 커밋 2건 `559f896`·`8afc32f`) · 예산 max 5 · confirm 2 · auto 1. 설치본 review-loop 1.0.3 본문의 래퍼 예시가 이 트랙의 결함으로 깨져 보여(`cd "spec"` 등) argv 순서(작업 디렉터리 · companion 루트 · 라운드 파일 접두 · base SHA)대로 재구성해 실행했다 — 래퍼는 `${N}` 표기 · quoted heredoc 유지.
+
+| # | fingerprint | severity | disposition | 근거 |
+|---|---|---|---|---|
+| — | (finding 없음) | — | — | — |
+
+| 라운드 | 모드 | HEAD | 결과 | 전환용 score | 미확인 FIXED 큐 |
+|---|---|---|---|---|---|
+| R1 | 적대(자동) | `8afc32f` | approve · No material findings(대상 파일 현행 대조 · 읽기 전용 bash·zsh 인자 보존 검사 · awk 동등성 검사, 실행 로그 11건) | 0 | 0 |
+
+- **종결(성공, 빠른 종료)**: 미확인 FIXED 큐 0 · 루프 직접 판정 0 · 미판정 blocking 0 → 확인 라운드 없음(최종 verdict 해당 없음). 적대 1/5 · 확인 0/2 · 복귀 미사용. disposition 전부 0 · low 0. 루프 건강 = 분모 0이라 재론률·사람개입률 해당 없음 · 철회 조항 0. 이월 항목 없음(ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE 0건) — impl은 재논의 금지 블록 D1~D12만 승계. 다음 = 7 impl(planless, AC1~AC7) → 8 review-loop(impl, `--security yes --auto-rounds 1`).
