@@ -1,6 +1,6 @@
 # SKILL.md 셸 블록의 위치 인자 표기가 스킬 인자로 치환되는 결함 (1.1.1 패치)
 
-- 단계: **1–2 spec 초안 (2026-10-17) → 3 harden-spec 완료 (2026-10-17, 갭 대장 22건 — 사실 13건 조회 해소 · 판단 9건 질문 해소 · DEFERRED 0)** → **4 review-loop(spec) 종결 (2026-10-17, 적대 1 · 빠른 종료 — R1 approve·finding 0, ledger = 이 문서 말미)**
+- 단계: **1–2 spec 초안 (2026-10-17) → 3 harden-spec 완료 (2026-10-17, 갭 대장 22건 — 사실 13건 조회 해소 · 판단 9건 질문 해소 · DEFERRED 0)** → **4 review-loop(spec) 종결 (2026-10-17, 적대 1 · 빠른 종료 — R1 approve·finding 0, ledger = 이 문서 말미)** → **7 impl 완료 (2026-10-17, planless — `1247758` review-loop · `e578031` doctor · `77e946f` 1.1.0 spec §7 포인터; AC1~AC7 통과, 기록 = §4 끝 「7 impl 검증 기록」)**. 다음 = 8 review-loop(impl) `--security yes --auto-rounds 1`
 - 경로: **경량**(사용자 판정 2026-10-17 — 1.1.0 트랙 종결 핸드오프 「다음 실행 지점 1」) — D1. 생략은 **5 plan만**(6은 5가 해당없음이라 자동) · 4 spec 적대검증과 8 impl 적대검증은 수행 · impl ledger = 이 spec 말미 — D5.
 - review-loop 호출(4·8): **`--security yes`** + `--auto-rounds 1` 권고 — D4.
 - 출처: 1.1.0 트랙 AC6 (ii) 부수 발견(`docs/specs/2026-10-10-review-loop-security-arg-successor-optout.md` §4 AC6 기록 · §7 끝 줄) · 2026-10-17 맥북 실측(Claude Code 2.1.302, 아래 §1 사실) · Claude Code 공식 문서 `code.claude.com/docs/en/skills` 「Available string substitutions」 · Claude Code `CHANGELOG.md`(2.1.19 · 2.1.163 · 2.1.210 항목) · 이 맥북 세션 transcript(`~/.claude/projects/`, review-loop·doctor 실제 로드 기록).
@@ -85,6 +85,13 @@
   - 래퍼·awk 줄이 `${N}`·`$(N)` 원형
   - 본문 끝에 `ARGUMENTS:` 줄이 있음
   - spark2·Windows는 실측하지 않는다(D6).
+- **7 impl 검증 기록 (2026-10-17, 맥북 · Claude Code 2.1.302 · BSD awk 20200816)** — 변경 전 실패 확인: AC1 grep 5건(review-loop 160·302·303 · doctor 97·98) · AC2 표기 8건 전부 0 · AC7 0.
+  - AC1: `$`+숫자 0건 · `$ARGUMENTS` 0건. AC2: 래퍼 3줄·awk 3패턴 각 1건 · 이유 구절(review-loop)·주석(doctor) 각 1건(「스킬 인자」 포함).
+  - AC3: 수정본에서 추출한 heredoc 블록 + node spawn 줄을 bash·zsh로 각각 실행(basename `loop-$(printf INJECTED >&2)-R1` · ROOT 경로에 문자 `$HOME` · focus `FOCUS TEXT $(echo NO)` · 가짜 companion) — 두 셸 모두 stderr 빈 값(주입 미실행) · argv `["adversarial-review","--wait","--base","deadbeef","--","FOCUS TEXT $(echo NO)"]` · `COMPANION_EXIT:0`.
+  - AC4: §3c 격리(repo 밖 스크래치 · `--tools "" --strict-mcp-config --max-turns 1` — init tools·mcp_servers 0 · 사본 `zz-review-loop`·`zz-doctor`)로 5호출(review-loop 인자 6·1·0 · doctor 3·0). transcript 로드 본문이 frontmatter 뒤 원본과 **전체 바이트 동일**(래퍼·awk 줄 포함) · 인자 있는 3호출은 끝에 `ARGUMENTS: <원 인자>` · 인자 0개 2호출은 덧붙임 없음.
+  - AC5: 이 repo `git ls-remote --symref origin HEAD` 출력에 수정 전·후 awk를 bash·zsh로 — 네 경우 모두 HB `refs/heads/main` · OID `4d7f2ed…`(동일).
+  - AC6: review-loop 74185→74286B(+101) · doctor 38978→39072B(+94). AC7: 1.1.0 spec §7 끝 줄 포인터 1건.
+  - 회귀: 훅 테스트 기준선 11/11 · 모드 C12·C13 2/2. 실측 임시 파일(스크래치 사본·실측 세션 transcript)은 정리했다.
 
 ## 5. 결정사항
 §재논의 금지 D1~D12.
