@@ -260,6 +260,7 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 |---|---|---|---|---|---|---|
 | R1 | 적대·자동 | `94289b6` | 0/4/1 (신규 5/잔존 0) | 13 | 0 → 5 | needs-attention |
 | R2 | 적대·자동 | `505f742` | 0/2/1 (신규 3/잔존 0 — R1 5건 적대 비재출현(R2), 큐 유지) | 7 | 5 → 7 | needs-attention |
+| R3 | 적대·자동 | `1c7342c` | 0/2/2 (신규 3/잔존 1 = R2-3 재지목) — R1·R2 FIXED 7건 적대 비재출현(R3), 큐 유지 | 8 | 7 → 8 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -271,6 +272,9 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 | R2-1 | spec §3w alive·§3o ③(a) · 터미널 연결만으로 claude 생존 보장 불가(셸만 남음) · claude 세션 생존 구분 + 모든 전송 전 확인 + 셸만 남은 스텁 | high | FIXED `7aac346` | alive exit 0 = 연결 + claude 입력 상태 · 셸만 남음 = exit 1(종료 표지 패턴 상수, 검증 필요) · (a)는 모든 전송 직전 · AC1·AC3 · 잔여 리스크 (2). D15 취지 강화(불변) |
 | R2-2 | spec §3o ⑤(a) · 새 후계에 트랙 고정 지시(역할·범위·정지 조건·표지) 미전달 · 후계 기동에 템플릿 적용·승계 명시 | high | FIXED `7aac346` | ⑤(a)(3) 후계 프롬프트 = 원래 트랙 프롬프트 파일 먼저 + 재개 파일 · ⑤(b) 재획득 첫 전송 동일 · 트랙 프롬프트 파일 트랙 종결까지 보존 · §3t 후계 줄 · AC1 |
 | R2-3 | spec §3w watch 판정 · 감시 시작 전 도착한 새 표지를 「소비됨」으로 영구 누락 · 소비 여부를 트랙별 실제 처리 이력으로 판정 + AC3 케이스 | medium | ESCALATE(batch-pending) | **R1-5와 같은 계열 2회째**(표지 소비 판정 — R1-5 수정이 만든 경합) → 규약상 자동 수정 중단·사용자 판정. 추천안 = 메인이 처리한 마지막 표지 줄을 `watch`에 넘기고(예 `--consumed <표지 줄>`) 그와 같은 표지만 소비로 본다 — 시작 화면 기준 규칙 대체 |
+| R3-1 | spec §3o ⑤(a)(e)·④ · 후계 생성 뒤 복구용 핸들·세션 id 미갱신(⑤(e)가 최초 세션 재개) · 후계·재획득·복구마다 현재 핸들·세션 id 갱신, 복구는 최신 기록만 | high | FIXED `832baad` | ①(3)·④ 트랙별 블록 = 현재 핸들·현재 세션 id · ⑤(a) 후계 뒤 갱신(옛 값 이력) · ⑤(b) 자가 인계 후계 = 세션 id 미상 → 복구 대신 사용자 보고 · ⑤(e) 최신 값만 · AC1 |
+| R3-2 | spec §3o ④ · 단계 종료 때 대장 번복이 내용을 바꾸면 앞선 검증·확인 verdict가 변경 전 증거가 됨 · 상태 갱신과 내용 번복 구분, 번복은 FIXED·게이트·확인 경로 + 최종 HEAD 재검증까지 단계 완료·push 보류 | high | ESCALATE(batch-pending) | 처리 방식 2+(번복 수정의 재확인을 다음 phase 루프로 이월 / 그 phase 루프 재실행 / 상태만 갱신) — 설계 선택 |
+| R3-3 | spec §3e 확인 라운드 ESCALATE 행·감사 지위 · 마지막(예약분) 확인 라운드의 자동 채택은 감사할 라운드가 없음 · 미감사 추적 → 사람 재판정 또는 명시적 감사 이월 | medium | ESCALATE(batch-pending) | 처리 방식 2+(그 시점엔 위임이어도 묻기 / 대장에 「감사 미수행」 표시로 사람 확인에 이월) — D17·D22 경계 |
 
-- 미확인 FIXED 큐: R1-1 · R1-2 · R1-3 · R1-4 · R1-5 · R2-1 · R2-2.
-- 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 없음. batch-pending ESCALATE: R2-3.
+- 미확인 FIXED 큐: R1-1 · R1-2 · R1-3 · R1-4 · R1-5 · R2-1 · R2-2 · R3-1.
+- 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 없음. batch-pending ESCALATE: R2-3(R3 재지목 — 잔존, 같은 행) · R3-2 · R3-3.
