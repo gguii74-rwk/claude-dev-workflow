@@ -94,8 +94,9 @@ export GIT_TERMINAL_PROMPT=0         # 자격증명 프롬프트로 매달리지
 # 원격 기본 브랜치를 원격에 직접 묻는다
 # 원격 기본 브랜치와 그 OID를 한 번에 확정한다
 LS="$(perl -e 'alarm shift; exec @ARGV' 20 git -C "$C" ls-remote --symref origin HEAD 2>/dev/null)"
-HB="$(printf '%s\n' "$LS" | awk '/^ref:/{print $2; exit}')"
-OID="$(printf '%s\n' "$LS" | awk '$2=="HEAD" && $1 ~ /^[0-9a-f]{40}$/ {print $1; exit}')"
+# awk 필드는 $(N) — 맨 $+숫자는 Claude Code가 스킬 인자로 치환한다
+HB="$(printf '%s\n' "$LS" | awk '/^ref:/{print $(2); exit}')"
+OID="$(printf '%s\n' "$LS" | awk '$(2)=="HEAD" && $(1) ~ /^[0-9a-f]{40}$/ {print $(1); exit}')"
 [ -n "$HB" ] && [ -n "$OID" ] || echo "판정 불가: 원격 HEAD 미확인"   # 못 읽으면 여기서 끝낸다 (main으로 추정하지 않는다)
 
 perl -e 'alarm shift; exec @ARGV' 30 git -C "$C" fetch -q origin "$HB"
