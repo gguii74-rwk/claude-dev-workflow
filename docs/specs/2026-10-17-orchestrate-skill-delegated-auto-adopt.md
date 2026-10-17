@@ -248,3 +248,25 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 | D38 | 다중 트랙 허용 — 체크아웃당 1개, 규칙 3줄, 같은 체크아웃 둘 금지 (H20) |
 | D39 | 시작 때 메인 모드 자가 점검 1줄 (H21) |
 | D40 | 트랙 프롬프트 템플릿 동봉 (H22) |
+
+## 적대검증 ledger (spec)
+
+보안 크리티컬: no (호출자 지정) — 접촉면 권한 감지(위임 트랙 기동 기본 `--dangerously-skip-permissions`, D18)
+
+- 루프: base `6abeef4`(6abeef474671d98fcc9f2982bb698d1033d53cbc, 호출자 지정 — origin/main은 이미 리뷰 대상 커밋을 포함) · 예산 max 5 · confirm 2 · auto 3 · 위임 모드 세션(설치본 1.1.1 — 효과 2 없음, 질문은 사용자 직접).
+- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷).
+
+| 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
+|---|---|---|---|---|---|---|
+| R1 | 적대·자동 | `94289b6` | 0/4/1 (신규 5/잔존 0) | 13 | 0 → 5 | needs-attention |
+
+| # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
+|---|---|---|---|---|
+| R1-1 | spec §3o ⑤(a) · 사용자 중단 HANDOFF도 자동 재개 · 중단 사유 기록, 사용자 중단은 명시 지시까지 대기 | high | FIXED `b4e7ab8` | §3t 사유 줄 · ⑤(a) 넛지만 자동 재개(review-loop §2i 순서 3 정합) · AC1. D34 표지 형식 불변 |
+| R1-2 | spec §3o ①(5)·⑤(b) · 핸들 유실 시 제목으로 다른 터미널 선택 · 생성 응답 핸들만, 확정 못 하면 후보 보고·중단 | high | FIXED `b4e7ab8` | ①(5) 제목 회수 금지·후보 보고(훅 (2-1) 정합) · ⑤(b)(c) 식별 문자열 정확히 1개일 때만 · AC1 |
+| R1-3 | spec §3o ⑤(a) · 옛 세션 종료 전 후계 리뷰 실행 차단 없음 · codex 잡 확인 + 옛 세션 종료 확인을 후계 시작 선행조건으로 | high | FIXED `b4e7ab8` | ⑤(a) 순서 = 잡 0 확인 → /exit·종료 확인·close → 후계 생성 · 같은 계열로 ⑤(e) stale ≠ 종료(§3w alive exit 3) · AC1·AC3 |
+| R1-4 | spec §3e fail-closed 행 · 대장 행 기록이 재개 스냅샷(HEAD) 무효화 · 기록 시점·주체 명시 | high | FIXED `b4e7ab8` | 대장 행을 쓰지 않음(5요소 「ledger 무변경」 정합 — 기록 = 보고 자체, 오케스트레이터가 단계 보고에) · §3l 문구 · AC5. D21 불변 |
+| R1-5 | spec §3w watch 판정 · 화면에 남은 이전 종료 표지 재소비 · 현재 응답의 표지인지·소비 여부 판별 계약 + 스텁 케이스 | medium | FIXED `b4e7ab8` | 표지 인정 조건 = 본문 마지막 줄 + 시작 화면 동일 표지는 소비됨 · §3t 표지 = 응답 마지막 줄 · AC3 3건 |
+
+- 미확인 FIXED 큐: R1-1 · R1-2 · R1-3 · R1-4 · R1-5.
+- 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 없음. batch-pending ESCALATE: 없음.
