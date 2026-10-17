@@ -165,6 +165,30 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 
 **트랙 밖(여기서 하지 않는다)**: ops-hub `orca-worktree-ops`·CLAUDE.md 정리(spec §7 — 9단계 안내만) · Windows 오르카 실측 · 번복률 재측정(eval repo) · 나머지 머신 `/plugin update`(사용자 확인).
 
+## 적대검증 ledger (plan)
+
+보안 크리티컬: no (호출자 지정) — 접촉면 권한 감지(위임 트랙 기동 기본 `--dangerously-skip-permissions`, D18 · PERMISSION 창 전달)
+
+- 루프: base `151d9f0`(151d9f0ec1abe1a6ad62ba3684297038faeedf2f, 호출자 지정 — origin/main은 이미 리뷰 대상 커밋을 포함) · 예산 max 5 · confirm 2 · auto 3 · 위임 모드 세션(설치본 1.1.1 — 효과 2 없음, 질문은 사용자 직접).
+- 사전 게이트: 형식 관문 ①②④ = repo에 CLAUDE.md 분할 규약 없음 → 스킵(참고: Execution contract 블록은 설치본 writing-plans-split canonical과 바이트 동일 · §Shared Contracts · status·outcome 컬럼 실재) · ③ spec ledger fingerprint 컬럼 실재.
+- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷).
+
+| 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
+|---|---|---|---|---|---|---|
+| R1 | 적대·자동 | `44184c3` | 0/2/3 (신규 5/잔존 0) | 9 | 0 → 5 | needs-attention |
+
+| # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
+|---|---|---|---|---|
+| R1-1 | task-02 alive · 잔존 질문 문구만으로 셸을 살아 있는 claude로 판정(질문 화면 뒤 셸 프롬프트) · 과거 문구와 현재 입력 화면 구분, 창 뒤 셸 프롬프트면 exit 2 + 회귀 테스트 | high | FIXED `0de6f7b` | 질문·권한 창 = 창 문구 뒤 마지막 줄이 셸 프롬프트면 생존 아님 → exit 2 · 박스 화면은 HUD(`Context 17%`) 끝 문자 충돌로 검사 제외(Cautions — 검증 필요(실측)) · 테스트 +1 · SC-2·spec §3w·AC3 |
+| R1-2 | task-02 key · 다중 키 전송 중 생존 확인 없이 다음 입력 전송 · 각 send 직전 alive 재검사, 0 아니면 중단 + 중간 종료 테스트 | high | FIXED `0de6f7b` | key = 키마다 alive 0일 때만 send, 아니면 `ERR 전송 중단 — n/m` exit 2 · key 테스트 send만 대조 + show 4회 · 중간 종료 테스트 +1 · task-04 SKILL.md (a) 1구절(15,147B) · SC-2·spec §3w·AC3 |
+| R1-3 | task-02 alive · 권한 창(PERMISSION)에서 alive exit 2 → 사용자 승인도 전달 불가 · 권한 창을 입력 상태로 인정 + P 화면 alive 0 검증, 무인 자동 승인 금지 유지 | medium | FIXED `0de6f7b` | 권한 창 패턴도 입력 창(R1-1 조건 동일) · 테스트 +1 · D23(부재면 거부되게 둔다) 불변 · SC-2·spec §3w·AC3 |
+| R1-4 | task-02 orca() · spawnSync timeout 없음 → 멈춘 CLI가 watch 최대초 무력화 · 모든 호출에 유한 timeout + 상한을 시작 자가 점검부터 + 무응답 스텁 테스트 | medium | FIXED `0de6f7b` | 호출 상한 8초(`ORCHESTRATE_CALL_TIMEOUT_MS` 테스트 전용) · deadline = 시작부터, 대기 = min(간격, 남은 시간) → 최악 ≈ 596초 < 메인 대기 600초 · 가짜 orca `hang` · 테스트 +1 · SC-2·spec AC2 |
+| R1-5 | 엔트리포인트 Task table · 08·09가 같은 표에 있어 dev-cycle 7단계(「task 표 완료 기록 전건」)가 01~07 완료 뒤에도 7 미완 판정 · 구현 범위만 완료 대상으로 | medium | FIXED `0de6f7b` | 권고안(dev-cycle 판별 수정)은 spec 범위 밖(dev-cycle 변경 = 위임 모드 5곳, D7) → plan 안 수정: 08·09행을 `## SDD 밖 task` 표로 분리(dev-cycle·convergence 대상 아님 명시) · task-08·09 참조 갱신 |
+
+- 부수 정정(같은 커밋): task-01 테스트 파일 머리 주석의 실행법 `node --test tests/orchestrate/` → 파일 지정(P1 정합).
+- 테스트 수 24 → 28(SC-1·SC-4 T1·task-01·02·08). 검증 = 스크래치 클론에서 task 파일만 꺼내 RED 0/28 → GREEN 28/28(≈15초) · 수정 전 스크립트로 새 테스트 = 23 pass / 5 fail · task-04 검증 블록 bash·zsh `ALL_PRESENT`.
+- 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 없음. batch-pending ESCALATE: 없음.
+
 ## 확인 대기 대장
 
 해당 없음.
