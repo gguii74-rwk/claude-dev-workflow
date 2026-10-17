@@ -157,7 +157,7 @@ finding·ledger 문구는 루프용 기록이고, 질문을 읽는 사람은 그
 
 ### 실행 (task 커맨드)
 
-실행 기제는 **§2b 라운드 실행 공통 절차**와 같다 — 파일 접미만 `-C<N>`, 래퍼 안의 명령만 `node "$2/scripts/codex-companion.mjs" task --prompt-file "$3.prompt"`. 프롬프트는 파일로 넘겨 원 지적 원문의 `$(...)`·백틱·인용부호가 셸·argv에 닿지 않게 한다. `--prompt-file`은 companion **≥1.0.6** — §2b ① 게이트가 `COMPANION_TOO_OLD`면(또는 `task` 커맨드 부재면) 멈추고 `/codex:setup` 안내, 임의 대체 실행 금지. 마커 뒤 `$L.out` 본문이 확인 응답이다(아래 계약; 회수는 §2b ⑤). `adversarial-review`+focus로 대체하지 않는다(기저 템플릿이 적대라 확인 목적함수를 누르지 못한다).
+실행 기제는 **§2b 라운드 실행 공통 절차**와 같다 — 파일 접미만 `-C<N>`, 래퍼 안의 명령만 `node "${2}/scripts/codex-companion.mjs" task --prompt-file "${3}.prompt"`. 프롬프트는 파일로 넘겨 원 지적 원문의 `$(...)`·백틱·인용부호가 셸·argv에 닿지 않게 한다. `--prompt-file`은 companion **≥1.0.6** — §2b ① 게이트가 `COMPANION_TOO_OLD`면(또는 `task` 커맨드 부재면) 멈추고 `/codex:setup` 안내, 임의 대체 실행 금지. 마커 뒤 `$L.out` 본문이 확인 응답이다(아래 계약; 회수는 §2b ⑤). `adversarial-review`+focus로 대체하지 않는다(기저 템플릿이 적대라 확인 목적함수를 누르지 못한다).
 - **프롬프트 첨부물**: ① ledger 표(루프 직접 판정 표시 포함), ② 미확인 FIXED 큐 전체 — 각 항목에 **원 지적 원문(title·body·recommendation)과 수정 커밋·diff 요약**을 함께 준다(fingerprint만 주면 불완전 수정을 못 잡는다), ③ 리뷰 기준 = **루프 시작 시 해소한 base SHA**(§인자·§1 base 해소), ④ 임무 4종 + 응답 형식(아래 계약), ⑤ "신규 영역 발굴은 임무가 아니다. 단, 발견한 blocking은 보고한다", ⑥ 감사 대상 경계 = **사용자 기결정 목록(D번호 + 한 줄)** — "이 목록은 감사 대상이 아니다"를 명시한다. **루프 직접 판정은 이 목록에 넣지 않는다** — 임무 ③의 감사 대상이라서다(①의 ledger 표로 이미 전달된다).
 - codex 샌드박스는 read-only — 게이트(테스트)는 루프 세션이 실행한다.
 
@@ -295,12 +295,12 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 [ "$(printf '1.0.6\n%s\n' "$V" | sort -V | head -1)" = 1.0.6 ] || echo "COMPANION_TOO_OLD $V"
 ```
 
-**② 라운드 파일 = `.remember/`**(clean 판정·커밋 제외 — 추적 파일 편집 금지와 무충돌): `L=.remember/loop-<ledger basename>-<phase>-R<N>`(확인은 `-C<N>`). 적대는 매 라운드 가드 focus를 `$L.focus`에 **재조립**(§기결정 가드), 확인은 `$L.prompt`. 래퍼 `$L.sh` → 출력 `$L.out`(기동 시 **새로 쓴다** — 같은 `$L` 재실행에서 이전 마커·본문이 현재 라운드로 읽히지 않게) → pid `$L.pid`, 끝에 마커 `COMPANION_EXIT:<code>`. 분리 = **node `spawn(detached)` 1줄, 전 플랫폼 공통**(스크립트 동봉 없음). focus는 `--` 뒤 인자 하나(파일 내용은 재평가되지 않는다). 래퍼는 quoted heredoc·경로는 argv(셸 소스에 보간하면 파일명 속 `$(…)`가 실행된다). `$L.pid`가 살아 있으면(`kill -0`) 띄우지 않고 ③으로.
+**② 라운드 파일 = `.remember/`**(clean 판정·커밋 제외 — 추적 파일 편집 금지와 무충돌): `L=.remember/loop-<ledger basename>-<phase>-R<N>`(확인은 `-C<N>`). 적대는 매 라운드 가드 focus를 `$L.focus`에 **재조립**(§기결정 가드), 확인은 `$L.prompt`. 래퍼 `$L.sh` → 출력 `$L.out`(기동 시 **새로 쓴다** — 같은 `$L` 재실행에서 이전 마커·본문이 현재 라운드로 읽히지 않게) → pid `$L.pid`, 끝에 마커 `COMPANION_EXIT:<code>`. 분리 = **node `spawn(detached)` 1줄, 전 플랫폼 공통**(스크립트 동봉 없음). focus는 `--` 뒤 인자 하나(파일 내용은 재평가되지 않는다). 래퍼는 quoted heredoc·경로는 argv(셸 소스에 보간하면 파일명 속 `$(…)`가 실행된다)·위치 인자는 `${N}`(맨 `$`+숫자는 Claude Code가 스킬 인자로 치환한다). `$L.pid`가 살아 있으면(`kill -0`) 띄우지 않고 ③으로.
 ```bash
 cat > "$L.sh" <<'EOF'
 #!/bin/bash
-cd "$1" || exit 97
-node "$2/scripts/codex-companion.mjs" adversarial-review --wait --base "$4" -- "$(cat "$3.focus")"
+cd "${1}" || exit 97
+node "${2}/scripts/codex-companion.mjs" adversarial-review --wait --base "${4}" -- "$(cat "${3}.focus")"
 echo COMPANION_EXIT:$?
 EOF
 node -e 'const fs=require("fs"),[sh,out,pid,...a]=process.argv.slice(1),fd=fs.openSync(out,"w");
