@@ -82,7 +82,7 @@
 
 | 약칭 | 경로 | 이 plan에서 바꾸는 것 | task |
 |---|---|---|---|
-| 테스트 | `tests/orchestrate/orchestrate.test.mjs` (repo 루트 — 설치본 밖, M15) | 신규 24건 | 01 |
+| 테스트 | `tests/orchestrate/orchestrate.test.mjs` (repo 루트 — 설치본 밖, M15) | 신규 28건 | 01 |
 | 스크립트 | `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` | 신규 | 02 |
 | 템플릿 | `dev-workflow/skills/orchestrate/templates/track-prompt.md` | 신규 | 03 |
 | OS | `dev-workflow/skills/orchestrate/SKILL.md` | 신규(≤ 15,360B) | 04 |
@@ -97,14 +97,14 @@
 ### SC-2. `orchestrate.mjs` CLI 계약 (정본 구현 = task-02, 테스트 = task-01, 본문 서술 = task-04·07)
 
 - 호출: `node <Base directory>/scripts/orchestrate.mjs <watch|alive|key> <핸들> …` — `<Base directory>` = 스킬 로드 때 표시되는 「Base directory for this skill」(M14).
-- 공통: `--environment <이름>` — 모든 오르카 호출 끝(`--json` 뒤)에 붙인다. CLI 해소 = `ORCA_CLI_COMMAND` → (`ORCA_DEV_REPO_ROOT` 있으면) `orca-dev` → `orca`(M4 — 훅 (2-0)ⓐ와 같다). 오르카 응답은 **exit code가 아니라 JSON**으로 판단(시간 초과·stale도 exit 1 + 정상 JSON).
-- **`watch <핸들> [최대초=580] [--consumed <표지 줄>]`**: 시작 때 화면 1회 + idle 1회로 자가 점검 → 첫 화면도 판정(감시 전 도착한 미처리 표지·열린 질문은 즉시) → 20초 간격(M5). stdout 첫 줄 = `DONE` | `HANDOFF` | `SETTLED` | `QUESTION` | `PERMISSION` | `TIMEOUT`(exit 0); DONE·HANDOFF는 둘째 줄 = 표지 줄(앞 공백·응답 글머리 `⏺`·`●` 뗀 값); 이어서 화면 마지막 70줄. 실패 = `ERR <메시지>` exit 2.
+- 공통: `--environment <이름>` — 모든 오르카 호출 끝(`--json` 뒤)에 붙인다. CLI 해소 = `ORCA_CLI_COMMAND` → (`ORCA_DEV_REPO_ROOT` 있으면) `orca-dev` → `orca`(M4 — 훅 (2-0)ⓐ와 같다). 오르카 응답은 **exit code가 아니라 JSON**으로 판단(시간 초과·stale도 exit 1 + 정상 JSON). 오르카 호출 1회 상한 8초 — 넘으면 `ERR` exit 2(R1-4).
+- **`watch <핸들> [최대초=580] [--consumed <표지 줄>]`**: 시작 때 화면 1회 + idle 1회로 자가 점검 → 첫 화면도 판정(감시 전 도착한 미처리 표지·열린 질문은 즉시) → 20초 간격(M5). 상한(최대초)은 시작 자가 점검부터 잰다(R1-4). stdout 첫 줄 = `DONE` | `HANDOFF` | `SETTLED` | `QUESTION` | `PERMISSION` | `TIMEOUT`(exit 0); DONE·HANDOFF는 둘째 줄 = 표지 줄(앞 공백·응답 글머리 `⏺`·`●` 뗀 값); 이어서 화면 마지막 70줄. 실패 = `ERR <메시지>` exit 2.
   - 본문 = 끝에서 둘째 `────` 구분선(프롬프트 박스 윗선) 위 줄들(박스 없으면 전체) − 스피너 줄(`✻ ✶ ✳ ✢ · ✽ *` 시작).
   - 우선순위: 표지(본문의 **마지막 비어 있지 않은 줄**이 `[TRACK-DONE `/`[TRACK-HANDOFF `로 시작 — 단 `--consumed`와 같고 본문이 시작값에서 안 바뀌었으면 소비됨, D41) > `QUESTION`(「Enter to select」 또는 「to navigate」) > `PERMISSION`(「could not be checked」·「Do you want to proceed」·「Yes, and don't ask again」) > `SETTLED`(본문 해시가 시작값에서 **바뀐 뒤** 직전 읽기와 같고 idle 만족) > `TIMEOUT`.
-- **`alive <핸들>`**: stdout 1줄. `ALIVE …` exit 0(연결·쓰기 가능 + 화면에 프롬프트 박스(마지막 두 구분선 사이 `❯` 줄) 또는 질문 창 + 박스 아래 종료 표지 없음) · `EXITED …` exit 1(미연결·고아, 또는 마지막 구분선 **아래**에 「Resume this session with」 + 그 뒤 마지막 줄이 셸 프롬프트 `/[%$#>]\s*$/`) · `UNREADABLE … 종료로 보지 않는다` exit 2(쓰기 불가 · 어느 쪽도 확정 불가) · `STALE …` exit 3(`terminal_handle_stale`) · `ERR …` exit 2.
-- **`key <핸들> <키…>`**: 키 = `enter`(`--enter` 플래그) · `tab`(`\t`) · `shift-tab`(`\x1b[Z`) · `up`(`\x1b[A`) · `down`(`\x1b[B`) · `text <문자열>`(`--text <원문>` — argv 직접, 셸 보간 없음). 키마다 `terminal send` 1회 + 300ms 간격, 영수증 `result.send.accepted !== true`면 `ERR` exit 2. 성공 = `SENT <n>` exit 0.
+- **`alive <핸들>`**: stdout 1줄. `ALIVE …` exit 0(연결·쓰기 가능 + 화면에 프롬프트 박스(마지막 두 구분선 사이 `❯` 줄) 또는 질문·권한 창(창 문구 뒤 마지막 줄이 셸 프롬프트면 제외 — R1-1·R1-3) + 박스 아래 종료 표지 없음) · `EXITED …` exit 1(미연결·고아, 또는 마지막 구분선 **아래**에 「Resume this session with」 + 그 뒤 마지막 줄이 셸 프롬프트 `/[%$#>]\s*$/`) · `UNREADABLE … 종료로 보지 않는다` exit 2(쓰기 불가 · 어느 쪽도 확정 불가) · `STALE …` exit 3(`terminal_handle_stale`) · `ERR …` exit 2.
+- **`key <핸들> <키…>`**: 키 = `enter`(`--enter` 플래그) · `tab`(`\t`) · `shift-tab`(`\x1b[Z`) · `up`(`\x1b[A`) · `down`(`\x1b[B`) · `text <문자열>`(`--text <원문>` — argv 직접, 셸 보간 없음). 키마다 `alive` 판정 0 확인(아니면 `ERR 전송 중단 — <보낸 수>/<전체>개 …` exit 2, 나머지 미전송 — R1-2) → `terminal send` 1회 + 300ms 간격, 영수증 `result.send.accepted !== true`면 `ERR` exit 2. 성공 = `SENT <n>` exit 0.
 - **자가 점검 메시지**: 의존 필드(`result.terminal.tail` 배열 · `result.wait.satisfied` boolean(또는 `error.code` `timeout`) · `result.terminal.connected`/`writable`/`orphaned` boolean)가 없거나 JSON 파싱 실패 → `ERR orca 응답 형식이 스크립트와 다릅니다 — \`orca skills get orca-cli\`를 참조해 scripts/orchestrate.mjs의 필드명을 갱신하세요(필드: <누락 필드>)`. 화면 출처 `source`가 `screen`이 아니면 → `ERR 렌더링 화면을 읽지 못했다(source=<값|없음>) — 종료로 보지 않는다`.
-- 환경변수 `ORCHESTRATE_INTERVAL_MS` = **테스트 전용** 감시 간격(테스트는 20ms). 운영 문서에 쓰지 않는다.
+- 환경변수 `ORCHESTRATE_INTERVAL_MS`·`ORCHESTRATE_CALL_TIMEOUT_MS` = **테스트 전용** 감시 간격·호출 상한(테스트는 20ms·3000ms). 운영 문서에 쓰지 않는다.
 
 ### SC-3. 표지 · 출처 · 대장 문자열 정본 (템플릿·SKILL.md·review-loop·dev-cycle·README가 그대로 쓴다)
 
@@ -116,7 +116,7 @@
 ### SC-4. 게이트 명령 (repo에 npm 게이트 없음 — review-loop(impl) §1 impl 게이트는 이 묶음으로 갈음)
 
 ```bash
-node --test tests/orchestrate/orchestrate.test.mjs                       # T1 — 24/24 (폴더 인자 금지, P1)
+node --test tests/orchestrate/orchestrate.test.mjs                       # T1 — 28/28 (폴더 인자 금지, P1)
 node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs     # T2
 env -u DEV_WORKFLOW_MODE HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs      # T3a — 11/11
 env -u DEV_WORKFLOW_MODE HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.1.0/context-threshold-hook.mode.test.mjs # T3b — 2/2
@@ -138,23 +138,30 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 01 | orchestrate.mjs 계약 테스트 24건 (RED) | [ ] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | |
+| 01 | orchestrate.mjs 계약 테스트 28건 (RED) | [ ] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | |
 | 02 | orchestrate.mjs watch·alive·key (GREEN) | [ ] | [task-02](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-02-orchestrate-script.md) | 01 | |
 | 03 | 트랙 프롬프트 템플릿 | [ ] | [task-03](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-03-track-prompt-template.md) | — | |
 | 04 | orchestrate SKILL.md | [ ] | [task-04](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-04-orchestrate-skill-md.md) | 02, 03 | |
 | 05 | review-loop 위임 모드 효과 2 + 확인 대기 대장 | [ ] | [task-05](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-05-review-loop-delegated.md) | — | |
 | 06 | dev-cycle 위임 = 확인 불가 신호 ② | [ ] | [task-06](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-06-dev-cycle-delegated.md) | 05 | |
 | 07 | README 3종 · manifest description · 1.1.0 §7 포인터 | [ ] | [task-07](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-07-readme-manifest-pointer.md) | 04, 05, 06 | |
-| 08 | 릴리스 1.2.0 — **9단계, SDD 디스패치 대상 아님** | [ ] | [task-08](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-08-release-1-2-0.md) | 01~07 + review-loop(impl) 종결 | |
-| 09 | AC9 (i) 실측 기록 — **트랙 완료 조건, SDD 디스패치 대상 아님** | [ ] | [task-09](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-09-ac9-field-run.md) | 08 + push + 설치 갱신 | |
 
 **구현 순서** = spec §3r 끝 줄(스크립트+테스트 → 템플릿 → SKILL.md → review-loop → dev-cycle → README·manifest 설명 → 1.1.0 spec 포인터) — 표 번호 순서로 디스패치한다.
 
 **AC ↔ task**: AC1 → 03(템플릿)·04(SKILL.md) · AC2·AC3 → 01·02 · AC4 → 02(`node --check`)·03·04(`$N`)·SC-4 T5 · AC5 → 05 · AC6 → 06 · AC7 → 07 · AC8 → SC-4 T3·T4(01·02 회귀 단계 + 08 게이트) · AC9 → 09.
 
-**SDD 실행 범위 = task-01~07.** task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치하지 않는다 — 8 review-loop(impl)가 성공 종결(이 문서 말미 impl ledger 종결 행)한 뒤 그 세션 또는 새 세션이 task-08을, 릴리스·push·설치 갱신 뒤 기록 세션이 task-09를 단독 실행한다. 표에 두는 이유는 완료 기록(status·outcome)을 같은 표에서 받기 위해서다. **task-08·09의 완료 권위 = 이 커밋된 task 표 + 각 task의 AC**(SDD progress ledger에 기록하지 않는다 — 계약 블록의 convergence 규칙(「ledger 완료 기록 부재 → `[ ]` 복원」)은 task-01~07에만 적용한다). 실행자는 완료 시 표 행 `[x]`·outcome을 쓰고 이 파일을 즉시 커밋한다. task-09 착수나 어떤 복구 절차도 task-08 행을 되돌리지 않는다. 트랙 완료 = 09행 `[x]`.
+**SDD 실행 범위 = 위 표(task-01~07) 전부.** 위 표가 전건 `[x]`이면 7 impl 완료다(dev-cycle 7단계 「entrypoint task 표의 완료 기록 전건」 = 이 표 — 아래 「SDD 밖 task」 표는 판별 대상이 아니다).
 
 **review-loop(impl) 입도**: 통합 1회(task-01~07). base = 구현 착수 직전 main SHA(plan 루프 종결 커밋). **§1 impl 게이트 = SC-4 T1~T5**(npm 4종 대신 — repo에 npm 없음). 보안 판정은 기동 전 사용자 1회 확인(D35) — spec 루프는 `no (호출자 지정)`였다.
+
+## SDD 밖 task (9단계 이후 — dev-cycle 7단계 판별·SDD convergence 대상 아님)
+
+| # | title | status | file | deps | outcome |
+|---|-------|--------|------|------|---------|
+| 08 | 릴리스 1.2.0 — **9단계, SDD 디스패치 대상 아님** | [ ] | [task-08](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-08-release-1-2-0.md) | 01~07 + review-loop(impl) 종결 | |
+| 09 | AC9 (i) 실측 기록 — **트랙 완료 조건, SDD 디스패치 대상 아님** | [ ] | [task-09](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-09-ac9-field-run.md) | 08 + push + 설치 갱신 | |
+
+task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치하지 않는다 — 8 review-loop(impl)가 성공 종결(이 문서 말미 impl ledger 종결 행)한 뒤 그 세션 또는 새 세션이 task-08을, 릴리스·push·설치 갱신 뒤 기록 세션이 task-09를 단독 실행한다. **위 Task table과 따로 두는 이유** = dev-cycle 7단계가 「entrypoint task 표의 완료 기록 전건」으로 7 완료를 판별해, 같은 표에 두면 01~07이 끝나도 7 미완으로 읽힌다(plan ledger R1-5) — 완료 기록(status·outcome)은 이 표에서 받는다. **task-08·09의 완료 권위 = 이 커밋된 표 + 각 task의 AC**(SDD progress ledger에 기록하지 않는다 — 계약 블록의 convergence 규칙(「ledger 완료 기록 부재 → `[ ]` 복원」)은 Task table(task-01~07)에만 적용한다). 실행자는 완료 시 표 행 `[x]`·outcome을 쓰고 이 파일을 즉시 커밋한다. task-09 착수나 어떤 복구 절차도 task-08 행을 되돌리지 않는다. 트랙 완료 = 09행 `[x]`.
 
 **트랙 밖(여기서 하지 않는다)**: ops-hub `orca-worktree-ops`·CLAUDE.md 정리(spec §7 — 9단계 안내만) · Windows 오르카 실측 · 번복률 재측정(eval repo) · 나머지 머신 `/plugin update`(사용자 확인).
 

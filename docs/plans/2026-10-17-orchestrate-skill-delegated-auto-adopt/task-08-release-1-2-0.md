@@ -6,11 +6,11 @@
 
 - Modify: `dev-workflow/.claude-plugin/plugin.json` (`"version": "1.1.1"` → `"1.2.0"`만)
 - Modify: `docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md` (:3 단계 줄 — 진행 표기만)
-- Modify: 이 엔트리포인트(task 표 08행 — 완료 기록)
+- Modify: 이 엔트리포인트(「SDD 밖 task」 표 08행 — 완료 기록)
 
 ## Prep
 
-- 엔트리포인트 상단 「impl ledger 종결 행 계약」 · §Task table 아래 「SDD 실행 범위」 · **SC-4**(게이트 명령 전부) · **SC-5**(커밋 규칙).
+- 엔트리포인트 상단 「impl ledger 종결 행 계약」 · §SDD 밖 task 절(실행 범위·완료 권위) · **SC-4**(게이트 명령 전부) · **SC-5**(커밋 규칙).
 - spec §3r · §4 AC1~AC8 · D9(버전 1.2.0).
 - 실행 시점: 엔트리포인트 말미 `## 적대검증 ledger (impl)`에 종결 행이 있은 뒤. 실행 세션 = 8을 마친 세션 또는 새 세션(사용자 지시).
 
@@ -49,7 +49,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 wc -c < dev-workflow/skills/orchestrate/SKILL.md
 ```
 
-기대: pass 24 · fail 0 / `CHECK_OK` / pass 11 · fail 0 / pass 2 · fail 0 / `0` / `0` / ≤ 15360. 그리고 task-03 단계 3 · task-04 단계 3 · task-05 단계 3·4 · task-06 단계 3 · task-07 단계 5의 검증 블록을 그대로 다시 돌려 같은 기대 출력을 얻는다(impl 루프 FIXED가 문면을 바꿨을 수 있다).
+기대: pass 28 · fail 0 / `CHECK_OK` / pass 11 · fail 0 / pass 2 · fail 0 / `0` / `0` / ≤ 15360. 그리고 task-03 단계 3 · task-04 단계 3 · task-05 단계 3·4 · task-06 단계 3 · task-07 단계 5의 검증 블록을 그대로 다시 돌려 같은 기대 출력을 얻는다(impl 루프 FIXED가 문면을 바꿨을 수 있다).
 
 ### 4. 버전
 
@@ -80,7 +80,7 @@ git log --format=%B 151d9f0..HEAD | grep -ciE 'co-authored|generated with|claude
 ### 7. 단계 표기 · 완료 기록
 
 - spec :3 단계 줄의 `→ 9 릴리스 1.2.0` 을 `→ **9 릴리스 1.2.0 완료 (<날짜>, <릴리스 커밋 7자리>)**` 로 바꾼다.
-- 엔트리포인트 task 표 08행 status `[x]` · outcome 1줄(릴리스 커밋 · 게이트 결과 · 미push).
+- 엔트리포인트 「SDD 밖 task」 표 08행 status `[x]` · outcome 1줄(릴리스 커밋 · 게이트 결과 · 미push).
 
 ```bash
 git add docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md docs/plans/2026-10-17-orchestrate-skill-delegated-auto-adopt.md
@@ -105,4 +105,4 @@ git commit -m "docs(spec,plan): 1.2.0 9 릴리스 완료 표기 — 다음 = pus
 - **게이트 ①이 0이면 버전을 올리지 마라.** 이유: impl 적대검증(하한 3종 ③)을 거치지 않은 변경이 업데이트로 배포된다.
 - **push하지 마라.** 이유: 공개 배포는 매번 사용자 확인(spec §3o ③ 라우팅표 4행) — 이 task는 로컬 릴리스 커밋까지.
 - **plugin.json의 version 외 키를 이 task에서 바꾸지 마라.** 이유: description은 task-07에서 impl 리뷰를 받았다(P2) — 릴리스 diff는 버전 1줄이어야 검증이 쉽다.
-- **이 task를 SDD progress ledger에 기록하지 마라.** 이유: SDD 실행 범위 밖 — 완료 권위 = 커밋된 task 표 + 이 AC(엔트리포인트 「SDD 실행 범위」).
+- **이 task를 SDD progress ledger에 기록하지 마라.** 이유: SDD 실행 범위 밖 — 완료 권위 = 커밋된 task 표 + 이 AC(엔트리포인트 §SDD 밖 task).

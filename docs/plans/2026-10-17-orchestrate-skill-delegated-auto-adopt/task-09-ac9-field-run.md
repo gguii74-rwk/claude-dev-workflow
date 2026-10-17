@@ -4,7 +4,7 @@
 
 ## Files
 
-- Modify: 이 엔트리포인트 — `## 확인 대기 대장` **앞**에 절 `## AC9 (i) 실측 기록` 추가 · task 표 09행
+- Modify: 이 엔트리포인트 — `## 확인 대기 대장` **앞**에 절 `## AC9 (i) 실측 기록` 추가 · 「SDD 밖 task」 표 09행
 - Modify: `docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md` — :3 단계 줄 끝 · (ii) 발생 시 §4 AC9 아래 하위 불릿 1개
 
 ## Prep
@@ -63,7 +63,7 @@
 ### 3. 단계 표기·완료
 
 - spec :3 단계 줄 끝 `→ AC9 (i) 실측.` 을 `→ **AC9 (i) 통과 → 트랙 종결 (<날짜>)**.` 로.
-- task 표 09행 `[x]` · outcome 1줄.
+- 「SDD 밖 task」 표 09행 `[x]` · outcome 1줄.
 
 ```bash
 git add docs/plans/2026-10-17-orchestrate-skill-delegated-auto-adopt.md docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md
