@@ -2,6 +2,7 @@
 // 컨텍스트 임계 Stop 훅: transcript 마지막 assistant usage로 컨텍스트 사용량을 계산하고,
 // 임계(기본 40%) 초과 시 핸드오프 작성 + /clear 안내를 넛지한다.
 // 오르카 터미널(ORCA_TERMINAL_HANDLE)에서는 /clear 안내 대신 같은 체크아웃에 후계 세션을 띄워 인계하는 절차를 지시한다(1.0.0).
+// 위임 모드(DEV_WORKFLOW_MODE=delegated) 세션은 오르카 안에서도 후계를 띄우지 않고 /clear 안내를 받는다 — 후계는 오케스트레이터가 띄운다(1.1.0).
 // 넛지는 1회가 아니라 15%p 구간마다 재발화한다(기본 임계에서 40 → 55 → 70 → 85%, 상한 없음).
 // 넛지의 의미는 "현재 작업 단위만 마무리, 새 단위 착수 금지"이며 백그라운드 완료 알림으로 깨어난 뒤에도 유효하다(F6).
 // 윈도 상한은 기본 1M(최신 모델 기준) — 200k 세션은 CLAUDE_CTX_LIMIT로 명시한다.
@@ -223,7 +224,10 @@ function resolveThreshold() {
 // 빈 문자열은 미설정과 같다(오르카 밖 경로). 값은 (2)의 셸 명령에 --terminal "<핸들>"로 그대로 들어가므로
 // 제목과 같은 안전 문자 집합([A-Za-z0-9._-])만 허용한다 — 따옴표·$(…)·백틱·공백·개행이 든 값은 오르카 핸들이
 // 아니라 오염된 환경이다: 후계를 띄우지 않고 오르카 밖 경로(/clear 안내)로 보낸다(실제 핸들 = term_<uuid>, 집합 안).
+// 위임 모드(DEV_WORKFLOW_MODE가 앞뒤 공백 제거 후 정확히 "delegated")도 오르카 밖 경로다 — 이 세션의 후계는
+// 오케스트레이터가 띄운다. 그 외 값(DELEGATED·manual·off 등)·미설정은 수동 모드 = 현행(1.1.0 D3·D4).
 function resolveOrcaHandle(env) {
+  if (typeof env.DEV_WORKFLOW_MODE === "string" && env.DEV_WORKFLOW_MODE.trim() === "delegated") return null;
   const h = typeof env.ORCA_TERMINAL_HANDLE === "string" ? env.ORCA_TERMINAL_HANDLE.trim() : "";
   return /^[A-Za-z0-9._-]+$/.test(h) ? h : null;
 }
