@@ -37,6 +37,8 @@ description: Use when starting a new feature or multi-step change, when a small 
 
 spec→plan, plan→impl 경계는 **핸드오프를 쓰고 새 세션에서 시작**한다(review-loop 규약). 한 세션에서 여러 phase를 강행하지 않는다 — 컨텍스트가 커지고 phase가 섞인다. Stop 훅의 컨텍스트 임계 넛지가 이를 돕는다. **경량 경로도 이 경계 규약을 바꾸지 않는다.**
 
+**세션 모드 선택 지점(1.1.0)**: 브레인스토밍·harden-spec·ui-mockup(사람·취향 단계)은 모드와 무관하게 사람이 하고, 그 뒤 review-loop(spec)부터는 트랙 세션을 **수동**(기본 — 사람이 단계별 확인) 또는 **위임**(`DEV_WORKFLOW_MODE=delegated` 접두로 띄운 터미널 — 오케스트레이터가 사용자 역할을 대행하고 후계도 띄운다)으로 진행한다(README 「세션 모드」).
+
 ## 경량 경로 (작은 변경)
 
 **분기 축은 접촉 표면·가역성이고 규모가 아니다.** 아래에 닿으면 **정식**이다 — 스키마·마이그레이션·권한·**인증·보안 경계**·외부 연동·**데이터 손상/유실**·비가역 작업. task 수·파일 수는 기준이 아니다(12 task 문구 정리는 경량, 1 task 컬럼 삭제는 정식).
