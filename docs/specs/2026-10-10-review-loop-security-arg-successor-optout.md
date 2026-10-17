@@ -117,7 +117,10 @@ D1~D12 + 기결정 대체 1건 — 아래 「재논의 금지(기결정)」 블�
 | R1 | 적대(자동) | `9781d98` | needs-attention · medium 1(신규 F1) | 1 | 1 (F1) |
 | R2 | 적대(자동) | `618fc05` | approve · finding 0 — F1 적대 비재출현(R2, 참고 신호·큐 잔존) | 0 | 1 (F1) |
 
+| C1 | 확인 | `fe906d1` | F1 소멸 · 판정 감사 대상 없음 · 신규 finding 없음 · verdict **통과** | — | 0 |
+
 - R2 뒤 전환 신호 ②(수정 큐 소진) 발화 → batch ESCALATE 적재 0건 → 확인 모드 진입(미확인 FIXED 큐 1건).
+- **종결(성공, 확인 경유)**: 소멸 확인 = F1. 적대 2/5 · 확인 1/2 · 복귀 미사용. disposition = FIXED 1 · 그 외 0 · low 0. 루프 건강 = 재론률 0/1 · 철회 조항 0 · 사람개입률 0/1. 이월 항목 없음(ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE 0건) — impl 진입 시 승계할 루프 판정 없음, 재논의 금지 블록 D1~D12만 승계.
 
 ## 적대검증 ledger (impl)
 
