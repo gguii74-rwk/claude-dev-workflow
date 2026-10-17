@@ -259,6 +259,7 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 | 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
 |---|---|---|---|---|---|---|
 | R1 | 적대·자동 | `94289b6` | 0/4/1 (신규 5/잔존 0) | 13 | 0 → 5 | needs-attention |
+| R2 | 적대·자동 | `505f742` | 0/2/1 (신규 3/잔존 0 — R1 5건 적대 비재출현(R2), 큐 유지) | 7 | 5 → 7 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -267,6 +268,9 @@ harden-spec 2026-10-17 확정. D1~D18 = §5 B1~B18, D19~D40 = §5 H1~H22(상세�
 | R1-3 | spec §3o ⑤(a) · 옛 세션 종료 전 후계 리뷰 실행 차단 없음 · codex 잡 확인 + 옛 세션 종료 확인을 후계 시작 선행조건으로 | high | FIXED `b4e7ab8` | ⑤(a) 순서 = 잡 0 확인 → /exit·종료 확인·close → 후계 생성 · 같은 계열로 ⑤(e) stale ≠ 종료(§3w alive exit 3) · AC1·AC3 |
 | R1-4 | spec §3e fail-closed 행 · 대장 행 기록이 재개 스냅샷(HEAD) 무효화 · 기록 시점·주체 명시 | high | FIXED `b4e7ab8` | 대장 행을 쓰지 않음(5요소 「ledger 무변경」 정합 — 기록 = 보고 자체, 오케스트레이터가 단계 보고에) · §3l 문구 · AC5. D21 불변 |
 | R1-5 | spec §3w watch 판정 · 화면에 남은 이전 종료 표지 재소비 · 현재 응답의 표지인지·소비 여부 판별 계약 + 스텁 케이스 | medium | FIXED `b4e7ab8` | 표지 인정 조건 = 본문 마지막 줄 + 시작 화면 동일 표지는 소비됨 · §3t 표지 = 응답 마지막 줄 · AC3 3건 |
+| R2-1 | spec §3w alive·§3o ③(a) · 터미널 연결만으로 claude 생존 보장 불가(셸만 남음) · claude 세션 생존 구분 + 모든 전송 전 확인 + 셸만 남은 스텁 | high | FIXED `7aac346` | alive exit 0 = 연결 + claude 입력 상태 · 셸만 남음 = exit 1(종료 표지 패턴 상수, 검증 필요) · (a)는 모든 전송 직전 · AC1·AC3 · 잔여 리스크 (2). D15 취지 강화(불변) |
+| R2-2 | spec §3o ⑤(a) · 새 후계에 트랙 고정 지시(역할·범위·정지 조건·표지) 미전달 · 후계 기동에 템플릿 적용·승계 명시 | high | FIXED `7aac346` | ⑤(a)(3) 후계 프롬프트 = 원래 트랙 프롬프트 파일 먼저 + 재개 파일 · ⑤(b) 재획득 첫 전송 동일 · 트랙 프롬프트 파일 트랙 종결까지 보존 · §3t 후계 줄 · AC1 |
+| R2-3 | spec §3w watch 판정 · 감시 시작 전 도착한 새 표지를 「소비됨」으로 영구 누락 · 소비 여부를 트랙별 실제 처리 이력으로 판정 + AC3 케이스 | medium | ESCALATE(batch-pending) | **R1-5와 같은 계열 2회째**(표지 소비 판정 — R1-5 수정이 만든 경합) → 규약상 자동 수정 중단·사용자 판정. 추천안 = 메인이 처리한 마지막 표지 줄을 `watch`에 넘기고(예 `--consumed <표지 줄>`) 그와 같은 표지만 소비로 본다 — 시작 화면 기준 규칙 대체 |
 
-- 미확인 FIXED 큐: R1-1 · R1-2 · R1-3 · R1-4 · R1-5.
-- 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 없음. batch-pending ESCALATE: 없음.
+- 미확인 FIXED 큐: R1-1 · R1-2 · R1-3 · R1-4 · R1-5 · R2-1 · R2-2.
+- 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 없음. batch-pending ESCALATE: R2-3.
