@@ -169,7 +169,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
 | 08 | 릴리스 1.2.0 — **9단계, SDD 디스패치 대상 아님** | [x] | [task-08](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-08-release-1-2-0.md) | 01~07 + review-loop(impl) 종결 | 릴리스 `f102eff`(plugin.json 1.1.1→1.2.0만, 2026-10-18) · 게이트 ① impl 종결 행 1 · ② 확인 대기 0·확인 안 된 번복 0 · ③ T1 54/54(첫 실행)·`CHECK_OK`·기준선 11/11·2/2·훅 diff 0·`$N` 0·SKILL.md 15,358B + task-03·04·05(3·4 `DEL 3 BAD 0`)·06·07 검증 블록 기대 일치 · no-AI-trace 0 · **미push** |
-| 09 | AC9 (i) 실측 기록 — **트랙 완료 조건, SDD 디스패치 대상 아님** | [ ] | [task-09](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-09-ac9-field-run.md) | 08 + push + 설치 갱신 | |
+| 09 | AC9 (i) 실측 기록 — **트랙 완료 조건, SDD 디스패치 대상 아님** | [x] | [task-09](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-09-ac9-field-run.md) | 08 + push + 설치 갱신 | AC9 (i) 통과(2026-10-18, 맥북 user 스코프 1.2.0 `7276774`) — 후속 검토 트랙 1–2 spec 초안(`a902970`) 운영: 설치본 로드 · watch DONE 1·QUESTION 3 · alive·key · 템플릿 프롬프트 · 라우팅(사용자 답 3건, 대리 채택 0) · 종료 검증 5항 — 기록 = `## AC9 (i) 실측 기록` · (ii) 미발생 · **트랙 종결** |
 
 task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치하지 않는다 — 8 review-loop(impl)가 성공 종결(이 문서 말미 impl ledger 종결 행)한 뒤 그 세션 또는 새 세션이 task-08을, 릴리스·push·설치 갱신 뒤 기록 세션이 task-09를 단독 실행한다. **위 Task table과 따로 두는 이유** = dev-cycle 7단계가 「entrypoint task 표의 완료 기록 전건」으로 7 완료를 판별해, 같은 표에 두면 01~07이 끝나도 7 미완으로 읽힌다(plan ledger R1-5) — 완료 기록(status·outcome)은 이 표에서 받는다. **task-08·09의 완료 권위 = 이 커밋된 표 + 각 task의 AC**(SDD progress ledger에 기록하지 않는다 — 계약 블록의 convergence 규칙(「ledger 완료 기록 부재 → `[ ]` 복원」)은 Task table(task-01~07)에만 적용한다). 실행자는 완료 시 표 행 `[x]`·outcome을 쓰고 이 파일을 즉시 커밋한다. task-09 착수나 어떤 복구 절차도 task-08 행을 되돌리지 않는다. 트랙 완료 = 09행 `[x]`.
 
@@ -271,6 +271,24 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 - R5 뒤 게이트(HEAD `cefffe0`): T1 54/54(3회 연속) · T2 OK · T3a 11/11 · T3b 2/2 · T4 0 · T5 0 · AC5 `DEL 3 BAD 0` · 고아 0. 관찰(DEFER_LOW, 루프 자체 관찰): RED 실행 1회에서 무관한 첫 테스트 「AC2 watch: 렌더링 줄 배열이 없으면」이 3,058ms로 실패 — 가짜 orca 기동이 테스트 전용 호출 상한 3,000ms를 넘긴 일시 지연, 이후 4회 통과(부하 시 플레이크 후보 → AC9·릴리스 게이트 때 재실행으로 판별).
 - 미확인 FIXED 큐(6): R1-1(`b876e1d`) · R2-1(`1bf9583`) · R3-1 · R3-2(`a282e17`) · R4-1(`1b2cc25`) · R5-1(`cefffe0`).
 - 전환: R5 응답으로 적대 소진 5 = max → 전환 신호 3(적대 예산 소진). batch 적재 0건 → 확인 모드 진입(C1, 확인 예산 2). 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE) 0건 — 확인 임무 ③ 감사 대상 없음(impl ESCALATE 7건은 전부 사용자가 닫음 = 감사 대상 아님).
+
+## AC9 (i) 실측 기록 (트랙 완료 조건, D20)
+
+- 일시·머신·설치본: 2026-10-18 13:4x~14:05 · 맥북(wk.roh) · user 스코프 1.2.0 (`7276774`) · Claude Code 2.1.302 · orca 1.4.229
+- 운영한 트랙: 후속 검토 트랙(orchestrate 1.2.0 후속) · 1–2 브레인스토밍 → spec 초안(수동 모드, `claude-fable-5-1`, `--dangerously-skip-permissions` 사용자 판정) · 핸들 `term_952c8ecc-a261-4d13-a40a-761efda291c2` · 세션 `cfed36aa-3e36-471a-80ec-0215436a9ed7` · 결과 커밋 `a902970`(`docs/specs/2026-10-18-orchestrate-followup-small-borrowings.md`) · 운영 메인 = 후계 메인 세션 bc221818
+
+| # | 항목 | 결과 | 증거 |
+|---|---|---|---|
+| 1 | 설치본으로 로드 | 통과 | Base directory `/Users/wk.roh/.claude/plugins/cache/claude-dev-workflow/dev-workflow/1.2.0/skills/orchestrate` |
+| 2 | watch DONE | 통과 | 판정 첫 줄 `DONE` · 표지 줄 `[TRACK-DONE 1–2 spec 초안 a902970]`(1회) |
+| 3 | watch QUESTION | 통과 | 판정 첫 줄 `QUESTION` 3회 — (a) 묶음 4탭(경로·범위·워크트리·실패 표지) (b) 묶음 3탭(구조 채택·분량 상한·생략 단계) (c) 단일 질문 「spec 초안 작성 승인」 |
+| 4 | alive·key | 통과 | alive `ALIVE claude 입력 상태(프롬프트 박스)`(exit 0, 기동 직후·전송 전마다) · 종료 뒤 `EXITED claude 종료 표지와 셸 프롬프트 복귀 — 셸만 남음`(exit 1) · key `SENT 1`(tab·enter 등)·`SENT 3`(shift-tab×3)·`SENT 6`(down/enter×3) · 관찰: 다중 선택 탭 `down down` 중 커서가 `Type something` 줄에 닿아 꼬리말이 `… · ctrl+g to edit in Vim · Esc to cancel`로 바뀌자 `ERR 전송 중단 — 1/2개 보낸 뒤 창 내용이 바뀌었다(같은 질문 창)` → 재판독 뒤 `down` 1개 재전송(안전한 쪽, 오입력 0 — impl ledger 잔여 관찰 ③ 재현) · 묶음 최종 제출 화면 `Ready to submit your answers?` 실제 렌더링 확인(잔여 관찰 ⑤) → `enter`로 제출 2회 |
+| 5 | 템플릿 프롬프트 | 통과 | `.remember/track-brainstorm-orch-followup.prompt`(템플릿 `templates/track-prompt.md`로 작성, `## 9. 넛지 시 행동` 머리 있음 — 수동·비 review-loop라 5절·대리 채택 절은 템플릿 규칙대로 삭제) |
+| 6 | 라우팅표대로 처리 | 통과 | 질문 3건(3의 a·b·c) 전부 라우팅표 1행 「수동 트랙 — 사람 단계 → 사용자」 — 메인이 글로벌 형식으로 재작성해 AskUserQuestion으로 전달, **사용자 답**을 TUI에 입력(대리 채택 0). 요지: 경로 = 경량 · 범위 = 오르카 미설치 안내·기동 뒤 모델 확인·터미널 처분·템플릿 편집 범위/완료 증거 4건 · 워크트리·실패 표지·구조 채택 = 범위 밖(§7) · SKILL.md 상한 16KB · planless(4 수행, 5·6 생략) · spec 초안 작성 승인 |
+| 7 | 종료 검증 체크리스트 | 통과 | HEAD `a902970` — (1) `git log --oneline 7276774..HEAD` = `a902970` 1커밋 = 보고·표지 HEAD 일치 (2) `node --test tests/orchestrate/orchestrate.test.mjs` 54/54 · 훅 기준선(`env -u DEV_WORKFLOW_MODE`) 11/11·2/2 (3) AI 서명·트레일러 grep 0건 (4) diff = spec 신규 1파일 117행 — 트랙 진행 범위(spec 초안) 안 (5) 확인 대기 대장 — 그 트랙의 ledger 문서(spec)에 `확인 대기` 0행(ledger 아직 없음) |
+
+- HANDOFF: 미발생.
+- 판정: (i) 통과 → 트랙 종결. (ii) 미발생(위임 review-loop 미운영) — 첫 발생 시 기록. Windows 미실측.
 
 ## 확인 대기 대장
 
