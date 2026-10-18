@@ -33,9 +33,10 @@ awk '/^## 적대검증 ledger \(impl\)/{p=1;next} /^## /{p=0} p' $P | grep -E '^
 
 ```bash
 grep -c '| 확인 대기 |' docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md $P
+grep -hE '\| 번복 \(' docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md $P | grep -vcF '확인됨('
 ```
 
-`0`이 아니면 대기 행을 사용자(또는 오케스트레이터 경유)에게 묻고 닫은 뒤 진행한다 — 「번복」이 있으면 이 단계는 미완료(D42: 수정 → 새 세션 확인 라운드 1회 → 릴리스).
+첫 줄(파일별 `확인 대기` 행 수)이 `0`이 아니면 대기 행을 사용자(또는 오케스트레이터 경유)에게 묻고 닫은 뒤 진행한다 — 「번복」이 나오면 이 단계는 미완료(D42: 수정 → 새 세션 확인 라운드 1회 → 릴리스). **둘째 줄(소멸 확인 `· 확인됨(<라운드>)`이 아직 없는 번복 행 수)은 `0`이어야 한다** — 1 이상이면 버전을 올리지 말고 멈춘다: 번복 수정이 새 세션 확인 라운드(최종 HEAD 대상)에서 소멸 확인되고 그 행에 `· 확인됨(<라운드>)`이 붙은 뒤에만 릴리스한다(중단 뒤 재개한 세션이 impl 종결 행만 보고 미확인 수정을 배포하는 경로 차단 — plan ledger R3-2).
 
 ### 3. 게이트 ③ — 테스트·회귀·문면 (SC-4 전부)
 
@@ -66,7 +67,7 @@ git diff -- dev-workflow/.claude-plugin/plugin.json | grep -c '^[-+] '
 
 ```bash
 git add dev-workflow/.claude-plugin/plugin.json
-git commit -m "release: 1.2.0 — orchestrate 스킬(메인 세션 트랙 운영 공통 절차 + orchestrate.mjs watch·alive·key + 트랙 프롬프트 템플릿) · 위임 모드 효과 2(review-loop 위험군 외 추천 자동 채택·감사 동격·확인 대기 대장, dev-cycle 확인 불가 신호 ②); 게이트 impl 종결 행 1 · 테스트 24/24 · 기준선 11/11·2/2 · 훅 무변경 · \$N 0"
+git commit -m "release: 1.2.0 — orchestrate 스킬(메인 세션 트랙 운영 공통 절차 + orchestrate.mjs watch·alive·key + 트랙 프롬프트 템플릿) · 위임 모드 효과 2(review-loop 위험군 외 추천 자동 채택·감사 동격·확인 대기 대장, dev-cycle 확인 불가 신호 ②); 게이트 impl 종결 행 1 · 테스트 31/31 · 기준선 11/11·2/2 · 훅 무변경 · \$N 0"
 ```
 
 ### 6. no-AI-trace 확인
@@ -97,12 +98,13 @@ git commit -m "docs(spec,plan): 1.2.0 9 릴리스 완료 표기 — 다음 = pus
 
 ## Acceptance Criteria
 
-- 게이트 ①=`1` · ②=`0`(또는 닫힘) · ③ 기대 출력 전부 · 버전 `1.2.0` · no-AI-trace `0`.
+- 게이트 ①=`1` · ② `확인 대기` 0(또는 닫힘) · 확인 안 된 번복 행 `0` · ③ 기대 출력 전부 · 버전 `1.2.0` · no-AI-trace `0`.
 - 08행 `[x]` 커밋됨. push 0회.
 
 ## Cautions
 
 - **게이트 ①이 0이면 버전을 올리지 마라.** 이유: impl 적대검증(하한 3종 ③)을 거치지 않은 변경이 업데이트로 배포된다.
+- **impl 종결 행이 있어도 확인 안 된 번복 행이 남아 있으면 버전을 올리지 마라.** 이유: 단계 종료 대장 번복의 수정은 impl 종결 뒤에 생겨 그 루프의 확인을 받지 않았다 — D42의 새 세션 확인 1회가 소멸을 기록해야 한다.
 - **push하지 마라.** 이유: 공개 배포는 매번 사용자 확인(spec §3o ③ 라우팅표 4행) — 이 task는 로컬 릴리스 커밋까지.
 - **plugin.json의 version 외 키를 이 task에서 바꾸지 마라.** 이유: description은 task-07에서 impl 리뷰를 받았다(P2) — 릴리스 diff는 버전 1줄이어야 검증이 쉽다.
 - **이 task를 SDD progress ledger에 기록하지 마라.** 이유: SDD 실행 범위 밖 — 완료 권위 = 커밋된 task 표 + 이 AC(엔트리포인트 §SDD 밖 task).
