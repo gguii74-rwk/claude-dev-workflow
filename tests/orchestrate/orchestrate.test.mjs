@@ -217,7 +217,7 @@ test('AC3 watch: 표지가 마지막 줄이면 DONE이 QUESTION보다 우선', (
   assert.equal(r.first, 'DONE');
 });
 
-// ── AC3 표지 인정 조건 8건
+// ── AC3 표지 인정 조건 9건
 test('AC3 표지: 이전 DONE 줄 뒤 새 질문이 떠 있으면 QUESTION', () => {
   const lines = ['⏺ 단계 종료 보고', `  ${DONE_LINE}`, '', ...Q];
   const r = run('watch', ['term_t', '5', '--consumed', DONE_LINE], { read: [read(lines)], wait: [BUSY] });
@@ -250,6 +250,16 @@ test('AC3 표지: 닫히지 않은 인용 표지 아래 문장(공백 포함)은
   assert.equal(r.first, 'TIMEOUT');
 });
 
+test('AC3 표지: 아직 출력 중인 닫히지 않은 표지(`]` 없음)는 받지 않고 완성된 다음 화면에서 HANDOFF', () => {
+  const marker = '[TRACK-HANDOFF .remember/loop-x-spec.md]';
+  const partial = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', '  [TRACK-HANDOFF .remember/loop-']);
+  const done = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', `  ${marker}`]);
+  const r = run('watch', ['term_t', '5'], { read: [read(partial), read(done)], wait: [BUSY] });
+  assert.equal(r.first, 'HANDOFF');
+  assert.equal(r.out.split('\n')[1], marker);
+  assert.equal(r.calls.filter((c) => c[1] === 'read').length, 2);
+});
+
 test('AC3 표지: 본문 중간에 인용된 표지(마지막 줄 아님)는 DONE이 아니다', () => {
   const lines = box(['⏺ 예시 표지:', `  ${DONE_LINE}`, '  이건 인용이고 작업은 계속된다']);
   const r = run('watch', ['term_t', '0.3'], { read: [read(lines)], wait: [IDLE] });
@@ -267,7 +277,7 @@ test('AC3 표지: 감시 시작 전 도착한 미처리 표지(--consumed와 다
   assert.equal(r.calls.filter((c) => c[1] === 'read').length, 1);
 });
 
-// ── AC3 alive 11건
+// ── AC3 alive 12건
 test('AC3 alive: 연결 + 프롬프트 박스 → exit 0', () => {
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(A)] });
   assert.equal(r.code, 0);
@@ -294,6 +304,12 @@ test('AC3 alive: 질문 창 문구 뒤에 셸 프롬프트가 남음(종료 안�
 
 test('AC3 alive: 프롬프트 박스·상태줄 뒤에 셸 프롬프트가 남음(종료 안내 없음) → exit 2(생존 아님)', () => {
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read([...A, 'wk@host claude-dev-workflow % '])] });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^UNREADABLE/);
+});
+
+test('AC3 alive: 프롬프트 박스·상태줄 뒤에 ❯로 끝나는 셸 프롬프트(pure·starship)가 남음 → exit 2(생존 아님)', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read([...A, 'claude-dev-workflow on main', '❯ '])] });
   assert.equal(r.code, 2);
   assert.match(r.first, /^UNREADABLE/);
 });
@@ -336,7 +352,7 @@ test('AC3 alive: stale 핸들 → exit 3', () => {
   assert.match(r.first, /^STALE/);
 });
 
-// ── AC3 key 6건
+// ── AC3 key 7건
 test('AC3 key: tab shift-tab enter text — 시퀀스·원문·environment 전달', () => {
   const raw = '$(touch /tmp/x) `id` "q"';
   const r = run('key', ['term_k', 'tab', 'shift-tab', 'enter', 'text', raw, '--environment', 'spark2-ts'], { show: [SHOW_OK], read: [read(Q)], send: [SENT] });
@@ -357,6 +373,13 @@ test('AC3 key: 전송 중간에 claude가 끝나면 나머지를 보내지 않�
   assert.equal(r.code, 2);
   assert.match(r.first, /^ERR 전송 중단 — 1\/3/);
   assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
+});
+
+test('AC3 key: 프롬프트 박스·상태줄 뒤에 ➜로 시작하는 셸 프롬프트(oh-my-zsh)가 남은 화면이면 하나도 보내지 않고 exit 2', () => {
+  const r = run('key', ['term_k', 'text', 'yes', 'enter'], { show: [SHOW_OK], read: [read([...A, '➜  claude-dev-workflow git:(main) ✗ '])], send: [SENT] });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR 전송 중단 — 0\/2/);
+  assert.equal(r.calls.filter((c) => c[1] === 'send').length, 0);
 });
 
 test('AC3 key: 키 사이에 질문 창이 권한 창으로 바뀌면 나머지를 보내지 않고 exit 2', () => {

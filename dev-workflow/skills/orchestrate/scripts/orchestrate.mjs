@@ -18,7 +18,8 @@ const OPTION_ROW_RE = /^❯\s*\d+\./;             // 창의 번호 선택 줄(�
 const SPINNER_PREFIXES = ['✻', '✶', '✳', '✢', '·', '✽', '*'];
 const RESPONSE_BULLETS = /^[\s⏺●]+/;            // 응답 첫 줄 글머리표 — 표지 비교 전에 뗀다
 const CLAUDE_EXIT_MARK = 'Resume this session with';
-const SHELL_PROMPT_RE = /[%$#>]\s*$/;
+const SHELL_PROMPT_RE = /[%$#>❯]\s*$/;            // 끝 문자 — ❯ = pure·starship 등(impl R3-1)
+const SHELL_PROMPT_START_RE = /^\s*➜/;           // 첫 문자 — oh-my-zsh 기본 테마(impl R3-1)
 const HUD_MARK = '│';                           // 박스 아래 상태줄(HUD) 구분자 — 같은 끝 문자(%)를 쓰는 셸 프롬프트와 가른다
 const STALE_CODE = 'terminal_handle_stale';
 const TIMEOUT_CODE = 'timeout';
@@ -133,32 +134,32 @@ function inputElements(lines) {
 
 // 셸 프롬프트 모양 = 끝 문자 + HUD 구분자 없음 — 같은 끝 문자(%)를 쓰는 상태줄(HUD)을 셸로 보지 않는다(R2-1). 박스·창·종료 판정 공용
 function isShellPrompt(line) {
-  return SHELL_PROMPT_RE.test(line) && !line.includes(HUD_MARK);
+  return (SHELL_PROMPT_RE.test(line) || SHELL_PROMPT_START_RE.test(line)) && !line.includes(HUD_MARK);
 }
 
 // 화면 폭에서 접힌 긴 표지(경로) — Claude Code는 줄을 직접 끊어 그려 오르카의 줄바꿈 표시(tailRows.wrapped)가 서지 않는다(impl R2-1).
-// 표지 줄(닫는 `]` 없음) 아래 공백 없는 이어진 줄(최대 WRAP_ROWS)을 붙여 `]`로 끝날 때만 한 표지로 본다
-function lastMarkerLine(body) {
+// 표지 줄(닫는 `]` 없음) 아래 공백 없는 이어진 줄(최대 WRAP_ROWS)을 붙여 `]`로 끝날 때만 한 표지로 본다.
+// 표지는 닫힌 것만(`]`로 끝나고 접두 뒤 내용 있음) — 아직 출력 중인 표지를 받으면 응답 중인 세션을 끝내거나 잘린 경로로 재개한다(impl R3-2). 없으면 null
+function lastMarker(body) {
   const { line, index } = lastNonEmpty(body);
   const last = normalizeMarker(line);
   const isHead = (s) => s.startsWith(DONE_MARK) || s.startsWith(HANDOFF_MARK);
-  if (isHead(last)) return last;
+  const closed = (s) => (s.endsWith(']') && s.slice(s.indexOf(' ') + 1, -1).trim() ? s : null);
+  if (isHead(last)) return closed(last);
   for (let i = index - 1; i >= 0 && index - i <= WRAP_ROWS; i--) {
     const head = normalizeMarker(body[i]);
     if (!isHead(head)) continue;
     const rest = body.slice(i + 1, index + 1).map((l) => l.trim());
-    if (head.includes(']') || rest.some((r) => !r || /\s/.test(r) || isHead(r))) return last;
-    const joined = head + rest.join('');
-    return joined.endsWith(']') ? joined : last;
+    if (head.includes(']') || rest.some((r) => !r || /\s/.test(r) || isHead(r))) return null;
+    return closed(head + rest.join(''));
   }
-  return last;
+  return null;
 }
 
 // 표지는 본문의 마지막 비어 있지 않은 줄일 때만 인정(접힌 표지는 이어 붙인 한 줄) · --consumed와 같은 표지는 본문이 바뀌기 전까지 소비된 것(D41)
 function classify(lines, consumed, changed) {
-  const last = lastMarkerLine(bodyLines(lines));
-  const isMarker = last.startsWith(DONE_MARK) || last.startsWith(HANDOFF_MARK);
-  if (isMarker && !(consumed !== null && last === normalizeMarker(consumed) && !changed)) {
+  const last = lastMarker(bodyLines(lines));
+  if (last && !(consumed !== null && last === normalizeMarker(consumed) && !changed)) {
     return { verdict: last.startsWith(DONE_MARK) ? 'DONE' : 'HANDOFF', marker: last };
   }
   // 질문·권한 = 열린 창(맨 아래 창 문구가 박스보다 아래)의 종류 — alive와 같은 공용 헬퍼. 화면 전체에서 질문 문구를 먼저 찾으면 본문 인용 아래 실제 권한 창이 QUESTION이 된다(D23)
