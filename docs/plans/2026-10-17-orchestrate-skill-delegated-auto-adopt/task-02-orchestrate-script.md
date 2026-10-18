@@ -1,6 +1,6 @@
 # task-02 — orchestrate.mjs 구현 (GREEN) (spec §3w · AC2·AC3·AC4)
 
-**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 50건을 통과시킨다.
+**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 52건을 통과시킨다.
 
 ## Files
 
@@ -26,7 +26,7 @@
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 50 · pass 0 · fail 50.
+기대: tests 52 · pass 0 · fail 52.
 
 ### 2. 스크립트 작성
 
@@ -268,18 +268,21 @@ function alive(handle, env) {
   const dialog = el.dialogIdx >= 0 && !shellAfter(el.dialogIdx);
   // 화면 종류 = key가 묶음 전송 중 변화를 잡는 기준(R2-2)
   const kind = box ? '프롬프트 박스' : el.dialogKind === 'PERMISSION' ? '권한 창' : '질문 창';
-  if ((box || dialog) && !exitMarked) return [0, `ALIVE claude 입력 상태(${kind})`, kind];
+  // 창 내용 식별값 = 창 문구 줄까지(그 아래 상태줄 제외) − 스피너 줄, 선택 표시 ❯·앞 공백 무시 — 같은 종류의 다른 질문으로 바뀐 것을 key가 잡는다(impl R4-1)
+  const content = box ? null : hash(lines.slice(0, el.dialogIdx + 1).filter((l) => !SPINNER_PREFIXES.some((p) => l.trimStart().startsWith(p))).map((l) => l.replace(/^[\s❯]+/, '')));
+  if ((box || dialog) && !exitMarked) return [0, `ALIVE claude 입력 상태(${kind})`, kind, content];
   return [2, 'UNREADABLE 생존·종료 어느 쪽도 확정할 수 없다 — 종료로 보지 않는다'];
 }
 
 async function key(handle, keys, env) {
   let sent = 0;
   let firstKind = null;
+  let base = null; // 창 내용 기준 — tab·shift-tab·enter(의도된 이동·제출) 뒤 다음 키에서 새로 잡는다
   for (const k of keys) {
     // 키마다 전송 직전 생존 확인(spec §3o ③(a)) — 묶음 키 사이에 claude가 끝나면 나머지가 셸로 들어간다
-    let code, line, kind;
+    let code, line, kind, content;
     try {
-      [code, line, kind] = alive(handle, env);
+      [code, line, kind, content] = alive(handle, env);
     } catch (e) {
       if (!(e instanceof Fail)) throw e;
       [code, line] = [2, `ERR ${e.message}`];
@@ -288,6 +291,9 @@ async function key(handle, keys, env) {
     // 첫 키 때의 화면 종류가 바뀌면 멈춘다 — 사용자가 직접 답해 다음 창(권한 창 등)이 떴을 수 있다(D16·D23)
     firstKind ??= kind;
     if (kind !== firstKind) throw new Fail(`전송 중단 — ${sent}/${keys.length}개 보낸 뒤 화면 종류가 바뀌었다(${firstKind} → ${kind}) — 화면을 다시 읽고 판단하라`);
+    // 같은 종류라도 창 내용이 바뀌면 멈춘다 — 사용자가 직접 답해 다음 질문(감사 이의 등 사람 몫)이 떴을 수 있다(impl R4-1)
+    base ??= content;
+    if (content !== base) throw new Fail(`전송 중단 — ${sent}/${keys.length}개 보낸 뒤 창 내용이 바뀌었다(같은 ${kind}) — 화면을 다시 읽고 판단하라`);
     const args = ['terminal', 'send', '--terminal', handle];
     if (k.text !== undefined) args.push('--text', k.text); // argv 직접 전달 — 셸 보간 없음
     else if (k.name === 'enter') args.push('--enter');
@@ -295,6 +301,7 @@ async function key(handle, keys, env) {
     const res = orca(env, args);
     if (res.result?.send?.accepted !== true) throw new Fail(`키 전송이 수락되지 않았다(${k.name ?? 'text'}): ${res.error?.code ?? formatFail('result.send.accepted')}`);
     sent++;
+    if (k.name === 'tab' || k.name === 'shift-tab' || k.name === 'enter') base = null;
     await sleep(KEY_GAP_MS);
   }
   process.stdout.write(`SENT ${keys.length}\n`);
@@ -352,7 +359,7 @@ node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs && echo CHE
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `CHECK_OK` · tests 50 · pass 50 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
+기대: `CHECK_OK` · tests 52 · pass 52 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
 
 ### 4. 회귀 확인
 
@@ -368,12 +375,12 @@ git diff 151d9f0 -- dev-workflow/hooks | wc -l
 
 ```bash
 git add dev-workflow/skills/orchestrate/scripts/orchestrate.mjs
-git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 — 본문 경계 = 실제 입력 상자일 때만 · 접힌 표지 이어 붙임 · 닫힌 표지만 · --consumed 소비 D41 · 질문/권한 = 맨 아래 창 문구(alive와 공용 헬퍼) · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트(끝 % $ # > ❯ · 첫 ➜)면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR), 응답 루트·예기치 않은 예외 = ERR exit 2; 테스트 50/50(spec §3w·AC2·AC3)"
+git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 — 본문 경계 = 실제 입력 상자일 때만 · 접힌 표지 이어 붙임 · 닫힌 표지만 · --consumed 소비 D41 · 질문/권한 = 맨 아래 창 문구(alive와 공용 헬퍼) · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트(끝 % $ # > ❯ · 첫 ➜)면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준)·창 내용(tab·shift-tab·enter 뒤 기준 갱신) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR), 응답 루트·예기치 않은 예외 = ERR exit 2; 테스트 52/52(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 50 · pass 50 · fail 0 (AC2·AC3).
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 52 · pass 52 · fail 0 (AC2·AC3).
 - `node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → exit 0 (AC4 일부).
 - `grep -c "shell: true" dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → `0` (셸 보간 없음).
 - 상수 자리: `grep -nE "^const (DONE_MARK|HANDOFF_MARK|QUESTION_PATTERNS|PERMISSION_PATTERNS|CLAUDE_EXIT_MARK|SHELL_PROMPT_RE|HUD_MARK) " dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → 7줄 (검증 필요(실측) 문자열의 갱신 자리 1곳 — spec 잔여 리스크 (1)(2)).

@@ -352,7 +352,7 @@ test('AC3 alive: stale 핸들 → exit 3', () => {
   assert.match(r.first, /^STALE/);
 });
 
-// ── AC3 key 7건
+// ── AC3 key 9건
 test('AC3 key: tab shift-tab enter text — 시퀀스·원문·environment 전달', () => {
   const raw = '$(touch /tmp/x) `id` "q"';
   const r = run('key', ['term_k', 'tab', 'shift-tab', 'enter', 'text', raw, '--environment', 'spark2-ts'], { show: [SHOW_OK], read: [read(Q)], send: [SENT] });
@@ -380,6 +380,21 @@ test('AC3 key: 프롬프트 박스·상태줄 뒤에 ➜로 시작하는 셸 프
   assert.equal(r.code, 2);
   assert.match(r.first, /^ERR 전송 중단 — 0\/2/);
   assert.equal(r.calls.filter((c) => c[1] === 'send').length, 0);
+});
+
+test('AC3 key: 키 사이에 같은 종류의 다른 질문(사용자 직접 응답 뒤 감사 이의 등)으로 바뀌면 나머지를 보내지 않고 exit 2', () => {
+  const Q2 = ['⏺ 질문이 있습니다', '', ' [감사 이의] R3-2 판정을 다시 고르세요', '❯ 1. 루프 판정 유지 (추천)', '  2. 번복', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
+  const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read([...Q, '  [Opus 5.5] │ Context 17%']), read([...Q2, '  [Opus 5.5] │ Context 18%'])], send: [SENT] });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR 전송 중단 — 1\/2/);
+  assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
+});
+
+test('AC3 key: 같은 질문에서 선택 표시(❯)만 움직이고 상태줄이 바뀌는 것은 계속 보낸다', () => {
+  const Qd = ['⏺ 질문이 있습니다', '', ' 판정 방식을 고르세요', '  1. 지금 고친다 (추천)', '❯ 2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
+  const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read([...Q, '  [Opus 5.5] │ Context 17%']), read([...Qd, '  [Opus 5.5] │ Context 18%'])], send: [SENT] });
+  assert.equal(r.code, 0);
+  assert.equal(r.first, 'SENT 2');
 });
 
 test('AC3 key: 키 사이에 질문 창이 권한 창으로 바뀌면 나머지를 보내지 않고 exit 2', () => {

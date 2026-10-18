@@ -92,7 +92,7 @@
 
 | 약칭 | 경로 | 이 plan에서 바꾸는 것 | task |
 |---|---|---|---|
-| 테스트 | `tests/orchestrate/orchestrate.test.mjs` (repo 루트 — 설치본 밖, M15) | 신규 50건 | 01 |
+| 테스트 | `tests/orchestrate/orchestrate.test.mjs` (repo 루트 — 설치본 밖, M15) | 신규 52건 | 01 |
 | 스크립트 | `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` | 신규 | 02 |
 | 템플릿 | `dev-workflow/skills/orchestrate/templates/track-prompt.md` | 신규 | 03 |
 | OS | `dev-workflow/skills/orchestrate/SKILL.md` | 신규(≤ 15,360B) | 04 |
@@ -112,7 +112,7 @@
   - 본문 = 끝에서 둘째 `────` 구분선(프롬프트 박스 윗선) 위 줄들(박스 없으면 전체) − 스피너 줄(`✻ ✶ ✳ ✢ · ✽ *` 시작). 박스 = `inputElements()`의 실제 입력 상자(마지막 두 구분선 사이 `❯` 입력 줄 — 번호 선택 줄 제외, 열린 창 아님)일 때만 — 구분선 사이에 그려진 열린 창을 경계로 자르면 그 위 표지가 DONE/HANDOFF로 읽힌다(impl R1-1 사용자 판정).
   - 우선순위: 표지(본문의 **마지막 비어 있지 않은 줄**이 `[TRACK-DONE `/`[TRACK-HANDOFF `로 시작 — 화면 폭에서 접힌 표지는 닫는 `]` 없는 표지 줄 아래 공백 없는 이어진 줄(최대 `WRAP_ROWS` 3)을 붙여 `]`로 끝날 때 한 줄로 본다(Claude Code는 줄을 직접 끊어 그려 오르카 `tailRows.wrapped`가 서지 않는다 — impl R2-1 사용자 판정) · 표지는 닫힌 것만(`]`로 끝나고 접두 뒤 내용 있음 — 아직 출력 중인 표지는 받지 않는다, impl R3-2 사용자 판정) · 단 `--consumed`와 같고 본문이 시작값에서 안 바뀌었으면 소비됨, D41) > `QUESTION`·`PERMISSION` = 화면 **맨 아래** 창 문구 줄의 종류(QUESTION 「Enter to select」 또는 「to navigate」 · PERMISSION 「could not be checked」·「Do you want to 」(proceed·make this edit·create·overwrite·allow 권한 창 전체)·「Yes, and don't ask again」·「Yes, allow 」 — 한 줄에 둘 다면 권한; 위의 문구는 본문 인용 · 그 문구가 프롬프트 박스(마지막 두 구분선 사이 `❯` 입력 줄 — 번호 선택 줄 `❯ 1.` 제외) 윗선보다 위면 열린 창이 아니라 인용, 박스 안·아래면 열린 창(권한 창은 닫힌 쪽으로) — `alive` 창 종류와 같은 규칙·공용 헬퍼 `inputElements()`, 7 impl 사전 점검 F3 사용자 판정 · 최종 리뷰 Important 2 · 보안 리뷰 지적) > `SETTLED`(본문 해시가 시작값에서 **바뀐 뒤** 직전 읽기와 같고 idle 만족) > `TIMEOUT`.
 - **`alive <핸들>`**: stdout 1줄. `ALIVE …` exit 0(연결·쓰기 가능 + 화면에 프롬프트 박스(마지막 두 구분선 사이 `❯` 입력 줄 — 번호 선택 줄 제외) 또는 질문·권한 창(창 문구가 박스 윗선보다 위면 본문 인용, 아니면 열린 창) + 맨 아래 입력 요소 아래 종료 표지 없음 — 입력 요소 뒤 마지막 줄이 셸 프롬프트 모양이면 제외; 셸 프롬프트 모양 = 끝 문자 `/[%$#>❯]\s*$/` 또는 첫 문자 `➜`(pure·starship·oh-my-zsh — impl R3-1 사용자 판정) + HUD 구분자 `│` 없음(박스·창·종료 판정 공용 `isShellPrompt()`), R1-1·R1-3·R2-1·최종 리뷰 Important 1) · `EXITED …` exit 1(미연결·고아, 또는 맨 아래 입력 요소(마지막 구분선·열린 창 문구) **아래**에 「Resume this session with」 + 그 뒤 마지막 줄이 셸 프롬프트 모양 — 그 위의 종료 문구는 본문 인용, 최종 리뷰 Important 1) · `UNREADABLE … 종료로 보지 않는다` exit 2(쓰기 불가 · 어느 쪽도 확정 불가) · `STALE …` exit 3(`terminal_handle_stale`) · `ERR …` exit 2.
-- **`key <핸들> <키…>`**: 키 = `enter`(`--enter` 플래그) · `tab`(`\t`) · `shift-tab`(`\x1b[Z`) · `up`(`\x1b[A`) · `down`(`\x1b[B`) · `text <문자열>`(`--text <원문>` — argv 직접, 셸 보간 없음). 키마다 `alive` 판정 0 + 화면 종류(프롬프트 박스·질문 창·권한 창 — 종류 = 화면 맨 아래 입력 요소: 창 문구가 박스 아래 구분선보다 아래면 창, R3-1·R4-1)가 첫 키 때와 같음 확인(아니면 `ERR 전송 중단 — <보낸 수>/<전체>개 …` exit 2, 나머지 미전송 — R1-2·R2-2) → `terminal send` 1회 + 300ms 간격, 영수증 `result.send.accepted !== true`면 `ERR` exit 2. 성공 = `SENT <n>` exit 0.
+- **`key <핸들> <키…>`**: 키 = `enter`(`--enter` 플래그) · `tab`(`\t`) · `shift-tab`(`\x1b[Z`) · `up`(`\x1b[A`) · `down`(`\x1b[B`) · `text <문자열>`(`--text <원문>` — argv 직접, 셸 보간 없음). 키마다 `alive` 판정 0 + 화면 종류(프롬프트 박스·질문 창·권한 창 — 종류 = 화면 맨 아래 입력 요소: 창 문구가 박스 아래 구분선보다 아래면 창, R3-1·R4-1)가 첫 키 때와 같음 확인 + 창(질문·권한)이면 창 내용(창 문구 줄까지 − 스피너 줄, 선택 표시 `❯`·앞 공백 무시)도 기준과 같음 확인 — 기준은 첫 키, `tab`·`shift-tab`·`enter`(의도된 이동·제출) 뒤에는 다음 키에서 새로 잡는다(같은 종류의 다른 질문으로 바뀐 것 — impl R4-1 사용자 판정)(아니면 `ERR 전송 중단 — <보낸 수>/<전체>개 …` exit 2, 나머지 미전송 — R1-2·R2-2) → `terminal send` 1회 + 300ms 간격, 영수증 `result.send.accepted !== true`면 `ERR` exit 2. 성공 = `SENT <n>` exit 0.
 - **자가 점검 메시지**: 응답 루트가 객체가 아니거나(`null` 등) 의존 필드(`result.terminal.tail` 배열 · `result.wait.satisfied` boolean(또는 `error.code` `timeout`) · `result.terminal.connected`/`writable`/`orphaned` boolean)가 없거나 JSON 파싱 실패 → `ERR orca 응답 형식이 스크립트와 다릅니다 — \`orca skills get orca-cli\`를 참조해 scripts/orchestrate.mjs의 필드명을 갱신하세요(필드: <누락 필드>)`. 화면 출처 `source`가 `screen`이 아니면 → `ERR 렌더링 화면을 읽지 못했다(source=<값|없음>) — 종료로 보지 않는다`.
 - 환경변수 `ORCHESTRATE_INTERVAL_MS`·`ORCHESTRATE_CALL_TIMEOUT_MS` = **테스트 전용** 감시 간격·호출 상한(테스트는 20ms·3000ms). 운영 문서에 쓰지 않는다.
 
@@ -126,7 +126,7 @@
 ### SC-4. 게이트 명령 (repo에 npm 게이트 없음 — review-loop(impl) §1 impl 게이트는 이 묶음으로 갈음)
 
 ```bash
-node --test tests/orchestrate/orchestrate.test.mjs                       # T1 — 50/50 (폴더 인자 금지, P1)
+node --test tests/orchestrate/orchestrate.test.mjs                       # T1 — 52/52 (폴더 인자 금지, P1)
 node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs     # T2
 env -u DEV_WORKFLOW_MODE HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs      # T3a — 11/11
 env -u DEV_WORKFLOW_MODE HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.1.0/context-threshold-hook.mode.test.mjs # T3b — 2/2
@@ -148,7 +148,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 01 | orchestrate.mjs 계약 테스트 50건 (RED) | [x] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | `a7c37d0` 테스트 37건 RED(0/37) · 기준선 11/11·2/2 · 리뷰 승인(minor 3 이월) |
+| 01 | orchestrate.mjs 계약 테스트 52건 (RED) | [x] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | `a7c37d0` 테스트 37건 RED(0/37) · 기준선 11/11·2/2 · 리뷰 승인(minor 3 이월) |
 | 02 | orchestrate.mjs watch·alive·key (GREEN) | [x] | [task-02](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-02-orchestrate-script.md) | 01 | `e85a92c` 스크립트 · 리뷰 fix 1회 `dbd59c5`(사용자 판정 — 권한 문구 `Do you want to `·`Yes, allow `, 테스트 38) · `6976fc2` plan·spec 38 정합 · GREEN 38/38 · 기준선 11/11·2/2 · hooks diff 0 · minor 7 이월 |
 | 03 | 트랙 프롬프트 템플릿 | [x] | [task-03](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-03-track-prompt-template.md) | — | `4e987b8` 템플릿(필수 9항목·고정 절) · 검증 bash·zsh 동일 · `$N` 0 · 리뷰 승인(minor 2 이월) |
 | 04 | orchestrate SKILL.md | [x] | [task-04](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-04-orchestrate-skill-md.md) | 02, 03 | `a960117` SKILL.md · 리뷰 fix 1회 `0df3076`(사용자 판정 — 후계·복구 기동 = 원래 기동 명령(접두·권한 플래그·`--model`)) · `c23de6d` task-04·spec §3o·AC1 정합 · 15,313B · AC1·AC4 bash·zsh 통과 · minor 5 이월 |

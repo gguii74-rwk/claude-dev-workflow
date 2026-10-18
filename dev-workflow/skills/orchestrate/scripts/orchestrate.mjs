@@ -233,18 +233,21 @@ function alive(handle, env) {
   const dialog = el.dialogIdx >= 0 && !shellAfter(el.dialogIdx);
   // 화면 종류 = key가 묶음 전송 중 변화를 잡는 기준(R2-2)
   const kind = box ? '프롬프트 박스' : el.dialogKind === 'PERMISSION' ? '권한 창' : '질문 창';
-  if ((box || dialog) && !exitMarked) return [0, `ALIVE claude 입력 상태(${kind})`, kind];
+  // 창 내용 식별값 = 창 문구 줄까지(그 아래 상태줄 제외) − 스피너 줄, 선택 표시 ❯·앞 공백 무시 — 같은 종류의 다른 질문으로 바뀐 것을 key가 잡는다(impl R4-1)
+  const content = box ? null : hash(lines.slice(0, el.dialogIdx + 1).filter((l) => !SPINNER_PREFIXES.some((p) => l.trimStart().startsWith(p))).map((l) => l.replace(/^[\s❯]+/, '')));
+  if ((box || dialog) && !exitMarked) return [0, `ALIVE claude 입력 상태(${kind})`, kind, content];
   return [2, 'UNREADABLE 생존·종료 어느 쪽도 확정할 수 없다 — 종료로 보지 않는다'];
 }
 
 async function key(handle, keys, env) {
   let sent = 0;
   let firstKind = null;
+  let base = null; // 창 내용 기준 — tab·shift-tab·enter(의도된 이동·제출) 뒤 다음 키에서 새로 잡는다
   for (const k of keys) {
     // 키마다 전송 직전 생존 확인(spec §3o ③(a)) — 묶음 키 사이에 claude가 끝나면 나머지가 셸로 들어간다
-    let code, line, kind;
+    let code, line, kind, content;
     try {
-      [code, line, kind] = alive(handle, env);
+      [code, line, kind, content] = alive(handle, env);
     } catch (e) {
       if (!(e instanceof Fail)) throw e;
       [code, line] = [2, `ERR ${e.message}`];
@@ -253,6 +256,9 @@ async function key(handle, keys, env) {
     // 첫 키 때의 화면 종류가 바뀌면 멈춘다 — 사용자가 직접 답해 다음 창(권한 창 등)이 떴을 수 있다(D16·D23)
     firstKind ??= kind;
     if (kind !== firstKind) throw new Fail(`전송 중단 — ${sent}/${keys.length}개 보낸 뒤 화면 종류가 바뀌었다(${firstKind} → ${kind}) — 화면을 다시 읽고 판단하라`);
+    // 같은 종류라도 창 내용이 바뀌면 멈춘다 — 사용자가 직접 답해 다음 질문(감사 이의 등 사람 몫)이 떴을 수 있다(impl R4-1)
+    base ??= content;
+    if (content !== base) throw new Fail(`전송 중단 — ${sent}/${keys.length}개 보낸 뒤 창 내용이 바뀌었다(같은 ${kind}) — 화면을 다시 읽고 판단하라`);
     const args = ['terminal', 'send', '--terminal', handle];
     if (k.text !== undefined) args.push('--text', k.text); // argv 직접 전달 — 셸 보간 없음
     else if (k.name === 'enter') args.push('--enter');
@@ -260,6 +266,7 @@ async function key(handle, keys, env) {
     const res = orca(env, args);
     if (res.result?.send?.accepted !== true) throw new Fail(`키 전송이 수락되지 않았다(${k.name ?? 'text'}): ${res.error?.code ?? formatFail('result.send.accepted')}`);
     sent++;
+    if (k.name === 'tab' || k.name === 'shift-tab' || k.name === 'enter') base = null;
     await sleep(KEY_GAP_MS);
   }
   process.stdout.write(`SENT ${keys.length}\n`);
