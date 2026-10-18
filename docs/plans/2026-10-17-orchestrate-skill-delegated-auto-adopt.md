@@ -179,6 +179,7 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 | R2 | 적대·자동 | `27b13c4` | 0/2/1 (신규 3 — 전부 R1 계열 2회째/잔존 0) — R1 FIXED 5건 적대 비재출현(R2), 큐 유지 | 7 | 5 → 7 | needs-attention |
 | R3 | 적대·자동 | `7eafe16` | 0/1/2 (신규 2 = R3-1(R2-2 계열 3회째)·R3-2 / 잔존 1 = R3-3 → R2-3 재지목) — R1·R2 FIXED 7건 적대 비재출현(R3), 큐 유지 | 5 | 7 → 10 | needs-attention |
 | R4 | 적대·정밀 | `62423d2` | 0/1/1 (신규 2 = R4-1(화면 판독 계열 4회째)·R4-2 / 잔존 0) — 큐 10건 적대 비재출현(R4), 큐 유지 | 4 | 10 → 12 | needs-attention |
+| R5 | 적대·정밀 | `35474d8` | 0/0/1 (신규 1/잔존 0) — 큐 12건 적대 비재출현(R5), 큐 유지 | 1 | 12 → 13 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -194,6 +195,7 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 | R3-3 | task-02 orca() · SIGTERM 무시 CLI면 호출 상한 무력(ledger R2-3과 동일 — codex 스스로 명시) | medium | DUPLICATE → R2-3 `[루프 판정]` | 원 지적·권고 동일(R2-3 batch-pending 중 재지목) · 원 disposition = R2-3(batch R3 뒤 사용자 판정 FIXED `ec6ecf3`) — 확인 임무 ③ 우선 감사 대상(오매칭 여부만) |
 | R4-1 | task-02 alive 박스 우선 분기 · 본문에 인용된 `──── / ❯ / ────` 박스가 아래 실제 질문·권한 창을 가려 종류 = 항상 박스 → 질문→권한 전환을 못 잡고 enter 전송 · 박스·창 문구 위치 비교로 아래 활성 요소가 종류 결정 + 회귀 테스트 | high | FIXED `b243093` (사용자 — 즉시 ESCALATE 닫음) | **화면 판독 우회 계열 4회째**(R1-1→R2-1→R3-1→R4-1) + 권한 경계(D23) → 즉시 ESCALATE. 사용자 판정 = 추천안 「더 아래 요소로 정한다」: 창 문구가 마지막 구분선보다 아래면 박스 = 본문 인용(R3-1과 같은 「활성 요소 = 맨 아래」 원리) · 테스트 +1 · 「창에는 키 하나씩」·ACCEPTED 대안 기각, 남은 우회는 AC9 실측 몫 · SC-2·spec §3w·AC3 |
 | R4-2 | task-04 메인 라우팅표 · task-07 README 3종 · 위험군에서 비목표 변경 누락 → 트랙이 올린 비목표 변경 질문을 메인이 「그 외」로 대리 채택 · 라우팅표·README에 비목표 명시, task-05 정의와 일치 | medium | FIXED `b976655` | D10(위험군 = …AC·목표·**비목표**·D블록 변경) 문면 정합 · 라우팅표 「AC·목표·비목표·D블록 변경 · 애매하면 변경으로」(애매함 처리는 기존 문구) · README EN·KO·JA 각 2곳 · SKILL.md 15,220B · README 편집 단계 bash·zsh 적용 확인 |
+| R5-1 | task-02 orca()·main() · JSON `null` 응답이 자가 점검을 우회해 TypeError → 미처리 예외로 exit 1(= alive 「종료」) → `--resume` 중복 재개 · 루트가 객체인지 검증, 형식 이탈 = Fail(formatFail) + null 회귀 테스트(alive·watch) | medium | FIXED `c26e0d2` | 루트 객체 검사(null·숫자·배열 = `JSON 응답 객체` 누락 ERR) + main()이 예기치 않은 예외도 ERR exit 2(같은 계열 차단 — 어떤 실패도 exit 1 금지, Cautions) · 테스트 +2 · SC-2·spec AC2 |
 | R1-5 | 엔트리포인트 Task table · 08·09가 같은 표에 있어 dev-cycle 7단계(「task 표 완료 기록 전건」)가 01~07 완료 뒤에도 7 미완 판정 · 구현 범위만 완료 대상으로 | medium | FIXED `0de6f7b` | 권고안(dev-cycle 판별 수정)은 spec 범위 밖(dev-cycle 변경 = 위임 모드 5곳, D7) → plan 안 수정: 08·09행을 `## SDD 밖 task` 표로 분리(dev-cycle·convergence 대상 아님 명시) · task-08·09 참조 갱신 |
 
 - 부수 정정(같은 커밋): task-01 테스트 파일 머리 주석의 실행법 `node --test tests/orchestrate/` → 파일 지정(P1 정합).
@@ -202,7 +204,9 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 - batch 제시(적대 소진 3 = auto-rounds, 2026-10-18): R2-3 추천안 채택 + 같은 질문 묶음에 즉시군 R3-1 추천안 채택 → FIXED `ec6ecf3`, 진행 질문 = 「모두 유지하고 계속」(자동 수정 R1 `0de6f7b`·R3 `9c5ff38` 유지). 이후 정밀 모드.
 - R3 뒤 테스트 수 31 → 33(스크래치 클론 RED 0/33 → GREEN 33/33 ≈ 20초 · R2판 스크립트로 새 테스트 = 31 pass / 2 fail · 실행 뒤 고아 프로세스 0 — 앞선 검증에서 상한 없는 옛 스크립트가 남긴 옛 가짜 orca 1개는 정리).
 - R4 뒤 테스트 수 33 → 34(스크래치 클론 RED 0/34 → GREEN 34/34 · R3판 스크립트로 새 테스트 = 33 pass / 1 fail · 고아 0).
-- 미확인 FIXED 큐(12): R1-1 · R1-2 · R1-3 · R1-4 · R1-5(`0de6f7b`) · R2-1 · R2-2(`be73cc8`) · R3-2(`9c5ff38`) · R2-3 · R3-1(`ec6ecf3`) · R4-2(`b976655`) · R4-1(`b243093`).
+- R5 뒤 테스트 수 34 → 36(스크래치 클론 RED 0/36 → GREEN 36/36 · R4판 스크립트로 새 테스트 = 34 pass / 2 fail · 고아 0) · 훅 기준선(`env -u DEV_WORKFLOW_MODE`) 11/11 · 2/2 · `git diff 151d9f0 -- dev-workflow/hooks` 0줄.
+- 미확인 FIXED 큐(13): R1-1 · R1-2 · R1-3 · R1-4 · R1-5(`0de6f7b`) · R2-1 · R2-2(`be73cc8`) · R3-2(`9c5ff38`) · R2-3 · R3-1(`ec6ecf3`) · R4-2(`b976655`) · R4-1(`b243093`) · R5-1(`c26e0d2`).
+- 전환: R5 응답으로 적대 소진 5 = max → 전환 신호 3(적대 예산 소진). batch 적재 0건 → 확인 모드 진입(C1, 확인 예산 2).
 - 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): R3-3 DUPLICATE(→ R2-3) — 확인 임무 ③ 우선 감사 대상(다음 적대 focus에 `[루프 판정]`으로 실음). batch-pending ESCALATE: 없음.
 
 ## 확인 대기 대장
