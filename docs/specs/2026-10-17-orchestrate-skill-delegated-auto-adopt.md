@@ -198,6 +198,7 @@
 - ops-hub `orca-worktree-ops`·CLAUDE.md에서 공통 절차 부분을 플러그인 스킬 포인터로 치환(repo 밖, 9단계 안내).
 - 다중 트랙 조율(우선순위·의존) · 대장 비대 규칙 · 메인 컨텍스트 절약 규칙 — 실측 뒤 필요하면(H12·H14·H20).
 - Windows 오르카에서 스크립트·접두·`--session-id` 생성 실측(첫 Windows 위임 사용 때).
+- → 1.2.1 트랙 `docs/specs/2026-10-18-orchestrate-followup-small-borrowings.md`(분량 상한 17KB로 갱신 — AC1 「≤ 15KB」 대체).
 
 ## 잔여 리스크 (DEFERRED)
 
