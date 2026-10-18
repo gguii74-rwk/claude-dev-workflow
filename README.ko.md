@@ -13,6 +13,7 @@
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (옵션, 3.5단계) 굳은 spec이 화면을 만들거나 구성을 바꿀 때: 비실행 HTML 목업을 발산해 사용자가 고르고, UI 결정을 spec에 기결정으로 기록 |
 | setup | skill | `/dev-workflow:setup` | (명시 요청 시) 이 repo의 CLAUDE.md에 파이프라인 규약 포인터를 멱등 삽입 |
 | doctor | skill | `/dev-workflow:doctor` | 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 컨텍스트 윈도)을 읽기 전용으로 일괄 진단하고, 조치는 기존 경로로 위임 |
+| orchestrate | skill | `/dev-workflow:orchestrate` | (1.2.0 이상) **메인 세션**이 트랙을 오르카 터미널로 운영하는 공통 절차 — 기동 · 감시 · 질문 라우팅 · 단계 종료 검증·핸드오프 · 후계 (프로젝트 규약 우선) |
 | 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%)를 넘으면 핸드오프 작성 + `/clear` 안내를 넛지하고, 이후 **15%p 구간마다 재넛지**(40 → 55 → 70 → 85%, 상한 없음) |
 
 ## 목차
@@ -27,7 +28,8 @@
   - [ui-mockup](#5-ui-mockup--ui-목업-선택)
   - [setup](#6-setup--repo에-파이프라인-채택)
   - [doctor](#7-doctor--환경-진단)
-  - [컨텍스트 임계 핸드오프 훅](#8-컨텍스트-임계-핸드오프-훅-자동)
+  - [orchestrate](#8-orchestrate--메인-세션의-트랙-운영)
+  - [컨텍스트 임계 핸드오프 훅](#9-컨텍스트-임계-핸드오프-훅-자동)
 - [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
 - [트러블슈팅](#트러블슈팅)
 - [주의](#주의)
@@ -100,7 +102,7 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 | `--base <ref>` | `main` | 적대검증이 비교하는 기준 브랜치(이 diff를 본다). 루프 시작 시 SHA로 해소해 모든 라운드가 같은 스냅샷을 본다 |
 | `--max <n>` | `5` | **적대(발굴) 라운드 상한.** 확인 라운드는 여기서 세지 않는다 |
 | `--confirm-rounds <n>` | `2` | **확인 라운드 예산.** 루프 전체 누적이며 재진입 시 초기화되지 않는다 |
-| `--auto-rounds <n>` | `3` | 초반 n회 **자동 모드** — 결함 자동수정 + 위험 없는 사용자 결정은 모아뒀다 한 번에 질문. `0`=매 라운드 즉시 질문, 보안 민감 작업은 `1` |
+| `--auto-rounds <n>` | `3` | 초반 n회 **자동 모드** — 결함 자동수정 + 위험 없는 사용자 결정은 모아뒀다 한 번에 질문. `0`=매 라운드 즉시 질문, 보안 민감 작업은 `1`. 위임 모드(1.2.0 이상)는 batch 답을 트랙이 낸다 — 위험군만 사람에게 |
 | `--security yes\|no` | — | (1.1.0 이상) **보안 크리티컬 트랙 판정을 미리 넘긴다** — 사용자(또는 오케스트레이터)가 이미 내린 판정을 넘길 때 쓴다. 있으면 루프가 묻지 않고 그 값으로 확정해 ledger 첫 줄·종료 요약에 출처 「호출자 지정」으로 기록한다. 생략하면 접촉면을 보고 필요 시 1회 묻는다. 세션 모드와 무관. `yes`면 `--auto-rounds 1` 병기 권고 |
 | `--resume` | — | 중단된 루프를 `.remember/loop-*.md`의 저장 상태(ledger 포함)에서 재개 |
 
@@ -191,7 +193,25 @@ brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에*
 
 루프 실행 중의 codex 실패는 `review-loop` 소관이라 doctor가 끼지 않고, "왜 안 돼" 같은 막연한 실패 문장이나 **다른 제품 문맥**("playwright 플러그인 최신인가")에도 뜨지 않는다.
 
-### 8. 컨텍스트 임계 핸드오프 훅 (자동)
+### 8. `orchestrate` — 메인 세션의 트랙 운영
+
+(1.2.0 이상) **메인 세션**이 파이프라인 트랙을 별도 오르카 터미널로 띄워 기동 → 감시 → 질문 라우팅 → 단계 경계의 검증·핸드오프 → 후계까지 운영하는 공통 절차다. 공통 절차만 담는다 — **프로젝트 규약 우선**(repo id·브랜치·워크트리 정책·프롬프트 파일 위치·모델 배분·권한 플래그는 그 프로젝트의 CLAUDE.md·프로젝트 스킬이 정한다). 오르카 명령 상세는 스킬에 복사하지 않고 `orca skills get orca-cli`를 가리킨다.
+
+```
+/dev-workflow:orchestrate <트랙 · 단계 · spec 경로>
+```
+
+- **① 기동** — 그 체크아웃의 설치 버전을 조회만 하고, 모드를 고르고(사람 단계 = 수동, review-loop(spec)부터 = 위임), 모델은 `--model`로만(트랙에 `/model`을 보내지 않는다 — 새 세션 기본값으로 저장돼 전역 settings.json을 바꾼다), 세션 id는 `--session-id`로 정한 뒤, 동봉 템플릿으로 트랙 프롬프트를 채워 터미널을 만들고 프롬프트 파일 포인터 한 줄을 보낸다. 체크아웃당 트랙 1개.
+- **② 감시** — 대기마다 `watch`를 백그라운드로 1회. 판정 `DONE | HANDOFF | SETTLED | QUESTION | PERMISSION | TIMEOUT | ERR`.
+- **③ 질문** — 사람 단계와 수동으로 돌리는 트랙은 전부 사용자에게. 위임 트랙은 위험군(critical · 보안 · 방향 전제 · AC·목표·비목표·기결정 변경 · `[감사 이의]` · 권한 프롬프트)만 사용자에게. push · 다른 머신 변경 · 외부 실측 · 비가역은 언제나 사용자. 모든 전송 직전 `alive` 후 화면 재확인.
+- **④ 단계 종료** — 메인이 트랙 보고를 직접 검증(커밋 범위 · 게이트 · AI 서명 · diff 범위 · 확인 대기 대장)하고 대기 항목을 사용자에게 물은 뒤 핸드오프를 쓰고 단계 경계에서 멈춘다.
+- **⑤ 후계 · 페어링 · 다중 트랙** — `HANDOFF`는 사유가 넛지일 때만, 옛 세션 종료를 확인한 뒤에 자동 재개하고, 예기치 않게 끝난 트랙은 `claude --resume <세션 id>`로 복구하며, 원격 트랙은 `--environment`로 운영한다.
+
+동봉 스크립트 `scripts/orchestrate.mjs`(오르카 상세의 유일한 거처): `watch`(트랙 상태) · `alive`(터미널 **과** claude 세션 생존 — exit 0 생존 / 1 종료 / 2 판독 불가 / 3 stale 핸들) · `key`(TUI 키 `enter` `tab` `shift-tab` `up` `down` `text`). 동봉 템플릿 `templates/track-prompt.md`(역할 · 읽을 파일 · 기결정 · 진행 범위 · review-loop 인자 · 사실 확인 · 정지 조건 · `[TRACK-DONE …]`/`[TRACK-HANDOFF …]` 표지 · 넛지 시 행동).
+
+> ⚠️ 위임 트랙의 기동 명령 기본값에는 `--dangerously-skip-permissions`가 들어 있다 — 권한 창을 누를 사람이 없어서다. 안전장치는 프롬프트의 정지 조건(push 금지·비가역 금지)과 언제나 사용자에게 묻는 라우팅 행이고, 그래도 뜨는 권한 창은 메인이 허용하지 않는다(사용자 부재면 자동 거부된다).
+
+### 9. 컨텍스트 임계 핸드오프 훅 (자동)
 
 설치하면 바로 동작한다. 설정 불필요. 대화 컨텍스트 사용량이 임계(기본 40%)를 넘으면, 멈추기 전에 핸드오프를 작성하고 `/clear` 하라고 안내한다 — 컨텍스트가 터져 작업이 끊기기 전에 인계하도록 돕는다. 0.12.0부터 이 넛지는 **1회로 끝나지 않는다**: 임계 위로 **15%p 구간마다 재발화**한다(40 → 55 → 70 → 85%, 상한 없음). 첫 넛지를 흘려도 auto-compact가 걸릴 때까지 무경고로 남지 않는다. 재넛지는 지시 내용을 그대로 두고 사실만 더한다(이전에 안내했고 지금 몇 %인지). 사용률이 두 구간 이상 떨어지면 — auto-compact는 session id를 유지한다 — 새 주기로 보고 임계부터 다시 넛지한다. 0.18.0부터 넛지는 그 의미도 말한다 — **현재 작업 단위만 마무리**(리뷰 라운드 1회·SDD task 1개·수정 1건·질문 라운드 1회)하고 새 단위를 시작하지 않는다. 백그라운드 작업이 진행 중이면 완료 전 `/clear`하지 않고, 완료 알림으로 깨어나면 결과를 기록만 하고 멈춘 뒤 인계한다.
 
@@ -207,7 +227,7 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 
 1.0.0부터 **오르카 터미널**(`ORCA_TERMINAL_HANDLE`이 있는 세션)에서는 넛지의 `/clear` 안내가 **자동 인계**로 바뀐다: 핸드오프를 쓴 뒤 같은 체크아웃에 후계 `claude` 터미널을 직접 띄우고(제목 `<작업명>-<토큰>`), 재개 프롬프트를 파일(`.remember/successor-<토큰>.prompt`)로 조립해 보낸 다음 정지한다. 후계는 이 폴더에서 다른 세션의 codex 작업이 돌고 있지 않은지 확인한 뒤(최대 10분 대기) 첫 동작으로 옛 세션을 정상 종료시키며(`/exit` 전송 → 종료 확인 → `terminal close`), 그 전에는 codex를 실행하지 않는다. 사전 검증에서 실패하면 아직 만든 터미널이 없으므로 바로 현행 `/clear` 안내로 돌아가고, 생성·기동·전달 어느 단계가 실패하면 이 폴더에서 다른 세션의 codex 작업이 끝나기를 기다린 뒤(최대 10분) 만들다 만 터미널을 정리하고 소멸을 확인한 뒤에만 현행 `/clear` 안내로 돌아간다 — 후계를 하나로 확정할 수 없거나(생성 응답 유실 — 생성 직전 목록에 없던 새 핸들은 후보로 보고만 하고 1개여도 채택하지 않는다) 작업 검사가 통과하지 않거나 정리를 확인하지 못하면 `/clear`를 안내하지 않고 차단 상태를 보고한다. 단계 경계(spec→plan, plan→impl)의 `/clear`는 대상이 아니다 — 후계는 다른 단계를 시작하지 않고 사용자에게 확인한다. 오르카 밖에서는 이전과 같다.
 
-**세션 모드 — 수동 / 위임 (1.1.0 이상).** 메인 세션(오케스트레이터)이 트랙 세션을 띄우고 그 질문에 대신 답하는 운영을 위해 세션 모드를 고른다. **수동**(기본 — `DEV_WORKFLOW_MODE` 미설정)은 사람이 단계별로 확인하며 진행하고, **위임**(`DEV_WORKFLOW_MODE=delegated` — 앞뒤 공백을 뗀 값이 정확히 일치할 때만, 그 외 값은 수동)은 야간·부재 중에 에이전트(통상 메인 세션)가 이 세션의 사용자 역할을 대행한다 — 질문은 오케스트레이터가 답하고 후계도 오케스트레이터가 띄운다. 브레인스토밍·harden-spec·ui-mockup은 사람·취향 단계라 모드와 무관하게 사람이 하고, 그 뒤 review-loop(spec)부터 수동 또는 위임으로 진행한다. 메인 세션 자신은 수동이다(자기 후계는 위 자동 인계 그대로). **설정은 트랙 터미널 생성 명령의 접두**가 기본이다: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 후계 터미널을 띄울 때도 같은 접두를 붙인다(빠뜨리면 그 후계만 자동 인계로 돌아간다). Windows(PowerShell)는 `$env:DEV_WORKFLOW_MODE='delegated'; claude …` 형태(미실측). settings.json `env`에 넣으면 프로젝트의 모든 세션 — **메인 세션까지** — 위임이 되어 자기 후계를 못 띄우므로 그 점을 알고 쓸 때만 쓴다. **1.1.0의 위임 효과는 하나**: 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다(오르카 밖에서는 효과 없음). 위험군 외 질문의 추천안 자동 채택 같은 효과는 후속 버전에서 이 모드에 더해진다. 구버전 설치본은 이 변수를 모른다 — `doctor`로 버전을 확인한다.
+**세션 모드 — 수동 / 위임 (1.1.0 이상).** 메인 세션(오케스트레이터)이 트랙 세션을 띄우고 그 질문에 대신 답하는 운영을 위해 세션 모드를 고른다. **수동**(기본 — `DEV_WORKFLOW_MODE` 미설정)은 사람이 단계별로 확인하며 진행하고, **위임**(`DEV_WORKFLOW_MODE=delegated` — 앞뒤 공백을 뗀 값이 정확히 일치할 때만, 그 외 값은 수동)은 야간·부재 중에 에이전트(통상 메인 세션)가 이 세션의 사용자 역할을 대행한다 — 질문은 오케스트레이터가 답하고 후계도 오케스트레이터가 띄운다. 브레인스토밍·harden-spec·ui-mockup은 사람·취향 단계라 모드와 무관하게 사람이 하고, 그 뒤 review-loop(spec)부터 수동 또는 위임으로 진행한다. 메인 세션 자신은 수동이다(자기 후계는 위 자동 인계 그대로). **설정은 트랙 터미널 생성 명령의 접두**가 기본이다: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 후계 터미널을 띄울 때도 같은 접두를 붙인다(빠뜨리면 그 후계만 자동 인계로 돌아간다). Windows(PowerShell)는 `$env:DEV_WORKFLOW_MODE='delegated'; claude …` 형태(미실측). settings.json `env`에 넣으면 프로젝트의 모든 세션 — **메인 세션까지** — 위임이 되어 자기 후계를 못 띄우므로 그 점을 알고 쓸 때만 쓴다. **위임 효과(1.2.0)**: ① 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다 — 후계는 오케스트레이터가 띄운다(1.1.0, 오르카 밖에서는 효과 없음) ② review-loop·dev-cycle이 위험군 외 질문의 추천안을 자동 채택한다 — 위험군(critical·보안·방향 전제·AC·목표·비목표·기결정 변경)은 여전히 묻고, 자동 채택한 결정은 출처 `추천 자동 채택(위임)`으로 기록되어 확인 라운드의 감사 대상이 된다 ③ 그 결정은 **확인 대기 대장**(spec·plan 말미 `## 확인 대기 대장`)에 모여 단계 경계에서 사용자가 확인·번복한다. 1.1.x 설치본은 ①만 받는다. 구버전 설치본은 이 변수를 모른다 — `doctor`로 버전을 확인한다.
 
 ## 특정 repo에서 clone 시 자동 적용
 
@@ -252,12 +272,16 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # 마켓플레이스 카탈로그(repo 루트)
 ├── dev-workflow/                     # 플러그인
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
+│   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
+├── tests/orchestrate/                # orchestrate.mjs 테스트(스텁 orca — 플러그인 밖)
 ├── README.md                         # 영어(기본)
 └── README.ko.md / README.ja.md       # 한국어 / 일본어
 ```
 
 `plugin.json`의 `version`을 올린 커밋에서만 사용자가 업데이트를 받는다. 버전을 생략하면 git commit SHA가 버전이 되어 매 커밋이 새 버전으로 취급된다. 사용자는 `/plugin update` 또는 백그라운드 자동 업데이트로 갱신한다.
+
+테스트: `node --test tests/orchestrate/orchestrate.test.mjs`(orchestrate 스크립트 — 스텁 `orca`로 돌아 실제 오르카 불필요, 이 repo에는 npm 게이트가 없다).
 
 **README는 3개 언어로 유지한다** — `README.md`(영어, 기본) / `README.ko.md` / `README.ja.md`. 내용을 바꿀 때는 **3개 파일을 함께 갱신**한다(드리프트 방지).

@@ -13,6 +13,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (Optional, step 3.5) When a hardened spec creates or reshapes a screen: diverge non-executable HTML mockups, let the user pick, and record the UI decision in the spec as a settled decision |
 | setup | skill | `/dev-workflow:setup` | (On explicit request) idempotently insert a pipeline-convention pointer into this repo's CLAUDE.md |
 | doctor | skill | `/dev-workflow:doctor` | Read-only diagnosis of four environment items (installed version · marketplace freshness · codex · context window); every fix is delegated to the existing path |
+| orchestrate | skill | `/dev-workflow:orchestrate` | (1.2.0+) Shared procedure for a **main session** that runs tracks in Orca terminals — launch · watch · question routing · stage-end verification and handoff · successors (project rules come first) |
 | Context-threshold nudge | Stop hook | (automatic) | Past a threshold (default 40%), nudges to write a handoff + `/clear` — and again every 15pp band after it (40 → 55 → 70 → 85%, no cap) |
 
 ## Table of Contents
@@ -27,7 +28,8 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
   - [ui-mockup](#5-ui-mockup--ui-mockup-selection)
   - [setup](#6-setup--adopt-the-pipeline-in-a-repo)
   - [doctor](#7-doctor--diagnose-the-environment)
-  - [Context-threshold handoff hook](#8-context-threshold-handoff-hook-automatic)
+  - [orchestrate](#8-orchestrate--main-session-track-operation)
+  - [Context-threshold handoff hook](#9-context-threshold-handoff-hook-automatic)
 - [Auto-prompting the plugin when a repo is cloned](#auto-prompting-the-plugin-when-a-repo-is-cloned)
 - [Troubleshooting](#troubleshooting)
 - [Caveats](#caveats)
@@ -100,7 +102,7 @@ All options are optional — plain `/dev-workflow:review-loop` works.
 | `--base <ref>` | `main` | Base branch the adversarial review diffs against. Resolved to a SHA at loop start so every round sees the same snapshot |
 | `--max <n>` | `5` | Cap on **adversarial (discovery) rounds.** Confirm rounds do not count against it |
 | `--confirm-rounds <n>` | `2` | **Confirm-round budget.** Cumulative across the whole loop; not reset on re-entry |
-| `--auto-rounds <n>` | `3` | First n rounds run in **auto mode** — auto-fix defects and batch up non-risky user decisions to ask at once. `0` = ask immediately every round; use `1` for security-sensitive work |
+| `--auto-rounds <n>` | `3` | First n rounds run in **auto mode** — auto-fix defects and batch up non-risky user decisions to ask at once. `0` = ask immediately every round; use `1` for security-sensitive work. In delegated mode (1.2.0+) the track answers the batch itself — only risky items reach a person |
 | `--security yes\|no` | — | (1.1.0+) **Pass the security-critical track decision in advance** — use it when you (or an orchestrator) have already made that call. With it, the loop doesn't ask; it adopts the value and records it with the source "caller-specified" (`호출자 지정`) in the ledger's first line and the final summary. Omitted, the loop checks the touched surface and asks once if needed. Independent of the session mode. With `yes`, adding `--auto-rounds 1` is recommended |
 | `--resume` | — | Resume an interrupted loop from the saved state (including the ledger) in `.remember/loop-*.md` |
 
@@ -191,7 +193,25 @@ Besides the explicit call, it also fires on **symptom sentences** ("the nudge ne
 
 A codex failure *inside* a running review-loop belongs to `review-loop`, so doctor stays out of it; it also stays out of vague failure sentences ("why doesn't it work") and of the same words about **another product** ("is the playwright plugin up to date").
 
-### 8. Context-threshold handoff hook (automatic)
+### 8. `orchestrate` — main-session track operation
+
+(1.2.0+) For a **main session** that runs pipeline tracks in separate Orca terminals: launch → watch → route questions → verify and hand off at the stage boundary → successors. It is the shared procedure only — **project rules come first** (repo id, branches, worktree policy, prompt file location, model allocation and permission flags live in the project's CLAUDE.md or project skill). Orca command details are not copied into the skill — it points to `orca skills get orca-cli`.
+
+```
+/dev-workflow:orchestrate <track · stage · spec path>
+```
+
+- **① Launch** — look up the installed version for that checkout (lookup only), pick the mode (human stages = manual, review-loop(spec) on = delegated), set the model with `--model` only (never send `/model` to a track — it is saved as the new-session default in your global settings.json) and the session id with `--session-id`, fill in the bundled track-prompt template, then create the terminal and send a one-line pointer to the prompt file. One track per checkout.
+- **② Watch** — one background `watch` run per wait; verdict `DONE | HANDOFF | SETTLED | QUESTION | PERMISSION | TIMEOUT | ERR`.
+- **③ Questions** — human stages and manually run tracks: everything goes to you. Delegated tracks: only risky questions (critical · security · direction · AC/goal/non-goal/decision changes · `[감사 이의]` audit objections · permission prompts) reach you. Push · other-machine changes · external runs · irreversible steps: always you. Before every send: `alive`, then re-read the screen.
+- **④ Stage end** — the main session verifies the track's report itself (commit range · gates · no AI trailers · diff scope · the confirmation-pending ledger), asks you about pending entries, writes the handoff, and stops at the stage boundary.
+- **⑤ Successors · pairing · multiple tracks** — resumes a `HANDOFF` automatically only when its reason is the nudge and only after the old session has exited, recovers an unexpectedly exited track with `claude --resume <session id>`, and runs remote tracks via `--environment`.
+
+Bundled script `scripts/orchestrate.mjs` (the only place Orca details live): `watch` (track state), `alive` (is the terminal **and** the claude session alive — exit 0 alive / 1 exited / 2 unreadable / 3 stale handle), `key` (TUI keys `enter` `tab` `shift-tab` `up` `down` `text`). Bundled template `templates/track-prompt.md` (role · files · decisions · scope · review-loop arguments · fact check · stop conditions · `[TRACK-DONE …]` / `[TRACK-HANDOFF …]` markers · nudge behavior).
+
+> ⚠️ The default launch command for a delegated track includes `--dangerously-skip-permissions` — nobody is there to click permission prompts. The safety net is the prompt's stop conditions (no push, no irreversible steps) and the routing rows that always ask you; a permission prompt that still appears is never approved by the main session (it is auto-denied if you are away).
+
+### 9. Context-threshold handoff hook (automatic)
 
 Works immediately after installation; no configuration. When conversation context usage crosses a threshold (default 40%), it nudges you to write a handoff and `/clear` before stalling — helping you hand over before context blows up mid-task. Since 0.12.0 the nudge is **not once-only**: it fires again on every 15-percentage-point band above the threshold (40 → 55 → 70 → 85%, with no upper cap), so ignoring the first one no longer means silence until auto-compact hits. Re-nudges add the facts (you were told before, here is the current %) without escalating the instruction. If usage drops two bands or more — auto-compact keeps the same session id — the hook treats it as a new cycle and starts nudging from the threshold again. Since 0.18.0 the nudge also states what it means: **finish only the current unit of work** (one review round, one SDD task, one fix, one question round) and start no new one; if a background job is running, do not `/clear` before it completes — when its completion wakes the session, record the result and stop, then hand over.
 
@@ -207,7 +227,7 @@ CLAUDE_CTX_LIMIT=200000     # set the context token limit explicitly
 
 Since 1.0.0, in an **Orca terminal** (a session with `ORCA_TERMINAL_HANDLE`), the nudge's `/clear` guidance becomes an **automatic handover**: after writing the handoff, the session spawns a successor `claude` terminal in the same checkout (titled `<task>-<token>`), assembles the resume prompt as a file (`.remember/successor-<token>.prompt`), sends it, and stops. After checking that no other session's codex job is running in this folder (waiting up to 10 minutes), the successor's first action is to shut the old session down cleanly (send `/exit` → confirm it exited → `terminal close`), and it runs no codex before that. If the preflight fails, no terminal has been made yet, so the current `/clear` guidance is shown right away; if a later step — create, boot, delivery — fails, the session first waits until no other session's codex job is running in this folder (up to 10 minutes), then cleans up the half-made terminal and confirms it is gone, and only then shows the current `/clear` guidance; if the successor cannot be pinned down (create response lost — new handles versus the list taken just before creation are only reported as candidates, never adopted even if there is exactly one), the job check does not pass, or the cleanup cannot be confirmed, it reports the blocked state instead of guiding `/clear`. Stage boundaries (spec→plan, plan→impl) are out of scope: the successor does not start another stage and asks you instead. Outside Orca, nothing changes.
 
-**Session mode — manual / delegated (1.1.0+).** For setups where a main session (orchestrator) launches track sessions and answers their questions, you pick a session mode. **Manual** (default — `DEV_WORKFLOW_MODE` unset) means a person confirms each step; **delegated** (`DEV_WORKFLOW_MODE=delegated` — only when the value, with surrounding whitespace trimmed, matches exactly; any other value means manual) is for overnight or away-from-keyboard runs, where an agent (usually the main session) stands in for this session's user — the orchestrator answers its questions and launches its successor. Brainstorming, harden-spec and ui-mockup are human, taste-driven stages and stay with a person regardless of mode; from review-loop(spec) on, a track runs manual or delegated. The main session itself stays manual (its own successor uses the automatic handover above). **Set it as a prefix on the track terminal's launch command** (the default): `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — and use the same prefix when launching successor terminals (leave it off and that successor falls back to the automatic handover). On Windows (PowerShell): `$env:DEV_WORKFLOW_MODE='delegated'; claude …` (not yet verified). Putting it in settings.json `env` makes every session of the project delegated — **including the main session**, which then can't launch its own successor — so only do that knowingly. **Delegated mode has one effect in 1.1.0**: even in an Orca terminal, the nudge is the same `/clear` guidance as outside Orca instead of the automatic handover (no effect outside Orca). Further effects, such as auto-adopting the recommended answer for non-risky questions, will be added to this mode in a later version. Older installs don't know this variable — check the version with `doctor`.
+**Session mode — manual / delegated (1.1.0+).** For setups where a main session (orchestrator) launches track sessions and answers their questions, you pick a session mode. **Manual** (default — `DEV_WORKFLOW_MODE` unset) means a person confirms each step; **delegated** (`DEV_WORKFLOW_MODE=delegated` — only when the value, with surrounding whitespace trimmed, matches exactly; any other value means manual) is for overnight or away-from-keyboard runs, where an agent (usually the main session) stands in for this session's user — the orchestrator answers its questions and launches its successor. Brainstorming, harden-spec and ui-mockup are human, taste-driven stages and stay with a person regardless of mode; from review-loop(spec) on, a track runs manual or delegated. The main session itself stays manual (its own successor uses the automatic handover above). **Set it as a prefix on the track terminal's launch command** (the default): `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — and use the same prefix when launching successor terminals (leave it off and that successor falls back to the automatic handover). On Windows (PowerShell): `$env:DEV_WORKFLOW_MODE='delegated'; claude …` (not yet verified). Putting it in settings.json `env` makes every session of the project delegated — **including the main session**, which then can't launch its own successor — so only do that knowingly. **Delegated-mode effects (1.2.0)**: ① even in an Orca terminal, the nudge is the same `/clear` guidance as outside Orca instead of the automatic handover — the orchestrator launches the successor (1.1.0; no effect outside Orca) ② review-loop and dev-cycle auto-adopt the recommended answer for non-risky questions — risky ones (critical · security · direction · AC/goal/non-goal/decision changes) are still asked, and every auto-adopted decision is recorded with the source `추천 자동 채택(위임)` (auto-adopted recommendation) and is an audit target of the confirmation round ③ those decisions are collected in a **confirmation-pending ledger** (`## 확인 대기 대장` at the end of the spec/plan) that you confirm or overturn at the stage boundary. A 1.1.x install gets ① only. Older installs don't know this variable — check the version with `doctor`.
 
 ## Auto-prompting the plugin when a repo is cloned
 
@@ -252,12 +272,16 @@ claude-dev-workflow/
 ├── .claude-plugin/marketplace.json   # marketplace catalog (repo root)
 ├── dev-workflow/                     # the plugin
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies (codex@openai-codex)
-│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor}/SKILL.md
+│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
+│   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
+├── tests/orchestrate/                # orchestrate.mjs tests (stub orca — outside the plugin)
 ├── README.md                         # English (default)
 └── README.ko.md / README.ja.md       # Korean / Japanese
 ```
 
 Users receive updates only from commits that bump `version` in `plugin.json`. If the version is omitted, the git commit SHA becomes the version and every commit is treated as a new release. Users update via `/plugin update` or background auto-update.
+
+Tests: `node --test tests/orchestrate/orchestrate.test.mjs` (orchestrate script — a stub `orca` stands in, no real Orca needed; this repo has no npm gate).
 
 **The README is maintained in three languages** — `README.md` (English, default) / `README.ko.md` / `README.ja.md`. When changing content, **update all three files together** (drift prevention).
