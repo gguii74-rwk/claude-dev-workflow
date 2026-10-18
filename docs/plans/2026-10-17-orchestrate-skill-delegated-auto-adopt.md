@@ -138,7 +138,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 01 | orchestrate.mjs 계약 테스트 37건 (RED) | [ ] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | |
+| 01 | orchestrate.mjs 계약 테스트 37건 (RED) | [x] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | `a7c37d0` 테스트 37건 RED(0/37) · 기준선 11/11·2/2 · 리뷰 승인(minor 3 이월) |
 | 02 | orchestrate.mjs watch·alive·key (GREEN) | [ ] | [task-02](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-02-orchestrate-script.md) | 01 | |
 | 03 | 트랙 프롬프트 템플릿 | [ ] | [task-03](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-03-track-prompt-template.md) | — | |
 | 04 | orchestrate SKILL.md | [ ] | [task-04](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-04-orchestrate-skill-md.md) | 02, 03 | |
