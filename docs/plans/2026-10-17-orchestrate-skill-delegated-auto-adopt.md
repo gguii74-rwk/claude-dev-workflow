@@ -144,7 +144,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 | 04 | orchestrate SKILL.md | [x] | [task-04](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-04-orchestrate-skill-md.md) | 02, 03 | `a960117` SKILL.md · 리뷰 fix 1회 `0df3076`(사용자 판정 — 후계·복구 기동 = 원래 기동 명령(접두·권한 플래그·`--model`)) · `c23de6d` task-04·spec §3o·AC1 정합 · 15,313B · AC1·AC4 bash·zsh 통과 · minor 5 이월 |
 | 05 | review-loop 위임 모드 효과 2 + 확인 대기 대장 | [x] | [task-05](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-05-review-loop-delegated.md) | — | `42c4ac4` 새 절 + 포인터 13곳 · 리뷰 fix 1회 `ac930e5`(사용자 판정 — 판정 감사 이의 재판정은 루프 직접 판정·자동 채택 모두 사람에게, D22 예외) · `0d9f236` task-05·spec §3e 정합 · AC5 기계 검증 DEL 3 BAD 0 · minor 4 이월 |
 | 06 | dev-cycle 위임 = 확인 불가 신호 ② | [x] | [task-06](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-06-dev-cycle-delegated.md) | 05 | `54d2b75` dev-cycle 5곳(위임 = 확인 불가 신호 ② · 대장 행 · 판별 출력) · AC6 bash·zsh 통과 · 리뷰 승인(minor 3 이월) |
-| 07 | README 3종 · manifest description · 1.1.0 §7 포인터 | [ ] | [task-07](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-07-readme-manifest-pointer.md) | 04, 05, 06 | |
+| 07 | README 3종 · manifest description · 1.1.0 §7 포인터 | [x] | [task-07](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-07-readme-manifest-pointer.md) | 04, 05, 06 | `ea1d8ad` README 3종(263→287행, 같은 위치) · manifest description 2종(version 1.1.1 유지) · `7a5bbae` 1.1.0 spec §7 포인터 · AC7 bash·zsh 통과(세션 모드 문단 감사 각 1) · 리뷰 승인(minor 3 이월) |
 
 **구현 순서** = spec §3r 끝 줄(스크립트+테스트 → 템플릿 → SKILL.md → review-loop → dev-cycle → README·manifest 설명 → 1.1.0 spec 포인터) — 표 번호 순서로 디스패치한다.
 
