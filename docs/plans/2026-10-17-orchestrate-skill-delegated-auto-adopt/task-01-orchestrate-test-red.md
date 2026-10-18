@@ -1,6 +1,6 @@
 # task-01 — orchestrate.mjs 계약 테스트 작성 (RED) (spec §3w · AC2·AC3)
 
-**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **33건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
+**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **34건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
 
 ## Files
 
@@ -277,7 +277,7 @@ test('AC3 alive: stale 핸들 → exit 3', () => {
   assert.match(r.first, /^STALE/);
 });
 
-// ── AC3 key 5건
+// ── AC3 key 6건
 test('AC3 key: tab shift-tab enter text — 시퀀스·원문·environment 전달', () => {
   const raw = '$(touch /tmp/x) `id` "q"';
   const r = run('key', ['term_k', 'tab', 'shift-tab', 'enter', 'text', raw, '--environment', 'spark2-ts'], { show: [SHOW_OK], read: [read(Q)], send: [SENT] });
@@ -315,6 +315,14 @@ test('AC3 key: 본문에 권한 문구를 인용한 질문 창이 실제 권한 
   assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
 });
 
+test('AC3 key: 본문에 입력 상자 모양이 인용돼 있어도 그 아래 질문 창이 권한 창으로 바뀌면 나머지를 보내지 않고 exit 2', () => {
+  const quoted = ['⏺ TUI 입력 상자 예시:', SEP, '❯ ', SEP];
+  const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read([...quoted, ...Q]), read([...quoted, ...P])], send: [SENT] });
+  assert.equal(r.code, 2);
+  assert.match(r.out, /질문 창 → 권한 창/);
+  assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
+});
+
 test('AC3 key: 키 사이에 질문 창이 닫히고 입력 상자로 바뀌면 나머지를 보내지 않고 exit 2', () => {
   const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read(Q), read(A)], send: [SENT] });
   assert.equal(r.code, 2);
@@ -329,25 +337,25 @@ test('AC3 key: 키 사이에 질문 창이 닫히고 입력 상자로 바뀌면 
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `ℹ tests 33` · `ℹ pass 0` · `ℹ fail 33`(스크립트 파일이 없어 모든 실행이 실패한다).
+기대: `ℹ tests 34` · `ℹ pass 0` · `ℹ fail 34`(스크립트 파일이 없어 모든 실행이 실패한다).
 
 ### 4. 커밋
 
 ```bash
 git add tests/orchestrate/orchestrate.test.mjs
-git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 33건(RED) — 가짜 orca로 자가 점검(필드 누락·screen-unavailable·호출 무응답·SIGTERM 무시) · watch 판정 7종·f1·표지 인정 조건 4건 · alive exit 0/1/2/3 9건(권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·화면 종류 변화(본문 인용 권한 문구 포함) 중단(spec §3w·AC2·AC3)"
+git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 34건(RED) — 가짜 orca로 자가 점검(필드 누락·screen-unavailable·호출 무응답·SIGTERM 무시) · watch 판정 7종·f1·표지 인정 조건 4건 · alive exit 0/1/2/3 9건(권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·화면 종류 변화(본문 인용 권한 문구·입력 상자 포함) 중단(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 33 · pass 0 · fail 33.
-- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `33`.
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 34 · pass 0 · fail 34.
+- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `34`.
 - `git diff HEAD~1 --stat` → `tests/orchestrate/orchestrate.test.mjs` 1파일만.
 - 기준선 2종(단계 1) 11/11 · 2/2 그대로.
 
 ## Cautions
 
 - **스크립트(`orchestrate.mjs`)를 이 task에서 만들지 마라.** 이유: RED를 먼저 커밋해야 task-02의 GREEN이 이 테스트로 증명된다.
-- **테스트 기대값을 바꾸지 마라.** 이유: 33건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 9건(R1-1~R1-4 · R2-1~R2-3 · R3-1) 포함) — 바꾸면 계약이 바뀐다.
+- **테스트 기대값을 바꾸지 마라.** 이유: 34건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 10건(R1-1~R1-4 · R2-1~R2-3 · R3-1 · R4-1) 포함) — 바꾸면 계약이 바뀐다.
 - **실제 오르카를 부르지 마라.** 이유: `run()`이 `ORCA_CLI_COMMAND`·`ORCA_DEV_REPO_ROOT`를 지우고 PATH 앞에 가짜를 둔다 — 이 순서를 바꾸면 실제 터미널에 키가 들어갈 수 있다.
 - **폴더 인자(`node --test tests/orchestrate/`)로 돌리지 마라.** 이유: Node 21 이상은 폴더를 모듈 경로로 해석해 테스트가 하나도 돌지 않는다(spec 정정 `dfdd243`).
