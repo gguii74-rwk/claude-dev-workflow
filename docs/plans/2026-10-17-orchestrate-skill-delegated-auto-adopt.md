@@ -139,7 +139,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
 | 01 | orchestrate.mjs 계약 테스트 38건 (RED) | [x] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | `a7c37d0` 테스트 37건 RED(0/37) · 기준선 11/11·2/2 · 리뷰 승인(minor 3 이월) |
-| 02 | orchestrate.mjs watch·alive·key (GREEN) | [ ] | [task-02](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-02-orchestrate-script.md) | 01 | |
+| 02 | orchestrate.mjs watch·alive·key (GREEN) | [x] | [task-02](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-02-orchestrate-script.md) | 01 | `e85a92c` 스크립트 · 리뷰 fix 1회 `dbd59c5`(사용자 판정 — 권한 문구 `Do you want to `·`Yes, allow `, 테스트 38) · `6976fc2` plan·spec 38 정합 · GREEN 38/38 · 기준선 11/11·2/2 · hooks diff 0 · minor 7 이월 |
 | 03 | 트랙 프롬프트 템플릿 | [ ] | [task-03](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-03-track-prompt-template.md) | — | |
 | 04 | orchestrate SKILL.md | [ ] | [task-04](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-04-orchestrate-skill-md.md) | 02, 03 | |
 | 05 | review-loop 위임 모드 효과 2 + 확인 대기 대장 | [ ] | [task-05](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-05-review-loop-delegated.md) | — | |
