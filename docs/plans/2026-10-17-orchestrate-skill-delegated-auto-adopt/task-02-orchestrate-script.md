@@ -1,6 +1,6 @@
 # task-02 — orchestrate.mjs 구현 (GREEN) (spec §3w · AC2·AC3·AC4)
 
-**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 36건을 통과시킨다.
+**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 37건을 통과시킨다.
 
 ## Files
 
@@ -26,7 +26,7 @@
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 36 · pass 0 · fail 36.
+기대: tests 37 · pass 0 · fail 37.
 
 ### 2. 스크립트 작성
 
@@ -141,6 +141,17 @@ function lastNonEmpty(lines) {
   return { line: '', index: -1 };
 }
 
+// 맨 아래 창 문구 줄의 위치·종류 — 열린 창은 맨 아래에 그려지고 본문에 인용된 문구는 그 위다(R3-1). 한 줄에 둘 다면 권한
+function bottomDialog(lines) {
+  let index = -1;
+  let kind = null;
+  lines.forEach((l, i) => {
+    if (PERMISSION_PATTERNS.some((p) => l.includes(p))) [index, kind] = [i, 'PERMISSION'];
+    else if (QUESTION_PATTERNS.some((p) => l.includes(p))) [index, kind] = [i, 'QUESTION'];
+  });
+  return { index, kind };
+}
+
 // 표지는 본문의 마지막 비어 있지 않은 줄일 때만 인정 · --consumed와 같은 표지는 본문이 바뀌기 전까지 소비된 것(D41)
 function classify(lines, consumed, changed) {
   const last = normalizeMarker(lastNonEmpty(bodyLines(lines)).line);
@@ -148,10 +159,9 @@ function classify(lines, consumed, changed) {
   if (isMarker && !(consumed !== null && last === normalizeMarker(consumed) && !changed)) {
     return { verdict: last.startsWith(DONE_MARK) ? 'DONE' : 'HANDOFF', marker: last };
   }
-  const text = lines.join('\n');
-  if (QUESTION_PATTERNS.some((p) => text.includes(p))) return { verdict: 'QUESTION' };
-  if (PERMISSION_PATTERNS.some((p) => text.includes(p))) return { verdict: 'PERMISSION' };
-  return null;
+  // 질문·권한 = 맨 아래 창 문구의 종류(alive와 같은 규칙) — 화면 전체에서 질문 문구를 먼저 찾으면 본문 인용 아래 실제 권한 창이 QUESTION이 된다(D23)
+  const { kind } = bottomDialog(lines);
+  return kind ? { verdict: kind } : null;
 }
 
 function emit(verdict, lines, marker) {
@@ -218,12 +228,8 @@ function alive(handle, env) {
   // 종료 안내 없이 셸로 돌아간 잔존 화면(SIGKILL 등)은 생존으로 보지 않는다 — 입력 요소 뒤 마지막 줄이 셸 프롬프트 모양이면 제외
   //   박스: 박스 아래 마지막 줄이 셸 프롬프트 모양 + HUD 구분자 없음 / 질문·권한 창: 창 문구 뒤 마지막 줄이 셸 프롬프트 모양
   // 창 종류 = 화면 맨 아래 창 문구의 종류 — 열린 창은 맨 아래에 그려지고 본문에 인용된 문구는 그 위다(R3-1)
-  let dialogIdx = -1;
-  let dialogKind = '질문 창';
-  lines.forEach((l, i) => {
-    if (PERMISSION_PATTERNS.some((p) => l.includes(p))) [dialogIdx, dialogKind] = [i, '권한 창'];
-    else if (QUESTION_PATTERNS.some((p) => l.includes(p))) [dialogIdx, dialogKind] = [i, '질문 창'];
-  });
+  const { index: dialogIdx, kind: dialogVerdict } = bottomDialog(lines);
+  const dialogKind = dialogVerdict === 'PERMISSION' ? '권한 창' : '질문 창';
   // 박스도 같은 원리 — 창 문구가 마지막 구분선보다 아래면 창이 활성 입력 요소이고 위의 박스는 본문 인용·잔존이다(R4-1)
   const box = seps.length >= 2 && lines.slice(seps[seps.length - 2] + 1, lastSep).some((l) => l.trimStart().startsWith(PROMPT_CHAR))
     && !(dialogIdx > lastSep)
@@ -315,7 +321,7 @@ node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs && echo CHE
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `CHECK_OK` · tests 36 · pass 36 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
+기대: `CHECK_OK` · tests 37 · pass 37 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
 
 ### 4. 회귀 확인
 
@@ -331,12 +337,12 @@ git diff 151d9f0 -- dev-workflow/hooks | wc -l
 
 ```bash
 git add dev-workflow/skills/orchestrate/scripts/orchestrate.mjs
-git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR), 응답 루트·예기치 않은 예외 = ERR exit 2; 테스트 36/36(spec §3w·AC2·AC3)"
+git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 질문/권한 = 맨 아래 창 문구(alive와 공용 헬퍼) · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR), 응답 루트·예기치 않은 예외 = ERR exit 2; 테스트 37/37(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 36 · pass 36 · fail 0 (AC2·AC3).
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 37 · pass 37 · fail 0 (AC2·AC3).
 - `node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → exit 0 (AC4 일부).
 - `grep -c "shell: true" dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → `0` (셸 보간 없음).
 - 상수 자리: `grep -nE "^const (DONE_MARK|HANDOFF_MARK|QUESTION_PATTERNS|PERMISSION_PATTERNS|CLAUDE_EXIT_MARK|SHELL_PROMPT_RE|HUD_MARK) " dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → 7줄 (검증 필요(실측) 문자열의 갱신 자리 1곳 — spec 잔여 리스크 (1)(2)).
@@ -352,5 +358,6 @@ git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르�
 - **python 의존을 더하지 마라.** 이유: M10 — 스크립트는 Node 하나.
 - **어떤 실패도 exit 1로 끝내지 마라.** 이유: `alive`의 exit 1 = 「종료」라 메인이 `--resume` 복구로 같은 세션을 둘 만든다 — 응답 루트가 객체가 아니면 자가 점검 ERR, 예기치 않은 예외도 `main()`이 ERR exit 2로 바꾼다(plan ledger R5-1).
 - **`key`에서 생존 확인을 첫 키 한 번으로 줄이지 마라.** 이유: 묶음 키 사이에 claude가 끝나면 남은 text·enter가 셸에서 실행된다 — 키마다 `alive` 0일 때만 보내고, 아니면 보낸 개수를 담아 `ERR 전송 중단`(plan ledger R1-2). **화면 종류(프롬프트 박스·질문 창·권한 창)가 첫 키 때와 달라져도 멈춘다** — 사용자가 직접 답해 권한 창이 뜨면 남은 enter가 권한을 승인한다(D23, plan ledger R2-2). 창 종류는 화면 전체가 아니라 **맨 아래 창 문구**로 정한다 — 전체에서 찾으면 본문에 인용된 권한 문구가 처음부터 「권한 창」으로 읽혀 전환을 못 잡는다(plan ledger R3-1). 박스도 같다 — 창 문구가 마지막 구분선보다 아래면 박스는 본문 인용이다(plan ledger R4-1).
+- **`watch`의 QUESTION/PERMISSION을 화면 전체 부분 문자열로 가르지 마라.** 이유: 본문이 질문 창 문구(「Enter to select」)를 인용하고 그 아래 실제 권한 창이 뜨면 QUESTION으로 읽혀, 메인이 ③ 「그 외」 행대로 첫 선택지를 `enter`로 골라 권한 창의 「1. Yes」를 사람 없이 승인한다(D23) — `alive`의 창 종류와 같은 `bottomDialog()`(맨 아래 창 문구, 한 줄에 둘 다면 권한)로 가른다(7 impl 사전 점검 F3 사용자 판정).
 - **`alive`의 「입력 요소 뒤 셸 프롬프트」 검사를 빼지 마라.** 이유: 종료 안내 없이(SIGKILL 등) 셸로 돌아간 잔존 화면이 생존으로 읽혀 전송이 셸로 간다(plan ledger R1-1·R2-1). 박스 아래 HUD 줄(`[Opus 5.5] │ Context 17%`)은 셸 프롬프트와 같은 끝 문자를 써서 `HUD_MARK`(`│`)로 가른다 — 구분자 없는 상태줄을 쓰는 환경이나 질문 창 아래에 HUD가 보이는 환경은 판독 불가(exit 2 — 안전한 쪽, 시끄럽게 멈춤)가 되므로 실측 때 상수 자리에서 갱신(검증 필요(실측)).
 - **오르카 호출에서 `timeout`을 빼지 마라.** 이유: 응답하지 않는 CLI 한 번이 watch 상한(580초)과 메인의 대기 상한(600초)을 무력화한다 — 호출 상한 8초 · 상한은 시작 자가 점검부터 잰다(plan ledger R1-4). `killSignal: 'SIGKILL'`도 빼지 마라 — 기본 SIGTERM을 무시하는 CLI면 `spawnSync`가 자식 종료를 기다리며 돌아오지 않는다(plan ledger R2-3).

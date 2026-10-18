@@ -218,13 +218,13 @@ for f in README.md README.ko.md README.ja.md; do
   grep -cE 'later version|後続バージョン|후속 버전에서' $f
   grep -cF -- '--dangerously-skip-permissions' $f
 done
-grep -c 'audit' README.md; grep -c '감사' README.ko.md; grep -c '監査' README.ja.md
+grep -F 'Delegated-mode effects (1.2.0)' README.md | grep -c 'audit'; grep -F '위임 효과(1.2.0)' README.ko.md | grep -c '감사'; grep -F '委任の効果（1.2.0）' README.ja.md | grep -c '監査'   # 세션 모드 문단 줄만 — README 전체는 HEAD에서 이미 각 4건
 diff <(grep -n '^#' README.md | cut -d: -f1) <(grep -n '^#' README.ko.md | cut -d: -f1) && diff <(grep -n '^#' README.md | cut -d: -f1) <(grep -n '^#' README.ja.md | cut -d: -f1) && echo SAME_HEADING_LINES
 node -e 'for (const f of ["dev-workflow/.claude-plugin/plugin.json",".claude-plugin/marketplace.json"]) { const j=JSON.parse(require("fs").readFileSync(f,"utf8")); console.log(f, JSON.stringify(j).includes("orchestrate"), j.version ?? j.plugins[0].name); }'
 grep -c '1.2.0 트랙 `docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md`' docs/specs/2026-10-10-review-loop-security-arg-successor-optout.md
 ```
 
-기대: 3언어 각 `ALL_PRESENT` · 「후속 버전」류 `0` · 경고 `1` / audit·감사·監査 각 `1` 이상 / `SAME_HEADING_LINES` / plugin.json `true 1.1.1` · marketplace.json `true dev-workflow` / 포인터 `1`.
+기대: 3언어 각 `ALL_PRESENT` · 「후속 버전」류 `0` · 경고 `1` / 세션 모드 문단(위임 효과(1.2.0) 줄)의 audit·감사·監査 각 `1` 이상 / `SAME_HEADING_LINES` / plugin.json `true 1.1.1` · marketplace.json `true dev-workflow` / 포인터 `1`.
 
 ### 6. 커밋 (2개)
 
