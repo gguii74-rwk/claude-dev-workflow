@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 const DONE_MARK = '[TRACK-DONE ';
 const HANDOFF_MARK = '[TRACK-HANDOFF ';
 const QUESTION_PATTERNS = ['Enter to select', 'to navigate'];
-const PERMISSION_PATTERNS = ['could not be checked', 'Do you want to proceed', "Yes, and don't ask again"];
+const PERMISSION_PATTERNS = ['could not be checked', 'Do you want to ', "Yes, and don't ask again", 'Yes, allow '];  // 'Do you want to ' = proceed·make this edit·create·overwrite·allow 권한 창 전체 — 좁으면 diff 미리보기의 질문 꼬리말 문구에 질문 창으로 오판돼 enter가 권한을 승인한다(D23)
 const SEPARATOR = '────';                       // 프롬프트 박스 위·아래 구분선
 const PROMPT_CHAR = '❯';                        // 프롬프트 박스 안 입력 줄
 const SPINNER_PREFIXES = ['✻', '✶', '✳', '✢', '·', '✽', '*'];

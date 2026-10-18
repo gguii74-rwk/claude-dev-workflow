@@ -164,6 +164,15 @@ test('AC3 watch: 본문에 질문 창 문구를 인용하고 그 아래 실제 �
   assert.equal(r.first, 'PERMISSION');
 });
 
+test('AC3 watch·alive: 파일 편집 권한 창의 diff 미리보기에 질문 꼬리말 문구가 있어도 PERMISSION·권한 창(질문 창 아님)', () => {
+  const E = [' Edit file', ' …/orchestrate.mjs', " 48 +const QUESTION_PATTERNS = ['Enter to select', 'to navigate'];", ' Do you want to make this edit to orchestrate.mjs?', ' ❯ 1. Yes', '   2. Yes, allow all edits during this session (shift+tab)', '   3. No, and tell Claude what to do differently (esc)', ' Esc to cancel'];
+  const w = run('watch', ['term_t', '5'], { read: [read(A), read(E)], wait: [BUSY] });
+  assert.equal(w.first, 'PERMISSION');
+  const a = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(E)] });
+  assert.equal(a.code, 0);
+  assert.match(a.first, /권한 창/);
+});
+
 test('AC3 watch TIMEOUT: 최대초 경과·변화 없음', () => {
   const r = run('watch', ['term_t', '0.3'], { read: [read(A)], wait: [BUSY] });
   assert.equal(r.code, 0);
