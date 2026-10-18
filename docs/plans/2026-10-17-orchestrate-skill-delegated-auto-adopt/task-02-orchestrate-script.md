@@ -1,6 +1,6 @@
 # task-02 — orchestrate.mjs 구현 (GREEN) (spec §3w · AC2·AC3·AC4)
 
-**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 34건을 통과시킨다.
+**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 36건을 통과시킨다.
 
 ## Files
 
@@ -26,7 +26,7 @@
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 34 · pass 0 · fail 34.
+기대: tests 36 · pass 0 · fail 36.
 
 ### 2. 스크립트 작성
 
@@ -84,11 +84,15 @@ function orca(env, args) {
   const full = [...args, '--json', ...(env ? ['--environment', env] : [])];
   const r = spawnSync(resolveCli(), full, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, killSignal: 'SIGKILL' });
   if (r.error) throw new Fail(`orca 실행 실패: ${r.error.message}`);
+  let res;
   try {
-    return JSON.parse(r.stdout);
+    res = JSON.parse(r.stdout);
   } catch {
     throw new Fail(formatFail('JSON 응답'));
   }
+  // 루트가 객체가 아니면(null·숫자·배열) 형식 이탈 — 필드 접근 TypeError로 새지 않게 여기서 멈춘다
+  if (res === null || typeof res !== 'object' || Array.isArray(res)) throw new Fail(formatFail('JSON 응답 객체'));
+  return res;
 }
 
 function readScreen(env, handle) {
@@ -295,8 +299,8 @@ async function main() {
       throw new Fail('usage: orchestrate.mjs <watch|alive|key> <핸들> …');
     }
   } catch (e) {
-    if (!(e instanceof Fail)) throw e;
-    process.stdout.write(`ERR ${e.message}\n`);
+    // 예기치 않은 예외도 ERR exit 2 — 그대로 던지면 node가 exit 1로 끝나 alive의 「종료」로 오판된다(→ 중복 재개)
+    process.stdout.write(`ERR ${e instanceof Fail ? e.message : `예기치 않은 오류: ${e?.message ?? e}`}\n`);
     process.exitCode = 2;
   }
 }
@@ -311,7 +315,7 @@ node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs && echo CHE
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `CHECK_OK` · tests 34 · pass 34 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
+기대: `CHECK_OK` · tests 36 · pass 36 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
 
 ### 4. 회귀 확인
 
@@ -327,12 +331,12 @@ git diff 151d9f0 -- dev-workflow/hooks | wc -l
 
 ```bash
 git add dev-workflow/skills/orchestrate/scripts/orchestrate.mjs
-git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR); 테스트 34/34(spec §3w·AC2·AC3)"
+git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR), 응답 루트·예기치 않은 예외 = ERR exit 2; 테스트 36/36(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 34 · pass 34 · fail 0 (AC2·AC3).
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 36 · pass 36 · fail 0 (AC2·AC3).
 - `node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → exit 0 (AC4 일부).
 - `grep -c "shell: true" dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → `0` (셸 보간 없음).
 - 상수 자리: `grep -nE "^const (DONE_MARK|HANDOFF_MARK|QUESTION_PATTERNS|PERMISSION_PATTERNS|CLAUDE_EXIT_MARK|SHELL_PROMPT_RE|HUD_MARK) " dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → 7줄 (검증 필요(실측) 문자열의 갱신 자리 1곳 — spec 잔여 리스크 (1)(2)).
@@ -346,6 +350,7 @@ git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르�
 - **화면 출처가 `screen`이 아닌 응답을 판독에 쓰지 마라.** 이유: 누적 스트림에는 프롬프트 박스가 없어 살아 있는 claude를 종료로 오판 → 중복 재개(spec R4-1).
 - **`alive`에서 「박스 없음」만으로 exit 1을 내지 마라.** 이유: 질문 창·출력 중 화면도 박스가 없다 — 종료는 「마지막 구분선 아래의 종료 표지 + 그 뒤 셸 프롬프트」 둘 다일 때만, 어느 쪽도 확정 못 하면 exit 2(spec R6-1).
 - **python 의존을 더하지 마라.** 이유: M10 — 스크립트는 Node 하나.
+- **어떤 실패도 exit 1로 끝내지 마라.** 이유: `alive`의 exit 1 = 「종료」라 메인이 `--resume` 복구로 같은 세션을 둘 만든다 — 응답 루트가 객체가 아니면 자가 점검 ERR, 예기치 않은 예외도 `main()`이 ERR exit 2로 바꾼다(plan ledger R5-1).
 - **`key`에서 생존 확인을 첫 키 한 번으로 줄이지 마라.** 이유: 묶음 키 사이에 claude가 끝나면 남은 text·enter가 셸에서 실행된다 — 키마다 `alive` 0일 때만 보내고, 아니면 보낸 개수를 담아 `ERR 전송 중단`(plan ledger R1-2). **화면 종류(프롬프트 박스·질문 창·권한 창)가 첫 키 때와 달라져도 멈춘다** — 사용자가 직접 답해 권한 창이 뜨면 남은 enter가 권한을 승인한다(D23, plan ledger R2-2). 창 종류는 화면 전체가 아니라 **맨 아래 창 문구**로 정한다 — 전체에서 찾으면 본문에 인용된 권한 문구가 처음부터 「권한 창」으로 읽혀 전환을 못 잡는다(plan ledger R3-1). 박스도 같다 — 창 문구가 마지막 구분선보다 아래면 박스는 본문 인용이다(plan ledger R4-1).
 - **`alive`의 「입력 요소 뒤 셸 프롬프트」 검사를 빼지 마라.** 이유: 종료 안내 없이(SIGKILL 등) 셸로 돌아간 잔존 화면이 생존으로 읽혀 전송이 셸로 간다(plan ledger R1-1·R2-1). 박스 아래 HUD 줄(`[Opus 5.5] │ Context 17%`)은 셸 프롬프트와 같은 끝 문자를 써서 `HUD_MARK`(`│`)로 가른다 — 구분자 없는 상태줄을 쓰는 환경이나 질문 창 아래에 HUD가 보이는 환경은 판독 불가(exit 2 — 안전한 쪽, 시끄럽게 멈춤)가 되므로 실측 때 상수 자리에서 갱신(검증 필요(실측)).
 - **오르카 호출에서 `timeout`을 빼지 마라.** 이유: 응답하지 않는 CLI 한 번이 watch 상한(580초)과 메인의 대기 상한(600초)을 무력화한다 — 호출 상한 8초 · 상한은 시작 자가 점검부터 잰다(plan ledger R1-4). `killSignal: 'SIGKILL'`도 빼지 마라 — 기본 SIGTERM을 무시하는 CLI면 `spawnSync`가 자식 종료를 기다리며 돌아오지 않는다(plan ledger R2-3).

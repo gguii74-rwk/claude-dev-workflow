@@ -82,7 +82,7 @@
 
 | 약칭 | 경로 | 이 plan에서 바꾸는 것 | task |
 |---|---|---|---|
-| 테스트 | `tests/orchestrate/orchestrate.test.mjs` (repo 루트 — 설치본 밖, M15) | 신규 34건 | 01 |
+| 테스트 | `tests/orchestrate/orchestrate.test.mjs` (repo 루트 — 설치본 밖, M15) | 신규 36건 | 01 |
 | 스크립트 | `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` | 신규 | 02 |
 | 템플릿 | `dev-workflow/skills/orchestrate/templates/track-prompt.md` | 신규 | 03 |
 | OS | `dev-workflow/skills/orchestrate/SKILL.md` | 신규(≤ 15,360B) | 04 |
@@ -103,7 +103,7 @@
   - 우선순위: 표지(본문의 **마지막 비어 있지 않은 줄**이 `[TRACK-DONE `/`[TRACK-HANDOFF `로 시작 — 단 `--consumed`와 같고 본문이 시작값에서 안 바뀌었으면 소비됨, D41) > `QUESTION`(「Enter to select」 또는 「to navigate」) > `PERMISSION`(「could not be checked」·「Do you want to proceed」·「Yes, and don't ask again」) > `SETTLED`(본문 해시가 시작값에서 **바뀐 뒤** 직전 읽기와 같고 idle 만족) > `TIMEOUT`.
 - **`alive <핸들>`**: stdout 1줄. `ALIVE …` exit 0(연결·쓰기 가능 + 화면에 프롬프트 박스(마지막 두 구분선 사이 `❯` 줄) 또는 질문·권한 창 + 박스 아래 종료 표지 없음 — 입력 요소 뒤 마지막 줄이 셸 프롬프트 모양이면(박스는 HUD 구분자 `│`도 없을 때) 제외, R1-1·R1-3·R2-1) · `EXITED …` exit 1(미연결·고아, 또는 마지막 구분선 **아래**에 「Resume this session with」 + 그 뒤 마지막 줄이 셸 프롬프트 `/[%$#>]\s*$/`) · `UNREADABLE … 종료로 보지 않는다` exit 2(쓰기 불가 · 어느 쪽도 확정 불가) · `STALE …` exit 3(`terminal_handle_stale`) · `ERR …` exit 2.
 - **`key <핸들> <키…>`**: 키 = `enter`(`--enter` 플래그) · `tab`(`\t`) · `shift-tab`(`\x1b[Z`) · `up`(`\x1b[A`) · `down`(`\x1b[B`) · `text <문자열>`(`--text <원문>` — argv 직접, 셸 보간 없음). 키마다 `alive` 판정 0 + 화면 종류(프롬프트 박스·질문 창·권한 창 — 종류 = 화면 맨 아래 입력 요소: 창 문구가 박스 아래 구분선보다 아래면 창, R3-1·R4-1)가 첫 키 때와 같음 확인(아니면 `ERR 전송 중단 — <보낸 수>/<전체>개 …` exit 2, 나머지 미전송 — R1-2·R2-2) → `terminal send` 1회 + 300ms 간격, 영수증 `result.send.accepted !== true`면 `ERR` exit 2. 성공 = `SENT <n>` exit 0.
-- **자가 점검 메시지**: 의존 필드(`result.terminal.tail` 배열 · `result.wait.satisfied` boolean(또는 `error.code` `timeout`) · `result.terminal.connected`/`writable`/`orphaned` boolean)가 없거나 JSON 파싱 실패 → `ERR orca 응답 형식이 스크립트와 다릅니다 — \`orca skills get orca-cli\`를 참조해 scripts/orchestrate.mjs의 필드명을 갱신하세요(필드: <누락 필드>)`. 화면 출처 `source`가 `screen`이 아니면 → `ERR 렌더링 화면을 읽지 못했다(source=<값|없음>) — 종료로 보지 않는다`.
+- **자가 점검 메시지**: 응답 루트가 객체가 아니거나(`null` 등) 의존 필드(`result.terminal.tail` 배열 · `result.wait.satisfied` boolean(또는 `error.code` `timeout`) · `result.terminal.connected`/`writable`/`orphaned` boolean)가 없거나 JSON 파싱 실패 → `ERR orca 응답 형식이 스크립트와 다릅니다 — \`orca skills get orca-cli\`를 참조해 scripts/orchestrate.mjs의 필드명을 갱신하세요(필드: <누락 필드>)`. 화면 출처 `source`가 `screen`이 아니면 → `ERR 렌더링 화면을 읽지 못했다(source=<값|없음>) — 종료로 보지 않는다`.
 - 환경변수 `ORCHESTRATE_INTERVAL_MS`·`ORCHESTRATE_CALL_TIMEOUT_MS` = **테스트 전용** 감시 간격·호출 상한(테스트는 20ms·3000ms). 운영 문서에 쓰지 않는다.
 
 ### SC-3. 표지 · 출처 · 대장 문자열 정본 (템플릿·SKILL.md·review-loop·dev-cycle·README가 그대로 쓴다)
@@ -116,7 +116,7 @@
 ### SC-4. 게이트 명령 (repo에 npm 게이트 없음 — review-loop(impl) §1 impl 게이트는 이 묶음으로 갈음)
 
 ```bash
-node --test tests/orchestrate/orchestrate.test.mjs                       # T1 — 34/34 (폴더 인자 금지, P1)
+node --test tests/orchestrate/orchestrate.test.mjs                       # T1 — 36/36 (폴더 인자 금지, P1)
 node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs     # T2
 env -u DEV_WORKFLOW_MODE HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.0.0/context-threshold-hook.test.mjs      # T3a — 11/11
 env -u DEV_WORKFLOW_MODE HOOK="$PWD/dev-workflow/hooks/scripts/context-threshold-hook.mjs" node --test --test-reporter=tap .remember/hook-test-1.1.0/context-threshold-hook.mode.test.mjs # T3b — 2/2
@@ -138,7 +138,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 01 | orchestrate.mjs 계약 테스트 34건 (RED) | [ ] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | |
+| 01 | orchestrate.mjs 계약 테스트 36건 (RED) | [ ] | [task-01](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-01-orchestrate-test-red.md) | — | |
 | 02 | orchestrate.mjs watch·alive·key (GREEN) | [ ] | [task-02](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-02-orchestrate-script.md) | 01 | |
 | 03 | 트랙 프롬프트 템플릿 | [ ] | [task-03](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-03-track-prompt-template.md) | — | |
 | 04 | orchestrate SKILL.md | [ ] | [task-04](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-04-orchestrate-skill-md.md) | 02, 03 | |
