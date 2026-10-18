@@ -132,6 +132,7 @@
 - **AC7 (README 3종)**: 스킬 표 행 · 목차 · 사용법 절(위임 트랙 기동 기본 문면의 `--dangerously-skip-permissions` **경고 1줄** 포함 — B18 · 서브커맨드 3개 · 템플릿) · 세션 모드 문단 갱신(「후속 버전에서 더해진다」류 문구 0건, 「1.2.0」 ≥ 1, 「감사」 ≥ 1) · `--auto-rounds` 1구절 · 트리(`orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}` · `tests/orchestrate/`) · 개발/릴리스 절에 `node --test tests/orchestrate/orchestrate.test.mjs` 1줄 — 3언어 각 1곳, 구조 동일. plugin.json·marketplace.json description에 「orchestrate」.
 - **AC8 (훅 무변경 · 회귀)**: `git diff <base>..HEAD -- dev-workflow/hooks` 빈 출력 · 기준선 `.remember/hook-test-1.0.0/` 11/11 · `.remember/hook-test-1.1.0/` 2/2 GREEN(실행법 = 1.1.0 spec AC3).
 - **AC9 (릴리스 뒤 실측 — 트랙 완료 조건 = (i)만, H2)**: **(i)** 메인 세션이 `/dev-workflow:orchestrate`로 **다음 트랙 1개**를 기동→감시→단계 종료까지 운영(설치본 기준 — Base directory 경로 해소 M14 포함) — `watch` 판정 `DONE`·`QUESTION` 각 1회 이상 관측(HANDOFF는 발생 시), `alive`·`key` 각 1회 이상 사용, 템플릿으로 쓴 프롬프트 1건, 질문 1건 이상 라우팅표대로 처리, 종료 검증 체크리스트 수행 기록 → **통과 = 트랙 종결**. **(ii)** 위임 review-loop에서 **추천 자동 채택 ≥ 1건** → ledger 출처 + `[자동 채택(위임)]` 표시 + 대장 행 + §4 1줄 — **batch ESCALATE 발생에 의존하므로 완료 조건이 아니다**: 「검증 필요(실사용) — 첫 발생 시 이 spec §4에 기록」(§잔여 리스크 (5)). Windows 미실측.
+  - AC9 (ii) 첫 발생 기록(2026-10-18): 1.2.1 review-loop(spec) R2(정밀) R2-1 — ledger 출처 「추천 자동 채택(위임)」 · [자동 채택(위임)] 표시 · 대장 행 #1(사용자 확인) · §4 종료 요약 「추천 자동 채택(위임) 1건」 확인 · 커밋 03b6b85·71aea11·8271bb5
 
 ## 5. 결정사항
 
