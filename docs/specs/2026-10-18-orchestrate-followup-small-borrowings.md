@@ -1,6 +1,6 @@
 # orchestrate 후속 — 오르카 미설치 안내 · 오르카 orchestration 스킬 작은 차용 3건 · SKILL.md 분량 상한 16KB (1.2.1 패치)
 
-- 단계: **1–2 spec 초안 `a902970` (2026-10-18) → 3 harden-spec 완료 (2026-10-18, 갭 대장 30건 — 사실 11건 조회 해소 · 판단 15건 질문 해소(추천 채택 15/15 · D블록 변경 1건 = D8 → D9 17KB) · 검증 필요(실측) 4건 · DEFERRED 0)** → **4 review-loop(spec) 종결 (2026-10-18 — 적대 2 · 확인 1(C1 pass) · FIXED 2(R2-1 = 추천 자동 채택(위임)) · 미판정 blocking 0 · 확인 대기 대장 대기 1행)** → **7 impl(planless, TDD) 완료 (2026-10-18 — `22ee94a`·`d490154`·`4f90c15`·`8e1f236` · AC1~AC5 + AC6 포인터 통과, 검증 기록 = §4 「7 impl 검증 기록」 · plugin.json·AC7은 9·실측 몫)** → 8 review-loop(impl) → 9 릴리스 1.2.1 → AC7 실측.
+- 단계: **1–2 spec 초안 `a902970` (2026-10-18) → 3 harden-spec 완료 (2026-10-18, 갭 대장 30건 — 사실 11건 조회 해소 · 판단 15건 질문 해소(추천 채택 15/15 · D블록 변경 1건 = D8 → D9 17KB) · 검증 필요(실측) 4건 · DEFERRED 0)** → **4 review-loop(spec) 종결 (2026-10-18 — 적대 2 · 확인 1(C1 pass) · FIXED 2(R2-1 = 추천 자동 채택(위임)) · 미판정 blocking 0 · 확인 대기 대장 대기 1행)** → **7 impl(planless, TDD) 완료 (2026-10-18 — `22ee94a`·`d490154`·`4f90c15`·`8e1f236` · AC1~AC5 + AC6 포인터 통과, 검증 기록 = §4 「7 impl 검증 기록」 · plugin.json·AC7은 9·실측 몫)** → **8 review-loop(impl) 종결 (2026-10-18 — 적대 2 · 확인 1(C1 pass) · FIXED 1(R1-1 `4856895`, 루프) · 미판정 blocking 0 · 확인 대기 대장 대기 0행 · ledger = 이 문서 `## 적대검증 ledger (impl)`)** → 9 릴리스 1.2.1 → AC7 실측.
 - 경로: **경량**(사용자 판정 2026-10-18 — dev-cycle 1차 판정 「접촉 표면 무신호: 스킬 문면 + 동봉 템플릿·스크립트 ERR 문구·테스트」, 사용자 확인 1회) — D1. 생략 = **5 plan · 6 plan 적대검증**(planless — D2) · 4 spec 적대검증과 8 impl 적대검증은 수행 · impl ledger = 이 spec 말미. 하한 3종 유지. 3.5 해당없음(화면 없음).
 - review-loop 호출(4·8): 보안 판정은 기동 전 사용자 확인(builder 권고 = `--security no` — 접촉면 권한·보안 경계 변경 없음: 권한 창 판정 로직·기동 플래그 무변경 · `--auto-rounds 1`).
 - 출처: 1.2.0 트랙 종결 뒤 후속 검토 후보(메모리 `dev-workflow-1-2-0-followups` — 6 review-loop(plan) 중 사용자 질문 2건에 대한 메인 spec 대조, 사용자 판정 2026-10-18 「후속 검토 트랙」) · 1.2.0 spec `docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md`(§2 비목표 「orca orchestration 채택 없음」 · M3 분량 상한 · D1~D44) · 1.2.0 plan `docs/plans/2026-10-17-orchestrate-skill-delegated-auto-adopt.md` 적대검증 ledger(plan·impl)의 「잔여 관찰」 · `.remember/sdd-1-2-0-impl-ledger.md` · `orca skills get orchestration`(1.4.229, references `worker-contract`·`messaging-and-gates`·`coordinator-loop` — 참조만) · eval `report/LESSONS-2026-08-12.md` L1·L3·L5 · 이 트랙(메인이 1.2.0 설치본으로 운영 중인 AC9 (i) 실측)의 관측 — 2026-10-18 멈춘 전송 1회(§7).
@@ -163,12 +163,15 @@
 
 | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|
-| R1-1 · `dev-workflow/skills/orchestrate/SKILL.md` ① 5 · 「모델 표기 없음 분기에 사용자 보고 1줄 누락(D12 「확인 불가 기록 후 진행(보고 1줄)」)」 · 「표기 없음 분기에 사용자 1줄 보고 명시」 | medium | FIXED `4856895` | D12·§3b 그대로의 구현 누락(D 변경 아님). TDD: ① 5 줄 `「확인 불가」로 적고 … 보고 … →` 검사 RED → 「사용자에게 1줄 보고한 뒤 진행」 GREEN. 게이트: SKILL.md 16,783B · AC1 금지 목록 0 · `$`+숫자 0 · ① 5 「확인 불가」 1건 유지(AC3) · 56/56 · 11/11·2/2 · 가드 diff 0 · 적대 비재출현(R2) — 참고 신호, 큐 잔존 |
+| R1-1 · `dev-workflow/skills/orchestrate/SKILL.md` ① 5 · 「모델 표기 없음 분기에 사용자 보고 1줄 누락(D12 「확인 불가 기록 후 진행(보고 1줄)」)」 · 「표기 없음 분기에 사용자 1줄 보고 명시」 | medium | FIXED `4856895` | D12·§3b 그대로의 구현 누락(D 변경 아님). TDD: ① 5 줄 `「확인 불가」로 적고 … 보고 … →` 검사 RED → 「사용자에게 1줄 보고한 뒤 진행」 GREEN. 게이트: SKILL.md 16,783B · AC1 금지 목록 0 · `$`+숫자 0 · ① 5 「확인 불가」 1건 유지(AC3) · 56/56 · 11/11·2/2 · 가드 diff 0 · 적대 비재출현(R2) — 참고 신호, 큐 잔존 · **소멸 확인(C1)** |
 
 | 라운드 | 모드 | critical/high/medium | 신규/잔존 | score | 미확인 FIXED 큐 | 비고 |
 |---|---|---|---|---|---|---|
 | R1 (HEAD `ed0d167`) | 적대·자동 | 0/0/1 | 신규 1 | 1 | 0 → 1 | needs-attention · 실행 로그 18건 · 적대 소진 1 = auto-rounds → batch flush(적재 0건) → 정밀 모드 |
 | R2 (HEAD `671e306`) | 적대·정밀 | 0/0/0 | 신규 0 | 0 | 1 → 1 | approve · 실행 로그 19건 · 분류 후 신규 FIXED 후보 0 → **전환 신호 2(수정 큐 소진)** → batch 정리(0건) → 확인 모드 진입(예산 2) |
+| C1 (HEAD `46247f3`) | 확인 | 0/0/0 | 신규 0 | 0 | 1 → 0 | 응답 완전 · 소멸 확인 = R1-1 · 판정 감사 해당 없음(루프 직접 판정·자동 채택 0) · 회귀 0(① 5 「확인 불가」·「후계·복구 기동도 같다」 각 1 · 16,783B · AC1 금지 목록 0 · `$`+숫자 0) · verdict **pass** · 확인 소진 1/2 · 복귀 미사용 |
+
+- **종결(2026-10-18)**: 미판정 blocking 0 · 미확인 FIXED 큐 0 · 최종 verdict pass(C1). 집계 FIXED 1(출처 루프 1 · 추천 자동 채택(위임) 0 · 사용자 0) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · ESCALATE 0 · low 0. 루프 건강: 재론률 0/1 · 철회 조항 0 · 사람개입률 0/1. 추천 자동 채택(위임) 해당 없음 · 확인 대기 대장 신규 행 0(대기 0행). 종결 게이트(HEAD `4856895` 코드 기준, 이후 커밋은 문서만): SKILL.md 16,783B · `node --check` OK · 56/56 · 미설치 ERR 첫 줄·exit 2 · 훅 11/11·2/2 · 가드 diff 0줄.
 
 ## 확인 대기 대장
 
