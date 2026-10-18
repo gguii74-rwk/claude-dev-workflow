@@ -86,6 +86,7 @@ D1~D12 + 기결정 대체 1건 — 아래 「재논의 금지(기결정)」 블�
 - 이 spec의 §3m 확장 규칙에 따라 새 스위치가 아니라 `DEV_WORKFLOW_MODE=delegated`의 효과로 들어간다.
 - 접점(후속 트랙에서 정리): dev-cycle §경량 경로의 「확인 불가 폴백 ② 사용자의 부재·자율 진행 명시」는 이미 같은 상황(사용자 부재)을 문면 신호로 다룬다 — 위임 모드가 그 신호의 공식 입력이 될 수 있다.
 - **후속(별도 경량 트랙 1.1.1 패치 — 사용자 판정 2026-10-17)**: review-loop SKILL.md 셸 블록의 `$N`이 스킬 인자로 치환되는 결함(AC6 기록의 부수 발견) — 이 트랙에서는 고치지 않는다. → 1.1.1 트랙 `docs/specs/2026-10-17-skill-positional-arg-substitution.md`
+- **후속(위임 모드 효과 2 + orchestrate 스킬)**: 위 「내용」·「접점」은 → 1.2.0 트랙 `docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md`
 
 ## 잔여 리스크 (DEFERRED)
 
