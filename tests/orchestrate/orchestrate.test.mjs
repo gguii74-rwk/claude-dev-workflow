@@ -53,7 +53,7 @@ const QP = ['⏺ 질문이 있습니다', '', ' 권한 창 문구 「Do you want
 const R = ['⏺ 질문이 있습니다', '', '←  ☒ 보안  ☒ 진행  ✔ Submit  →', '', 'Review your answers', '', ' ● 보안 판정?', '   → 지금 고친다', '', 'Ready to submit your answers?', '', '❯ 1. Submit answers', '  2. Cancel']; // 묶음 질문 최종 제출 화면(꼬리말 없음)
 const X = [...A, 'Resume this session with:', 'claude --resume 0b9c2f2e-1111-2222-3333-444455556666', '', 'wk@host claude-dev-workflow % '];
 
-function run(cmd, args, scenario) {
+function run(cmd, args, scenario, extraEnv = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'orch-test-'));
   writeFileSync(join(dir, 'orca'), FAKE_ORCA);
   chmodSync(join(dir, 'orca'), 0o755);
@@ -62,6 +62,7 @@ function run(cmd, args, scenario) {
   const env = { ...process.env, PATH: dir + delimiter + process.env.PATH, FAKE_ORCA_SCENARIO: scPath, ORCHESTRATE_INTERVAL_MS: '20', ORCHESTRATE_CALL_TIMEOUT_MS: '3000' };
   delete env.ORCA_CLI_COMMAND;
   delete env.ORCA_DEV_REPO_ROOT;
+  Object.assign(env, extraEnv);
   const t0 = Date.now();
   const r = spawnSync(process.execPath, [SCRIPT, cmd, ...args], { env, encoding: 'utf8', timeout: 20000 });
   const logPath = scPath + '.log';
@@ -75,6 +76,20 @@ test('AC2 watch: 렌더링 줄 배열이 없으면 exit 2 + orca-cli + 필드명
   assert.equal(r.code, 2);
   assert.match(r.out, /orca-cli/);
   assert.match(r.out, /result\.terminal\.tail/);
+});
+
+test('AC2 alive: 오르카 CLI가 없으면(ENOENT) exit 2 + 두 갈래 안내(단일 세션 · ORCA_CLI_COMMAND)', () => {
+  const r = run('alive', ['x'], {}, { ORCA_CLI_COMMAND: '__no_such_orca__' });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR 오르카 CLI 없음\(__no_such_orca__\)/);
+  assert.match(r.first, /단일 세션/);
+  assert.match(r.first, /ORCA_CLI_COMMAND/);
+});
+
+test('AC2 watch: 오르카 CLI가 없으면(ENOENT) alive와 같은 첫 줄 + exit 2', () => {
+  const r = run('watch', ['x', '1'], {}, { ORCA_CLI_COMMAND: '__no_such_orca__' });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR 오르카 CLI 없음\(__no_such_orca__\)/);
 });
 
 test('AC2 watch: idle 플래그가 없으면 exit 2 + orca-cli + 필드명', () => {

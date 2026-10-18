@@ -50,7 +50,10 @@ function formatFail(missing) {
 // 응답하지 않는 호출은 CALL_TIMEOUT_MS에서 SIGKILL로 끊고 ERR(r.error = ETIMEDOUT)로 멈춘다 — SIGTERM은 무시하는 CLI가 있으면 상한이 무력해진다.
 function orca(env, args) {
   const full = [...args, '--json', ...(env ? ['--environment', env] : [])];
-  const r = spawnSync(resolveCli(), full, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, killSignal: 'SIGKILL' });
+  const cli = resolveCli();
+  const r = spawnSync(cli, full, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, killSignal: 'SIGKILL' });
+  // 미설치(ENOENT)는 기동 전·운영 중 두 갈래를 한 문구로 안내한다(D11) — 그 밖(ETIMEDOUT 등)은 현행 문구
+  if (r.error?.code === 'ENOENT') throw new Fail(`오르카 CLI 없음(${cli}) — 트랙 기동 전이면 단일 세션으로 진행 · 트랙이 떠 있으면 CLI 해소(ORCA_CLI_COMMAND·PATH)를 고쳐 재시도(복구·재생성 금지)`);
   if (r.error) throw new Fail(`orca 실행 실패: ${r.error.message}`);
   let res;
   try {
