@@ -154,6 +154,21 @@
 
 - **종결(2026-10-18)**: 미판정 blocking 0 · 미확인 FIXED 큐 0 · 최종 verdict pass(C1). 집계 FIXED 2(출처 루프 1 · 추천 자동 채택(위임) 1 · 사용자 0) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · ESCALATE 0(R2-1은 채택으로 닫힘) · low 0. 루프 건강: 재론률 0/2 · 철회 조항 0 · 사람개입률 0/2. 확인 대기 대장 대기 1행(#1 — 단계 종료 보고에서 사용자 확인).
 
+## 적대검증 ledger (impl)
+
+보안 크리티컬: no (호출자 지정) — 접촉면 즉시군 미감지(스킬 문면·템플릿·스크립트 ERR 문구·테스트, 권한 창 판정·기동 플래그 무변경)
+
+- 루프: `--phase impl --security no --auto-rounds 1 --base 4e4832e`(SHA `4e4832ef03f9d0049ad97debeefdf8b96ab81594`, 구현 착수 직전 HEAD 고정 — origin/main 미사용) · 예산 max 5 · confirm 2 · auto 1 · 세션 모드 위임 · 입도 = **통합 1회**(planless 5커밋 `22ee94a`·`d490154`·`4f90c15`·`8e1f236`·`ed0d167` — SDD task 증분 없음) · 대장 승계 대기 0건. 사전 게이트(HEAD `ed0d167`): SKILL.md 16,748B · `node --check` OK · 56/56 · 미설치 ERR 첫 줄·exit 2 · 훅 11/11·2/2 · 가드 diff 0줄.
+- score 산식 = 미확인 FIXED 큐 제외(현행 review-loop 1.2.0).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| R1-1 · `dev-workflow/skills/orchestrate/SKILL.md` ① 5 · 「모델 표기 없음 분기에 사용자 보고 1줄 누락(D12 「확인 불가 기록 후 진행(보고 1줄)」)」 · 「표기 없음 분기에 사용자 1줄 보고 명시」 | medium | FIXED `4856895` | D12·§3b 그대로의 구현 누락(D 변경 아님). TDD: ① 5 줄 `「확인 불가」로 적고 … 보고 … →` 검사 RED → 「사용자에게 1줄 보고한 뒤 진행」 GREEN. 게이트: SKILL.md 16,783B · AC1 금지 목록 0 · `$`+숫자 0 · ① 5 「확인 불가」 1건 유지(AC3) · 56/56 · 11/11·2/2 · 가드 diff 0 |
+
+| 라운드 | 모드 | critical/high/medium | 신규/잔존 | score | 미확인 FIXED 큐 | 비고 |
+|---|---|---|---|---|---|---|
+| R1 (HEAD `ed0d167`) | 적대·자동 | 0/0/1 | 신규 1 | 1 | 0 → 1 | needs-attention · 실행 로그 18건 · 적대 소진 1 = auto-rounds → batch flush(적재 0건) → 정밀 모드 |
+
 ## 확인 대기 대장
 
 | # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
