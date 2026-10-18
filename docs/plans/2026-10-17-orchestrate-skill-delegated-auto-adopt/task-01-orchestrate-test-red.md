@@ -1,6 +1,6 @@
 # task-01 — orchestrate.mjs 계약 테스트 작성 (RED) (spec §3w · AC2·AC3)
 
-**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **31건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
+**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **33건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
 
 ## Files
 
@@ -11,7 +11,7 @@
 
 - spec `docs/specs/2026-10-17-orchestrate-skill-delegated-auto-adopt.md` §3w(스크립트 계약 · 테스트 불릿) · §4 AC2·AC3.
 - 엔트리포인트 §Shared Contracts **SC-2**(CLI 계약 — 출력 첫 줄 토큰·exit code·`ORCHESTRATE_INTERVAL_MS`) · **SC-4**(테스트·회귀 명령).
-- 가짜 `orca`는 테스트 파일 안의 문자열(`FAKE_ORCA`)을 임시 디렉터리에 실행 파일 `orca`로 써서 PATH 맨 앞에 둔다. 서브커맨드(`read`·`wait`·`show`·`send`)별 응답 큐를 차례로 돌려주고, 큐가 끝나면 마지막 응답을 반복하며, 받은 argv를 `<scenario>.log`에 JSON 한 줄씩 남긴다. 응답이 `{hang: true}`면 응답하지 않고 멈춘다(호출 상한 검증용).
+- 가짜 `orca`는 테스트 파일 안의 문자열(`FAKE_ORCA`)을 임시 디렉터리에 실행 파일 `orca`로 써서 PATH 맨 앞에 둔다. 서브커맨드(`read`·`wait`·`show`·`send`)별 응답 큐를 차례로 돌려주고, 큐가 끝나면 마지막 응답을 반복하며, 받은 argv를 `<scenario>.log`에 JSON 한 줄씩 남긴다. 응답이 `{hang: true}`면 응답하지 않고 멈춘다(호출 상한 검증용 — `ignoreTerm: true`를 더하면 SIGTERM도 무시한다; 어느 쪽이든 15초 뒤 스스로 끝나 고아로 남지 않는다).
 
 ## Deps
 
@@ -60,7 +60,10 @@ const i = state[sub] || 0;
 state[sub] = i + 1;
 fs.writeFileSync(statePath, JSON.stringify(state));
 const r = queue[Math.min(i, queue.length - 1)] || { stdout: { ok: false, error: { code: 'no_scenario' } }, code: 1 };
-if (r.hang) setInterval(() => {}, 1000); // 응답하지 않는 CLI — 스크립트의 호출 상한이 끊어야 한다
+if (r.hang) { // 응답하지 않는 CLI — 스크립트의 호출 상한이 끊어야 한다(15초 뒤 스스로 끝나 고아로 남지 않는다)
+  if (r.ignoreTerm) process.on('SIGTERM', () => {});
+  setTimeout(() => process.exit(1), 15000);
+}
 else {
   process.stdout.write(typeof r.stdout === 'string' ? r.stdout : JSON.stringify(r.stdout));
   process.exit(r.code || 0);
@@ -82,6 +85,7 @@ const D = box(['⏺ 단계 종료 보고', '  커밋 abc1234', `  ${DONE_LINE}`,
 const H = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', '  [TRACK-HANDOFF .remember/loop-x-spec.md]']);
 const Q = ['⏺ 질문이 있습니다', '', ' 판정 방식을 고르세요', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
 const P = ['⏺ Bash(sh -c "rm -f x")', '', ' Command contains rm that could not be checked', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No'];
+const QP = ['⏺ 질문이 있습니다', '', ' 권한 창 문구 「Do you want to proceed?」를 어떻게 처리할까요?', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
 const X = [...A, 'Resume this session with:', 'claude --resume 0b9c2f2e-1111-2222-3333-444455556666', '', 'wk@host claude-dev-workflow % '];
 
 function run(cmd, args, scenario) {
@@ -93,10 +97,11 @@ function run(cmd, args, scenario) {
   const env = { ...process.env, PATH: dir + delimiter + process.env.PATH, FAKE_ORCA_SCENARIO: scPath, ORCHESTRATE_INTERVAL_MS: '20', ORCHESTRATE_CALL_TIMEOUT_MS: '3000' };
   delete env.ORCA_CLI_COMMAND;
   delete env.ORCA_DEV_REPO_ROOT;
+  const t0 = Date.now();
   const r = spawnSync(process.execPath, [SCRIPT, cmd, ...args], { env, encoding: 'utf8', timeout: 20000 });
   const logPath = scPath + '.log';
   const calls = existsSync(logPath) ? readFileSync(logPath, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
-  return { code: r.status, out: r.stdout, first: r.stdout.split('\n')[0], calls };
+  return { code: r.status, out: r.stdout, first: r.stdout.split('\n')[0], calls, ms: Date.now() - t0 };
 }
 
 // ── AC2 자가 점검
@@ -136,6 +141,13 @@ test('AC2 alive: 화면 출처가 screen-unavailable이면 exit 2(1 아님) + �
 test('AC2 watch: 오르카 호출이 응답하지 않으면 최대초를 기다리지 않고 exit 2', () => {
   const r = run('watch', ['term_t', '5'], { read: [{ hang: true }], wait: [IDLE] });
   assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR /);
+});
+
+test('AC2 watch: SIGTERM을 무시하는 오르카 호출도 상한에서 끊고 exit 2', () => {
+  const r = run('watch', ['term_t', '5'], { read: [{ hang: true, ignoreTerm: true }], wait: [IDLE] });
+  assert.equal(r.code, 2);
+  assert.ok(r.ms < 10000, `상한(3초)에서 끊겨야 한다 — 실제 ${r.ms}ms(가짜 orca 자진 종료 15초를 기다렸다)`);
   assert.match(r.first, /^ERR /);
 });
 
@@ -265,7 +277,7 @@ test('AC3 alive: stale 핸들 → exit 3', () => {
   assert.match(r.first, /^STALE/);
 });
 
-// ── AC3 key 4건
+// ── AC3 key 5건
 test('AC3 key: tab shift-tab enter text — 시퀀스·원문·environment 전달', () => {
   const raw = '$(touch /tmp/x) `id` "q"';
   const r = run('key', ['term_k', 'tab', 'shift-tab', 'enter', 'text', raw, '--environment', 'spark2-ts'], { show: [SHOW_OK], read: [read(Q)], send: [SENT] });
@@ -296,6 +308,13 @@ test('AC3 key: 키 사이에 질문 창이 권한 창으로 바뀌면 나머지�
   assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
 });
 
+test('AC3 key: 본문에 권한 문구를 인용한 질문 창이 실제 권한 창으로 바뀌어도 나머지를 보내지 않고 exit 2', () => {
+  const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read(QP), read(P)], send: [SENT] });
+  assert.equal(r.code, 2);
+  assert.match(r.out, /질문 창 → 권한 창/);
+  assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
+});
+
 test('AC3 key: 키 사이에 질문 창이 닫히고 입력 상자로 바뀌면 나머지를 보내지 않고 exit 2', () => {
   const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read(Q), read(A)], send: [SENT] });
   assert.equal(r.code, 2);
@@ -310,25 +329,25 @@ test('AC3 key: 키 사이에 질문 창이 닫히고 입력 상자로 바뀌면 
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `ℹ tests 31` · `ℹ pass 0` · `ℹ fail 31`(스크립트 파일이 없어 모든 실행이 실패한다).
+기대: `ℹ tests 33` · `ℹ pass 0` · `ℹ fail 33`(스크립트 파일이 없어 모든 실행이 실패한다).
 
 ### 4. 커밋
 
 ```bash
 git add tests/orchestrate/orchestrate.test.mjs
-git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 31건(RED) — 가짜 orca로 자가 점검(필드 누락·screen-unavailable·호출 무응답) · watch 판정 7종·f1·표지 인정 조건 4건 · alive exit 0/1/2/3 9건(권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·화면 종류 변화 중단(spec §3w·AC2·AC3)"
+git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 33건(RED) — 가짜 orca로 자가 점검(필드 누락·screen-unavailable·호출 무응답·SIGTERM 무시) · watch 판정 7종·f1·표지 인정 조건 4건 · alive exit 0/1/2/3 9건(권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·화면 종류 변화(본문 인용 권한 문구 포함) 중단(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 31 · pass 0 · fail 31.
-- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `31`.
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 33 · pass 0 · fail 33.
+- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `33`.
 - `git diff HEAD~1 --stat` → `tests/orchestrate/orchestrate.test.mjs` 1파일만.
 - 기준선 2종(단계 1) 11/11 · 2/2 그대로.
 
 ## Cautions
 
 - **스크립트(`orchestrate.mjs`)를 이 task에서 만들지 마라.** 이유: RED를 먼저 커밋해야 task-02의 GREEN이 이 테스트로 증명된다.
-- **테스트 기대값을 바꾸지 마라.** 이유: 31건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 7건(R1-1~R1-4 · R2-1·R2-2) 포함) — 바꾸면 계약이 바뀐다.
+- **테스트 기대값을 바꾸지 마라.** 이유: 33건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 9건(R1-1~R1-4 · R2-1~R2-3 · R3-1) 포함) — 바꾸면 계약이 바뀐다.
 - **실제 오르카를 부르지 마라.** 이유: `run()`이 `ORCA_CLI_COMMAND`·`ORCA_DEV_REPO_ROOT`를 지우고 PATH 앞에 가짜를 둔다 — 이 순서를 바꾸면 실제 터미널에 키가 들어갈 수 있다.
 - **폴더 인자(`node --test tests/orchestrate/`)로 돌리지 마라.** 이유: Node 21 이상은 폴더를 모듈 경로로 해석해 테스트가 하나도 돌지 않는다(spec 정정 `dfdd243`).
