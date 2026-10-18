@@ -56,7 +56,7 @@ L = {
 
 - **① Launch** — look up the installed version for that checkout (lookup only), pick the mode (human stages = manual, review-loop(spec) on = delegated), set the model with `--model` only (never send `/model` to a track — it is saved as the new-session default in your global settings.json) and the session id with `--session-id`, fill in the bundled track-prompt template, then create the terminal and send a one-line pointer to the prompt file. One track per checkout.
 - **② Watch** — one background `watch` run per wait; verdict `DONE | HANDOFF | SETTLED | QUESTION | PERMISSION | TIMEOUT | ERR`.
-- **③ Questions** — human stages and manually run tracks: everything goes to you. Delegated tracks: only risky questions (critical · security · direction · AC/goal/decision changes · `[감사 이의]` audit objections · permission prompts) reach you. Push · other-machine changes · external runs · irreversible steps: always you. Before every send: `alive`, then re-read the screen.
+- **③ Questions** — human stages and manually run tracks: everything goes to you. Delegated tracks: only risky questions (critical · security · direction · AC/goal/non-goal/decision changes · `[감사 이의]` audit objections · permission prompts) reach you. Push · other-machine changes · external runs · irreversible steps: always you. Before every send: `alive`, then re-read the screen.
 - **④ Stage end** — the main session verifies the track's report itself (commit range · gates · no AI trailers · diff scope · the confirmation-pending ledger), asks you about pending entries, writes the handoff, and stops at the stage boundary.
 - **⑤ Successors · pairing · multiple tracks** — resumes a `HANDOFF` automatically only when its reason is the nudge and only after the old session has exited, recovers an unexpectedly exited track with `claude --resume <session id>`, and runs remote tracks via `--environment`.
 
@@ -68,7 +68,7 @@ Bundled script `scripts/orchestrate.mjs` (the only place Orca details live): `wa
     auto_old="use `1` for security-sensitive work |",
     auto_new="use `1` for security-sensitive work. In delegated mode (1.2.0+) the track answers the batch itself — only risky items reach a person |",
     mode_old="**Delegated mode has one effect in 1.1.0**: even in an Orca terminal, the nudge is the same `/clear` guidance as outside Orca instead of the automatic handover (no effect outside Orca). Further effects, such as auto-adopting the recommended answer for non-risky questions, will be added to this mode in a later version.",
-    mode_new="**Delegated-mode effects (1.2.0)**: ① even in an Orca terminal, the nudge is the same `/clear` guidance as outside Orca instead of the automatic handover — the orchestrator launches the successor (1.1.0; no effect outside Orca) ② review-loop and dev-cycle auto-adopt the recommended answer for non-risky questions — risky ones (critical · security · direction · AC/goal/decision changes) are still asked, and every auto-adopted decision is recorded with the source `추천 자동 채택(위임)` (auto-adopted recommendation) and is an audit target of the confirmation round ③ those decisions are collected in a **confirmation-pending ledger** (`## 확인 대기 대장` at the end of the spec/plan) that you confirm or overturn at the stage boundary. A 1.1.x install gets ① only.",
+    mode_new="**Delegated-mode effects (1.2.0)**: ① even in an Orca terminal, the nudge is the same `/clear` guidance as outside Orca instead of the automatic handover — the orchestrator launches the successor (1.1.0; no effect outside Orca) ② review-loop and dev-cycle auto-adopt the recommended answer for non-risky questions — risky ones (critical · security · direction · AC/goal/non-goal/decision changes) are still asked, and every auto-adopted decision is recorded with the source `추천 자동 채택(위임)` (auto-adopted recommendation) and is an audit target of the confirmation round ③ those decisions are collected in a **confirmation-pending ledger** (`## 확인 대기 대장` at the end of the spec/plan) that you confirm or overturn at the stage boundary. A 1.1.x install gets ① only.",
     tree_new="│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md\n│   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}\n│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}\n├── tests/orchestrate/                # orchestrate.mjs tests (stub orca — outside the plugin)\n",
     dev_anchor="Users update via `/plugin update` or background auto-update.\n",
     dev_line="\nTests: `" + TEST_CMD + "` (orchestrate script — a stub `orca` stands in, no real Orca needed; this repo has no npm gate).\n",
@@ -90,7 +90,7 @@ Bundled script `scripts/orchestrate.mjs` (the only place Orca details live): `wa
 
 - **① 기동** — 그 체크아웃의 설치 버전을 조회만 하고, 모드를 고르고(사람 단계 = 수동, review-loop(spec)부터 = 위임), 모델은 `--model`로만(트랙에 `/model`을 보내지 않는다 — 새 세션 기본값으로 저장돼 전역 settings.json을 바꾼다), 세션 id는 `--session-id`로 정한 뒤, 동봉 템플릿으로 트랙 프롬프트를 채워 터미널을 만들고 프롬프트 파일 포인터 한 줄을 보낸다. 체크아웃당 트랙 1개.
 - **② 감시** — 대기마다 `watch`를 백그라운드로 1회. 판정 `DONE | HANDOFF | SETTLED | QUESTION | PERMISSION | TIMEOUT | ERR`.
-- **③ 질문** — 사람 단계와 수동으로 돌리는 트랙은 전부 사용자에게. 위임 트랙은 위험군(critical · 보안 · 방향 전제 · AC·목표·기결정 변경 · `[감사 이의]` · 권한 프롬프트)만 사용자에게. push · 다른 머신 변경 · 외부 실측 · 비가역은 언제나 사용자. 모든 전송 직전 `alive` 후 화면 재확인.
+- **③ 질문** — 사람 단계와 수동으로 돌리는 트랙은 전부 사용자에게. 위임 트랙은 위험군(critical · 보안 · 방향 전제 · AC·목표·비목표·기결정 변경 · `[감사 이의]` · 권한 프롬프트)만 사용자에게. push · 다른 머신 변경 · 외부 실측 · 비가역은 언제나 사용자. 모든 전송 직전 `alive` 후 화면 재확인.
 - **④ 단계 종료** — 메인이 트랙 보고를 직접 검증(커밋 범위 · 게이트 · AI 서명 · diff 범위 · 확인 대기 대장)하고 대기 항목을 사용자에게 물은 뒤 핸드오프를 쓰고 단계 경계에서 멈춘다.
 - **⑤ 후계 · 페어링 · 다중 트랙** — `HANDOFF`는 사유가 넛지일 때만, 옛 세션 종료를 확인한 뒤에 자동 재개하고, 예기치 않게 끝난 트랙은 `claude --resume <세션 id>`로 복구하며, 원격 트랙은 `--environment`로 운영한다.
 
@@ -102,7 +102,7 @@ Bundled script `scripts/orchestrate.mjs` (the only place Orca details live): `wa
     auto_old="`0`=매 라운드 즉시 질문, 보안 민감 작업은 `1` |",
     auto_new="`0`=매 라운드 즉시 질문, 보안 민감 작업은 `1`. 위임 모드(1.2.0 이상)는 batch 답을 트랙이 낸다 — 위험군만 사람에게 |",
     mode_old="**1.1.0의 위임 효과는 하나**: 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다(오르카 밖에서는 효과 없음). 위험군 외 질문의 추천안 자동 채택 같은 효과는 후속 버전에서 이 모드에 더해진다.",
-    mode_new="**위임 효과(1.2.0)**: ① 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다 — 후계는 오케스트레이터가 띄운다(1.1.0, 오르카 밖에서는 효과 없음) ② review-loop·dev-cycle이 위험군 외 질문의 추천안을 자동 채택한다 — 위험군(critical·보안·방향 전제·AC·목표·기결정 변경)은 여전히 묻고, 자동 채택한 결정은 출처 `추천 자동 채택(위임)`으로 기록되어 확인 라운드의 감사 대상이 된다 ③ 그 결정은 **확인 대기 대장**(spec·plan 말미 `## 확인 대기 대장`)에 모여 단계 경계에서 사용자가 확인·번복한다. 1.1.x 설치본은 ①만 받는다.",
+    mode_new="**위임 효과(1.2.0)**: ① 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다 — 후계는 오케스트레이터가 띄운다(1.1.0, 오르카 밖에서는 효과 없음) ② review-loop·dev-cycle이 위험군 외 질문의 추천안을 자동 채택한다 — 위험군(critical·보안·방향 전제·AC·목표·비목표·기결정 변경)은 여전히 묻고, 자동 채택한 결정은 출처 `추천 자동 채택(위임)`으로 기록되어 확인 라운드의 감사 대상이 된다 ③ 그 결정은 **확인 대기 대장**(spec·plan 말미 `## 확인 대기 대장`)에 모여 단계 경계에서 사용자가 확인·번복한다. 1.1.x 설치본은 ①만 받는다.",
     tree_new="│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md\n│   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}\n│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}\n├── tests/orchestrate/                # orchestrate.mjs 테스트(스텁 orca — 플러그인 밖)\n",
     dev_anchor="사용자는 `/plugin update` 또는 백그라운드 자동 업데이트로 갱신한다.\n",
     dev_line="\n테스트: `" + TEST_CMD + "`(orchestrate 스크립트 — 스텁 `orca`로 돌아 실제 오르카 불필요, 이 repo에는 npm 게이트가 없다).\n",
@@ -124,7 +124,7 @@ Bundled script `scripts/orchestrate.mjs` (the only place Orca details live): `wa
 
 - **① 起動** — そのチェックアウトのインストール版を照会のみ行い、モードを選び（人の段階 = 手動、review-loop(spec) から = 委任）、モデルは `--model` のみで（トラックに `/model` を送らない — 新しいセッションのデフォルトとして保存され、グローバル settings.json を変える）、セッション id は `--session-id` で決めてから、同梱テンプレートでトラックプロンプトを埋めてターミナルを作り、プロンプトファイルへのポインタ 1 行を送る。チェックアウトごとにトラック 1 つ。
 - **② 監視** — 待機ごとに `watch` をバックグラウンドで 1 回。判定 `DONE | HANDOFF | SETTLED | QUESTION | PERMISSION | TIMEOUT | ERR`。
-- **③ 質問** — 人の段階と手動で回すトラックはすべてユーザーへ。委任トラックはリスク群（critical · セキュリティ · 方向の前提 · AC・目標・既決定の変更 · `[감사 이의]`（監査異議）· 権限プロンプト）のみユーザーへ。push · 他マシンの変更 · 外部実測 · 不可逆は常にユーザー。すべての送信の直前に `alive`、その後画面を再確認。
+- **③ 質問** — 人の段階と手動で回すトラックはすべてユーザーへ。委任トラックはリスク群（critical · セキュリティ · 方向の前提 · AC・目標・非目標・既決定の変更 · `[감사 이의]`（監査異議）· 権限プロンプト）のみユーザーへ。push · 他マシンの変更 · 外部実測 · 不可逆は常にユーザー。すべての送信の直前に `alive`、その後画面を再確認。
 - **④ 段階終了** — メインがトラックの報告を自ら検証し（コミット範囲 · ゲート · AI 署名 · diff 範囲 · 確認待ち台帳）、待ち項目をユーザーに尋ねてからハンドオフを書き、段階境界で止まる。
 - **⑤ 後継 · ペアリング · 複数トラック** — `HANDOFF` は理由がナッジのときだけ、旧セッションの終了を確認してから自動再開し、予期せず終了したトラックは `claude --resume <セッション id>` で復旧し、リモートトラックは `--environment` で運用する。
 
@@ -136,7 +136,7 @@ Bundled script `scripts/orchestrate.mjs` (the only place Orca details live): `wa
     auto_old="`0`=毎ラウンド即質問、セキュリティ敏感な作業は `1` |",
     auto_new="`0`=毎ラウンド即質問、セキュリティ敏感な作業は `1`。委任モード（1.2.0 以上）は batch の答えをトラックが出す — リスク群のみ人へ |",
     mode_old="**1.1.0 の委任の効果は 1 つ**: Orca ターミナルでも自動引き継ぎの代わりに Orca の外と同じ `/clear` 案内ナッジを受ける（Orca の外では効果なし）。リスク群以外の質問の推奨案自動採用などの効果は後続バージョンでこのモードに追加される。",
-    mode_new="**委任の効果（1.2.0）**: ① Orca ターミナルでも自動引き継ぎの代わりに Orca の外と同じ `/clear` 案内ナッジを受ける — 後継はオーケストレーターが起動する（1.1.0、Orca の外では効果なし）② review-loop・dev-cycle がリスク群以外の質問の推奨案を自動採用する — リスク群（critical・セキュリティ・方向の前提・AC・目標・既決定の変更）は引き続き質問し、自動採用した決定は出典 `추천 자동 채택(위임)`（推奨の自動採用）で記録され確認ラウンドの監査対象になる ③ その決定は**確認待ち台帳**（spec・plan 末尾の `## 확인 대기 대장`）に集まり、段階境界でユーザーが確認・撤回する。1.1.x のインストールは ① のみ。",
+    mode_new="**委任の効果（1.2.0）**: ① Orca ターミナルでも自動引き継ぎの代わりに Orca の外と同じ `/clear` 案内ナッジを受ける — 後継はオーケストレーターが起動する（1.1.0、Orca の外では効果なし）② review-loop・dev-cycle がリスク群以外の質問の推奨案を自動採用する — リスク群（critical・セキュリティ・方向の前提・AC・目標・非目標・既決定の変更）は引き続き質問し、自動採用した決定は出典 `추천 자동 채택(위임)`（推奨の自動採用）で記録され確認ラウンドの監査対象になる ③ その決定は**確認待ち台帳**（spec・plan 末尾の `## 확인 대기 대장`）に集まり、段階境界でユーザーが確認・撤回する。1.1.x のインストールは ① のみ。",
     tree_new="│   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md\n│   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}\n│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}\n├── tests/orchestrate/                # orchestrate.mjs のテスト（スタブ orca — プラグインの外）\n",
     dev_anchor="ユーザーは `/plugin update` またはバックグラウンド自動更新で更新する。\n",
     dev_line="\nテスト: `" + TEST_CMD + "`（orchestrate スクリプト — スタブ `orca` で動き実際の Orca は不要、この repo には npm ゲートがない）。\n",
