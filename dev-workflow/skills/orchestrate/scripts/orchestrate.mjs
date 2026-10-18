@@ -117,6 +117,21 @@ function bottomDialog(lines) {
   return { index, kind };
 }
 
+// 활성 입력 요소 = 화면 맨 아래 요소 — 창 문구가 박스(마지막 두 구분선 사이 ❯ 줄)보다 아래일 때만 열린 창이고, 박스 위 문구는 본문 인용(R3-1·R4-1). watch·alive 공용
+function inputElements(lines) {
+  const seps = separatorIndexes(lines);
+  const lastSep = seps.length ? seps[seps.length - 1] : -1;
+  const box = seps.length >= 2 && lines.slice(seps[seps.length - 2] + 1, lastSep).some((l) => l.trimStart().startsWith(PROMPT_CHAR));
+  const d = bottomDialog(lines);
+  const open = d.index >= 0 && !(box && d.index <= lastSep);
+  return { lastSep, box: box && !open, dialogIdx: open ? d.index : -1, dialogKind: open ? d.kind : null };
+}
+
+// 셸 프롬프트 모양 = 끝 문자 + HUD 구분자 없음 — 같은 끝 문자(%)를 쓰는 상태줄(HUD)을 셸로 보지 않는다(R2-1). 박스·창·종료 판정 공용
+function isShellPrompt(line) {
+  return SHELL_PROMPT_RE.test(line) && !line.includes(HUD_MARK);
+}
+
 // 표지는 본문의 마지막 비어 있지 않은 줄일 때만 인정 · --consumed와 같은 표지는 본문이 바뀌기 전까지 소비된 것(D41)
 function classify(lines, consumed, changed) {
   const last = normalizeMarker(lastNonEmpty(bodyLines(lines)).line);
@@ -124,9 +139,9 @@ function classify(lines, consumed, changed) {
   if (isMarker && !(consumed !== null && last === normalizeMarker(consumed) && !changed)) {
     return { verdict: last.startsWith(DONE_MARK) ? 'DONE' : 'HANDOFF', marker: last };
   }
-  // 질문·권한 = 맨 아래 창 문구의 종류(alive와 같은 규칙) — 화면 전체에서 질문 문구를 먼저 찾으면 본문 인용 아래 실제 권한 창이 QUESTION이 된다(D23)
-  const { kind } = bottomDialog(lines);
-  return kind ? { verdict: kind } : null;
+  // 질문·권한 = 열린 창(맨 아래 창 문구가 박스보다 아래)의 종류 — alive와 같은 공용 헬퍼. 화면 전체에서 질문 문구를 먼저 찾으면 본문 인용 아래 실제 권한 창이 QUESTION이 된다(D23)
+  const { dialogKind } = inputElements(lines);
+  return dialogKind ? { verdict: dialogKind } : null;
 }
 
 function emit(verdict, lines, marker) {
@@ -180,29 +195,22 @@ function alive(handle, env) {
   const r = readScreen(env, handle);
   if (r.stale) return [3, `STALE 핸들이 바뀌었다(${STALE_CODE}) — 종료가 아니다, 식별 규칙으로 재획득`];
   const lines = r.lines;
-  const seps = separatorIndexes(lines);
-  const lastSep = seps.length ? seps[seps.length - 1] : -1;
+  const el = inputElements(lines);
   let exitIdx = -1;
   lines.forEach((l, i) => { if (l.includes(CLAUDE_EXIT_MARK)) exitIdx = i; });
   const tail = lastNonEmpty(lines);
-  // 종료 표지 = 마지막 구분선 아래의 「Resume this session with」(대화 본문 속 인용은 박스 위라 제외) + 그 뒤 셸 프롬프트 복귀
-  const exitBelowBox = exitIdx > lastSep;
-  if (exitBelowBox && tail.index > exitIdx && SHELL_PROMPT_RE.test(tail.line)) {
+  const shellAfter = (i) => tail.index > i && isShellPrompt(tail.line);
+  // 종료 표지 = 맨 아래 입력 요소(마지막 구분선·열린 창 문구)보다 아래의 「Resume this session with」(그 위는 본문 인용) + 그 뒤 셸 프롬프트 복귀
+  const exitMarked = exitIdx > Math.max(el.lastSep, el.dialogIdx);
+  if (exitMarked && shellAfter(exitIdx)) {
     return [1, 'EXITED claude 종료 표지와 셸 프롬프트 복귀 — 셸만 남음'];
   }
-  // 종료 안내 없이 셸로 돌아간 잔존 화면(SIGKILL 등)은 생존으로 보지 않는다 — 입력 요소 뒤 마지막 줄이 셸 프롬프트 모양이면 제외
-  //   박스: 박스 아래 마지막 줄이 셸 프롬프트 모양 + HUD 구분자 없음 / 질문·권한 창: 창 문구 뒤 마지막 줄이 셸 프롬프트 모양
-  // 창 종류 = 화면 맨 아래 창 문구의 종류 — 열린 창은 맨 아래에 그려지고 본문에 인용된 문구는 그 위다(R3-1)
-  const { index: dialogIdx, kind: dialogVerdict } = bottomDialog(lines);
-  const dialogKind = dialogVerdict === 'PERMISSION' ? '권한 창' : '질문 창';
-  // 박스도 같은 원리 — 창 문구가 마지막 구분선보다 아래면 창이 활성 입력 요소이고 위의 박스는 본문 인용·잔존이다(R4-1)
-  const box = seps.length >= 2 && lines.slice(seps[seps.length - 2] + 1, lastSep).some((l) => l.trimStart().startsWith(PROMPT_CHAR))
-    && !(dialogIdx > lastSep)
-    && !(tail.index > lastSep && SHELL_PROMPT_RE.test(tail.line) && !tail.line.includes(HUD_MARK));
-  const dialog = dialogIdx >= 0 && !(tail.index > dialogIdx && SHELL_PROMPT_RE.test(tail.line));
+  // 종료 안내 없이 셸로 돌아간 잔존 화면(SIGKILL 등)은 생존으로 보지 않는다 — 입력 요소(박스·열린 창) 뒤 마지막 줄이 셸 프롬프트 모양이면 제외
+  const box = el.box && !shellAfter(el.lastSep);
+  const dialog = el.dialogIdx >= 0 && !shellAfter(el.dialogIdx);
   // 화면 종류 = key가 묶음 전송 중 변화를 잡는 기준(R2-2)
-  const kind = box ? '프롬프트 박스' : dialogKind;
-  if ((box || dialog) && !exitBelowBox) return [0, `ALIVE claude 입력 상태(${kind})`, kind];
+  const kind = box ? '프롬프트 박스' : el.dialogKind === 'PERMISSION' ? '권한 창' : '질문 창';
+  if ((box || dialog) && !exitMarked) return [0, `ALIVE claude 입력 상태(${kind})`, kind];
   return [2, 'UNREADABLE 생존·종료 어느 쪽도 확정할 수 없다 — 종료로 보지 않는다'];
 }
 

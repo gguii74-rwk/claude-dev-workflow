@@ -173,6 +173,15 @@ test('AC3 watch·alive: 파일 편집 권한 창의 diff 미리보기에 질문 
   assert.match(a.first, /권한 창/);
 });
 
+test('AC3 watch·alive: 본문에 권한 창 문구를 인용하고 그 아래 입력 상자가 있으면 PERMISSION이 아니다·프롬프트 박스(같은 화면 같은 판정)', () => {
+  const lines = box(['⏺ 권한 창 문구는 「Do you want to proceed?」다', '  다음 단계로 넘어간다']);
+  const w = run('watch', ['term_t', '0.3'], { read: [read(lines)], wait: [IDLE] });
+  assert.equal(w.first, 'TIMEOUT');
+  const a = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(lines)] });
+  assert.equal(a.code, 0);
+  assert.match(a.first, /프롬프트 박스/);
+});
+
 test('AC3 watch TIMEOUT: 최대초 경과·변화 없음', () => {
   const r = run('watch', ['term_t', '0.3'], { read: [read(A)], wait: [BUSY] });
   assert.equal(r.code, 0);
@@ -214,7 +223,7 @@ test('AC3 표지: 감시 시작 전 도착한 미처리 표지(--consumed와 다
   assert.equal(r.calls.filter((c) => c[1] === 'read').length, 1);
 });
 
-// ── AC3 alive 9건
+// ── AC3 alive 11건
 test('AC3 alive: 연결 + 프롬프트 박스 → exit 0', () => {
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(A)] });
   assert.equal(r.code, 0);
@@ -255,6 +264,19 @@ test('AC3 alive: 연결됐으나 claude 종료 표지 + 셸 프롬프트(셸만 
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(X)] });
   assert.equal(r.code, 1);
   assert.match(r.first, /^EXITED/);
+});
+
+test('AC3 alive: 질문 창 위 본문에 종료 안내 문구를 인용하고 마지막 줄이 상태줄이면 exit 0(종료 1 아님 — 중복 --resume 방지)', () => {
+  const lines = ['⏺ 종료 안내는 「Resume this session with:」 뒤 셸 프롬프트다', '', ...Q, '  [Opus 5.5] │ Context 17%'];
+  const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(lines)] });
+  assert.equal(r.code, 0);
+  assert.match(r.first, /질문 창/);
+});
+
+test('AC3 alive: 질문 창 아래 상태줄(HUD)은 셸 프롬프트가 아니다 → exit 0', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read([...Q, '  [Opus 5.5] │ Context 17%'])] });
+  assert.equal(r.code, 0);
+  assert.match(r.first, /질문 창/);
 });
 
 test('AC3 alive: 생존·종료 어느 쪽도 확정 불가 → exit 2(종료 아님)', () => {
