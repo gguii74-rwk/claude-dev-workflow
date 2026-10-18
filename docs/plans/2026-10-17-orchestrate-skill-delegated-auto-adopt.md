@@ -238,17 +238,21 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 |---|---|---|---|---|---|---|
 | R1 | 적대·자동 | `fd7d45a` | 0/0/1 (신규 1/잔존 0) | 1 | 0 → 1 | needs-attention |
 | R2 | 적대·정밀 | `efe156c` | 0/0/1 (신규 1/잔존 0) — R1-1 적대 비재출현(R2), 큐 유지 | 1 | 1 → 2 | needs-attention |
+| R3 | 적대·정밀 | `d2639af` | 0/1/1 (신규 2/잔존 0) — R1-1·R2-1 적대 비재출현(R3), 큐 유지 | 4 | 2 → 4 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
 | R1-1 | task-02 `bodyLines()` · 실제 입력 상자인지 확인 없이 끝에서 둘째 구분선을 본문 경계로 써서, 표지 아래 구분선 사이에 그려진 질문·권한 창이 잘려 표지가 DONE/HANDOFF로 읽힘 · 실제 프롬프트 박스일 때만 자르고 회귀 테스트 | medium | FIXED `b876e1d` (사용자 — batch R1 뒤, ESCALATE 닫음) | **화면 판독 계열 8회째**(표지 판정의 본문 경계 — I5와 다른 결함) + 보안 트랙 → 자동 수정하지 않고 사용자 판정(auto-rounds 1 → R1 뒤 batch). 재현 = 스크래치 가짜 orca로 DONE·HANDOFF 확인. 사용자 판정 = 추천안 「입력 상자일 때만 자른다」: 본문 경계 = `inputElements().box`(alive와 같은 판정) · 열린 창이면 화면 전체 · 「열린 창을 표지보다 먼저」·ACCEPTED 대안 기각 · 테스트 +2(43 → 45, RED 43/2 → GREEN 45/45) · SC-1·SC-2·SC-4·task-01·02(블록 바이트 동일)·08 · spec §3w·AC3 |
 
 | R2-1 | task-02 `classify()` · 마지막 물리 행만 검사해 화면 폭에서 두 줄로 접힌 긴 `[TRACK-HANDOFF <경로>]`를 못 알아봄(HANDOFF 대신 SETTLED/TIMEOUT → 후계 자동 재개 지연) · 렌더링 줄바꿈 정보로 논리 줄 복원 + 회귀 테스트 | medium | FIXED `1bf9583` (사용자 — 즉시 ESCALATE 닫음) | **화면 판독 계열 9회째** + 권고안과 다른 수정 필요(설계 선택지 2+) → 정밀 모드 즉시 질문. SDD 이월 minor(「긴 HANDOFF 경로 줄바꿈 → SETTLED 후퇴」)와 같은 내용. 실측 = 오르카 `terminal read --screen`에 `tailRows[].wrapped`가 있으나 120열 Claude Code 화면의 접힌 줄에서 전부 false(Ink가 직접 줄을 끊음) → 권고안 효과 없음. 사용자 판정 = 추천안 「접힌 표지를 이어 붙인다」: 닫는 `]` 없는 표지 줄 아래 공백 없는 이어진 줄(최대 `WRAP_ROWS` 3)이 `]`로 끝날 때만 한 표지 · `--consumed` 소비 판정 유지 · 「알고도 둔다」·「tailRows.wrapped」 대안 기각 · 테스트 +2(45 → 47, RED 46/1 → GREEN 47/47) · SC-1·SC-2·SC-4·task-01·02(블록 바이트 동일)·08 · spec §3w·AC3 |
+| R3-1 | task-02 `alive`·`isShellPrompt()` · 종료 안내 없이 죽은 claude의 잔존 박스·HUD 아래 `❯` 셸 프롬프트(pure·starship)가 `[%$#>]` 패턴에 안 걸려 ALIVE → `key text … enter`가 셸로 · 알려진 셸 패턴 부재를 생존 근거로 쓰지 말고 설명 안 되는 줄이면 UNREADABLE 또는 전경 프로세스로 확인 + send 0회 회귀 | high | FIXED `a282e17` (사용자 — 즉시 ESCALATE 닫음) | **화면 판독 계열 10회째**(plan R1-1·R2-1 잔존 화면 계열의 남은 변형, SDD 이월 minor 「❯로 끝나는 셸 프롬프트 미인식」과 같은 내용) + 셸 실행 = 데이터 손상 경로 → 즉시 ESCALATE. 권고안 검토: 허용 목록(설명 안 되는 줄 = 판독 불가)은 박스 아래 `⏵⏵ bypass permissions on` 모드 줄·자동 업데이트 안내 등 `│` 없는 실제 줄 때문에 위임 트랙을 멈춤 · 오르카 실측(임시 터미널) — `agentIdentity`는 셸 없음 → claude `claude` → SIGKILL 뒤 사라지나 **`/exit` 뒤 `claude`로 남음**(종료 신호 불가) · 제목은 `✳ Claude Code`/`◐ Claude Code` → 두 종료 모두 `Terminal 3`(질문·권한 창 때 제목은 미측정). 사용자 판정 = 추천안 「셸 프롬프트 모양을 늘린다」: 끝 `❯` · 첫 `➜`(oh-my-zsh) 추가(HUD `│` 예외 유지) · 「제목을 생존 근거로」·ACCEPTED 대안 기각 → 제목 신호는 AC9 실측(질문·권한 창 때 제목) 뒤 다음 트랙 후보 · 테스트 +2(alive 1 · key send 0회 1) |
+| R3-2 | task-02 `lastMarker()`(구 `lastMarkerLine`) · 한 줄 표지 분기가 닫는 `]`·필수 내용을 검사하지 않아 출력 중인 `[TRACK-HANDOFF .remember/loop-…`를 즉시 HANDOFF로 수락 → 응답 중 세션 종료·잘린 경로 재개 · 단일·복원 행 모두 `]`·필드 검증, 완성된 다음 화면에서만 판정 + 회귀 | medium | FIXED `a282e17` (사용자 — 즉시 ESCALATE 닫음) | 표지 판정 영역 3회째(R1-1·R2-1에 이어) → 같은 질문 묶음에서 사용자 판정 = 추천안 「닫힌 표지만 인정한다」: `]`로 끝나고 접두 뒤 내용 있을 때만(한 줄·이어 붙인 표지 공통), 없으면 null · ACCEPTED 대안 기각 · 테스트 +1(미완성 → 완성 화면에서 HANDOFF, read 2회) |
 
 - batch 제시(적대 소진 1 = auto-rounds, 2026-10-18): R1-1 추천안 채택 → FIXED `b876e1d`, 진행 질문 = 「이어서 계속」(R1 자동 수정 없음). 이후 정밀 모드.
 - R1 뒤 게이트(HEAD `b876e1d`): T1 45/45 · T2 OK · T3a 11/11 · T3b 2/2 · T4 0 · T5 0 · AC5 `DEL 3 BAD 0` · 테스트 뒤 고아 0.
 - R2 뒤 게이트(HEAD `1bf9583`): T1 47/47 · T2 OK · T3a 11/11 · T3b 2/2 · T4 0 · T5 0 · AC5 `DEL 3 BAD 0` · 고아 0.
-- 미확인 FIXED 큐(2): R1-1(`b876e1d`) · R2-1(`1bf9583`).
+- R3 뒤 게이트(HEAD `a282e17`): T1 50/50(RED 47/3 → GREEN) · T2 OK · T3a 11/11 · T3b 2/2 · T4 0 · T5 0 · AC5 `DEL 3 BAD 0` · 고아 0. 실측 임시 터미널은 닫음(실측용 claude 세션 기록 1개 잔존 — 대화 없음).
+- 미확인 FIXED 큐(4): R1-1(`b876e1d`) · R2-1(`1bf9583`) · R3-1 · R3-2(`a282e17`).
 
 ## 확인 대기 대장
 
