@@ -241,6 +241,7 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 | R3 | 적대·정밀 | `d2639af` | 0/1/1 (신규 2/잔존 0) — R1-1·R2-1 적대 비재출현(R3), 큐 유지 | 4 | 2 → 4 | needs-attention |
 | R4 | 적대·정밀 | `3fbf683` | 0/1/0 (신규 1/잔존 0) — 큐 4건 적대 비재출현(R4), 큐 유지 | 3 | 4 → 5 | needs-attention |
 | R5 | 적대·정밀 | `d237dc5` | 0/0/1 (신규 1/잔존 0) — 큐 5건 적대 비재출현(R5), 큐 유지 | 1 | 5 → 6 | needs-attention |
+| C1 | 확인(예산 1/2) | `3c44ac8` | 신규 0 · 잔존 0 · 회귀 0 · 감사 해당 없음(루프 직접 판정 0건) | — | 6 → 0 | **pass** |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -251,6 +252,16 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 | R3-2 | task-02 `lastMarker()`(구 `lastMarkerLine`) · 한 줄 표지 분기가 닫는 `]`·필수 내용을 검사하지 않아 출력 중인 `[TRACK-HANDOFF .remember/loop-…`를 즉시 HANDOFF로 수락 → 응답 중 세션 종료·잘린 경로 재개 · 단일·복원 행 모두 `]`·필드 검증, 완성된 다음 화면에서만 판정 + 회귀 | medium | FIXED `a282e17` (사용자 — 즉시 ESCALATE 닫음) | 표지 판정 영역 3회째(R1-1·R2-1에 이어) → 같은 질문 묶음에서 사용자 판정 = 추천안 「닫힌 표지만 인정한다」: `]`로 끝나고 접두 뒤 내용 있을 때만(한 줄·이어 붙인 표지 공통), 없으면 null · ACCEPTED 대안 기각 · 테스트 +1(미완성 → 완성 화면에서 HANDOFF, read 2회) |
 | R4-1 | task-02 `key` · 같은 종류(질문 창 → 질문 창)의 다른 질문으로 바뀌어도(사용자 직접 응답 뒤 `[감사 이의]` 등) 남은 키 전송 → 사람 몫 질문에 자동 응답 · 키마다 질문 본문·선택지 식별값을 대조, 교체면 중단 + 회귀 | high | FIXED `1b2cc25` (사용자 — 즉시 ESCALATE 닫음) | **키 묶음 계열 5회째**(plan R1-2→R2-2→R3-1→R4-1의 다음 변형 — 종류가 같은 교체, SDD 이월 minor 「key 종류 비교 기준 = 첫 키 화면뿐 · --expect 후보」와 같은 내용) + 사람 관문 우회(D25) → 즉시 ESCALATE. 사용자 판정 = 추천안 「창 내용을 키마다 대조한다」: 창이면 창 문구 줄까지 − 스피너 줄(선택 표시 `❯`·앞 공백 무시) 해시를 기준과 비교 · 기준 = 첫 키, `tab`·`shift-tab`·`enter` 뒤 다음 키에서 갱신(묶음 답 유지) · 「--expect」·ACCEPTED 대안 기각 · 잔여(수용): 직접 입력 타이핑·미리보기 창은 내용 변화로 중단 가능(안전한 쪽), enter 직후 동시 응답은 묶음 답과 구분 불가 · 테스트 +2(50 → 52, RED 51/1 → GREEN) · SKILL.md (a) 1구절 15,358B |
 | R5-1 | task-02 `QUESTION_PATTERNS` · 묶음 질문 최종 제출 화면(`Review your answers` → `Submit answers`)에 질문 창 문구가 없어 `alive` exit 2·`key enter` 0회 → 마지막 제출 불가(트랙 멈춤) · 제출 화면도 질문 입력 상태로 식별 + 질문 탭 → 제출 화면 전환 회귀 | medium | FIXED `cefffe0` (사용자 — 즉시 ESCALATE 닫음) | **화면 판독 계열(문구 상수) 11회째** — 멈추는 쪽 실패(안전) · 설치본 claude 2.1.302 코드로 화면 구성 확인(「Review your answers」·「Ready to submit your answers?」·선택지 「Submit answers」/「Cancel」, 꼬리말 없음 — 여러 질문 화면 꼬리말 「Tab/Arrow keys to navigate」는 기존 `to navigate`에 걸림). 사용자 판정 = 추천안 「제출 화면 문구를 추가한다」: `QUESTION_PATTERNS`에 `Ready to submit your answers?`(상수 자리 1곳) · ACCEPTED 대안 기각 · 테스트 +2(52 → 54, RED 52/2 → GREEN) |
+
+- **C1 소멸 확인(완전 응답 — 6 fingerprint 전부 명시)**: R1-1 · R2-1 · R3-1 · R3-2 · R4-1 · R5-1 (6건 소멸). 회귀 없음(표지 소비 판정·화면 종류 변경 차단 유지 · plan 코드·테스트 블록 = 실제 파일 바이트 동일 확인). 판정 감사 = 해당 없음(루프 직접 판정 0건). 신규 finding 없음. verdict = pass(정적 검토 — 게이트 수치는 루프 실행분 전제, hooks diff 0은 리뷰어 직접 확인).
+
+**종결(2026-10-18)**: 성공(확인 경유) — 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict approve(확인 라운드 C1 verdict pass). 소진 = 적대 5/5 · 확인 1/2 · 복귀 사용 = 아니오. 종결 HEAD = 이 행 커밋(직전 `3c44ac8`).
+
+- **집계**: FIXED 6(전부 사용자 판정 — R1-1·R2-1·R3-1·R3-2·R4-1·R5-1) · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · ESCALATE 6(전부 사용자가 FIXED로 닫음) · low 0(루프 자체 관찰 DEFER_LOW 1 = 테스트 플레이크 후보). 단계 경계 이월(ACCEPTED/DEFERRED/OUT_OF_SCOPE) 없음 · 확인 부채 0 · 폴백 이월 없음.
+- **score 추세(전환용)**: R1 1 → R2 1 → R3 4 → R4 3 → R5 1(보안 트랙 — 신호 1 무시, 전환 = 신호 3 적대 예산 소진).
+- **루프 건강**(분모 = blocking 6, fingerprint 병합): 재론률 0/6 = 0% · 철회 조항 0 · 사람개입률 6/6 = 100%(보안 트랙·화면 판독/키 묶음 계열 반복이라 전건 사용자 판정 — 추천안 채택 6/6).
+- 추천 자동 채택(위임): 해당 없음(설치본 1.1.1 — 효과 2 없음, 질문은 사용자 직접).
+- **잔여 관찰 → AC9 (i) 실측 체크리스트 후보(task-09)**: ① 질문·권한 창이 열렸을 때 오르카 터미널 제목(R3-1 — 제목 신호를 생존 1차 근거로 쓰는 다음 트랙 후보의 근거; 실측 = 실행 중 `✳ Claude Code`/`◐ Claude Code` → SIGKILL·`/exit` 뒤 `Terminal 3`, `agentIdentity`는 `/exit` 뒤 `claude`로 남아 종료 신호 불가) · ② 목록 밖 셸 프롬프트(R3-1 잔여) · ③ AskUserQuestion 직접 입력(Other) 타이핑·미리보기 창에서 `key` 창 내용 대조 중단 여부(R4-1 잔여, 안전한 쪽) · ④ 좁은 터미널(80열)에서 긴 HANDOFF 경로 접힘·이어 붙임(R2-1) · ⑤ 묶음 질문 최종 제출 화면 실제 렌더링(R5-1) · ⑥ 테스트 플레이크 후보(부하 시 첫 테스트 3초 상한) — 기존 SDD 이월 체크리스트(`.remember/sdd-1-2-0-impl-ledger.md` Final 항목)와 합쳐 쓴다.
 
 - batch 제시(적대 소진 1 = auto-rounds, 2026-10-18): R1-1 추천안 채택 → FIXED `b876e1d`, 진행 질문 = 「이어서 계속」(R1 자동 수정 없음). 이후 정밀 모드.
 - R1 뒤 게이트(HEAD `b876e1d`): T1 45/45 · T2 OK · T3a 11/11 · T3b 2/2 · T4 0 · T5 0 · AC5 `DEL 3 BAD 0` · 테스트 뒤 고아 0.
