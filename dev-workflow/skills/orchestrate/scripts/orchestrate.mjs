@@ -88,9 +88,10 @@ function separatorIndexes(lines) {
 }
 
 // 본문 = 프롬프트 박스 위 줄들(박스가 없으면 화면 전체) − 스피너·타이머 줄
+// 박스 = inputElements의 실제 입력 상자뿐 — 구분선 사이에 그려진 열린 창을 경계로 자르면 창이 사라져 그 위 표지가 DONE/HANDOFF로 읽힌다(impl R1-1)
 function bodyLines(lines) {
   const seps = separatorIndexes(lines);
-  const top = seps.length >= 2 ? seps[seps.length - 2] : lines.length;
+  const top = inputElements(lines).box ? seps[seps.length - 2] : lines.length;
   return lines.slice(0, top).filter((l) => !SPINNER_PREFIXES.some((p) => l.trimStart().startsWith(p)));
 }
 
