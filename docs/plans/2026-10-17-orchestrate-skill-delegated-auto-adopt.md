@@ -70,6 +70,16 @@
 | P1 | 테스트 실행 명령 = `node --test tests/orchestrate/orchestrate.test.mjs`(파일 지정) — spec 5곳 정정 `dfdd243` | 폴더 인자 `tests/orchestrate/`는 Node 21 이상에서 모듈 경로로 해석돼 실패(맥북 Node 26 실측) |
 | P2 | README 3종·plugin.json/marketplace.json **description** = 구현 단계(task-07, impl 리뷰 대상) · 릴리스(task-08) = plugin.json **version만** — spec §3r 정정 `dfdd243` | 릴리스 단계에서 쓰면 README가 적대검증을 안 받는다 · 1.1.0·1.0.0 선례 |
 
+**7 impl 단계 사용자 판정(2026-10-18 — 재논의 금지, plan·spec 문면 반영 완료)**:
+
+| I | 결정(1줄) | 반영 |
+|---|---|---|
+| I1 | `watch` 질문/권한 판정도 화면 **맨 아래 창 문구** 기준 — `alive` 창 종류와 같은 원리·공용 헬퍼(착수 전 사전 점검 F3) | `64db696` |
+| I2 | 권한 창 문구를 넓힌다 — `Do you want to `·`Yes, allow `(claude 2.1.302 파일 편집·생성·덮어쓰기·허용 권한 창 전체, 꼬리말 없는 비권한 창의 PERMISSION 오분류는 안전한 쪽으로 수용) | `dbd59c5` |
+| I3 | 후계·`--resume` 복구 기동 = **원래 기동 명령 그대로**(접두·권한 플래그·`--model`) | `0df3076` |
+| I4 | 위임 모드 판정 감사 이의 재판정은 루프 직접 판정·자동 채택 모두 **위험군 무관 사람에게**(D22의 예외 — verdict 비통과·예산 폴백·재진입 blocking은 D22 그대로) | `ac930e5` |
+| I5 | 최종 리뷰 3건 모두 수정 — `alive` 종료 판정 HUD 예외·창 위치(중복 `--resume` 차단) · `watch`/`alive` 화면 판독 공용(`inputElements`·`isShellPrompt`) · SKILL.md ③(b) 권한 창이면 사용자 답 없이 키 금지 + 보안 리뷰 fail-closed(창 문구는 박스 윗선보다 **위**일 때만 본문 인용 · 번호 선택 줄 `❯ 1.`은 입력 상자 아님) | `c0b53e6`·`82a8a56`·`8ee0832` |
+
 **승계 기결정(전제 — 위배 금지)**:
 
 - **1.1.0 spec D1~D12**(`docs/specs/2026-10-10-review-loop-security-arg-successor-optout.md`): D1 `--security` 있으면 묻지 않고 확정·출처 「호출자 지정」·ledger 첫 줄+§4 1줄 · D2 재개 시 저장값 권위 · **D3 모드 변수 `DEV_WORKFLOW_MODE`, trim 후 `delegated` 정확 일치만 위임** · D4 위임 = 훅 `resolveOrcaHandle` null(넛지 = 오르카 밖과 바이트 동일) · D5 훅은 환경변수, 스킬은 인자만 · D6 1.1.0 minor · D7 그 트랙 경량 · **D8 설정 단위 = 트랙 터미널 접두(후계 포함), 메인은 수동** · **D9 모드 정의(수동/위임), 사람 단계 뒤 선택, 향후 오케스트레이션은 이 모드의 효과로** · D10 `--security`는 모드와 독립·`--auto-rounds` 기본값 무변경 · D11 doctor 무변경 · D12 그 트랙 완료 조건.
@@ -215,6 +225,14 @@ task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치
 - **잔여 관찰(구현·실측 몫)**: 화면 판독 휴리스틱(alive·key 종류 판정) 우회가 같은 계열로 4회(R1-1→R2-1→R3-1→R4-1) — 사용자 판정으로 「활성 요소 = 화면 맨 아래」 원리까지 반영, 남은 우회는 AC9 (i) 실측과 상수 자리(`HUD_MARK` 등) 갱신의 몫. impl 루프에서 같은 계열이 다시 나오면 휴리스틱 확장보다 구조 선택(창에는 키 하나씩 — R2-2·R4-1에서 기각된 대안)을 사용자에게 다시 제시할 근거.
 - 추천 자동 채택(위임): 해당 없음(설치본 1.1.1 — 효과 2 없음, 질문은 사용자 직접).
 - 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): R3-3 DUPLICATE(→ R2-3) — 확인 임무 ③ 우선 감사 대상(다음 적대 focus에 `[루프 판정]`으로 실음). batch-pending ESCALATE: 없음.
+
+## 적대검증 ledger (impl)
+
+보안 크리티컬: yes (호출자 지정) — 접촉면 권한 경계(D23 「권한 창은 사람만 허용」을 지키는 `alive`·`watch`·`key` 화면 판정 로직 · 위임 트랙 기동 기본 `--dangerously-skip-permissions`, D18)
+
+- 루프: base `b5ae951`(b5ae951e87b360adbb27c0e9055a402e8ccc647d, 호출자 지정 — 구현 착수 직전 main, plan 정정 `64db696`부터 리뷰 범위 · origin/main `44184c3`은 base로 쓰지 않는다) · 예산 max 5 · confirm 2 · auto 1 · 입도 = 통합 1회(task-01~07, 사용자 판정 2026-10-18 — SDD에서 task별 리뷰를 이미 거침) · 위임 모드 세션(설치본 1.1.1 — 효과 2 없음, 질문은 사용자 직접).
+- 사전 게이트(HEAD `818a527`): SC-4 T1 43/43 · T2 OK · T3a 11/11 · T3b 2/2(`env -u DEV_WORKFLOW_MODE`) · T4 0 · T5 0 · AC5 `DEL 3 BAD 0` · orchestrate SKILL.md 15,354B.
+- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷). 보안 트랙 → 전환 신호 1(score 정체) 무시.
 
 ## 확인 대기 대장
 
