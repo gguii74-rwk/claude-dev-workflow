@@ -50,7 +50,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 wc -c < dev-workflow/skills/orchestrate/SKILL.md
 ```
 
-기대: pass 38 · fail 0 / `CHECK_OK` / pass 11 · fail 0 / pass 2 · fail 0 / `0` / `0` / ≤ 15360. 그리고 task-03 단계 3 · task-04 단계 3 · task-05 단계 3·4 · task-06 단계 3 · task-07 단계 5의 검증 블록을 그대로 다시 돌려 같은 기대 출력을 얻는다(impl 루프 FIXED가 문면을 바꿨을 수 있다).
+기대: pass 41 · fail 0 / `CHECK_OK` / pass 11 · fail 0 / pass 2 · fail 0 / `0` / `0` / ≤ 15360. 그리고 task-03 단계 3 · task-04 단계 3 · task-05 단계 3·4 · task-06 단계 3 · task-07 단계 5의 검증 블록을 그대로 다시 돌려 같은 기대 출력을 얻는다(impl 루프 FIXED가 문면을 바꿨을 수 있다).
 
 ### 4. 버전
 
@@ -67,7 +67,7 @@ git diff -- dev-workflow/.claude-plugin/plugin.json | grep -c '^[-+] '
 
 ```bash
 git add dev-workflow/.claude-plugin/plugin.json
-git commit -m "release: 1.2.0 — orchestrate 스킬(메인 세션 트랙 운영 공통 절차 + orchestrate.mjs watch·alive·key + 트랙 프롬프트 템플릿) · 위임 모드 효과 2(review-loop 위험군 외 추천 자동 채택·감사 동격·확인 대기 대장, dev-cycle 확인 불가 신호 ②); 게이트 impl 종결 행 1 · 테스트 38/38 · 기준선 11/11·2/2 · 훅 무변경 · \$N 0"
+git commit -m "release: 1.2.0 — orchestrate 스킬(메인 세션 트랙 운영 공통 절차 + orchestrate.mjs watch·alive·key + 트랙 프롬프트 템플릿) · 위임 모드 효과 2(review-loop 위험군 외 추천 자동 채택·감사 동격·확인 대기 대장, dev-cycle 확인 불가 신호 ②); 게이트 impl 종결 행 1 · 테스트 41/41 · 기준선 11/11·2/2 · 훅 무변경 · \$N 0"
 ```
 
 ### 6. no-AI-trace 확인
