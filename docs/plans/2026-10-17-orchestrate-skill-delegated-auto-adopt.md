@@ -142,7 +142,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 | 02 | orchestrate.mjs watch·alive·key (GREEN) | [x] | [task-02](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-02-orchestrate-script.md) | 01 | `e85a92c` 스크립트 · 리뷰 fix 1회 `dbd59c5`(사용자 판정 — 권한 문구 `Do you want to `·`Yes, allow `, 테스트 38) · `6976fc2` plan·spec 38 정합 · GREEN 38/38 · 기준선 11/11·2/2 · hooks diff 0 · minor 7 이월 |
 | 03 | 트랙 프롬프트 템플릿 | [x] | [task-03](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-03-track-prompt-template.md) | — | `4e987b8` 템플릿(필수 9항목·고정 절) · 검증 bash·zsh 동일 · `$N` 0 · 리뷰 승인(minor 2 이월) |
 | 04 | orchestrate SKILL.md | [x] | [task-04](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-04-orchestrate-skill-md.md) | 02, 03 | `a960117` SKILL.md · 리뷰 fix 1회 `0df3076`(사용자 판정 — 후계·복구 기동 = 원래 기동 명령(접두·권한 플래그·`--model`)) · `c23de6d` task-04·spec §3o·AC1 정합 · 15,313B · AC1·AC4 bash·zsh 통과 · minor 5 이월 |
-| 05 | review-loop 위임 모드 효과 2 + 확인 대기 대장 | [ ] | [task-05](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-05-review-loop-delegated.md) | — | |
+| 05 | review-loop 위임 모드 효과 2 + 확인 대기 대장 | [x] | [task-05](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-05-review-loop-delegated.md) | — | `42c4ac4` 새 절 + 포인터 13곳 · 리뷰 fix 1회 `ac930e5`(사용자 판정 — 판정 감사 이의 재판정은 루프 직접 판정·자동 채택 모두 사람에게, D22 예외) · `0d9f236` task-05·spec §3e 정합 · AC5 기계 검증 DEL 3 BAD 0 · minor 4 이월 |
 | 06 | dev-cycle 위임 = 확인 불가 신호 ② | [ ] | [task-06](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-06-dev-cycle-delegated.md) | 05 | |
 | 07 | README 3종 · manifest description · 1.1.0 §7 포인터 | [ ] | [task-07](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-07-readme-manifest-pointer.md) | 04, 05, 06 | |
 
