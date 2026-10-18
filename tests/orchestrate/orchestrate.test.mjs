@@ -50,6 +50,7 @@ const H = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지'
 const Q = ['⏺ 질문이 있습니다', '', ' 판정 방식을 고르세요', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
 const P = ['⏺ Bash(sh -c "rm -f x")', '', ' Command contains rm that could not be checked', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No'];
 const QP = ['⏺ 질문이 있습니다', '', ' 권한 창 문구 「Do you want to proceed?」를 어떻게 처리할까요?', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
+const R = ['⏺ 질문이 있습니다', '', '←  ☒ 보안  ☒ 진행  ✔ Submit  →', '', 'Review your answers', '', ' ● 보안 판정?', '   → 지금 고친다', '', 'Ready to submit your answers?', '', '❯ 1. Submit answers', '  2. Cancel']; // 묶음 질문 최종 제출 화면(꼬리말 없음)
 const X = [...A, 'Resume this session with:', 'claude --resume 0b9c2f2e-1111-2222-3333-444455556666', '', 'wk@host claude-dev-workflow % '];
 
 function run(cmd, args, scenario) {
@@ -277,7 +278,7 @@ test('AC3 표지: 감시 시작 전 도착한 미처리 표지(--consumed와 다
   assert.equal(r.calls.filter((c) => c[1] === 'read').length, 1);
 });
 
-// ── AC3 alive 12건
+// ── AC3 alive 13건
 test('AC3 alive: 연결 + 프롬프트 박스 → exit 0', () => {
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(A)] });
   assert.equal(r.code, 0);
@@ -312,6 +313,12 @@ test('AC3 alive: 프롬프트 박스·상태줄 뒤에 ❯로 끝나는 셸 프�
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read([...A, 'claude-dev-workflow on main', '❯ '])] });
   assert.equal(r.code, 2);
   assert.match(r.first, /^UNREADABLE/);
+});
+
+test('AC3 alive: 묶음 질문의 최종 제출 화면(꼬리말 없음) + 상태줄 → exit 0(질문 창)', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read([...R, '  [Opus 5.5] │ Context 17%'])] });
+  assert.equal(r.code, 0);
+  assert.match(r.first, /^ALIVE .*질문 창/);
 });
 
 test('AC3 alive: 미연결·고아 → exit 1', () => {
@@ -352,7 +359,7 @@ test('AC3 alive: stale 핸들 → exit 3', () => {
   assert.match(r.first, /^STALE/);
 });
 
-// ── AC3 key 9건
+// ── AC3 key 10건
 test('AC3 key: tab shift-tab enter text — 시퀀스·원문·environment 전달', () => {
   const raw = '$(touch /tmp/x) `id` "q"';
   const r = run('key', ['term_k', 'tab', 'shift-tab', 'enter', 'text', raw, '--environment', 'spark2-ts'], { show: [SHOW_OK], read: [read(Q)], send: [SENT] });
@@ -393,6 +400,12 @@ test('AC3 key: 키 사이에 같은 종류의 다른 질문(사용자 직접 응
 test('AC3 key: 같은 질문에서 선택 표시(❯)만 움직이고 상태줄이 바뀌는 것은 계속 보낸다', () => {
   const Qd = ['⏺ 질문이 있습니다', '', ' 판정 방식을 고르세요', '  1. 지금 고친다 (추천)', '❯ 2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
   const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read([...Q, '  [Opus 5.5] │ Context 17%']), read([...Qd, '  [Opus 5.5] │ Context 18%'])], send: [SENT] });
+  assert.equal(r.code, 0);
+  assert.equal(r.first, 'SENT 2');
+});
+
+test('AC3 key: 마지막 질문 enter 뒤 최종 제출 화면으로 바뀌어도 마지막 enter까지 보낸다', () => {
+  const r = run('key', ['term_k', 'enter', 'enter'], { show: [SHOW_OK], read: [read(Q), read(R)], send: [SENT] });
   assert.equal(r.code, 0);
   assert.equal(r.first, 'SENT 2');
 });

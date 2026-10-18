@@ -1,6 +1,6 @@
 # task-01 — orchestrate.mjs 계약 테스트 작성 (RED) (spec §3w · AC2·AC3)
 
-**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **52건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
+**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **54건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
 
 ## Files
 
@@ -86,6 +86,7 @@ const H = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지'
 const Q = ['⏺ 질문이 있습니다', '', ' 판정 방식을 고르세요', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
 const P = ['⏺ Bash(sh -c "rm -f x")', '', ' Command contains rm that could not be checked', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No'];
 const QP = ['⏺ 질문이 있습니다', '', ' 권한 창 문구 「Do you want to proceed?」를 어떻게 처리할까요?', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
+const R = ['⏺ 질문이 있습니다', '', '←  ☒ 보안  ☒ 진행  ✔ Submit  →', '', 'Review your answers', '', ' ● 보안 판정?', '   → 지금 고친다', '', 'Ready to submit your answers?', '', '❯ 1. Submit answers', '  2. Cancel']; // 묶음 질문 최종 제출 화면(꼬리말 없음)
 const X = [...A, 'Resume this session with:', 'claude --resume 0b9c2f2e-1111-2222-3333-444455556666', '', 'wk@host claude-dev-workflow % '];
 
 function run(cmd, args, scenario) {
@@ -313,7 +314,7 @@ test('AC3 표지: 감시 시작 전 도착한 미처리 표지(--consumed와 다
   assert.equal(r.calls.filter((c) => c[1] === 'read').length, 1);
 });
 
-// ── AC3 alive 12건
+// ── AC3 alive 13건
 test('AC3 alive: 연결 + 프롬프트 박스 → exit 0', () => {
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(A)] });
   assert.equal(r.code, 0);
@@ -348,6 +349,12 @@ test('AC3 alive: 프롬프트 박스·상태줄 뒤에 ❯로 끝나는 셸 프�
   const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read([...A, 'claude-dev-workflow on main', '❯ '])] });
   assert.equal(r.code, 2);
   assert.match(r.first, /^UNREADABLE/);
+});
+
+test('AC3 alive: 묶음 질문의 최종 제출 화면(꼬리말 없음) + 상태줄 → exit 0(질문 창)', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read([...R, '  [Opus 5.5] │ Context 17%'])] });
+  assert.equal(r.code, 0);
+  assert.match(r.first, /^ALIVE .*질문 창/);
 });
 
 test('AC3 alive: 미연결·고아 → exit 1', () => {
@@ -388,7 +395,7 @@ test('AC3 alive: stale 핸들 → exit 3', () => {
   assert.match(r.first, /^STALE/);
 });
 
-// ── AC3 key 9건
+// ── AC3 key 10건
 test('AC3 key: tab shift-tab enter text — 시퀀스·원문·environment 전달', () => {
   const raw = '$(touch /tmp/x) `id` "q"';
   const r = run('key', ['term_k', 'tab', 'shift-tab', 'enter', 'text', raw, '--environment', 'spark2-ts'], { show: [SHOW_OK], read: [read(Q)], send: [SENT] });
@@ -433,6 +440,12 @@ test('AC3 key: 같은 질문에서 선택 표시(❯)만 움직이고 상태줄�
   assert.equal(r.first, 'SENT 2');
 });
 
+test('AC3 key: 마지막 질문 enter 뒤 최종 제출 화면으로 바뀌어도 마지막 enter까지 보낸다', () => {
+  const r = run('key', ['term_k', 'enter', 'enter'], { show: [SHOW_OK], read: [read(Q), read(R)], send: [SENT] });
+  assert.equal(r.code, 0);
+  assert.equal(r.first, 'SENT 2');
+});
+
 test('AC3 key: 키 사이에 질문 창이 권한 창으로 바뀌면 나머지를 보내지 않고 exit 2', () => {
   const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_OK], read: [read(Q), read(P)], send: [SENT] });
   assert.equal(r.code, 2);
@@ -470,25 +483,25 @@ test('AC3 key: 키 사이에 질문 창이 닫히고 입력 상자로 바뀌면 
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `ℹ tests 52` · `ℹ pass 0` · `ℹ fail 52`(스크립트 파일이 없어 모든 실행이 실패한다).
+기대: `ℹ tests 54` · `ℹ pass 0` · `ℹ fail 54`(스크립트 파일이 없어 모든 실행이 실패한다).
 
 ### 4. 커밋
 
 ```bash
 git add tests/orchestrate/orchestrate.test.mjs
-git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 52건(RED) — 가짜 orca로 자가 점검(필드 누락·JSON null·screen-unavailable·호출 무응답(경과 시간 단언)·SIGTERM 무시) · watch 판정 7종·f1·본문 인용 질문 문구 아래 실제 권한 창 = PERMISSION(맨 아래 창 문구 기준)·표지 인정 조건 9건(표지 줄 아래 구분선 사이 질문·권한 창 = QUESTION·PERMISSION · 화면 폭에서 접힌 HANDOFF 표지 이어 붙임 · 닫히지 않은 표지 불인정 포함) · alive exit 0/1/2/3 12건(❯ 끝 셸 프롬프트 판독 불가 · 권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·같은 종류 다른 질문 교체·선택 표시 이동 계속·화면 종류 변화(본문 인용 권한 문구·입력 상자 포함) 중단(spec §3w·AC2·AC3)"
+git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 54건(RED) — 가짜 orca로 자가 점검(필드 누락·JSON null·screen-unavailable·호출 무응답(경과 시간 단언)·SIGTERM 무시) · watch 판정 7종·f1·본문 인용 질문 문구 아래 실제 권한 창 = PERMISSION(맨 아래 창 문구 기준)·표지 인정 조건 9건(표지 줄 아래 구분선 사이 질문·권한 창 = QUESTION·PERMISSION · 화면 폭에서 접힌 HANDOFF 표지 이어 붙임 · 닫히지 않은 표지 불인정 포함) · alive exit 0/1/2/3 13건(묶음 질문 최종 제출 화면 생존 · ❯ 끝 셸 프롬프트 판독 불가 · 권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·같은 종류 다른 질문 교체·선택 표시 이동 계속·최종 제출 화면까지 enter·화면 종류 변화(본문 인용 권한 문구·입력 상자 포함) 중단(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 52 · pass 0 · fail 52.
-- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `52`.
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 54 · pass 0 · fail 54.
+- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `54`.
 - `git diff HEAD~1 --stat` → `tests/orchestrate/orchestrate.test.mjs` 1파일만.
 - 기준선 2종(단계 1) 11/11 · 2/2 그대로.
 
 ## Cautions
 
 - **스크립트(`orchestrate.mjs`)를 이 task에서 만들지 마라.** 이유: RED를 먼저 커밋해야 task-02의 GREEN이 이 테스트로 증명된다.
-- **테스트 기대값을 바꾸지 마라.** 이유: 52건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 12건(R1-1~R1-4 · R2-1~R2-3 · R3-1 · R4-1 · R5-1 2건) + 7 impl 사전 점검 보강 1건(F3 — 본문 인용 질문 문구 아래 실제 권한 창 → `watch` PERMISSION) 포함; 사전 점검 F1은 호출 무응답 테스트에 경과 시간 단언을 더했을 뿐 건수 불변) + task-02 리뷰 보강 1건(파일 편집 권한 창 diff 미리보기의 질문 꼬리말 문구 → PERMISSION·권한 창, D23) + 최종 리뷰 보강 3건(본문 인용 권한 문구 아래 입력 상자 → `watch` PERMISSION 아님·`alive` 프롬프트 박스 · 질문 창 위 본문 인용 종료 안내 + 상태줄 → `alive` 0(종료 1 아님) · 질문 창 아래 상태줄 → `alive` 0) + 보안 리뷰 보강 2건(구분선 사이에 그려진 권한 창 · 권한 문구 아래 구분선 사이 번호 선택 줄 → `watch` PERMISSION·`alive` 권한 창) + impl 루프 보강 9건(R1-1 — 표지 줄 아래 구분선 사이에 그려진 질문·권한 창 → `watch` QUESTION·PERMISSION, DONE/HANDOFF 아님 · R2-1 — 화면 폭에서 접힌 HANDOFF 표지 → 이어 붙여 HANDOFF + 전체 경로 · 닫히지 않은 인용 표지 아래 문장 → 표지 아님 · R3-1 — 박스·상태줄 뒤 `❯` 끝 셸 프롬프트 → `alive` 2 · `➜` 시작 셸 프롬프트 화면 → `key` 0개 전송 exit 2 · R3-2 — 출력 중인 닫히지 않은 표지 불인정 → 완성된 다음 화면에서 HANDOFF · R4-1 — 키 사이 같은 종류의 다른 질문 교체 → `key` 1/2 중단 · 같은 질문에서 선택 표시만 이동 → 계속) — 바꾸면 계약이 바뀐다.
+- **테스트 기대값을 바꾸지 마라.** 이유: 54건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 12건(R1-1~R1-4 · R2-1~R2-3 · R3-1 · R4-1 · R5-1 2건) + 7 impl 사전 점검 보강 1건(F3 — 본문 인용 질문 문구 아래 실제 권한 창 → `watch` PERMISSION) 포함; 사전 점검 F1은 호출 무응답 테스트에 경과 시간 단언을 더했을 뿐 건수 불변) + task-02 리뷰 보강 1건(파일 편집 권한 창 diff 미리보기의 질문 꼬리말 문구 → PERMISSION·권한 창, D23) + 최종 리뷰 보강 3건(본문 인용 권한 문구 아래 입력 상자 → `watch` PERMISSION 아님·`alive` 프롬프트 박스 · 질문 창 위 본문 인용 종료 안내 + 상태줄 → `alive` 0(종료 1 아님) · 질문 창 아래 상태줄 → `alive` 0) + 보안 리뷰 보강 2건(구분선 사이에 그려진 권한 창 · 권한 문구 아래 구분선 사이 번호 선택 줄 → `watch` PERMISSION·`alive` 권한 창) + impl 루프 보강 11건(R1-1 — 표지 줄 아래 구분선 사이에 그려진 질문·권한 창 → `watch` QUESTION·PERMISSION, DONE/HANDOFF 아님 · R2-1 — 화면 폭에서 접힌 HANDOFF 표지 → 이어 붙여 HANDOFF + 전체 경로 · 닫히지 않은 인용 표지 아래 문장 → 표지 아님 · R3-1 — 박스·상태줄 뒤 `❯` 끝 셸 프롬프트 → `alive` 2 · `➜` 시작 셸 프롬프트 화면 → `key` 0개 전송 exit 2 · R3-2 — 출력 중인 닫히지 않은 표지 불인정 → 완성된 다음 화면에서 HANDOFF · R4-1 — 키 사이 같은 종류의 다른 질문 교체 → `key` 1/2 중단 · 같은 질문에서 선택 표시만 이동 → 계속 · R5-1 — 묶음 질문 최종 제출 화면(꼬리말 없음) → `alive` 0(질문 창) · 마지막 질문 enter 뒤 제출 화면 → 마지막 enter까지 `SENT 2`) — 바꾸면 계약이 바뀐다.
 - **실제 오르카를 부르지 마라.** 이유: `run()`이 `ORCA_CLI_COMMAND`·`ORCA_DEV_REPO_ROOT`를 지우고 PATH 앞에 가짜를 둔다 — 이 순서를 바꾸면 실제 터미널에 키가 들어갈 수 있다.
 - **폴더 인자(`node --test tests/orchestrate/`)로 돌리지 마라.** 이유: Node 21 이상은 폴더를 모듈 경로로 해석해 테스트가 하나도 돌지 않는다(spec 정정 `dfdd243`).

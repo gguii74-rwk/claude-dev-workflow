@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 // ── 화면 판독 상수 — Claude Code TUI·오르카 문자열은 버전 의존(검증 필요(실측)). 갱신은 이 자리 1곳.
 const DONE_MARK = '[TRACK-DONE ';
 const HANDOFF_MARK = '[TRACK-HANDOFF ';
-const QUESTION_PATTERNS = ['Enter to select', 'to navigate'];
+const QUESTION_PATTERNS = ['Enter to select', 'to navigate', 'Ready to submit your answers?'];  // 마지막 = 묶음 질문 최종 제출 화면(꼬리말 없음, claude 2.1.302 — impl R5-1)
 const PERMISSION_PATTERNS = ['could not be checked', 'Do you want to ', "Yes, and don't ask again", 'Yes, allow '];  // 'Do you want to ' = proceed·make this edit·create·overwrite·allow 권한 창 전체 — 좁으면 diff 미리보기의 질문 꼬리말 문구에 질문 창으로 오판돼 enter가 권한을 승인한다(D23)
 const SEPARATOR = '────';                       // 프롬프트 박스 위·아래 구분선
 const PROMPT_CHAR = '❯';                        // 프롬프트 박스 안 입력 줄
