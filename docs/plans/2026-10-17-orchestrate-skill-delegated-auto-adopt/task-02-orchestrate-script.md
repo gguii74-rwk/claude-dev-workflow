@@ -1,6 +1,6 @@
 # task-02 — orchestrate.mjs 구현 (GREEN) (spec §3w · AC2·AC3·AC4)
 
-**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 37건을 통과시킨다.
+**목적**: 오르카 상세의 유일한 거처인 `dev-workflow/skills/orchestrate/scripts/orchestrate.mjs`(서브커맨드 `watch`·`alive`·`key`)를 만들어 task-01 테스트 38건을 통과시킨다.
 
 ## Files
 
@@ -26,7 +26,7 @@
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 37 · pass 0 · fail 37.
+기대: tests 38 · pass 0 · fail 38.
 
 ### 2. 스크립트 작성
 
@@ -46,7 +46,7 @@ import { createHash } from 'node:crypto';
 const DONE_MARK = '[TRACK-DONE ';
 const HANDOFF_MARK = '[TRACK-HANDOFF ';
 const QUESTION_PATTERNS = ['Enter to select', 'to navigate'];
-const PERMISSION_PATTERNS = ['could not be checked', 'Do you want to proceed', "Yes, and don't ask again"];
+const PERMISSION_PATTERNS = ['could not be checked', 'Do you want to ', "Yes, and don't ask again", 'Yes, allow '];  // 'Do you want to ' = proceed·make this edit·create·overwrite·allow 권한 창 전체 — 좁으면 diff 미리보기의 질문 꼬리말 문구에 질문 창으로 오판돼 enter가 권한을 승인한다(D23)
 const SEPARATOR = '────';                       // 프롬프트 박스 위·아래 구분선
 const PROMPT_CHAR = '❯';                        // 프롬프트 박스 안 입력 줄
 const SPINNER_PREFIXES = ['✻', '✶', '✳', '✢', '·', '✽', '*'];
@@ -321,7 +321,7 @@ node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs && echo CHE
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `CHECK_OK` · tests 37 · pass 37 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
+기대: `CHECK_OK` · tests 38 · pass 38 · fail 0(약 20초 — `KEY_GAP_MS` 300ms × 키 수 · 호출 무응답 3초 시나리오 2건 등).
 
 ### 4. 회귀 확인
 
@@ -337,12 +337,12 @@ git diff 151d9f0 -- dev-workflow/hooks | wc -l
 
 ```bash
 git add dev-workflow/skills/orchestrate/scripts/orchestrate.mjs
-git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 질문/권한 = 맨 아래 창 문구(alive와 공용 헬퍼) · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR), 응답 루트·예기치 않은 예외 = ERR exit 2; 테스트 37/37(spec §3w·AC2·AC3)"
+git commit -m "feat(orchestrate): orchestrate.mjs watch·alive·key — 오르카 상세의 유일한 거처(D3), 시작 자가 점검(필드 누락·화면 출처 screen 아님 = exit 2, D6), watch 판정 7종(표지 = 본문 마지막 줄 · --consumed 소비 D41 · 질문/권한 = 맨 아래 창 문구(alive와 공용 헬퍼) · 변화 없음+idle ≠ SETTLED), alive exit 0/1/2/3 상호 배타(종료 = 박스 아래 종료 표지 + 셸 프롬프트 · 생존 = 박스 또는 질문·권한 창, 입력 요소 뒤 셸 프롬프트면 판독 불가), key = 키마다 alive·화면 종류(맨 아래 입력 요소 기준) 유지 확인 뒤 argv 직접 전달, 오르카 호출 상한(무응답 = SIGKILL·ERR), 응답 루트·예기치 않은 예외 = ERR exit 2; 테스트 38/38(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 37 · pass 37 · fail 0 (AC2·AC3).
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 38 · pass 38 · fail 0 (AC2·AC3).
 - `node --check dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → exit 0 (AC4 일부).
 - `grep -c "shell: true" dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → `0` (셸 보간 없음).
 - 상수 자리: `grep -nE "^const (DONE_MARK|HANDOFF_MARK|QUESTION_PATTERNS|PERMISSION_PATTERNS|CLAUDE_EXIT_MARK|SHELL_PROMPT_RE|HUD_MARK) " dev-workflow/skills/orchestrate/scripts/orchestrate.mjs` → 7줄 (검증 필요(실측) 문자열의 갱신 자리 1곳 — spec 잔여 리스크 (1)(2)).
