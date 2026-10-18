@@ -14,6 +14,7 @@ const QUESTION_PATTERNS = ['Enter to select', 'to navigate'];
 const PERMISSION_PATTERNS = ['could not be checked', 'Do you want to ', "Yes, and don't ask again", 'Yes, allow '];  // 'Do you want to ' = proceed·make this edit·create·overwrite·allow 권한 창 전체 — 좁으면 diff 미리보기의 질문 꼬리말 문구에 질문 창으로 오판돼 enter가 권한을 승인한다(D23)
 const SEPARATOR = '────';                       // 프롬프트 박스 위·아래 구분선
 const PROMPT_CHAR = '❯';                        // 프롬프트 박스 안 입력 줄
+const OPTION_ROW_RE = /^❯\s*\d+\./;             // 창의 번호 선택 줄(「❯ 1. Yes」) — 입력 줄이 아니다
 const SPINNER_PREFIXES = ['✻', '✶', '✳', '✢', '·', '✽', '*'];
 const RESPONSE_BULLETS = /^[\s⏺●]+/;            // 응답 첫 줄 글머리표 — 표지 비교 전에 뗀다
 const CLAUDE_EXIT_MARK = 'Resume this session with';
@@ -117,13 +118,14 @@ function bottomDialog(lines) {
   return { index, kind };
 }
 
-// 활성 입력 요소 = 화면 맨 아래 요소 — 창 문구가 박스(마지막 두 구분선 사이 ❯ 줄)보다 아래일 때만 열린 창이고, 박스 위 문구는 본문 인용(R3-1·R4-1). watch·alive 공용
+// 활성 입력 요소 = 화면 맨 아래 요소 — 창 문구가 박스(마지막 두 구분선 사이 ❯ 입력 줄 — 번호 선택 줄 제외) 윗선보다 위일 때만 본문 인용이고, 박스 안·아래면 열린 창이다(R3-1·R4-1 · 권한 창은 닫힌 쪽으로, D23). watch·alive 공용
 function inputElements(lines) {
   const seps = separatorIndexes(lines);
   const lastSep = seps.length ? seps[seps.length - 1] : -1;
-  const box = seps.length >= 2 && lines.slice(seps[seps.length - 2] + 1, lastSep).some((l) => l.trimStart().startsWith(PROMPT_CHAR));
+  const topSep = seps.length >= 2 ? seps[seps.length - 2] : -1;
+  const box = topSep >= 0 && lines.slice(topSep + 1, lastSep).some((l) => l.trimStart().startsWith(PROMPT_CHAR) && !OPTION_ROW_RE.test(l.trimStart()));
   const d = bottomDialog(lines);
-  const open = d.index >= 0 && !(box && d.index <= lastSep);
+  const open = d.index >= 0 && !(box && d.index < topSep);
   return { lastSep, box: box && !open, dialogIdx: open ? d.index : -1, dialogKind: open ? d.kind : null };
 }
 

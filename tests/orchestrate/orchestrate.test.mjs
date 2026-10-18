@@ -182,6 +182,24 @@ test('AC3 watch·alive: 본문에 권한 창 문구를 인용하고 그 아래 �
   assert.match(a.first, /프롬프트 박스/);
 });
 
+test('AC3 watch·alive: 구분선 사이에 그려진 권한 창(선택 줄 「❯ 1. Yes」가 구분선 안)도 PERMISSION·권한 창(입력 상자로 보지 않는다)', () => {
+  const lines = ['⏺ Bash(sh -c "rm -f x")', SEP, ' Command contains rm that could not be checked', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No', SEP];
+  const w = run('watch', ['term_t', '5'], { read: [read(A), read(lines)], wait: [BUSY] });
+  assert.equal(w.first, 'PERMISSION');
+  const a = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(lines)] });
+  assert.equal(a.code, 0);
+  assert.match(a.first, /권한 창/);
+});
+
+test('AC3 watch·alive: 권한 문구 아래 구분선 사이에 번호 선택 줄(「❯ 1. Yes」)만 있으면 입력 상자가 아니다 → PERMISSION·권한 창', () => {
+  const lines = ['⏺ Bash(sh -c "rm -f x")', ' Do you want to proceed?', SEP, ' ❯ 1. Yes', '   2. No', SEP];
+  const w = run('watch', ['term_t', '5'], { read: [read(A), read(lines)], wait: [BUSY] });
+  assert.equal(w.first, 'PERMISSION');
+  const a = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(lines)] });
+  assert.equal(a.code, 0);
+  assert.match(a.first, /권한 창/);
+});
+
 test('AC3 watch TIMEOUT: 최대초 경과·변화 없음', () => {
   const r = run('watch', ['term_t', '0.3'], { read: [read(A)], wait: [BUSY] });
   assert.equal(r.code, 0);
