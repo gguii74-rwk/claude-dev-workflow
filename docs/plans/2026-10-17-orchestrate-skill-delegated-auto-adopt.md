@@ -168,7 +168,7 @@ grep -nE '\$[0-9]' dev-workflow/skills/*/SKILL.md dev-workflow/skills/orchestrat
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 08 | 릴리스 1.2.0 — **9단계, SDD 디스패치 대상 아님** | [ ] | [task-08](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-08-release-1-2-0.md) | 01~07 + review-loop(impl) 종결 | |
+| 08 | 릴리스 1.2.0 — **9단계, SDD 디스패치 대상 아님** | [x] | [task-08](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-08-release-1-2-0.md) | 01~07 + review-loop(impl) 종결 | 릴리스 `f102eff`(plugin.json 1.1.1→1.2.0만, 2026-10-18) · 게이트 ① impl 종결 행 1 · ② 확인 대기 0·확인 안 된 번복 0 · ③ T1 54/54(첫 실행)·`CHECK_OK`·기준선 11/11·2/2·훅 diff 0·`$N` 0·SKILL.md 15,358B + task-03·04·05(3·4 `DEL 3 BAD 0`)·06·07 검증 블록 기대 일치 · no-AI-trace 0 · **미push** |
 | 09 | AC9 (i) 실측 기록 — **트랙 완료 조건, SDD 디스패치 대상 아님** | [ ] | [task-09](2026-10-17-orchestrate-skill-delegated-auto-adopt/task-09-ac9-field-run.md) | 08 + push + 설치 갱신 | |
 
 task-08(릴리스)·task-09(AC9 실측)는 9단계 이후라 SDD가 디스패치하지 않는다 — 8 review-loop(impl)가 성공 종결(이 문서 말미 impl ledger 종결 행)한 뒤 그 세션 또는 새 세션이 task-08을, 릴리스·push·설치 갱신 뒤 기록 세션이 task-09를 단독 실행한다. **위 Task table과 따로 두는 이유** = dev-cycle 7단계가 「entrypoint task 표의 완료 기록 전건」으로 7 완료를 판별해, 같은 표에 두면 01~07이 끝나도 7 미완으로 읽힌다(plan ledger R1-5) — 완료 기록(status·outcome)은 이 표에서 받는다. **task-08·09의 완료 권위 = 이 커밋된 표 + 각 task의 AC**(SDD progress ledger에 기록하지 않는다 — 계약 블록의 convergence 규칙(「ledger 완료 기록 부재 → `[ ]` 복원」)은 Task table(task-01~07)에만 적용한다). 실행자는 완료 시 표 행 `[x]`·outcome을 쓰고 이 파일을 즉시 커밋한다. task-09 착수나 어떤 복구 절차도 task-08 행을 되돌리지 않는다. 트랙 완료 = 09행 `[x]`.
