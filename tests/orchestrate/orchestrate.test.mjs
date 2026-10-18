@@ -217,7 +217,7 @@ test('AC3 watch: 표지가 마지막 줄이면 DONE이 QUESTION보다 우선', (
   assert.equal(r.first, 'DONE');
 });
 
-// ── AC3 표지 인정 조건 6건
+// ── AC3 표지 인정 조건 8건
 test('AC3 표지: 이전 DONE 줄 뒤 새 질문이 떠 있으면 QUESTION', () => {
   const lines = ['⏺ 단계 종료 보고', `  ${DONE_LINE}`, '', ...Q];
   const r = run('watch', ['term_t', '5', '--consumed', DONE_LINE], { read: [read(lines)], wait: [BUSY] });
@@ -234,6 +234,20 @@ test('AC3 표지: HANDOFF 줄 아래 구분선 사이에 그려진 권한 창은
   const lines = ['⏺ 넛지를 받아 핸드오프를 썼다', '  [TRACK-HANDOFF .remember/loop-x-spec.md]', SEP, ...P.slice(1), SEP];
   const r = run('watch', ['term_t', '5'], { read: [read(lines)], wait: [BUSY] });
   assert.equal(r.first, 'PERMISSION');
+});
+
+test('AC3 표지: 화면 폭에서 접힌 긴 HANDOFF 표지(공백 없는 이어진 줄)는 이어 붙여 HANDOFF + 전체 경로', () => {
+  const marker = '[TRACK-HANDOFF .remember/loop-2026-10-17-orchestrate-skill-delegated-auto-adopt-impl.md]';
+  const lines = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', `  ${marker.slice(0, 60)}`, `  ${marker.slice(60)}`]);
+  const r = run('watch', ['term_t', '5'], { read: [read(lines)], wait: [BUSY] });
+  assert.equal(r.first, 'HANDOFF');
+  assert.equal(r.out.split('\n')[1], marker);
+});
+
+test('AC3 표지: 닫히지 않은 인용 표지 아래 문장(공백 포함)은 이어 붙이지 않는다 → 표지 아님', () => {
+  const lines = box(['⏺ 예시 표지:', '  [TRACK-HANDOFF .remember/x', '  이건 인용이다]']);
+  const r = run('watch', ['term_t', '0.3'], { read: [read(lines)], wait: [IDLE] });
+  assert.equal(r.first, 'TIMEOUT');
 });
 
 test('AC3 표지: 본문 중간에 인용된 표지(마지막 줄 아님)는 DONE이 아니다', () => {

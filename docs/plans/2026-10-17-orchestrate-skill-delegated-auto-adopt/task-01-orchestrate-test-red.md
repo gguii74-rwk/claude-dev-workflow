@@ -1,6 +1,6 @@
 # task-01 — orchestrate.mjs 계약 테스트 작성 (RED) (spec §3w · AC2·AC3)
 
-**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **45건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
+**목적**: `orchestrate.mjs`의 계약(서브커맨드 3개·판정 7종·표지 인정 조건·생존 판정 exit 0/1/2/3·자가 점검)을 가짜 `orca`로 검증하는 테스트 파일을 repo 루트 `tests/orchestrate/`에 만들고, 스크립트가 없는 지금 **47건 전부 실패(RED)**함을 확인한다. 스크립트 구현은 task-02.
 
 ## Files
 
@@ -253,7 +253,7 @@ test('AC3 watch: 표지가 마지막 줄이면 DONE이 QUESTION보다 우선', (
   assert.equal(r.first, 'DONE');
 });
 
-// ── AC3 표지 인정 조건 6건
+// ── AC3 표지 인정 조건 8건
 test('AC3 표지: 이전 DONE 줄 뒤 새 질문이 떠 있으면 QUESTION', () => {
   const lines = ['⏺ 단계 종료 보고', `  ${DONE_LINE}`, '', ...Q];
   const r = run('watch', ['term_t', '5', '--consumed', DONE_LINE], { read: [read(lines)], wait: [BUSY] });
@@ -270,6 +270,20 @@ test('AC3 표지: HANDOFF 줄 아래 구분선 사이에 그려진 권한 창은
   const lines = ['⏺ 넛지를 받아 핸드오프를 썼다', '  [TRACK-HANDOFF .remember/loop-x-spec.md]', SEP, ...P.slice(1), SEP];
   const r = run('watch', ['term_t', '5'], { read: [read(lines)], wait: [BUSY] });
   assert.equal(r.first, 'PERMISSION');
+});
+
+test('AC3 표지: 화면 폭에서 접힌 긴 HANDOFF 표지(공백 없는 이어진 줄)는 이어 붙여 HANDOFF + 전체 경로', () => {
+  const marker = '[TRACK-HANDOFF .remember/loop-2026-10-17-orchestrate-skill-delegated-auto-adopt-impl.md]';
+  const lines = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', `  ${marker.slice(0, 60)}`, `  ${marker.slice(60)}`]);
+  const r = run('watch', ['term_t', '5'], { read: [read(lines)], wait: [BUSY] });
+  assert.equal(r.first, 'HANDOFF');
+  assert.equal(r.out.split('\n')[1], marker);
+});
+
+test('AC3 표지: 닫히지 않은 인용 표지 아래 문장(공백 포함)은 이어 붙이지 않는다 → 표지 아님', () => {
+  const lines = box(['⏺ 예시 표지:', '  [TRACK-HANDOFF .remember/x', '  이건 인용이다]']);
+  const r = run('watch', ['term_t', '0.3'], { read: [read(lines)], wait: [IDLE] });
+  assert.equal(r.first, 'TIMEOUT');
 });
 
 test('AC3 표지: 본문 중간에 인용된 표지(마지막 줄 아님)는 DONE이 아니다', () => {
@@ -418,25 +432,25 @@ test('AC3 key: 키 사이에 질문 창이 닫히고 입력 상자로 바뀌면 
 node --test tests/orchestrate/orchestrate.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: `ℹ tests 45` · `ℹ pass 0` · `ℹ fail 45`(스크립트 파일이 없어 모든 실행이 실패한다).
+기대: `ℹ tests 47` · `ℹ pass 0` · `ℹ fail 47`(스크립트 파일이 없어 모든 실행이 실패한다).
 
 ### 4. 커밋
 
 ```bash
 git add tests/orchestrate/orchestrate.test.mjs
-git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 45건(RED) — 가짜 orca로 자가 점검(필드 누락·JSON null·screen-unavailable·호출 무응답(경과 시간 단언)·SIGTERM 무시) · watch 판정 7종·f1·본문 인용 질문 문구 아래 실제 권한 창 = PERMISSION(맨 아래 창 문구 기준)·표지 인정 조건 6건(표지 줄 아래 구분선 사이 질문·권한 창 = QUESTION·PERMISSION 포함) · alive exit 0/1/2/3 11건(권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·화면 종류 변화(본문 인용 권한 문구·입력 상자 포함) 중단(spec §3w·AC2·AC3)"
+git commit -m "test(orchestrate): orchestrate.mjs 계약 테스트 47건(RED) — 가짜 orca로 자가 점검(필드 누락·JSON null·screen-unavailable·호출 무응답(경과 시간 단언)·SIGTERM 무시) · watch 판정 7종·f1·본문 인용 질문 문구 아래 실제 권한 창 = PERMISSION(맨 아래 창 문구 기준)·표지 인정 조건 8건(표지 줄 아래 구분선 사이 질문·권한 창 = QUESTION·PERMISSION · 화면 폭에서 접힌 HANDOFF 표지 이어 붙임 포함) · alive exit 0/1/2/3 11건(권한 창 생존·질문 창/박스 뒤 셸 프롬프트 판독 불가 포함) · key 시퀀스·중간 종료·화면 종류 변화(본문 인용 권한 문구·입력 상자 포함) 중단(spec §3w·AC2·AC3)"
 ```
 
 ## Acceptance Criteria
 
-- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 45 · pass 0 · fail 45.
-- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `45`.
+- `node --test tests/orchestrate/orchestrate.test.mjs` → tests 47 · pass 0 · fail 47.
+- `grep -c "^test('" tests/orchestrate/orchestrate.test.mjs` → `47`.
 - `git diff HEAD~1 --stat` → `tests/orchestrate/orchestrate.test.mjs` 1파일만.
 - 기준선 2종(단계 1) 11/11 · 2/2 그대로.
 
 ## Cautions
 
 - **스크립트(`orchestrate.mjs`)를 이 task에서 만들지 마라.** 이유: RED를 먼저 커밋해야 task-02의 GREEN이 이 테스트로 증명된다.
-- **테스트 기대값을 바꾸지 마라.** 이유: 45건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 12건(R1-1~R1-4 · R2-1~R2-3 · R3-1 · R4-1 · R5-1 2건) + 7 impl 사전 점검 보강 1건(F3 — 본문 인용 질문 문구 아래 실제 권한 창 → `watch` PERMISSION) 포함; 사전 점검 F1은 호출 무응답 테스트에 경과 시간 단언을 더했을 뿐 건수 불변) + task-02 리뷰 보강 1건(파일 편집 권한 창 diff 미리보기의 질문 꼬리말 문구 → PERMISSION·권한 창, D23) + 최종 리뷰 보강 3건(본문 인용 권한 문구 아래 입력 상자 → `watch` PERMISSION 아님·`alive` 프롬프트 박스 · 질문 창 위 본문 인용 종료 안내 + 상태줄 → `alive` 0(종료 1 아님) · 질문 창 아래 상태줄 → `alive` 0) + 보안 리뷰 보강 2건(구분선 사이에 그려진 권한 창 · 권한 문구 아래 구분선 사이 번호 선택 줄 → `watch` PERMISSION·`alive` 권한 창) + impl 루프 보강 2건(R1-1 — 표지 줄 아래 구분선 사이에 그려진 질문·권한 창 → `watch` QUESTION·PERMISSION, DONE/HANDOFF 아님) — 바꾸면 계약이 바뀐다.
+- **테스트 기대값을 바꾸지 마라.** 이유: 47건이 spec AC2·AC3의 항목별 대응이다(SC-2 출력 토큰 포함 — plan 리뷰 보강 12건(R1-1~R1-4 · R2-1~R2-3 · R3-1 · R4-1 · R5-1 2건) + 7 impl 사전 점검 보강 1건(F3 — 본문 인용 질문 문구 아래 실제 권한 창 → `watch` PERMISSION) 포함; 사전 점검 F1은 호출 무응답 테스트에 경과 시간 단언을 더했을 뿐 건수 불변) + task-02 리뷰 보강 1건(파일 편집 권한 창 diff 미리보기의 질문 꼬리말 문구 → PERMISSION·권한 창, D23) + 최종 리뷰 보강 3건(본문 인용 권한 문구 아래 입력 상자 → `watch` PERMISSION 아님·`alive` 프롬프트 박스 · 질문 창 위 본문 인용 종료 안내 + 상태줄 → `alive` 0(종료 1 아님) · 질문 창 아래 상태줄 → `alive` 0) + 보안 리뷰 보강 2건(구분선 사이에 그려진 권한 창 · 권한 문구 아래 구분선 사이 번호 선택 줄 → `watch` PERMISSION·`alive` 권한 창) + impl 루프 보강 4건(R1-1 — 표지 줄 아래 구분선 사이에 그려진 질문·권한 창 → `watch` QUESTION·PERMISSION, DONE/HANDOFF 아님 · R2-1 — 화면 폭에서 접힌 HANDOFF 표지 → 이어 붙여 HANDOFF + 전체 경로 · 닫히지 않은 인용 표지 아래 문장 → 표지 아님) — 바꾸면 계약이 바뀐다.
 - **실제 오르카를 부르지 마라.** 이유: `run()`이 `ORCA_CLI_COMMAND`·`ORCA_DEV_REPO_ROOT`를 지우고 PATH 앞에 가짜를 둔다 — 이 순서를 바꾸면 실제 터미널에 키가 들어갈 수 있다.
 - **폴더 인자(`node --test tests/orchestrate/`)로 돌리지 마라.** 이유: Node 21 이상은 폴더를 모듈 경로로 해석해 테스트가 하나도 돌지 않는다(spec 정정 `dfdd243`).
