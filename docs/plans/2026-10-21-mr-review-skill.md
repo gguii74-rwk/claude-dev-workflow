@@ -294,7 +294,7 @@ git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with|claude-s
 |---|-------|--------|------|------|---------|
 | 01 | 테스트 하네스 · 어댑터 파서 · CLI 골격 | [x] | [task-01](2026-10-21-mr-review-skill/task-01-adapter-and-harness.md) | — | `56f55bf` — adapter 8/8, 전사 수정 없음, 태스크 리뷰 승인(minor 3 이월) |
 | 02 | GitLab 수집 · 스냅샷 고정 · diff-only 복원 (collect) | [x] | [task-02](2026-10-21-mr-review-skill/task-02-collect.md) | 01 | `d0c6b1e` — collect 9/9(누적 17), 전사 수정 없음, 태스크 리뷰 승인(SC-6 stderr 는 task-06 catch 에서 해소, minor 5 이월) |
-| 03 | 작성 규칙 검사표 · 댓글 신뢰 · 기준선 원문 (check) | [ ] | [task-03](2026-10-21-mr-review-skill/task-03-check.md) | 02 | |
+| 03 | 작성 규칙 검사표 · 댓글 신뢰 · 기준선 원문 (check) | [x] | [task-03](2026-10-21-mr-review-skill/task-03-check.md) | 02 | `f4cc40f` — check 11/11(누적 28), plan 블록과 바이트 동일(stripFences 포함), 태스크 리뷰 승인(minor 6 이월) |
 | 04 | 배포본 zip 대조 (deploy) | [ ] | [task-04](2026-10-21-mr-review-skill/task-04-deploy.md) | 02 | |
 | 05 | 컨텍스트 팩 · 마스킹 (pack) | [ ] | [task-05](2026-10-21-mr-review-skill/task-05-pack.md) | 03 | |
 | 06 | 판정 계산 · 리포트 · 비밀값 제거 · 정리 (verdict/render/cleanup) | [ ] | [task-06](2026-10-21-mr-review-skill/task-06-report.md) | 03, 04, 05 | |
