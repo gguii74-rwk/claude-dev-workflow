@@ -79,11 +79,25 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 - `RESOLVE_FAIL`·`COMPANION_TOO_OLD`면 **단일 모델 모드**로 계속하되 시작 요약에 한 줄로 알린다(멈추지 않는다 — G5).
 - 아래의 `<CLI>` = `node "<Base directory>/scripts/mr-review.mjs"` — `<Base directory>` = 이 스킬을 로드할 때 표시된 「Base directory for this skill」. 모든 명령은 **stdout 첫 줄**만 판독한다(`ERR …`면 멈추고 그 줄을 보고 — 단 `collect`가 한 번이라도 돌았으면 멈추기 **전에** 아래 「공통 종료 절차」의 `cleanup`을 먼저 실행한다).
 
-**공통 종료 절차(F5·F7 — 성공·실패 무관)**: `collect`가 실행된 뒤 이 스킬이 어떤 이유로든 끝나는 모든 경로(정상 출력 §8 · 조기 종료 §3 · `ERR` 중단 · 검토자 유효 결과 0개 · `verdict`·`render` 실패 · 사용자 중단)의 **마지막 동작은 항상** `<CLI> cleanup --adapter "$A" --work "$W"`다. 보고(리포트 경로·`ERR` 원문·검토자 실패 원문)는 cleanup **뒤에**, 어댑터 마스킹을 거쳐 한다. cleanup 자체가 `ERR`면 남은 경로(`W/worktree` · `W/zip` · `W/blobs` · `W/codex.*` · `W/pack-*.md` · `W/baseline/`)를 보고에 적어 사람이 지우게 한다. `--resolve` 재실행(§9)은 `collect`를 돌리지 않으므로 해당 없음.
+**공통 종료 절차(F5·F7 — 성공·실패 무관)**: `collect`가 실행된 뒤 이 스킬이 어떤 이유로든 끝나는 모든 경로(정상 출력 §8 · 조기 종료 §3 · `ERR` 중단 · 검토자 유효 결과 0개 · `verdict`·`render` 실패 · 사용자 중단)의 **마지막 동작은 항상** 「검토자 종료 확인」 → `<CLI> cleanup --adapter "$A" --work "$W"`다. 보고(리포트 경로·`ERR` 원문·검토자 실패 원문)는 cleanup **뒤에**, 어댑터 마스킹을 거쳐 한다. cleanup 자체가 `ERR`면 남은 경로(`W/worktree` · `W/zip` · `W/blobs` · `W/codex.*` · `W/pack-*.md` · `W/baseline/`)를 보고에 적어 사람이 지우게 한다 — `ERR 검토자 프로세스 생존 …`이면 아래 종료 확인을 다시 하고 cleanup 을 재실행한다. `--resolve` 재실행(§9)은 `collect`를 돌리지 않으므로 해당 없음.
+
+**검토자 종료 확인(cleanup 의 선행 조건 — §5 에서 검토자를 띄운 뒤의 모든 종료 경로, 특히 사용자 중단)**: 살아 있는 검토자가 정리 **뒤에** 완료되면 마스킹되지 않은 `review-*.json`을 다시 쓰고, 같은 `W`를 다시 쓰면 다음 실행 결과와 경합한다. 그래서 cleanup 전에 두 검토자가 **끝났음을 확인**한다.
+1. **Claude 검토자**(Agent 도구 백그라운드): 완료 알림을 아직 받지 않았으면 `TaskStop`으로 중지하고 **중지·완료 알림을 받은 뒤** 다음으로 간다(알림 전에는 cleanup 으로 가지 않는다).
+2. **Codex 검토자**(`W/codex.pid` — 래퍼의 프로세스 그룹): 아래로 종료를 확인한다. 끝에 `REVIEWER_ALIVE`가 찍히면 cleanup 을 돌리지 말고 사람에게 pid 를 보고한다(cleanup 도 같은 상태를 `ERR`로 거부한다).
+
+```bash
+if [ -f "$W/codex.pid" ]; then P=$(cat "$W/codex.pid")
+  if kill -0 "$P" 2>/dev/null; then kill -TERM -- "-$P" 2>/dev/null || kill -TERM "$P"
+    for i in $(seq 10); do kill -0 "$P" 2>/dev/null || break; sleep 1; done
+    kill -0 "$P" 2>/dev/null && { kill -KILL -- "-$P" 2>/dev/null || kill -KILL "$P"; sleep 1; }
+  fi
+  kill -0 "$P" 2>/dev/null && echo REVIEWER_ALIVE
+fi
+```
 
 ## 1. 작업 디렉터리
 
-`W` = 세션 scratchpad 아래 `mr-review/<프로젝트>-<iid>/`(없으면 만든다). 단계마다 JSON이 여기 쌓인다(`mr.json` · `snapshot.json` · `check.json` · `deploy.json` · `pack.json` · `review-*.json` · `findings.json` · `verdict.json`). **`--resolve` 재실행은 같은 `W`를 쓴다** — 지우지 않는다.
+`W` = 세션 scratchpad 아래 `mr-review/<프로젝트>-<iid>/`(없으면 만든다). 단계마다 JSON이 여기 쌓인다(`mr.json` · `snapshot.json` · `check.json` · `deploy.json` · `pack.json` · `review-*.json` · `findings.json` · `verdict.json`). **`--resolve` 재실행은 같은 `W`를 쓴다** — 지우지 않는다. **같은 `W`를 다시 쓰기 전에**(재실행·`--resolve`) `W/codex.pid`가 있고 그 프로세스가 살아 있으면 §0 「검토자 종료 확인」을 먼저 한다 — 이전 실행의 검토자가 살아 있는 채로 `collect`·`verdict`를 돌리면 결과 파일이 경합한다.
 
 ## 2. 수집 → 검사 → 배포본
 
@@ -170,12 +184,12 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 유효한 결과가 **0개**면 `findings.json`에 `head_sha: <snapshot.head_sha>` · `validReviewers: []` · `crossChecked: false` · 빈 `findings`·`intent`를 쓰고 **그래도 아래 `verdict`를 실행한 뒤**(`VERDICT review-failed -`) §8로 간다(리뷰 실패 — 판정 블록 없음). `verdict`를 건너뛰면 같은 `W`에 남은 이전 실행의 `verdict.json`(예: APPROVE)이 render에 읽힌다 — render·verdict는 입력의 head 일치를 검증하지만, 이 절차도 건너뛰지 않는다.
 
-1. **지문** = `file` + 정규화 제목(공백·구두점 제거, 소문자) — 같은 지문은 하나로 합치고 `source`를 `both | claude | codex`로 적는다. 유형이 다르면 더 센 쪽(DEFECT > DESIGN_DRIFT > MISSING_EVIDENCE > FOLLOW_UP), 확신은 높은 쪽.
+1. **지문** = `file` + 정규화 제목(공백·구두점 제거, 소문자) — 같은 지문은 하나로 합치고 `source`를 `both | claude | codex`로 적는다. 유형이 다르면 더 센 쪽(DEFECT > DESIGN_DRIFT > MISSING_EVIDENCE > FOLLOW_UP), 확신은 높은 쪽. **`fixableInDesign`은 둘이 같을 때만 그 값** — 다르면 3의 상충 확인 대상이다(한쪽 값을 조용히 고르지 않는다).
 2. **blocking** = `DEFECT`·`MISSING_EVIDENCE`는 항상 `true`. `DESIGN_DRIFT`는 어댑터 렌즈 표의 「차단 승격」 조건(승인 범위·전제·인터페이스 이탈, 접촉 표면 추가 등)에 해당할 때만 `true` — 최소 범위 렌즈의 범위 밖 변경은 기본 `FOLLOW_UP`이다(접촉 표면을 건드릴 때만 `DESIGN_DRIFT`). `FOLLOW_UP`은 `false`.
-3. **상충·낮은 확신**: 한쪽은 차단, 다른 쪽은 같은 자리를 무해로 봤거나(상충), 한쪽만 잡은 `confidence: low|medium` 차단 후보는 **메인이 코드를 다시 읽어** 확인한다. 확인되면 `blocking:true`, 반박되면 `type` 유지·`blocking:false`·`dismissReason`에 근거. **확인도 반박도 못 하면 `unresolved: true`** — 판정 입력에서 빼지 않는다(`verdict`가 「판정 미확정」으로 만든다).
+3. **상충·낮은 확신**: 한쪽은 차단, 다른 쪽은 같은 자리를 무해로 봤거나(상충), 한쪽만 잡은 `confidence: low|medium` 차단 후보는 **메인이 코드를 다시 읽어** 확인한다. 확인되면 `blocking:true`, 반박되면 `type` 유지·`blocking:false`·`dismissReason`에 근거. **확인도 반박도 못 하면 `unresolved: true`** — 판정 입력에서 빼지 않는다(`verdict`가 「판정 미확정」으로 만든다). **설계 내 수정 가능 상충도 같은 확인 대상이다**: 같은 지문을 둘 다 차단으로 봤는데 `fixableInDesign`이 `yes`/`no`로 갈리면(이 값으로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀐다) 메인이 코드·기준선 문서를 다시 읽어 **어느 전제가 실제로 깨졌는지** 판단한다 — 판단되면 그 값 + `no`면 `brokenPremise`, 못 하면 `fixableInDesign: null` · `fixableInDesignClaims: { claude: "<값>", codex: "<값>" }` · `brokenPremise` = `no` 쪽 주장 · `unresolved: true`. `verdict`는 이 항목에 `confirmed:fixable / confirmed:design / dismissed` 세 갈래를 보이고 리뷰어가 §9 에서 정한다 — 스크립트도 스킬도 엄한 쪽을 자동으로 고르지 않는다(D9).
 4. `baselineCandidateRelevant` = **유효한 검토 결과(`validReviewers`)만** 대상으로 — 전부 `true`면 `true`, 전부 `false`면 `false`(유효 결과가 1개인 단일 모델 모드면 그 값 그대로 — Codex 미설치·마스킹 실패로 후보를 기각하지 않는다). **둘이 상충하면** 메인이 후보 문서(워크트리의 그 파일)를 직접 읽어 이번 변경(제목·변경 파일·②의 범위)을 다루는지 판정하고, 그 근거 한 줄을 `baselineCandidateReason`에 적는다. 후보가 없으면 `false`.
 5. `intent` = 두 결과를 행별로 합친다(둘이 다르면 `UNKNOWN`, `basis`는 「코드로 확인」이 하나라도 있으면 그것).
-6. `W/findings.json`(엔트리포인트 SC-5 형식)을 쓴다 — `head_sha` = `snapshot.head_sha`(verdict·render가 대조한다 — 다르면 리뷰 실패) · `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함.
+6. `W/findings.json`(엔트리포인트 SC-5 형식)을 쓴다 — `head_sha` = `snapshot.head_sha`(verdict·render가 대조한다 — 다르면 리뷰 실패) · `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함 · 상충 항목은 `fixableInDesignClaims`(없으면 `null`).
 
 ```bash
 <CLI> verdict --adapter "$A" --work "$W"
@@ -208,18 +222,19 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 이전 실행이 「판정 미확정」이었고 리뷰어가 후보를 확인·기각했으면 §2~§5를 다시 돌리지 않는다:
 
 ```bash
-<CLI> verdict --adapter "$A" --work "$W" --resolve <id>=confirmed --resolve <id2>=dismissed
+<CLI> verdict --adapter "$A" --work "$W" --resolve <id>=confirmed --resolve <id2>=dismissed --resolve <id3>=confirmed:design
 <CLI> render  --adapter "$A" --work "$W"
 ```
 
-기각 근거는 리뷰어가 말한 대로 `findings.json`의 해당 항목 `dismissReason`에 먼저 적어 둔다(리포트 부록에 남는다). 같은 `W`가 없으면(세션이 바뀜) §2부터 다시 돌린다 — head가 바뀌었을 수 있다.
+기각 근거는 리뷰어가 말한 대로 `findings.json`의 해당 항목 `dismissReason`에 먼저 적어 둔다(리포트 부록에 남는다). 설계 내 수정 가능 여부가 상충한 항목(`fixableInDesignClaims`)은 리뷰어가 **`confirmed:fixable`(고쳐서 다시 — CHANGES_REQUESTED 쪽) 또는 `confirmed:design`(전제가 깨짐 — RETURN_TO_DESIGN 쪽)** 으로 정한다 — 접미 없는 `confirmed`는 `verdict`가 `ERR`로 되묻는다(어느 쪽인지 스크립트가 정하지 않는다, D9). 같은 `W`가 없으면(세션이 바뀜) §2부터 다시 돌린다 — head가 바뀌었을 수 있다.
 
 ## 금지
 
 - `git add`·`commit`·`push`·`glab api` POST/PUT·`glab mr` 하위 명령 — 전부 금지(읽기 전용).
 - Codex `task` 실패 시 자동 재실행·`--help`·무인자 호출(실제 job이 뜬다)·`| head` 파이프(job 잔존).
 - 팩 B에 어댑터 허용 목록 밖 자료를 넣는 것 · 마스킹 실패를 무시하고 Codex를 띄우는 것 · 팩 B 밖의 MR 원문(계약 줄·검증 표·댓글)을 Codex 프롬프트에 다시 붙이는 것.
-- `collect` 이후 `cleanup` 없이 끝내는 것(`ERR`·검토자 실패·render 실패 포함) · 유효 검토 0개일 때 `verdict`를 건너뛰는 것.
+- `collect` 이후 `cleanup` 없이 끝내는 것(`ERR`·검토자 실패·render 실패 포함) · 유효 검토 0개일 때 `verdict`를 건너뛰는 것 · 검토자를 띄운 뒤 **종료 확인 없이** `cleanup`을 돌리거나 같은 `W`를 다시 쓰는 것(§0 「검토자 종료 확인」).
+- 같은 지문의 `fixableInDesign` 상충을 한쪽 값으로 조용히 합치는 것(§6-3 — 메인 확인 → 못 하면 `fixableInDesignClaims` + 미확정).
 - 판정 어휘 추가(「보류」·「조건부」) · 판정 순서를 손으로 바꾸는 것(스크립트 결과를 그대로 쓴다).
 - 리포트에 프로젝트 외 경로·개인 위키 본문을 인용하는 것(출처 id `[S?]`로만).
 ````
@@ -245,12 +260,15 @@ git commit -m "feat(mr-review): SKILL.md — 전제·수집·검사·조기 종�
 - §5의 Codex 실행 블록이 review-loop §2b와 같은 구조(래퍼·`spawn(detached)`·마커·대기·유효 판정·자동 재실행 금지)이고 `adversarial-review`를 쓰지 않는다.
 - §6에 SC-5의 모든 필드(`head_sha`·`validReviewers`·`crossChecked`·`baselineCandidateRelevant`·`unresolved`·`dismissReason`·`outsideWorktreePaths`)를 채우는 규칙이 있고, 유효 결과 0개 경로도 `verdict`를 실행한다(plan R1-1).
 - §0에 「공통 종료 절차」가 있고 `ERR`·검토자 실패·render 실패 경로가 전부 `cleanup`으로 끝난다(plan R1-6) · §5·§7의 Codex 비코드 입력이 팩 B 참조뿐이다(plan R1-2).
+- §0에 「검토자 종료 확인」(Claude `TaskStop` + 알림 대기 · Codex pid TERM→생존 확인→KILL · `REVIEWER_ALIVE`면 cleanup 금지)이 cleanup 의 선행 조건으로 있고 §1 의 같은 `W` 재사용 전에도 적용된다(plan R6-2) · §6-3 에 `fixableInDesign` 상충의 메인 확인 → `fixableInDesignClaims` + 미확정 → §9 `confirmed:fixable|confirmed:design` 경로가 있다(plan R6-3).
 
 ## Cautions
 
 - **Codex 프롬프트에 팩 B를 경로로 주지 마라 — 본문을 붙여라. 이유:** Codex는 cwd(워크트리) 밖을 읽어선 안 된다(D16 ⓐ) — 경로를 주면 스스로 금지를 어기게 만든다.
 - **Codex 프롬프트에 `check.json.contract.lines`·MR 검증 표·댓글 원문을 따로 붙이지 마라 — 팩 B 안의 마스킹된 본문을 가리켜라. 이유:** R1-2 — 그 값들은 pack 단계의 마스킹·잔존 검사를 거치지 않은 원문이라, `Required tests/evidence`에 이메일·`token=` 값이 있으면 팩 B에서 가려져도 공통 입력으로 다시 전송된다(D4·D14 위반).
 - **`ERR`·실패에서 바로 멈추지 마라 — `cleanup`을 먼저. 이유:** R1-6 — F5·F7(원시 프롬프트·로그·워크트리·zip 제거)은 정상 경로 끝에만 두면 render 실패 한 번에 `codex.prompt`·`codex.out`이 남는다.
+- **검토자를 띄운 뒤에는 `cleanup` 전에 두 검토자의 종료를 확인하라(Claude = `TaskStop` + 알림, Codex = pid TERM→생존 확인→KILL) — pid 파일을 먼저 지우거나 살아 있는 채로 정리하지 마라. 이유:** plan R6-2(사용자 결정) — 사용자 중단 뒤 정리가 끝난 30초 뒤 Codex 가 완료되면 비밀값이 섞인 `review-codex.json`이 작업 폴더에 새로 생기고, 같은 `W` 재사용 시 다음 실행 결과와 경합한다. `cleanup` 스크립트도 살아 있는 pid 를 보면 `ERR`로 거부한다(2차 방어).
+- **같은 지문의 `fixableInDesign`이 갈리면 유형·확신처럼 「센 쪽」을 고르지 마라 — 메인이 코드로 확인하고, 못 하면 `fixableInDesignClaims` + `unresolved`. 이유:** plan R6-3(사용자 결정) — 이 값 하나로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀐다. 엄한 쪽 자동 채택은 근거 없는 한쪽 주장으로 설계 반려를 만드는 새 판정 규칙(D9)이고, 기존 미확정·`--resolve` 경로(`confirmed:fixable|confirmed:design`)를 재사용하면 리뷰어가 정한다.
 - **Claude 서브에이전트에게 Codex가 돈다는 말을 하지 마라(반대도). 이유:** D11 오류 비상관화.
 - **판정 순서를 SKILL.md 산문으로 다시 쓰지 마라 — `verdict` 결과를 쓴다. 이유:** 두 곳에 있으면 어긋난다(P5).
 - **상충·낮은 확신 후보를 확인 못 했다고 빼지 마라 — `unresolved:true`. 이유:** R1-F4 — 빼면 APPROVE로 샌다.

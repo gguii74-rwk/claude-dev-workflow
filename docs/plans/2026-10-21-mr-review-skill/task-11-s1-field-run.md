@@ -29,9 +29,10 @@
 <CLI> collect --adapter "$MR_REVIEW_ADAPTER" --project <p> --iid <iid> --work "$W" --diff-only
 <CLI> check   --adapter "$MR_REVIEW_ADAPTER" --work "$W"
 node -e 'const c=require(process.argv[1]+"/check.json");console.log([process.argv[2],c.track,c.baselineType,c.reason.why,c.reason.what,c.contract.complete,c.baselineCandidateFiles.length].join("\t"))' "$W" "<p>!<iid>"
+<CLI> cleanup --adapter "$MR_REVIEW_ADAPTER" --work "$W"
 ```
 
-(`--diff-only`는 S1이 §5.2 검사만 보기 때문 — 워크트리 불필요.) 20행을 손 분류 표와 대조해 **불일치 건수·원인**(예: 「서술만」 vs 손 분류 「위치 미기재」)을 센다. 불일치 > 2면 check 규칙을 고치는 후속 트랙(새 spec·루프)을 연다 — 이 task 안에서 코드를 고치지 않는다.
+(`--diff-only`는 S1이 §5.2 검사만 보기 때문 — 워크트리 불필요.) **표본마다 마지막 줄 `cleanup`은 `collect`·`check`가 `ERR`로 끝나도 실행한다**(plan R6-4 — 직접 CLI 호출에는 SKILL §0 공통 종료 절차가 없다. 측정 줄(`node -e …`)은 cleanup **앞**에 둔다 — `check.json`은 남지만 값이 마스킹 사본으로 바뀌므로 순서를 바꾸지 않는다). 20행을 손 분류 표와 대조해 **불일치 건수·원인**(예: 「서술만」 vs 손 분류 「위치 미기재」)을 센다. 불일치 > 2면 check 규칙을 고치는 후속 트랙(새 spec·루프)을 연다 — 이 task 안에서 코드를 고치지 않는다.
 
 ### 3. 첫 실사용(열린 MR 1건, 전체 흐름)
 
@@ -55,9 +56,11 @@ node -e 'const c=require(process.argv[1]+"/check.json");console.log([process.arg
 ## Acceptance Criteria
 
 - S1 불일치 ≤ 2 · S2 기록 · 실사용 F1~F8 전부 통과 기록.
+- 표본 20건의 `W=<scratch>/s1/<n>` 전부가 `cleanup`으로 끝나 `blobs/`·`baseline/`·원문 JSON 이 남지 않음(plan R6-4 — 실사용 1건은 스킬 §0 이 정리한다).
 - 플러그인 저장소 기록에 MR 번호·프로젝트명·사람 이름 없음.
 
 ## Cautions
 
 - **S1에서 불일치가 나와도 이 task 안에서 check 규칙을 고치지 마라. 이유:** 릴리스된 코드의 변경은 새 트랙(spec→loop) — 측정과 수정을 섞으면 측정이 무의미해진다.
 - **실사용 리포트를 게시하는 것은 사용자 몫이다. 이유:** D8·F1.
+- **표본 루프에서 `cleanup`을 빼지 마라 — 측정값은 그 앞에서 읽는다. 이유:** plan R6-4 — 20개 `W` 에 실제 MR 본문·이슈 원문(`baseline/`)·`blobs/`가 그대로 남는다(F5·F7). 스킬을 거치지 않는 직접 CLI 호출은 §0 공통 종료 절차를 타지 않는다.

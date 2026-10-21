@@ -47,6 +47,8 @@ node -e 'import(process.argv[1]+"/scripts/lib/adapter.mjs").then(m=>{const a=m.l
 
 기대 `ADAPTER_OK …`. `ADAPTER_FAIL`이면 메시지의 누락 키를 채운다. 추가로 닫힌 MR 하나로 `collect`·`check`·`deploy`·`pack`까지만 돌려(검토자 없이) `pack.json.codexSkipped === false`와 `mask.applied`를 확인한다 — 마스킹 패턴이 실제 본문에서 동작하는지 보는 것. 마스킹 회귀 1줄(plan R3-1): 확정본의 `mask` 배열로 `applyMask('Authorization: Bearer synthetic-credential-123', mask).text`가 `Authorization: [masked:token]`이어야 한다(자격증명 잔존 0).
 
+이 직접 호출에는 SKILL §0 공통 종료 절차가 자동으로 붙지 않으므로 **종료 절차를 여기서 수행한다**(plan R6-4): 확인할 값(`pack.json`의 `codexSkipped`·`mask.applied`)을 **먼저 읽고**, 그 뒤 `collect`가 한 번이라도 돌았으면 어느 단계가 `ERR`였든 마지막에 반드시 `<CLI> cleanup --adapter "<확정본 절대 경로>" --work "$W"`를 실행한다(검토자를 띄우지 않았으므로 종료 확인은 해당 없음 — `W`에 `codex.pid`가 없다). `CLEANED …` 줄을 기록하고 `W`에 `worktree/`·`zip/`·`pack-a.md`·`baseline/`이 없는지 확인한다 — 실제 MR 본문·개인 위키 발췌가 담긴 원문이 사용자 PC 에 남지 않게(F5·F7).
+
 ### 3. 게시
 
 그 저장소 규약대로 브랜치 → MR(변경 사유 3줄·Baseline = 어댑터 설계 문서 permalink). **MR 생성·머지는 사용자 승인 뒤.** 머지 후 사용자 환경변수 `MR_REVIEW_ADAPTER=<확정본 절대 경로>`를 안내한다.
@@ -57,11 +59,12 @@ node -e 'import(process.argv[1]+"/scripts/lib/adapter.mjs").then(m=>{const a=m.l
 
 ## Acceptance Criteria
 
-- `ADAPTER_OK` · 닫힌 MR 1건에서 `pack` 까지 성공(`codexSkipped=false`).
+- `ADAPTER_OK` · 닫힌 MR 1건에서 `pack` 까지 성공(`codexSkipped=false`) · 그 검증 실행이 `cleanup`으로 끝나 `W`에 원문(`worktree/`·`zip/`·`pack-a.md`·`baseline/`)이 남지 않음(plan R6-4).
 - 확정본에 과정 로그·한글 경로·로컬 절대 경로 없음(어댑터 §3.2 기준).
 
 ## Cautions
 
 - **이 plan 파일·커밋 메시지에 그 저장소의 실제 값을 옮겨 적지 마라. 이유:** 공개 저장소(D10).
+- **검증용 직접 CLI 호출(`collect`→`pack`)을 `cleanup` 없이 끝내지 마라 — 측정값은 cleanup 전에 읽는다. 이유:** plan R6-4 — SKILL 밖에서 부른 CLI 에는 §0 공통 종료 절차가 없어 실제 MR 의 워크트리·zip·개인 위키가 든 `pack-a.md`·원문 JSON 이 사용자 PC 에 남는다(F5·F7).
 - **`trustedReviewers`를 비워 두지 마라. 이유:** 비면 지정 리뷰어 외 판정 댓글을 전부 무시한다 — 의도한 운용이면 비워도 되지만 설계 §7a는 Maintainer 계정을 적기로 했다.
 - **대상 저장소 문서를 docsRoot 상대 경로(`../<저장소>/AGENTS.md`)로 적지 마라 — `repo:` 접두. 이유:** plan R3-6 — 상대 경로는 다른 체크아웃의 작업 트리를 읽어 고정 head·출처 SHA·전송 허가(D4 워크트리 범위)가 어긋난다. `repo:`는 pack 이 워크트리 또는 raw API(ref=head)로 읽는다.

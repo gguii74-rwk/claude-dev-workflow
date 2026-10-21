@@ -120,10 +120,10 @@
 | `review-claude.json` · `review-codex.json` | SKILL(검토자) | SKILL(병합) · `review-validate` · render(부록 C) | SC-4 — cleanup이 문자열 값을 마스킹한 사본으로 바꿔 남긴다 |
 | `findings.json` | SKILL(메인 병합) · verdict(`--resolve` 결정 영속화) | verdict·render | SC-5 — `head_sha` = `snapshot.head_sha` — cleanup이 마스킹 사본으로 바꿔 남긴다 |
 | `verdict.json` | verdict | render | 판정 결과 — render는 `head_sha` ≠ `snapshot.head_sha`이거나 부재(비-early)면 리뷰 실패로 렌더 — `machineEvidence`에 미확보 링크 `raw`·`reason`이 복사되므로 cleanup이 마스킹 사본으로 바꿔 남긴다 |
-| `codex.prompt` · `codex.out` · `codex.sh` · `codex.pid` | SKILL | cleanup | Codex 실행 파일(원시 — 보존 금지) |
+| `codex.prompt` · `codex.out` · `codex.sh` · `codex.pid` | SKILL | cleanup | Codex 실행 파일(원시 — 보존 금지) — **`codex.pid`의 프로세스가 살아 있으면 cleanup 은 `ERR` 로 거부**(아무것도 지우지·마스킹하지 않음, plan R6-2 — 종료 확인은 SKILL §0 몫) |
 | `zip/<파일명>` · `worktree/` · `blobs/` · `baseline/` | deploy·collect·check | cleanup | 임시 산출물(F7) — `baseline/`은 원문이라 cleanup이 지운다(pack이 이미 소비) |
 
-**산출물 수명주기(cleanup — F5·F7)**: 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`deploy.json`·`review-*.json`·`findings.json`·`verdict.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `deploy.json`(zip 파일명·주석·API 오류 문자열)·`verdict.json`(`machineEvidence`에 복사된 미확보 링크 `raw`·`reason`)도 MR 원문이 흘러드는 파일이라 「원문 없음」으로 가정하지 않는다(plan R4-1). `snapshot.json`·`pack.json`·리포트는 그대로(경로·SHA·카운트·패턴 이름만, 리포트는 저장 시 마스킹). 파싱 불가 JSON은 마스킹할 수 없으므로 지운다. **마스킹(리포트·JSON 사본 모두)은 40자 SHA(16진수, 글자 포함)를 보존한다**(`maskText` — 자리표시자로 빼고 복원, plan R5-2: 개인정보 패턴에 걸리는 정상 SHA 가 변조되면 이전 판정 파싱·`--resolve` head 대조가 깨진다).
+**산출물 수명주기(cleanup — F5·F7)**: **선행 조건 = 검토자 종료 확인**(SKILL §0 — Claude `TaskStop`+알림, Codex pid TERM→생존 확인→KILL; `codex.pid` 프로세스 생존이면 cleanup 이 `ERR`로 거부, plan R6-2). 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`deploy.json`·`review-*.json`·`findings.json`·`verdict.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `deploy.json`(zip 파일명·주석·API 오류 문자열)·`verdict.json`(`machineEvidence`에 복사된 미확보 링크 `raw`·`reason`)도 MR 원문이 흘러드는 파일이라 「원문 없음」으로 가정하지 않는다(plan R4-1). `snapshot.json`·`pack.json`·리포트는 그대로(경로·SHA·카운트·패턴 이름만, 리포트는 저장 시 마스킹). 파싱 불가 JSON은 마스킹할 수 없으므로 지운다. **마스킹(리포트·JSON 사본 모두)은 40자 SHA(16진수, 글자 포함)를 보존한다**(`maskText` — 자리표시자로 빼고 복원, plan R5-2: 개인정보 패턴에 걸리는 정상 SHA 가 변조되면 이전 판정 파싱·`--resolve` head 대조가 깨진다).
 
 **`mr.json`**:
 ```json
@@ -200,10 +200,11 @@
 **`pack.json`**:
 ```json
 { "sources": [{ "id": "S1", "kind": "doc|wiki|baseline|issue|adapter", "ref": "<docsRoot 기준 경로@sha[#절] | repo:<경로>@<head7>[#절] | 위키 페이지명 | baseline/1.md>", "exportAllowed": true, "inPackB": true, "lines": 0, "missing": false }],
-  "mask": { "applied": { "phone": 0 }, "residual": [{ "name": "", "where": "pack-b|body|note" }], "ok": true },
+  "mask": { "applied": { "phone": 0, "secret": 0 }, "residual": [{ "name": "", "where": "pack-b|body|note" }], "ok": true },
   "wikiTerms": ["<diff 추가 줄에서 뽑은 테이블명·선언 식별자>"],
   "packA": "pack-a.md", "packB": "pack-b.md", "codexSkipped": false, "codexSkipReason": null }
 ```
+- 팩 B 마스킹 = 어댑터 `mask`(개인정보) + 엔진 `SECRET_MASK`(비밀값 — `pack.mjs` 정본, 리포트·cleanup 과 같은 `maskText`), 40자 SHA 보존 · `residual`(잔존 검사)도 두 규칙 모두 — 본문·댓글·발췌의 `password = "…"`·API 키가 Codex 로 가지 않는다(plan R6-1, F5). `applied.secret` = 엔진 패턴 치환 수.
 - `wikiTerms` = 위키 grep 검색어 중 변경 코드에서 뽑은 것(`codeTerms` — diff **추가 줄**의 SQL 테이블명(FROM/JOIN/INTO/UPDATE/TABLE 뒤·`@Table(name=)`)·선언 식별자(class/interface/enum/record/function/def·MyBatis `<select id>`), 길이 ≥ 4·SQL 예약어 제외·상한 40). 검색어 전체 = MR 제목·경로(용어집 대조 텍스트에는 추가 줄 본문도 포함) + 파일 basename + `wikiTerms`(spec §5.3-2 「변경 파일명·기능명·테이블명」, plan R4-5 — 스크립트 규칙, 어댑터 키 없음).
 - `exportAllowed`(= 팩 B 투입) 규칙: `doc`(공통 문서·`repo:` 대상 저장소 문서 모두)·`adapter`·`issue`·본문 기준선 = `true` · `wiki` = 루트의 `export` · **`baseline`(저장소 링크) = 링크의 프로젝트가 리뷰 대상 프로젝트이거나 `docsRoot`와 같은 체크아웃인 프로젝트일 때만 `true`** — 어댑터 `projects` 등록은 수집 가능 범위이지 전송 허가가 아니다(어댑터 §6). `missing` = 문서 지도 규칙 문서의 파일·절 누락(계속 진행) — **공통 문서의 필수 참조(`policy.docs`·`docsMap.always`) 누락은 `pack`이 `ERR` exit 2**(fail-closed). **`repo:` 참조는 필수 여부와 무관하게 누락 = `missing:true`로 계속**(SC-2). `repo:` 문서는 **고정 head 의 git blob**(`git ls-tree`로 모드 확인 → 일반 blob 만 `git show <head>:<경로>`, diff-only 는 raw API)으로 읽는다 — 작업 트리 파일을 fs 로 읽지 않으며 심볼릭 링크(120000)·서브모듈은 `missing`(plan R5-1, F4·F6).
 
@@ -214,7 +215,7 @@
   "contractPolicyId": "<check.contract.policyId 또는 judgeId>", "judgeId": "", "head_sha": "",
   "defects": ["<finding id>"], "evidence": ["<finding id 또는 기계 항목 id>"], "unresolved": ["<finding id>"],
   "baselineMissing": false, "returnToDesignBy": ["<finding id>"],
-  "branches": { "<unresolved id>": { "confirmed": "<판정>", "dismissed": "<판정>" } },
+  "branches": { "<unresolved id>": { "confirmed": "<판정>", "dismissed": "<판정>" }, "<fixableInDesign 상충 id>": { "confirmed:fixable": "<판정>", "confirmed:design": "<판정>", "dismissed": "<판정>" } },
   "machineEvidence": [{ "id": "M-contract-Baseline", "kind": "contract|diff|deploy|baseline|api|rereview", "detail": "" }],
   "reasons": ["<한 줄>"] }
 ```
@@ -241,12 +242,13 @@
   "baselineCandidateRelevant": true, "baselineCandidateReason": "<유효 결과 전부 일치 | 단일 모델 값 | 상충 — 메인이 후보 문서를 읽고 판정한 근거 한 줄>",
   "findings": [{ "id": "F1", "fingerprint": "<file + 정규화 title>", "source": "both|claude|codex", "lens": "", "type": "", "blocking": true,
                  "title": "", "file": "", "line_start": 0, "line_end": 0, "evidence": "", "scenario": "", "confidence": "", "recommendation": "",
-                 "fixableInDesign": "yes|no", "brokenPremise": "", "unresolved": false, "resolution": "confirmed|dismissed|null", "dismissReason": "" }],
+                 "fixableInDesign": "yes|no|null", "fixableInDesignClaims": null, "brokenPremise": "", "unresolved": false, "resolution": "confirmed|dismissed|null", "dismissReason": "" }],
   "intent": [{ "criterion": "", "result": "", "location": "", "basis": "" }],
   "outsideWorktreePaths": [] }
 ```
 - `blocking` = `type ∈ {DEFECT, MISSING_EVIDENCE}` 또는 `DESIGN_DRIFT`이면서 어댑터 렌즈의 차단 승격 조건(산문 — 메인이 판단)에 해당. `FOLLOW_UP`은 항상 `false`.
 - `unresolved: true` = §5.5-2 상충 또는 한쪽만의 낮은 확신 차단 후보를 메인이 코드로 확인하지 못함. `resolution`은 `--resolve <id>=confirmed|dismissed`로만 채워지며 `verdict`가 이 파일에 **영속화**한다(호출을 나눠도 유지 — `unresolved`는 `false`로). `dismissReason`은 메인이 리뷰어 말대로 미리 적고 리포트 「리뷰어 결정」·부록 D에 남는다.
+- **`fixableInDesign` 상충(plan R6-3)**: 같은 지문을 둘 다 차단으로 봤는데 `fixableInDesign`이 갈리고 메인이 코드로 확인하지 못하면 `fixableInDesign: null` · `fixableInDesignClaims: { "claude": "yes|no", "codex": "yes|no" }` · `brokenPremise` = `no` 쪽 주장 · `unresolved: true`. `verdict`는 이 항목에 `branches` 세 갈래(`confirmed:fixable`·`confirmed:design`·`dismissed`)를 내고, 리뷰어는 `--resolve <id>=confirmed:fixable|confirmed:design`으로 정한다(접미 없는 `confirmed`는 `ERR` — 스크립트가 한쪽을 고르지 않는다, D9). 접미 결정은 `fixableInDesign` 확정값으로 영속되고 `fixableInDesignClaims`는 보존된다. 상충이 없으면 `fixableInDesignClaims: null`.
 - `head_sha` = `snapshot.head_sha`. `verdict`는 다르면 `review-failed`(이전 실행의 검토 결과로 판정하지 않는다 — F6).
 
 ### SC-6. CLI 계약 — `node <Base directory>/scripts/mr-review.mjs <서브커맨드> …` (`<Base directory>` = 스킬 로드 때 표시되는 「Base directory for this skill」)
@@ -258,9 +260,9 @@
 | `deploy` | `--adapter --work` | `DEPLOY <result>` exit 0(결과가 무엇이든 0 — 판정은 verdict 몫) |
 | `pack` | `--adapter --work` | `PACKED sources=<n> codexSkipped=<bool>` exit 0 |
 | `review-validate` | `--file <path> [--head <40자>] [--reviewer claude\|codex]` | `VALID` exit 0 · `INVALID <이유>` exit 1 — `--head`·`--reviewer`가 있으면 원본 결과의 `head_sha`·`reviewer`와 일치해야 VALID(SKILL은 항상 둘 다 준다) |
-| `verdict` | `--adapter --work [--resolve <id>=<confirmed\|dismissed>]...` | `VERDICT <status> <verdict\|->` exit 0 · `findings.json` 없음 → exit 2 |
+| `verdict` | `--adapter --work [--resolve <id>=<confirmed\|dismissed\|confirmed:fixable\|confirmed:design>]...` | `VERDICT <status> <verdict\|->` exit 0 · `findings.json` 없음 → exit 2 · `fixableInDesign` 상충 항목에 접미 없는 `confirmed` → `ERR` exit 2(SC-5, plan R6-3) |
 | `render` | `--adapter --work [--early] [--out <파일>]` | `REPORT <경로>` exit 0 — `--out` 생략 시 `<reportDir>/<프로젝트>-<iid>-<sha7>.md` |
-| `cleanup` | `--adapter --work` | `CLEANED worktree=<bool> zip=<n> raw=<n> masked=<n>` exit 0 — `raw` = 지운 원문 파일 수(`codex.*`·`pack-*.md`·`baseline/*`), `masked` = 마스킹 사본으로 바꾼 JSON 수(SC-3 산출물 수명주기) |
+| `cleanup` | `--adapter --work` | `CLEANED worktree=<bool> zip=<n> raw=<n> masked=<n>` exit 0 — `raw` = 지운 원문 파일 수(`codex.*`·`pack-*.md`·`baseline/*`), `masked` = 마스킹 사본으로 바꾼 JSON 수(SC-3 산출물 수명주기) · `codex.pid`의 프로세스 생존 → `ERR 검토자 프로세스 생존(codex.pid <n>) …` exit 2(아무것도 지우지 않음, plan R6-2) |
 
 - 공통: `--adapter`는 `MR_REVIEW_ADAPTER` 환경변수로 대체 가능(인자 우선). 모든 오류는 stderr 없이 stdout `ERR <메시지>` 한 줄 + exit 2(SKILL이 첫 줄만 읽는다). JSON 쓰기는 `JSON.stringify(v, null, 2)`.
 - 셸 블록 표기: bash 위치 인자는 `${N}`(1.1.1 D2) — SKILL.md 셸 블록에 맨 `$`+숫자를 쓰지 않는다.

@@ -13,7 +13,7 @@
 - spec §5.4 출력 스키마 · §5.5-2(판정 미확정·`--resolve`) · §5.5-4(두 집합·판정 순서) · §5.7(리포트 구성 1~6·실행 블록·40줄·비밀값 제거·정리) · F3·F5·F7·F8 · D3·D9·D13.
 - 엔트리포인트 **SC-3** `verdict.json` · **SC-4**(검토자 출력) · **SC-5**(`findings.json`) · **SC-6**(네 서브커맨드 출력).
 - 팀 정책 §8.1 실행 블록 형식(어댑터가 아니라 정책이 정한 **고정 형식** — 첫 줄 `리뷰 계약 <정책ID> · head <sha> · 추천 판정(초안) <판정>`, 둘째 줄 `사람 승인 상태: …`, 절 1~5, 본문 40줄 이내). 정책 ID 문자열 자체는 `check.contract.policyId`(MR 계약) 또는 어댑터 `judgeId`에서 온다(D13).
-- task-05 산출물 `applyMask`(비밀값 제거에 재사용).
+- task-05 산출물 `maskText`·`maskTextWithCounts`·`SECRET_MASK`(엔진 마스킹 정본 — 팩 B·리포트·cleanup 공유, plan R6-1).
 
 ## Deps
 
@@ -31,6 +31,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawn } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB } from './helpers.mjs';
 
 const { computeVerdict, validateReview, maskText: deepMaskText } = await import(join(LIB, 'report.mjs'));
@@ -139,6 +140,40 @@ test('미해결 후보: 판정 미확정 + 두 갈래 · --resolve 로 확정 ·
   assert.equal(r.verdict, 'APPROVE');
   const r2 = V(findings([F({ unresolved: true })]), { resolves: { F1: 'confirmed' } });
   assert.equal(r2.verdict, 'CHANGES_REQUESTED');
+});
+
+test('fixableInDesign 상충(R6-3): 미확정 + 세 갈래 · 접미 없는 confirmed 는 ERR · confirmed:design → RTD · confirmed:fixable → CHANGES · 접미가 findings.json 에 영속', () => {
+  const conflict = F({ unresolved: true, fixableInDesign: null, fixableInDesignClaims: { claude: 'yes', codex: 'no' }, brokenPremise: '승인 전제 붕괴(codex 주장)' });
+  const u = V(findings([conflict]));
+  assert.equal(u.status, 'undetermined');
+  assert.deepEqual(u.branches.F1, { 'confirmed:fixable': 'CHANGES_REQUESTED', 'confirmed:design': 'RETURN_TO_DESIGN', dismissed: 'APPROVE' });
+  assert.throws(() => V(findings([conflict]), { resolves: { F1: 'confirmed' } }), /confirmed:fixable 또는 confirmed:design/);   // 스크립트가 한쪽을 고르지 않는다(D9)
+  assert.throws(() => V(findings([conflict]), { resolves: { F1: 'dismissed:design' } }), /접미/);
+  assert.equal(V(findings([conflict]), { resolves: { F1: 'confirmed:design' } }).verdict, 'RETURN_TO_DESIGN');
+  assert.equal(V(findings([conflict]), { resolves: { F1: 'confirmed:fixable' } }).verdict, 'CHANGES_REQUESTED');
+  assert.equal(V(findings([conflict]), { resolves: { F1: 'dismissed' } }).verdict, 'APPROVE');
+  assert.equal(V(findings([F({ unresolved: true })]), { resolves: { F1: 'confirmed' } }).verdict, 'CHANGES_REQUESTED');   // 상충 없는 항목은 접미 없이 그대로
+  // CLI: 접미 결정이 findings.json 에 남고 리포트 「리뷰어 확인 필요」가 세 갈래를 안내한다
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([conflict]) });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT undetermined -');
+  const out = join(root, 'u.md');
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  const md = readFileSync(out, 'utf8');
+  assert.match(md, /설계 내 수정 가능 주장: claude=yes \/ codex=no/);
+  assert.match(md, /confirmed:fixable → CHANGES_REQUESTED \/ confirmed:design → RETURN_TO_DESIGN \/ dismissed → APPROVE/);
+  const bad = runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed']);
+  assert.equal(bad.code, 2);
+  assert.match(bad.first, /^ERR .*confirmed:fixable 또는 confirmed:design/);
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed:design']).first, 'VERDICT determined RETURN_TO_DESIGN');
+  const persisted = readJson(join(work, 'findings.json')).findings[0];
+  assert.equal(persisted.resolution, 'confirmed');
+  assert.equal(persisted.fixableInDesign, 'no');
+  assert.deepEqual(persisted.fixableInDesignClaims, { claude: 'yes', codex: 'no' });                                     // 양쪽 주장은 보존
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT determined RETURN_TO_DESIGN');   // 다음 호출도 같은 결정
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.match(readFileSync(out, 'utf8'), /설계 내 수정 가능: no · 깨진 전제: 승인 전제 붕괴\(codex 주장\) · 검토자 주장: claude=yes \/ codex=no/);
 });
 
 test('유효 검토 결과 0개 → review-failed(판정 없음, R4-F2) · 정책 ID = 계약 값, 없으면 judgeId', () => {
@@ -367,6 +402,34 @@ test('리뷰 실패(유효 결과 0): 판정 블록 없이 실패 원인 + 결�
   assert.doesNotMatch(md, /^리뷰 계약 TEST-POLICY/m);
 });
 
+test('cleanup: codex.pid 의 프로세스가 살아 있으면 ERR 로 멈추고 아무것도 지우지 않는다 (R6-2) · 종료 뒤에는 정상 정리', async () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = join(root, 'work');
+  mkdirSync(join(work, 'zip'), { recursive: true });
+  writeFileSync(join(work, 'zip', 'd.zip'), 'x');
+  writeFileSync(join(work, 'pack-a.md'), '원문 팩');
+  writeFileSync(join(work, 'review-codex.json'), JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [{ title: 'x', evidence: 'db.password = "synthetic-db-password"' }] }));
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });   // 살아 있는 검토자 흉내
+  writeFileSync(join(work, 'codex.pid'), String(child.pid));
+  try {
+    const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.first, new RegExp(`^ERR 검토자 프로세스 생존\\(codex\\.pid ${child.pid}\\)`));
+    assert.ok(existsSync(join(work, 'zip', 'd.zip')));                                                 // 아무것도 지우지 않았다
+    assert.ok(existsSync(join(work, 'pack-a.md')));
+    assert.ok(existsSync(join(work, 'codex.pid')));
+    assert.match(readFileSync(join(work, 'review-codex.json'), 'utf8'), /synthetic-db-password/);        // 마스킹 사본으로 바꾸지도 않았다
+  } finally {
+    await new Promise((resolve) => { child.once('exit', resolve); child.kill('SIGKILL'); });              // 종료 확인(회수까지)
+  }
+  const ok = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(ok.code, 0, ok.out + ok.err);
+  assert.equal(ok.first, 'CLEANED worktree=false zip=1 raw=2 masked=1');                                 // raw = codex.pid + pack-a.md
+  assert.ok(!existsSync(join(work, 'codex.pid')));
+  assert.equal(readJson(join(work, 'review-codex.json')).findings[0].evidence, 'db.password = "[masked:secret]"');
+});
+
 test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 파일·원문 팩·baseline 을 지우고 JSON 은 마스킹 사본으로 남긴다 (F5·F7·R3-9) · deploy.json·verdict.json 도 마스킹 대상 (R4-1)', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
@@ -446,7 +509,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { applyMask } from './pack.mjs';
+import { maskText, SECRET_MASK } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
+export { maskText, SECRET_MASK };
 
 export class ReportError extends Error {}
 
@@ -454,29 +518,7 @@ export const VERDICTS = ['APPROVE', 'HOLD_EVIDENCE', 'CHANGES_REQUESTED', 'RETUR
 const TYPES = ['DEFECT', 'MISSING_EVIDENCE', 'DESIGN_DRIFT', 'FOLLOW_UP'];
 const CONF = ['high', 'medium', 'low'];
 const BLOCK_MAX_LINES = 40;
-// 엔진 내장 비밀값 리터럴 패턴(프로젝트 무관 — D10 위배 아님): `password = "x"` · `api_key: x` · `secret=x` · `Authorization: Bearer x`(인증 방식 + 자격증명을 한 매치로, R3-1) · `Bearer x` · PEM 블록. 값만 가린다. 키워드는 대소문자 무관(`flags: 'i'`).
-// 이미 가려진 자리(`[masked:…]`)는 다시 매치하지 않는다(부정 전방탐색) — 어댑터 마스킹 뒤에 적용되므로 이중 마스킹으로 자리표시자를 깨지 않는다.
-// 비밀값 리터럴 — 따옴표 안 값은 공백을 포함해 **전체**를 가린다(C1 R2-1 잔존 보정: `"password": "two word secret"`·JSON 키 형태 `"password": "…"`). 따옴표 없는 값은 토큰 하나.
-const SECRET_KEYS = '(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)';
-export const SECRET_MASK = [
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*")(?!\\[masked:)[^"\\n]+(?=")`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*')(?!\\[masked:)[^'\\n]+(?=')`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*\`)(?!\\[masked:)[^\`\\n]+(?=\`)`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*)(?!\\[masked:)(?!["'\`])(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s"'\`,;)\\]]+`, flags: 'i' },
-  { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[A-Za-z0-9._~+/=-]{8,}' },
-  { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
-];
-// 정리(cleanup) 때 남기는 JSON 의 문자열 값에 어댑터 마스킹 + 비밀값 제거를 적용한다(R3-9) — 키 이름은 건드리지 않는다(`"token": "FIXED"` 같은 값이 키워드 패턴에 걸리지 않게 값만 본다).
-// 마스킹이 정상 SHA 를 변조하지 않게(R5-2) — 40자 16진수 토큰(글자 a-f 1개 이상)은 개인정보일 수 없다. 자리표시자로 빼고 마스킹 뒤 복원한다(리포트 자유 텍스트·cleanup 의 JSON 문자열 값 공통).
-// 글자 조건: 숫자만 40자인 토큰은 SHA 로 보지 않는다 — 전화·주민번호 같은 숫자열을 보호 대상으로 오인하지 않게. 7자 짧은 SHA 는 어떤 어댑터 패턴 길이(≥10)에도 못 미쳐 보호가 필요 없다.
-// 경계(C1-1, 사용자 재판정): 바로 앞뒤에 `@` 가 붙거나 `.<영숫자>` 로 이어지는 토큰은 이메일 local-part·도메인 라벨이라 보호하지 않는다 — 개인정보 마스킹이 SHA 보존보다 우선. 커밋 SHA 는 그런 자리에 오지 않는다(URL 경로 `/<sha>/`·문장 끝 `<sha>.` 은 보호 유지).
-const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\.[A-Za-z0-9]|\w)/g;
-export function maskText(text, maskRules) {
-  const keep = [];
-  const held = text.replace(SHA40_RE, (m) => { keep.push(m); return `\u0000S${keep.length - 1}\u0000`; });
-  const masked = applyMask(applyMask(held, maskRules).text, SECRET_MASK).text;
-  return masked.replace(/\u0000S(\d+)\u0000/g, (_, i) => keep[Number(i)]);
-}
+// 정리(cleanup) 때 남기는 JSON 의 문자열 값에 어댑터 마스킹 + 비밀값 제거(`maskText` = 어댑터 mask + SECRET_MASK, 40자 SHA 보존 — pack.mjs, R5-2·C1-1)를 적용한다(R3-9) — 키 이름은 건드리지 않는다(`"token": "FIXED"` 같은 값이 키워드 패턴에 걸리지 않게 값만 본다).
 export function deepMask(v, maskRules) {
   if (typeof v === 'string') return maskText(v, maskRules);
   if (Array.isArray(v)) return v.map((x) => deepMask(x, maskRules));
@@ -530,6 +572,17 @@ export function machineEvidence({ check, snapshot, deploy }) {
   return out;
 }
 
+// fixableInDesign 상충(R6-3): 메인이 같은 지문의 두 결과를 합칠 때 `fixableInDesign` 이 갈리고 코드로 확인하지 못하면 `fixableInDesignClaims: { claude, codex }` 에 양쪽을 보존하고 `unresolved:true`·`fixableInDesign:null` 로 둔다(SC-5).
+// 이 값 하나로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀌므로 스크립트가 한쪽을 고르지 않는다(D9 — 판정 규칙 신설 금지). 리뷰어가 `--resolve <id>=confirmed:fixable|confirmed:design` 으로 정한다. 상충이 없는 항목은 접미 없는 `confirmed` 그대로(접미를 주면 그 값으로 덮는다 — 리뷰어 결정).
+export const claimsConflict = (f) => !!f?.fixableInDesignClaims && new Set(Object.values(f.fixableInDesignClaims).filter(Boolean)).size > 1;
+export function parseResolve(id, value, f = null) {
+  const m = String(value).match(/^(confirmed|dismissed)(?::(fixable|design))?$/);
+  if (!m) throw new ReportError(`--resolve ${id}=${value}: confirmed|dismissed|confirmed:fixable|confirmed:design 만 허용`);
+  if (m[1] === 'dismissed' && m[2]) throw new ReportError(`--resolve ${id}=${value}: dismissed 에는 접미를 붙이지 않는다`);
+  if (m[1] === 'confirmed' && !m[2] && claimsConflict(f)) throw new ReportError(`--resolve ${id}=confirmed: 설계 내 수정 가능 여부가 검토자 간 상충(${Object.entries(f.fixableInDesignClaims).map(([k, v]) => `${k}=${v}`).join(' / ')}) — confirmed:fixable 또는 confirmed:design 으로 정하라`);
+  return { resolution: m[1], fixableInDesign: m[2] === 'fixable' ? 'yes' : m[2] === 'design' ? 'no' : null };
+}
+
 export function computeVerdict({ check, snapshot, deploy, findings, resolves = {}, judgeId }) {
   const contractPolicyId = check?.contract?.policyId || judgeId;
   const base = { contractPolicyId, judgeId, head_sha: snapshot?.head_sha || null, defects: [], evidence: [], unresolved: [], baselineMissing: false, returnToDesignBy: [], branches: {}, machineEvidence: [], reasons: [] };
@@ -543,15 +596,17 @@ export function computeVerdict({ check, snapshot, deploy, findings, resolves = {
   for (const f of list) {
     const r = resolves[f.id];
     if (r !== undefined) {
-      if (!['confirmed', 'dismissed'].includes(r)) throw new ReportError(`--resolve ${f.id}=${r}: confirmed|dismissed 만 허용`);
-      f.resolution = r;
+      const d = parseResolve(f.id, r, f);
+      f.resolution = d.resolution;
+      if (d.fixableInDesign) f.fixableInDesign = d.fixableInDesign;
       f.unresolved = false;
     }
   }
   const typeMissing = check?.baselineType === '빈칸·자리표시자' || check?.baselineType === '칸 없음';
   const baselineMissing = typeMissing && ((check?.baselineCandidateFiles || []).length === 0 || findings.baselineCandidateRelevant !== true);
   const machine = machineEvidence({ check, snapshot, deploy });
-  const calc = (assume) => {
+  const calc = (assume) => calcOn(list, assume);
+  const calcOn = (list, assume) => {
     const active = list.filter((f) => f.blocking === true && (f.resolution ?? assume[f.id] ?? 'confirmed') !== 'dismissed');
     const defects = active.filter((f) => f.type === 'DEFECT' || f.type === 'DESIGN_DRIFT');
     const evidence = active.filter((f) => f.type === 'MISSING_EVIDENCE');
@@ -566,7 +621,13 @@ export function computeVerdict({ check, snapshot, deploy, findings, resolves = {
   const unresolved = list.filter((f) => f.unresolved === true && !f.resolution).map((f) => f.id);
   if (unresolved.length) {
     const branches = {};
-    for (const id of unresolved) branches[id] = { confirmed: calc({ [id]: 'confirmed' }).verdict, dismissed: calc({ [id]: 'dismissed' }).verdict };
+    for (const id of unresolved) {
+      const f = list.find((x) => x.id === id);
+      if (claimsConflict(f)) {   // fixableInDesign 상충(R6-3) — 확인 갈래가 둘(설계 내 수정 가능 / 불가)로 갈린다. 리뷰어가 `confirmed:fixable|confirmed:design` 로 정한다
+        const withF = (v) => { const g = list.map((x) => (x.id === id ? { ...x, fixableInDesign: v } : x)); return calcOn(g, { [id]: 'confirmed' }).verdict; };
+        branches[id] = { 'confirmed:fixable': withF('yes'), 'confirmed:design': withF('no'), dismissed: calc({ [id]: 'dismissed' }).verdict };
+      } else branches[id] = { confirmed: calc({ [id]: 'confirmed' }).verdict, dismissed: calc({ [id]: 'dismissed' }).verdict };
+    }
     return { ...base, status: 'undetermined', verdict: null, unresolved, baselineMissing, branches, machineEvidence: machine, reasons: [`미해결 차단 후보 ${unresolved.length}건 — 리뷰어가 --resolve 로 확인·기각하기 전에는 판정을 계산하지 않는다(§5.5-2)`] };
   }
   const c = calc({});
@@ -702,7 +763,7 @@ export function renderReport({ adapter, work, early = false }) {
   if (early) {
     parts.push('```text', `리뷰 계약 ${check.contract?.policyId || adapter.policy.judgeId} · head ${snapshot.head_sha} · 추천 판정(초안) ${check.earlyExit?.draftVerdict}`, `사람 승인 상태: ${approvalLine(mr)}`, '', '1. 의도 대조표', '| 수용기준·MR 주장 | 결과 | 코드 위치 |', '|---|---|---|', '| (검토 전 조기 종료) | UNKNOWN | - |', '2. 검증 상태', '- [없음] 작성 규칙 미충족으로 검토를 시작하지 않음', '3. 통과해야 할 테스트', '- 머지 전: [ ] 아래 보완 요청 문안 해소', '4. 차단 발견', `- MISSING_EVIDENCE — ${check.earlyExit?.reason}`, '5. 비차단 후속', '- 없음', '```');
   } else if (!verdict || verdict.status !== 'determined') {
-    parts.push(verdict?.status === 'review-failed' ? '(리뷰 실패 — 블록 없음)' : `(리뷰어 확인 후 \`verdict --resolve <id>=confirmed|dismissed\` 로 생성)`);
+    parts.push(verdict?.status === 'review-failed' ? '(리뷰 실패 — 블록 없음)' : `(리뷰어 확인 후 \`verdict --resolve <id>=confirmed|dismissed\`(설계 내 수정 가능 상충 항목은 \`confirmed:fixable|confirmed:design\`) 로 생성)`);
   } else {
     parts.push('```text', executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack }), '```');
   }
@@ -717,7 +778,10 @@ export function renderReport({ adapter, work, early = false }) {
     for (const id of verdict.unresolved) {
       const f = (findings?.findings || []).find((x) => x.id === id);
       const b = verdict.branches[id];
-      parts.push(`- **${id}** ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'} · 출처 ${f?.source} · 확신 ${f?.confidence})`, `  - 주장: ${f?.scenario || f?.evidence || ''}`, `  - 확인 시 ${b.confirmed} / 기각 시 ${b.dismissed}`, `  - 실행: \`verdict --resolve ${id}=confirmed\` 또는 \`--resolve ${id}=dismissed\``);
+      const keys = Object.keys(b);   // 상충(R6-3)이면 confirmed:fixable / confirmed:design / dismissed 세 갈래 — 그 밖은 확인/기각 두 갈래 그대로
+      parts.push(`- **${id}** ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'} · 출처 ${f?.source} · 확신 ${f?.confidence})`, `  - 주장: ${f?.scenario || f?.evidence || ''}${f?.fixableInDesignClaims ? ` · 설계 내 수정 가능 주장: ${Object.entries(f.fixableInDesignClaims).map(([k, v]) => `${k}=${v}`).join(' / ')}${f?.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
+        b.confirmed !== undefined ? `  - 확인 시 ${b.confirmed} / 기각 시 ${b.dismissed}` : `  - ${keys.map((k) => `${k} → ${b[k]}`).join(' / ')}`,
+        `  - 실행: ${keys.map((k) => `\`verdict --resolve ${id}=${k}\``).join(' 또는 ')}`);
     }
     parts.push('');
   }
@@ -751,7 +815,7 @@ export function renderReport({ adapter, work, early = false }) {
     if (!merged.length && !(verdict?.machineEvidence || []).length) parts.push('(발견 없음)', '');
     for (const f of merged) {
       parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? ' (차단)' : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}`,
-        `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}`,
+        `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${Object.entries(f.fixableInDesignClaims).map(([k, v]) => `${k}=${v}`).join(' / ')}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
         `  - 권고: ${f.recommendation || '-'}`,
         `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);
     }
@@ -770,7 +834,15 @@ export function renderReport({ adapter, work, early = false }) {
 // deploy.json(zip 파일명·주석·API 오류 문자열)·verdict.json(machineEvidence 에 복사된 미확보 링크 raw·reason 등)에도 MR 원문이 흘러든다(R4-1) — 「원문 없음」으로 가정하지 않고 같은 마스킹을 건다.
 // snapshot.json·pack.json 은 경로·SHA·카운트·패턴 이름만 담아 제외한다.
 const MASKED_JSON = ['mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json'];
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
 export function cleanup({ work, adapter }) {
+  // 검토자 생존 가드(R6-2, fail-closed): `codex.pid` 의 프로세스가 살아 있으면 아무것도 지우지 않는다 — 정리 뒤 완료되는 검토자가 마스킹 안 된 review-*.json 을 다시 쓰고, pid 파일이 먼저 사라지면 회수 경로도 없어진다.
+  // 종료(TERM → 생존 확인 → KILL)는 SKILL §0 「검토자 종료 확인」이 cleanup 에 앞서 수행한다 — 이 가드는 그 절차를 건너뛴 호출을 막는 2차 방어다. Claude 서브에이전트는 pid 가 없으므로 SKILL 절차만이 막는다.
+  const pidFile = path.join(work, 'codex.pid');
+  if (fs.existsSync(pidFile)) {
+    const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+    if (Number.isInteger(pid) && pid > 0 && alive(pid)) throw new ReportError(`검토자 프로세스 생존(codex.pid ${pid}) — 정리하지 않는다. 종료 확인(TERM → 생존 확인 → KILL) 뒤 cleanup 을 다시 실행하라(SKILL §0 공통 종료 절차)`);
+  }
   const snapshot = readJson(work, 'snapshot.json') || {};
   let worktree = false;
   const wt = snapshot.worktree || path.join(work, 'worktree');
@@ -821,12 +893,12 @@ export async function cmdVerdict(args, ctx) {
   if (!check || !snapshot) throw new ReportError('check.json·snapshot.json 이 필요하다');
   if (!findings) throw new ReportError('findings.json 이 없다 — 메인이 두 검토자 결과를 병합해 먼저 써야 한다(SC-5)');
   const resolves = {};
-  for (const r of args.resolve || []) { const m = String(r).match(/^([^=]+)=(.+)$/); if (!m) throw new ReportError(`--resolve 형식: <id>=confirmed|dismissed (${r})`); resolves[m[1]] = m[2]; }
+  for (const r of args.resolve || []) { const m = String(r).match(/^([^=]+)=(.+)$/); if (!m) throw new ReportError(`--resolve 형식: <id>=confirmed|dismissed|confirmed:fixable|confirmed:design (${r})`); resolves[m[1]] = m[2]; }
   const v = computeVerdict({ check, snapshot, deploy, findings, resolves, judgeId: ctx.adapter.policy.judgeId });
-  // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다.
+  // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다. 접미(fixable|design)는 fixableInDesign 확정값으로 남는다(R6-3).
   if (Object.keys(resolves).length) {
     let touched = false;
-    for (const f of findings.findings || []) { const r = resolves[f.id]; if (r !== undefined) { f.resolution = r; f.unresolved = false; touched = true; } }
+    for (const f of findings.findings || []) { const r = resolves[f.id]; if (r !== undefined) { const d = parseResolve(f.id, r, f); f.resolution = d.resolution; if (d.fixableInDesign) f.fixableInDesign = d.fixableInDesign; f.unresolved = false; touched = true; } }
     if (touched) fs.writeFileSync(path.join(ctx.work, 'findings.json'), JSON.stringify(findings, null, 2));
   }
   fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify(v, null, 2));
@@ -885,7 +957,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: report 15/15 · 전체 64/64(adapter 8·collect 9·check 11·deploy 11·pack 10·report 15) · `CHECK_DONE`만.
+기대: report 17/17 · 전체 67/67(adapter 8·collect 9·check 11·deploy 11·pack 11·report 17) · `CHECK_DONE`만.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/report.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/report.test.mjs
@@ -894,7 +966,8 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/report.test.mjs` → 15/15, 전체 64/64.
+- `node --test tests/mr-review/report.test.mjs` → 17/17, 전체 67/67.
+- `cleanup`은 `codex.pid`의 프로세스가 살아 있으면 `ERR 검토자 프로세스 생존(codex.pid <n>)` exit 2 로 멈추고 아무것도 지우지·마스킹하지 않는다(plan R6-2, fail-closed) · `fixableInDesign` 이 검토자 간 상충(`fixableInDesignClaims`)인 미해결 항목은 `branches`가 `confirmed:fixable`·`confirmed:design`·`dismissed` 세 갈래이고 접미 없는 `--resolve <id>=confirmed`는 ERR, 접미 결정은 `findings.json`의 `fixableInDesign` 확정값으로 영속(plan R6-3, D9).
 - 실행 블록은 발견·표가 많아도 5개 절 유지 + 40줄 이하(plan R3-10) · 무효 검토 결과 파일이 있어도 render 는 실패하지 않고 부록 C 에 「무효 결과」(plan R3-7) · `cleanup` 뒤 `pack-*.md`·`baseline/` 없음, 남는 JSON(`deploy.json`·`verdict.json` 포함 — plan R4-1) 의 문자열 값에 마스킹 패턴·비밀값 잔존 0(plan R3-9) · `snapshot.api_failures`는 기계 증거 `M-api-<name>`(plan R3-3) · 실행 블록 차단 줄은 id 접두, 축약 ④ 는 생략분 id 목록을 남기고, 재리뷰 이전 차단 목록 불완전은 `M-rereview`(plan R4-3).
 - 판정은 정책 4종만(D9) · 미해결 후보가 있으면 게시용 블록을 만들지 않고 헤더에 「판정 미확정」(R1-F4·R2-F4) · 발견 0건이어도 계약 미완·미복원 diff·배포본 불일치·원문 미확보면 `HOLD_EVIDENCE`(R5-F1·R1-F3·R4-F1·R4-F3) · 유효 검토 0개면 블록 없음(R4-F2) · 리포트 전체에 마스킹 패턴 잔존 0(F5) · `cleanup` 뒤 워크트리·zip·blobs·codex 원시 파일 없음(F7).
 - `--resolve` 결정이 `findings.json`에 영속돼 호출을 나눠도 유지되고 리포트 「리뷰어 결정」·부록 D에 근거가 남는다(plan R1-7) · `verdict.json`·`findings.json`의 head가 `snapshot.head_sha`와 다르면 판정 블록 없이 리뷰 실패, 비-early에서 `verdict.json` 부재도 리뷰 실패(plan R1-1) · 부록 C·D에 근거·시나리오·깨진 전제 보존(plan R1-9).
@@ -902,6 +975,9 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 ## Cautions
 
 - **판정 값을 4종 밖으로 만들지 마라(「보류」 등). 이유:** D9·R2-F4 — 미확정은 `status`로만 표현하고 블록을 비운다.
+- **`cleanup`은 먼저 `codex.pid`의 프로세스 생존을 보고, 살아 있으면 `ReportError`(ERR exit 2)로 멈춰라 — 지우거나 죽이지 마라. 이유:** plan R6-2(사용자 결정 — 종료는 SKILL §0 「검토자 종료 확인」이 TERM→생존 확인→KILL 로 수행하고 cleanup 은 거부로 2차 방어) — 정리 뒤 완료되는 검토자가 마스킹 안 된 `review-*.json`을 다시 쓰고, pid 파일을 먼저 지우면 회수 경로도 사라진다.
+- **같은 지문의 두 결과가 `fixableInDesign` 으로 갈리면 스크립트가 한쪽을 고르지 마라 — `fixableInDesignClaims` 양쪽 보존 + `unresolved` 로 「판정 미확정」, 리뷰어가 `--resolve <id>=confirmed:fixable|confirmed:design` 으로 정한다(접미 없는 `confirmed`는 ERR). 이유:** plan R6-3(사용자 결정) — 이 값 하나로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀌는데 엄한 쪽 자동 채택은 근거 없는 한쪽 주장으로 설계 반려를 만드는 새 판정 규칙(D9 위배)이고, 기존 미확정·`--resolve` 계약을 재사용하면 규칙이 늘지 않는다.
+- **`SECRET_MASK`·`maskText`·`SHA40_RE`를 이 모듈에 다시 정의하지 마라 — `pack.mjs`에서 import(재export)한다. 이유:** plan R6-1 — 팩 B(Codex 전송)·리포트·cleanup 이 같은 규칙을 써야 한다. pack.mjs 가 report.mjs 를 import 하면 순환이라 정본은 pack.mjs 다.
 - **`MISSING_EVIDENCE`를 결함 집합에 넣지 마라. 이유:** §5.5-4 집합 분리(R4-F3) — 결함이 함께 있으면 `CHANGES_REQUESTED`, 증거 부족만이면 `HOLD_EVIDENCE`.
 - **`--full`이나 조기 종료 여부로 기계 증거 투입을 끄지 마라. 이유:** R5-F1 — `--full`은 검토 범위만 넓힌다.
 - **리포트 마스킹은 마지막에 전체 텍스트에 한 번. 절별로 빼먹지 마라. 이유:** 부록 C(모델 원문)가 비밀값 누출의 전형(R2-F3).
