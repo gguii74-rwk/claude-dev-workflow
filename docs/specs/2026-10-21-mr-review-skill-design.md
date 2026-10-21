@@ -229,5 +229,10 @@ base = `origin/main` bf8c5fd · 어댑터 설계(별도 저장소 `common-docs` 
 | R1-F5 | §5.1 · 이전 판정 댓글을 형식만으로 신뢰 · 작성자 검증 | high | FIXED | Human reviewer·신뢰 목록·MR 작성자 조건 — 엔진 ba65745 · 어댑터 c8d175c |
 | R1-F6 | §5.2 · 임의 문서 변경을 기준선 존재로 취급 · 후보로만 취급 | medium | FIXED | 기준선 후보 경로 패턴 + 관련성 확인 — 엔진 ba65745 · 어댑터 c8d175c |
 
-score 이력(전환용, 수정 전 스냅샷 · weight c4/h3/m1): R1 = 16. 미확인 FIXED 큐: R1-F1~F6(6건).
+| R2-F1 | §5.1 · 작성자가 쓰는 Human reviewer를 신뢰 기준으로 사용 · GitLab reviewers 필드·신뢰 목록 대조, 작성자 제외 | high | FIXED | reviewers 필드 기준·작성자 제외·불일치 표시 — 엔진 00483a7 |
+| R2-F2 | §5.1 · head raw 파일만으로 잘린 diff 복원 불가(삭제분 누락) · 양쪽 blob 재구성 | high | FIXED | base·head 양쪽 blob으로 diff 재구성, 실패 시 MISSING_EVIDENCE 유지 — 엔진 00483a7 |
+| R2-F3 | §5.7 · 원시 로그·리포트 부록에 비밀값 마스킹 없음 · 산출물 공통 제거 규칙 | high | FIXED | 산출물 전체 비밀값 제거·원시 로그/프롬프트 미보존 — 엔진 00483a7 |
+| R2-F4 | §5.5 · 「판정 보류」가 정책 4종 밖 5번째 판정(D9 위반) · 메타데이터로 분리 | medium | FIXED | 게시용 블록 미생성·헤더 「판정 미확정」·`--resolve`로 생성 — 엔진 00483a7 |
+
+score 이력(전환용, 수정 전 스냅샷 · weight c4/h3/m1): R1 = 16 · R2 = 10. 미확인 FIXED 큐: R1-F1~F6, R2-F1~F4(10건). R1 FIXED 6건은 R2에서 재출현하지 않음(적대 비재출현 — 큐 유지).
 
