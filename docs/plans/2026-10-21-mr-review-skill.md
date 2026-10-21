@@ -283,7 +283,7 @@ git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with|claude-s
 
 ### SC-8. 커밋 규칙
 
-- main 직접 커밋(워크트리·MR 없음). **push 금지**(공개 배포 = 사용자 확인).
+- main 직접 커밋(워크트리·MR 없음). **push 금지**(공개 배포 = 사용자 확인). (2026-10-21 사용자 결정: 워크트리 브랜치 `gguii74-rwk/mr-review-skill-impl` 에 커밋, main 머지·push 는 사용자)
 - AI 서명·트레일러(`Co-Authored-By`·`Generated with`·`Claude-Session`) 금지 — 글로벌 no-AI-trace 규칙.
 - 접두: `test(mr-review)`·`feat(mr-review)`·`docs(readme|spec|plan)`·`release:` — 메시지 본문은 한국어, 끝에 spec 절 참조.
 - task당 1커밋(08은 2커밋) + 완료 기록 커밋(계약 ④).
@@ -299,7 +299,7 @@ git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with|claude-s
 | 05 | 컨텍스트 팩 · 마스킹 (pack) | [x] | [task-05](2026-10-21-mr-review-skill/task-05-pack.md) | 03 | `f6ef25a`·`157cb3d` — pack 13/13(누적 52), 수정 1라운드: 팩 B 헤더 미제공 출처 ref 제거(F4)·비밀값 키 `DB_PASSWORD` 류 마스킹(F5) — Cautions 1줄, 재리뷰 승인(이슈 전송 범위 보안 지적은 impl 루프 이월) |
 | 06 | 판정 계산 · 리포트 · 비밀값 제거 · 정리 (verdict/render/cleanup) | [x] | [task-06](2026-10-21-mr-review-skill/task-06-report.md) | 03, 04, 05 | `e1b6856` — report 17/17(누적 69), plan 블록과 바이트 동일 + CLI `.catch` stderr 스택을 프로그래밍 오류로만 한정(SC-6, Cautions 1줄), 태스크 리뷰 승인(minor 6 이월) |
 | 07 | SKILL.md — 절차·두 검토자·병합·재리뷰 | [x] | [task-07](2026-10-21-mr-review-skill/task-07-skill-md.md) | 06 | `5dd73b5`·`b20627d` — T5 `$숫자` 0·T6 0·회귀 69/69, 전사 수정: 어댑터 인자 우선(SC-6)·`--resolve` 접미형·수정 1라운드(Codex 대기 `WAIT_EXPIRED` 꼬리·findings.json SC-5 골격 인라인 `id`=`F<n>`) — Cautions 1줄, 재리뷰 승인(minor 7 이월) |
-| 08 | README 3종 · manifest description | [ ] | [task-08](2026-10-21-mr-review-skill/task-08-readme-manifest.md) | 07 | |
+| 08 | README 3종 · manifest description | [x] | [task-08](2026-10-21-mr-review-skill/task-08-readme-manifest.md) | 07 | `db40243`·`66dcd29` — README 3종 §10·목차(§9 뒤)·`--resolve` 4형·plugin.json description(version 1.2.1 유지), marketplace.json description 은 task-09 로 이월(Cautions 08·09), 태스크 리뷰 승인 · 게이트 T1 69/69·T2 0·T3 56/56·T4 0·T5 0·T6 0(README 는 추가 줄 기준)·T7 0 |
 
 **구현 순서** = 표 번호 순서로 디스패치한다(03·04는 02 뒤 병렬 가능, 05는 03 뒤).
 
