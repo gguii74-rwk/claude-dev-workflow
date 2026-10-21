@@ -79,7 +79,7 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 - `RESOLVE_FAIL`·`COMPANION_TOO_OLD`면 **단일 모델 모드**로 계속하되 시작 요약에 한 줄로 알린다(멈추지 않는다 — G5).
 - 아래의 `<CLI>` = `node "<Base directory>/scripts/mr-review.mjs"` — `<Base directory>` = 이 스킬을 로드할 때 표시된 「Base directory for this skill」. 모든 명령은 **stdout 첫 줄**만 판독한다(`ERR …`면 멈추고 그 줄을 보고 — 단 `collect`가 한 번이라도 돌았으면 멈추기 **전에** 아래 「공통 종료 절차」의 `cleanup`을 먼저 실행한다).
 
-**공통 종료 절차(F5·F7 — 성공·실패 무관)**: `collect`가 실행된 뒤 이 스킬이 어떤 이유로든 끝나는 모든 경로(정상 출력 §8 · 조기 종료 §3 · `ERR` 중단 · 검토자 유효 결과 0개 · `verdict`·`render` 실패 · 사용자 중단)의 **마지막 동작은 항상** `<CLI> cleanup --adapter "$A" --work "$W"`다. 보고(리포트 경로·`ERR` 원문·검토자 실패 원문)는 cleanup **뒤에**, 어댑터 마스킹을 거쳐 한다. cleanup 자체가 `ERR`면 남은 경로(`W/worktree` · `W/zip` · `W/blobs` · `W/codex.*`)를 보고에 적어 사람이 지우게 한다. `--resolve` 재실행(§9)은 `collect`를 돌리지 않으므로 해당 없음.
+**공통 종료 절차(F5·F7 — 성공·실패 무관)**: `collect`가 실행된 뒤 이 스킬이 어떤 이유로든 끝나는 모든 경로(정상 출력 §8 · 조기 종료 §3 · `ERR` 중단 · 검토자 유효 결과 0개 · `verdict`·`render` 실패 · 사용자 중단)의 **마지막 동작은 항상** `<CLI> cleanup --adapter "$A" --work "$W"`다. 보고(리포트 경로·`ERR` 원문·검토자 실패 원문)는 cleanup **뒤에**, 어댑터 마스킹을 거쳐 한다. cleanup 자체가 `ERR`면 남은 경로(`W/worktree` · `W/zip` · `W/blobs` · `W/codex.*` · `W/pack-*.md` · `W/baseline/`)를 보고에 적어 사람이 지우게 한다. `--resolve` 재실행(§9)은 `collect`를 돌리지 않으므로 해당 없음.
 
 ## 1. 작업 디렉터리
 
@@ -93,7 +93,7 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 <CLI> deploy  --adapter "$A" --work "$W"
 ```
 
-- `collect` 첫 줄 `COLLECTED <mode> head=… base=… target=… attempts=… unrecovered=<n>`: `mode=diff-only`면 시작 요약에 「로컬 체크아웃 없음 — diff-only」, `unrecovered>0`이면 「불완전 diff-only 리뷰」를 적는다(판정은 `verdict`가 증거 부족으로 받는다). `ERR HEAD_MOVED …`(exit 3)면 작성자가 push 중이다 — 멈추고 잠시 뒤 다시 돌리라고 안내한다.
+- `collect` 첫 줄 `COLLECTED <mode> head=… base=… target=… attempts=… unrecovered=<n>`: `mode=diff-only`면 시작 요약에 「로컬 체크아웃 없음 — diff-only」, `unrecovered>0`이면 「불완전 diff-only 리뷰」를 적는다(판정은 `verdict`가 증거 부족으로 받는다). `snapshot.json.api_failures`가 비어 있지 않으면 시작 요약에 「GitLab 조회 실패: <이름들>」을 적는다(판정은 `verdict`가 기계 증거 부족으로 받는다 — 빈 응답으로 취급하지 않는다). `ERR HEAD_MOVED …`(exit 3)면 작성자가 push 중이다(워크트리 모드 = fetch head ≠ API head, diff-only = diff 버전 head ≠ API head) — 멈추고 잠시 뒤 다시 돌리라고 안내한다.
 - `check` 첫 줄 `CHECKED complete=<b> baseline=<유형> earlyExit=<b> rereview=<b>`. `check.json`을 읽어 **시작 요약(채팅 5줄 이내)**: 트랙 · 계약 미완 줄 · Baseline 유형 · 기준선 확인 댓글 상태 · 재리뷰 여부.
 - `deploy` 첫 줄 `DEPLOY <일치|불일치|대조 불가|zip 누락|해당 없음>` — 결과는 `verdict`·`render`가 쓴다.
 
@@ -200,7 +200,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 - `REPORT <경로>` — 어댑터 리포트 디렉터리(git 밖) `<프로젝트>-<iid>-<head 7자>.md`. 리포트 구성(순서 고정): 헤더 → 판정 초안(정책 실행 블록 — 복사해 게시) → 기준선 확인 문안(경량 + 확인 댓글 없음·낡음) → 작성자 보완 요청 문안 → 리뷰어 확인 필요 → 부록 A·B·C. 어댑터 마스킹 패턴으로 전체를 가린 뒤 저장된다.
 - **터미널 요약 10줄 이내**: 판정(또는 미확정·리뷰 실패) · head · 돈 모델/교차 검토 · 차단 발견 수(결함/증거 부족) · 기준선 미확인 여부 · 배포본 대조 결과 · 리포트 경로 · 다음 행동(「확인 문안 먼저 게시」 / 「`--resolve`로 확정」 / 「복사해 게시」).
-- `cleanup`은 워크트리·zip·blobs·`codex.*` 원시 파일을 지운다(F7·F5). JSON·리포트는 남는다(재리뷰·`--resolve` 입력). **실패 경로도 여기로 온다** — §0 「공통 종료 절차」: `collect` 이후 어느 단계에서 멈추든 `cleanup`을 마지막에 실행한다.
+- `cleanup`(`CLEANED worktree=<b> zip=<n> raw=<n> masked=<n>`)은 워크트리·zip·blobs·`codex.*`·원문 팩(`pack-a.md`·`pack-b.md`)·`baseline/`을 지우고, JSON(`mr`·`check`·`review-*`·`findings`)은 문자열 값을 어댑터 마스킹·비밀값 제거한 사본으로 남긴다(F7·F5 — 재리뷰·`--resolve` 입력은 그 사본으로 충분하다). 리포트는 저장 시 이미 마스킹됐다. **실패 경로도 여기로 온다** — §0 「공통 종료 절차」: `collect` 이후 어느 단계에서 멈추든 `cleanup`을 마지막에 실행한다.
 - 종료 전 자가 점검(각 1줄로 보고): F1 GitLab 쓰기 0건(이 세션의 `glab` 호출이 전부 `api` GET) · F2 헤더 교차 검토 표시 · F3 판정 4종 · F5 리포트 마스킹(`pack.json.mask`·리포트 grep) · F6 SHA 일치 · F7 정리 결과 줄 · F8 기준선 미확인 표시.
 
 ## 9. `--resolve` 재실행

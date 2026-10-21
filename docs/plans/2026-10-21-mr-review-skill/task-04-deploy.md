@@ -195,6 +195,27 @@ test('CRC 손상 zip: 목록·주석·내용 길이는 맞아도 read() 가 CRC 
   assert.ok(d.mismatches.some((m) => m.kind === 'corrupt' && m.path === 'src/main/java/app/A.java' && /CRC/.test(m.detail)));
 });
 
+test('local header 가 central directory 와 다른 파일을 가리키면 corrupt → 대조 불가 (R3-8)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const good = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), ['src/main/java/app/A.java', 'src/main/java/app/B.java']));
+  const z = readZip(good);
+  const e = z.entries.find((x) => x.name === 'src/main/java/app/A.java');
+  const bad = Buffer.from(good);
+  bad.write('src/main/java/app/Z.java', e.lho + 30, 'utf8');                 // local header 의 파일명만 같은 길이의 다른 이름으로(central·CRC·데이터 불변)
+  const zb = readZip(bad);
+  assert.equal(zb.comment.trim(), headSha);
+  assert.throws(() => zb.read(zb.entries.find((x) => x.name === e.name)), /local header 파일명 불일치/);
+  const badFile = join(root, 'bad-local.zip');
+  writeFileSync(badFile, bad);
+  const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: badFile }]);
+  const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/d.zip`, kind: 'zip', filename: 'd.zip', secret: SECRET, where: 'body' }], description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: src/main/java/app/Old.java\n' });
+  const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
+  assert.equal(r.first, 'DEPLOY 대조 불가');
+  assert.ok(readJson(join(work, 'deploy.json')).mismatches.some((m) => m.kind === 'corrupt' && m.path === 'src/main/java/app/A.java' && /파일명 불일치/.test(m.detail)));
+});
+
 test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 바이트 대조', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
@@ -232,7 +253,7 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
 node --test tests/mr-review/deploy.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 9 · pass 0 · fail 9.
+기대: tests 10 · pass 0 · fail 10.
 
 ### 2. `deploy.mjs`
 
@@ -336,6 +357,11 @@ export function readZip(buf) {
     if (h + 30 > buf.length || buf.readUInt32LE(h) !== 0x04034b50) throw new Error(`zip local header 손상: ${e.name}`);
     const nLen = buf.readUInt16LE(h + 26);
     const eLen = buf.readUInt16LE(h + 28);
+    // local header ↔ central directory 정합(R3-8) — 파일명·압축 방식이 다르면 표준 리더가 거부하는 zip 이다
+    const lName = buf.subarray(h + 30, h + 30 + nLen).toString('utf8');
+    const lMethod = buf.readUInt16LE(h + 8);
+    if (lName !== e.name) throw new Error(`zip local header 파일명 불일치(${lName} ≠ ${e.name})`);
+    if (lMethod !== e.method) throw new Error(`zip local header 압축 방식 불일치(${lMethod} ≠ ${e.method}): ${e.name}`);
     const start = h + 30 + nLen + eLen;
     if (start + e.csize > buf.length) throw new Error(`zip 데이터 범위 초과: ${e.name}`);
     const data = buf.subarray(start, start + e.csize);
@@ -456,7 +482,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 node --check dev-workflow/skills/mr-review/scripts/lib/deploy.mjs && echo CHECK_OK
 ```
 
-기대: deploy 9/9 · 앞선 24/24 · `CHECK_OK`.
+기대: deploy 10/10 · 앞선 27/27 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/deploy.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/deploy.test.mjs
@@ -465,7 +491,7 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/deploy.test.mjs` → 9/9.
+- `node --test tests/mr-review/deploy.test.mjs` → 10/10.
 - `git archive`로 만든 zip의 주석 SHA·목록·바이트를 외부 `unzip` 없이 읽는다(P3).
 - 삭제만 있는 변경은 zip 없이 ④ 삭제 목록만으로 판정(R3-F2) · 기대 목록은 4.7 규칙으로 거른 것(R3-F4) · 결과가 무엇이든 exit 0(판정은 verdict 몫).
 
@@ -477,4 +503,5 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 - **`git diff`는 `-z`로 읽어라. 이유:** 한글·공백 경로가 `core.quotePath`로 인용돼 목록이 어긋난다(정책 §6.1과 같은 이유).
 - **zip 리더에 zip64·암호화를 넣지 마라. 이유:** git archive 산출물 범위 밖 — YAGNI. 판독 실패는 `corrupt` → 「대조 불가」로 fail-closed.
 - **`read()`는 CRC-32·비압축 크기를 central directory 값과 대조한다 — inflate 성공만으로 정상으로 보지 마라. 이유:** R2-7 — 내용·목록·주석이 맞고 CRC만 깨진 zip은 표준 압축 해제가 거부하는 배포본인데 「일치」로 보증된다.
+- **`read()`는 local header 의 파일명·압축 방식을 central directory 와 대조한다 — signature·길이만 보지 마라. 이유:** plan R3-8 — central 에는 `A.txt`, local 에는 `B.txt`인 zip 도 CRC·크기가 맞으면 「일치」로 보증되는데 표준 리더(Python `zipfile`)는 BadZipFile 로 거부한다.
 - **내려받은 zip은 `work/zip/`에만 둔다. 이유:** F7 — `cleanup`(task-06)이 지운다.

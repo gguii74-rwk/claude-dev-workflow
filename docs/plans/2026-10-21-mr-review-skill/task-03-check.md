@@ -148,6 +148,7 @@ test('문서 링크(브랜치 ref) → 그 저장소의 브랜치 API 로 SHA �
   const enc = encodeURIComponent('guide/policy.md').replace(/\./g, '%2E');
   const TOPIC_SHA = 'e'.repeat(40);
   const g = fakeGlab(root, [
+    { match: '^api projects/103$', json: { id: 103, web_url: 'http://gitlab.test/g/docs' } },
     { match: '^api projects/103/repository/branches/master$', json: { name: 'master', commit: { id: DOCS_SHA } } },
     { match: `^api projects/103/repository/files/${enc}/raw\\?ref=${DOCS_SHA}$`, text: '# 정책 원문\n' },
     { match: '^api projects/103/repository/branches/feature%2Ftopic$', json: { name: 'feature/topic', commit: { id: TOPIC_SHA } } },
@@ -181,22 +182,47 @@ test('문서 링크(브랜치 ref) → 그 저장소의 브랜치 API 로 SHA �
   assert.ok(!calls.some((x) => /branches\/feature$/.test(x)));                             // 짧은 후보는 긴 후보가 맞으면 시도하지 않는다
 });
 
-test('permalink(40자 SHA) 는 그대로 고정 · 어댑터에 없는 프로젝트 링크는 미확보', () => {
+test('permalink(40자 SHA) 는 그대로 고정 · 어댑터에 없는 프로젝트 링크는 미확보 · basename 만 같은 다른 호스트·namespace 링크도 미확보(R3-5)', () => {
   const link = 'http://gitlab.test/g/docs/-/blob/' + DOCS_SHA + '/guide/policy.md';
   const other = 'http://gitlab.test/other/zeta/-/blob/main/x.md';
-  const desc = body({ track: '정식', contractOver: { Baseline: link + ' · ' + other } });
+  const foreign = 'https://elsewhere.invalid/unregistered/alpha/-/blob/main/docs/approved.md';
+  const desc = body({ track: '정식', contractOver: { Baseline: link + ' · ' + other + ' · ' + foreign } });
   const { root, adapter, work } = setup({ description: desc });
   const enc = encodeURIComponent('guide/policy.md').replace(/\./g, '%2E');
-  const g = fakeGlab(root, [{ match: `^api projects/103/repository/files/${enc}/raw\\?ref=${DOCS_SHA}$`, text: 'x' }]);
+  const g = fakeGlab(root, [
+    { match: '^api projects/103$', json: { id: 103, web_url: 'http://gitlab.test/g/docs' } },
+    { match: '^api projects/101$', json: { id: 101, web_url: 'http://gitlab.test/g/alpha' } },
+    { match: `^api projects/103/repository/files/${enc}/raw\\?ref=${DOCS_SHA}$`, text: 'x' },
+    { match: '^api projects/101/repository/branches/main$', json: { name: 'main', commit: { id: 'f'.repeat(40) } } },
+    { match: '^api projects/101/repository/files/.*/raw', text: 'WRONG DOC' },
+  ]);
   runCli(['check', '--adapter', adapter, '--work', work], g.env);
   const c = readJson(join(work, 'check.json'));
   const a = c.baselineLinks.find((x) => x.path === 'guide/policy.md');
   assert.equal(a.pinned, true);
   assert.equal(a.resolved_sha, DOCS_SHA);
+  assert.equal(a.project_url, 'http://gitlab.test/g/docs');
   const z = c.baselineLinks.find((x) => x.path === 'x.md');
   assert.equal(z.status, '미확보');
   assert.match(z.reason, /어댑터/);
-  assert.equal(g.calls().some((x) => x.join(' ').includes('branches')), false);
+  const f = c.baselineLinks.find((x) => x.raw === foreign);
+  assert.equal(f.project, 'alpha');                                                       // basename 은 등록 프로젝트와 같지만
+  assert.equal(f.status, '미확보');                                                       // 호스트·namespace 가 등록 web_url 과 달라 확보하지 않는다
+  assert.match(f.reason, /elsewhere\.invalid.*등록 프로젝트 alpha/);
+  assert.equal(g.calls().some((x) => x.join(' ').includes('branches')), false);           // 범위 밖 링크로 ref 해소·raw 를 호출하지 않았다
+  assert.equal(g.calls().some((x) => /projects\/101\/repository/.test(x.join(' '))), false);
+});
+
+test('이슈 댓글 조회 실패는 「댓글 없음」이 아니라 미확보(R3-3)', () => {
+  const desc = body({ contractOver: { Baseline: '#12' } });
+  const { root, adapter, work } = setup({ description: desc });
+  const g = fakeGlab(root, [{ match: '^api projects/101/issues/12$', json: { iid: 12, title: '버그', description: '- ① 왜: 민원\n- ② 무엇을: 처리기', updated_at: '2026-10-19T00:00:00Z' } }]);   // notes 규칙 없음 → 404
+  runCli(['check', '--adapter', adapter, '--work', work], g.env);
+  const c = readJson(join(work, 'check.json'));
+  const i = c.baselineLinks.find((x) => x.kind === 'issue' && x.ref === '12');
+  assert.equal(i.status, '미확보');
+  assert.match(i.reason, /댓글 조회 실패/);
+  assert.equal(i.file, null);
 });
 
 test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 이슈에서 · 본문 #n 도 수집 · 미등록 프로젝트의 연결 이슈는 대체 없이 미확보', () => {
@@ -209,6 +235,7 @@ test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 �
     { match: '^api projects/101/issues/12$', json: { iid: 12, title: '버그', description: '- ① 왜: 민원\n- ② 무엇을: 처리기', updated_at: '2026-10-19T00:00:00Z' } },
     { match: '^api --paginate projects/101/issues/12/notes', json: [{ id: 5, system: false, author: { username: 'author-a' }, body: '추가 설명', created_at: '2026-10-19T01:00:00Z' }] },
     { match: '^api projects/101/issues/88$', json: { iid: 88, title: '참고 이슈', description: '배경 설명 88', updated_at: '2026-10-18T00:00:00Z' } },
+    { match: '^api --paginate projects/101/issues/88/notes', json: [] },   // 댓글 0건(정상 빈 응답) — 조회 실패(404)와 구분된다(R3-3)
   ]);
   runCli(['check', '--adapter', adapter, '--work', work], g.env);
   const c = readJson(join(work, 'check.json'));
@@ -300,7 +327,7 @@ test('첨부 분류 · 첨부 누락 · 리베이스 · reviewer 불일치 · �
 node --test tests/mr-review/check.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 9 · pass 0 · fail 9.
+기대: tests 10 · pass 0 · fail 10.
 
 ### 2. `check.mjs`
 
@@ -388,8 +415,9 @@ export function judgeReason(text) {
 
 // ── 링크 분해 ─────────────────────────────────────────────────────────────
 // blob 링크의 ref/path 경계는 URL 만으로 정해지지 않는다(브랜치 이름에 `/` 가능) — `refpath` 로 보존하고 resolveRepoLink 가 그 저장소의 branch/tag 로 경계를 해소한다.
-const BLOB_RE = /https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+)\/-\/blob\/([^\s)<>`#]+)/g;
-const ISSUE_URL_RE = /https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+)\/-\/issues\/(\d+)/g;
+// 호스트·namespace(`project_url` = `/-/` 앞 전체)는 버리지 않는다 — basename 이 같은 다른 호스트·그룹의 링크를 등록 프로젝트로 오해소하지 않게 해소 때 `web_url` 과 대조한다(R3-5).
+const BLOB_RE = /(https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+))\/-\/blob\/([^\s)<>`#]+)/g;
+const ISSUE_URL_RE = /(https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+))\/-\/issues\/(\d+)/g;
 const ISSUE_REF_RE = /(?:^|[\s(`])#(\d+)\b/g;
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 
@@ -400,8 +428,8 @@ function splitRefPath(refpath) {
 
 export function parseBaselineValue(value, currentProject) {
   const links = [];
-  for (const m of value.matchAll(BLOB_RE)) { const { ref, path } = splitRefPath(m[2]); links.push({ raw: m[0], kind: 'repo', project: m[1], ref, path, refpath: m[2] }); }
-  for (const m of value.matchAll(ISSUE_URL_RE)) links.push({ raw: m[0], kind: 'issue', project: m[1], ref: m[2], path: '' });
+  for (const m of value.matchAll(BLOB_RE)) { const { ref, path } = splitRefPath(m[3]); links.push({ raw: m[0], kind: 'repo', project: m[2], project_url: m[1], ref, path, refpath: m[3] }); }
+  for (const m of value.matchAll(ISSUE_URL_RE)) links.push({ raw: m[0], kind: 'issue', project: m[2], project_url: m[1], ref: m[3], path: '' });
   for (const m of value.matchAll(ISSUE_REF_RE)) links.push({ raw: `#${m[1]}`, kind: 'issue', project: currentProject, ref: m[1], path: '' });
   const isBody = /배경|MR 본문/.test(value);
   let type;
@@ -420,6 +448,19 @@ function refSha(projId, ref) {
   catch { return apiJson(`projects/${projId}/repository/tags/${encodeURIComponent(ref)}`).commit.id; }
 }
 
+// 등록 프로젝트의 정체성 대조(R3-5) — 링크의 호스트·전체 프로젝트 경로가 그 등록 ID 의 `web_url` 과 같아야 한다. 다르면 「확보」로 기록하지 않는다(다른 문서·이슈를 근거로 삼게 된다).
+const webUrlCache = new Map();
+function projectWebUrl(projId) {
+  if (!webUrlCache.has(projId)) webUrlCache.set(projId, String(apiJson(`projects/${projId}`).web_url || ''));
+  return webUrlCache.get(projId);
+}
+const normUrl = (u) => String(u || '').trim().replace(/\/+$/, '').replace(/^(https?:\/\/)([^/]+)/, (_, s, h) => s + h.toLowerCase());
+function identityMismatch(link, proj) {
+  if (!link.project_url) return null;   // `#n`·closes_issues(project_id 가 정체성) 은 대조 대상이 아니다
+  const web = projectWebUrl(proj.id);
+  return normUrl(web) === normUrl(link.project_url) ? null : `링크의 호스트·프로젝트 경로(${link.project_url})가 등록 프로젝트 ${link.project}(${web || 'web_url 없음'})와 다르다 — 범위 밖 링크`;
+}
+
 function resolveRepoLink(link, adapter, work, n) {
   const proj = adapter.resolved.projects[link.project];
   if (!proj) return { ...link, resolved_sha: null, pinned: false, status: '미확보', reason: `어댑터 projects 에 없는 프로젝트: ${link.project}`, file: null, version: null };
@@ -428,6 +469,8 @@ function resolveRepoLink(link, adapter, work, n) {
   let ref = link.ref;
   let filePath = link.path;
   try {
+    const mis = identityMismatch(link, proj);
+    if (mis) throw new Error(mis);
     const { segs } = splitRefPath(link.refpath || `${link.ref}/${link.path}`);
     if (SHA_RE.test(segs[0])) {
       pinned = true;
@@ -460,9 +503,12 @@ function resolveIssue(link, adapter, work, n) {
   const proj = link.project ? adapter.resolved.projects[link.project] : null;
   if (!proj) return { ...link, resolved_sha: null, pinned: true, status: '미확보', reason: `어댑터 projects 에 없는 프로젝트: ${link.project ?? `id ${link.project_id}`}`, file: null, version: null, text: '' };
   try {
+    const mis = identityMismatch(link, proj);
+    if (mis) throw new Error(mis);
     const issue = apiJson(`projects/${proj.id}/issues/${link.ref}`);
-    let notes = [];
-    try { notes = apiJson(`projects/${proj.id}/issues/${link.ref}/notes?per_page=100&sort=asc&order_by=created_at`, { paginate: true }); } catch { notes = []; }
+    // 댓글 조회 실패는 「댓글 없음」이 아니다(R3-3) — 원문 일부를 못 받은 것이므로 미확보로 남긴다(verdict 의 결정적 증거 부족)
+    let notes;
+    try { notes = apiJson(`projects/${proj.id}/issues/${link.ref}/notes?per_page=100&sort=asc&order_by=created_at`, { paginate: true }); } catch (e) { throw new Error(`이슈 댓글 조회 실패: ${e.message.slice(0, 120)}`); }
     const body = `${issue.description || ''}\n\n## 이슈 댓글\n${(Array.isArray(notes) ? notes : []).filter((x) => !x.system).map((x) => `- (${x.author?.username || '?'} ${x.created_at}) ${x.body}`).join('\n')}`;
     const file = `baseline/${n}.md`;
     fs.mkdirSync(path.join(work, 'baseline'), { recursive: true });
@@ -583,7 +629,7 @@ export function check({ adapter, work }) {
   }
   const bgText = section(desc, /^배경/) || '';   // 본문 #n 은 「배경」 절(이슈/spec 줄)에서만 — 다른 절의 `#3 항목` 같은 번호를 이슈로 오인하지 않는다
   for (const m of bgText.matchAll(ISSUE_REF_RE)) if (!hasIssue(mr.project.name, m[1])) links.push({ raw: `#${m[1]}`, kind: 'issue', project: mr.project.name, ref: m[1], path: '' });
-  for (const m of bgText.matchAll(ISSUE_URL_RE)) if (!hasIssue(m[1], m[2])) links.push({ raw: m[0], kind: 'issue', project: m[1], ref: m[2], path: '' });
+  for (const m of bgText.matchAll(ISSUE_URL_RE)) if (!hasIssue(m[2], m[3])) links.push({ raw: m[0], kind: 'issue', project: m[2], project_url: m[1], ref: m[3], path: '' });
   const baselineLinks = [];
   let n = 0;
   let issueText = '';
@@ -654,7 +700,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs 2>
 node --check dev-workflow/skills/mr-review/scripts/lib/check.mjs && echo CHECK_OK
 ```
 
-기대: check 9/9 · 앞선 15/15 · `CHECK_OK`.
+기대: check 10/10 · 앞선 17/17 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/check.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/check.test.mjs
@@ -663,7 +709,8 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/check.test.mjs` → 9/9.
+- `node --test tests/mr-review/check.test.mjs` → 10/10.
+- 저장소·이슈 URL 링크는 호스트·전체 프로젝트 경로를 등록 프로젝트의 `web_url`과 대조하고 다르면 미확보(plan R3-5) · 이슈 댓글 조회 실패는 미확보(plan R3-3).
 - MR 작성자의 판정 댓글은 `trusted:false` + `ignoredComments`(R1-F5·R2-F1) · 브랜치형 Baseline 링크는 **그 프로젝트의** 브랜치 API로 SHA 해소하고 `pinned:false`(R5-F2) · 본문 변경 시각 뒤의 확인 댓글만 「있음」(R3-F3) · 기준선 후보 문서는 후보로만(R1-F6).
 - `glab mr …` 호출 0건.
 
@@ -675,5 +722,7 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 - **`closes_issues`와 본문 `#n`이 같은 이슈면 한 번만 받는다. 이유:** 팩 중복·API 호출 낭비. 본문 `#n`(Baseline 밖 — 「배경」의 이슈/spec 줄 등)도 수집 대상이다(R2-6·§5.1-5).
 - **`closes_issues`의 `project_id`가 어댑터에 없으면 현재 프로젝트로 대체하지 마라 — `project:null`·미확보. 이유:** R2-3 — 현재 프로젝트에 같은 번호의 무관한 이슈가 있으면 그 본문이 변경 사유·설계 근거가 되고 미확보 차단도 안 생긴다.
 - **blob 링크의 ref/path 경계를 URL의 첫 세그먼트로 정하지 마라 — 그 저장소의 branch/tag API로 긴 후보부터 해소. 이유:** R2-8 — `feature/topic` 브랜치 링크가 `ref=feature, path=topic/…`로 깨져 다른 문서를 확보로 기록할 수 있다. SHA(permalink)만 첫 세그먼트로 확정.
+- **URL 링크의 호스트·namespace 를 버리고 basename 만으로 등록 프로젝트에 매칭하지 마라 — `project_url`을 보존하고 해소 때 `projects/<id>`의 `web_url`과 대조해 다르면 미확보. 이유:** plan R3-5 — `https://elsewhere.invalid/unregistered/alpha/-/blob/…`가 등록된 `alpha`의 문서로 해석돼 기본 호스트의 다른 원문을 「확보」로 기록한다(L1·L2 대조 근거가 바뀜). `#n`·`closes_issues`는 `project_id`가 정체성이라 대조 대상이 아니다.
+- **이슈 댓글 조회 실패를 빈 댓글로 바꾸지 마라 — 미확보. 이유:** plan R3-3 — 댓글 없는 원문이 「확보」로 기록돼 증거 부족이 사라진다.
 - **`earlyExit`는 판정만 계산하고 여기서 멈추지 않는다. 이유:** 멈출지(`--full`)는 SKILL.md가 결정한다(§5.2 조기 종료).
 - **Baseline 줄만 미완이고 후보 문서가 있으면 `would:false`. `!contract.complete`로 조기 종료하지 마라. 이유:** R1-10 — Baseline 자리표시자는 항상 계약 미완이라, 그렇게 하면 §5.2의 「후보 문서 관련성 검토」 경로가 기본 실행에서 도달 불가능해진다. Baseline 미완은 `incompleteLines`로 verdict에 남아 `APPROVE`를 막는다.

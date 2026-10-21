@@ -72,11 +72,12 @@ function rules(headSha, { metaRules } = {}) {
   ];
 }
 
-test('worktree 모드: fetch head = API head → 세 SHA 고정 + 워크트리', () => {
+test('worktree 모드: fetch head = API head → 세 SHA 고정 + 워크트리 · 변경 목록은 API 가 아니라 git 정본(R3-4)', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
   const { checkout, baseSha, headSha } = initRepos(root, { iid: IID });
-  const g = fakeGlab(root, rules(headSha));
+  const p = `projects/101/merge_requests/${IID}`;
+  const g = fakeGlab(root, [...rules(headSha).filter((x) => !x.match.includes('/diffs')), { match: `^api --paginate ${p}/diffs`, json: DIFFS.slice(0, 3) }]);   // API 목록에는 docs/specs 문서가 빠져 있다(overflow 흉내)
   const work = join(root, 'work');
   mkdirSync(work, { recursive: true });
   writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'APPROVE', head_sha: DEAD }));   // 이전 실행 잔존물
@@ -100,8 +101,12 @@ test('worktree 모드: fetch head = API head → 세 SHA 고정 + 워크트리',
   assert.equal(mr.project.name, 'alpha');
   assert.equal(mr.project.id, 101);
   assert.equal(mr.api_head, headSha);
-  assert.equal(mr.diffs.length, 4);
-  assert.equal(mr.diffs[2].deleted_file, true);
+  assert.equal(mr.diffs.length, 4);                                                        // git 목록 — API 가 뺀 docs/specs 도 들어 있다
+  assert.ok(mr.diffs.some((d) => d.new_path === 'docs/specs/2026-10-01-feature.md' && d.new_file));
+  assert.equal(mr.diffs.find((d) => d.new_path === 'src/main/java/app/Old.java').deleted_file, true);
+  assert.match(mr.diffs.find((d) => d.new_path === 'src/main/java/app/A.java').diff, /-class A \{ int v = 1; \}[\s\S]*\+class A \{ int v = 2; \}/);
+  assert.equal(mr.overflow, false);
+  assert.deepEqual(snap.api_failures, []);
   assert.equal(mr.notes.length, 3);
   assert.equal(mr.description_changed_at, '2026-10-20T02:00:00Z');
   assert.deepEqual(mr.approved_by, ['rev-b']);
@@ -228,6 +233,43 @@ test('--diff-only 는 체크아웃이 있어도 diff-only 로 간다 · overflow
   assert.equal(readJson(join(work3, 'snapshot.json')).diff_list_complete, false);
 });
 
+test('diff-only: 메타 head 와 diff 버전 head 가 계속 다르면 HEAD_MOVED exit 3 — 다른 head 의 자료를 섞지 않는다(R3-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const headSha = 'a'.repeat(40);
+  const p = `projects/101/merge_requests/${IID}`;
+  const g = fakeGlab(root, [
+    ...rules(headSha).filter((x) => !x.match.includes('/versions')),
+    { match: `^api ${p}/versions$`, json: [{ head_commit_sha: DEAD, base_commit_sha: 'b'.repeat(40), start_commit_sha: 'b'.repeat(40) }] },   // 중간 push — 버전의 head 가 메타와 다르다
+    ...headRaw(headSha, ['src/main/java/app/A.java', 'src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md']),
+  ]);
+  const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', join(root, 'work')], g.env);
+  assert.equal(r.code, 3, r.out);
+  assert.match(r.first, /^ERR HEAD_MOVED/);
+  assert.equal(g.calls().filter((c) => c.join(' ') === `api ${p}`).length, 3);
+  assert.ok(!existsSync(join(root, 'work', 'snapshot.json')));
+});
+
+test('보조 API 실패는 빈 응답이 아니다 — api_failures 에 남고 overflow 는 null(목록 완전성 미확인)(R3-3)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const headSha = 'a'.repeat(40);
+  const g = fakeGlab(root, [
+    ...rules(headSha).filter((x) => !x.match.includes('/changes') && !x.match.includes('/closes_issues')),   // /changes · /closes_issues 는 404
+    ...headRaw(headSha, ['src/main/java/app/A.java', 'src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md']),
+  ]);
+  const work = join(root, 'work');
+  const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work], g.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const mr = readJson(join(work, 'mr.json'));
+  assert.equal(mr.overflow, null);
+  assert.deepEqual(mr.closes_issues, []);
+  assert.deepEqual(mr.api_failures, ['changes', 'closes_issues']);
+  const snap = readJson(join(work, 'snapshot.json'));
+  assert.deepEqual(snap.api_failures, ['changes', 'closes_issues']);
+  assert.equal(snap.diff_list_complete, false);                        // overflow 를 모르고 changes_count 도 없다 → 불완전(fail-closed)
+});
+
 test('어댑터에 없는 프로젝트 → ERR exit 2', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
@@ -243,7 +285,7 @@ test('어댑터에 없는 프로젝트 → ERR exit 2', () => {
 node --test tests/mr-review/collect.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 7 · pass 0 · fail 7.
+기대: tests 9 · pass 0 · fail 9.
 
 ### 2. `gitlab.mjs`
 
@@ -321,21 +363,23 @@ export function isGitDir(p) {
   return spawnSync('git', ['-C', p, 'rev-parse', '--git-dir'], { encoding: 'utf8' }).status === 0;
 }
 
-// §5.1-1 — 메타·diff·overflow·댓글(system 포함)·연결 이슈·버전·승인
+// §5.1-1 — 메타·diff·overflow·댓글(system 포함)·연결 이슈·버전·승인.
+// 보조 조회의 실패는 빈 응답이 아니다(R3-3) — `api_failures` 에 남겨 verdict 가 결정적 증거 부족으로 받는다. overflow 는 /changes 실패 시 null(모름 — fail-closed).
 export function fetchMr(projectId, iid) {
   const base = `projects/${projectId}/merge_requests/${iid}`;
+  const failures = [];
   const meta = apiJson(base);
   const diffs = apiJson(`${base}/diffs?per_page=100`, { paginate: true });
-  let overflow = false;
-  try { overflow = apiJson(`${base}/changes`)?.overflow === true; } catch { overflow = false; }
+  let overflow = null;
+  try { overflow = apiJson(`${base}/changes`)?.overflow === true; } catch { failures.push('changes'); }
   const notes = apiJson(`${base}/notes?per_page=100&sort=asc&order_by=created_at`, { paginate: true });
   let closes = [];
-  try { closes = apiJson(`${base}/closes_issues?per_page=100`, { paginate: true }); } catch { closes = []; }
+  try { closes = apiJson(`${base}/closes_issues?per_page=100`, { paginate: true }); } catch { failures.push('closes_issues'); }
   let versions = [];
-  try { versions = apiJson(`${base}/versions`); } catch { versions = []; }
+  try { versions = apiJson(`${base}/versions`); } catch { failures.push('versions'); }
   let approvals = null;
-  try { approvals = apiJson(`${base}/approvals`); } catch { approvals = null; }
-  return { meta, diffs: Array.isArray(diffs) ? diffs : [], overflow, notes: Array.isArray(notes) ? notes : [], closes: Array.isArray(closes) ? closes : [], versions: Array.isArray(versions) ? versions : [], approvals };
+  try { approvals = apiJson(`${base}/approvals`); } catch { failures.push('approvals'); }
+  return { meta, diffs: Array.isArray(diffs) ? diffs : [], overflow, notes: Array.isArray(notes) ? notes : [], closes: Array.isArray(closes) ? closes : [], versions: Array.isArray(versions) ? versions : [], approvals, api_failures: failures };
 }
 
 export function normalize(project, projectName, iid, raw, collectedAt) {
@@ -343,7 +387,7 @@ export function normalize(project, projectName, iid, raw, collectedAt) {
   const diffs = raw.diffs.map((d) => ({
     old_path: d.old_path, new_path: d.new_path,
     new_file: d.new_file === true, renamed_file: d.renamed_file === true, deleted_file: d.deleted_file === true,
-    too_large: d.too_large === true || (raw.overflow === true && !d.diff),
+    too_large: d.too_large === true || (raw.overflow !== false && !d.diff),   // overflow 를 모르면(null) 빈 diff 는 잘림으로 본다
     diff: d.diff || '',
   }));
   const notes = raw.notes.map((n) => ({ id: n.id, system: n.system === true, author: { id: n.author?.id ?? null, username: n.author?.username ?? '' }, created_at: n.created_at, body: n.body || '' }));
@@ -357,7 +401,7 @@ export function normalize(project, projectName, iid, raw, collectedAt) {
     diff_refs: m.diff_refs ? { base_sha: m.diff_refs.base_sha, head_sha: m.diff_refs.head_sha, start_sha: m.diff_refs.start_sha } : null,
     detailed_merge_status: m.detailed_merge_status || '', has_conflicts: m.has_conflicts === true,
     approved_by: (raw.approvals?.approved_by || []).map((a) => a.user?.username).filter(Boolean),
-    diffs, overflow: raw.overflow === true, notes, description_changed_at: descChanged,
+    diffs, overflow: raw.overflow === true ? true : raw.overflow === false ? false : null, api_failures: raw.api_failures || [], notes, description_changed_at: descChanged,
     closes_issues: raw.closes.map((i) => ({ iid: i.iid, project_id: i.project_id, title: i.title || '', description: i.description || '', updated_at: i.updated_at || null, web_url: i.web_url || '' })),
     versions: raw.versions.map((v) => ({ head_commit_sha: v.head_commit_sha, base_commit_sha: v.base_commit_sha, start_commit_sha: v.start_commit_sha })),
     collected_at: collectedAt,
@@ -380,6 +424,19 @@ export function pinWorktree(checkout, mr, work) {
   git(checkout, ['worktree', 'prune'], { allowFail: true });
   git(checkout, ['worktree', 'add', '--detach', '-q', worktree, head]);
   return { head, target, base, worktree };
+}
+
+// 워크트리 모드의 변경 목록 정본(R3-4) — API 목록은 overflow 로 파일 항목이 통째로 빠질 수 있다. 고정 뒤에는 check(기준선 후보 탐색)·pack(문서 지도)·deploy 가
+// 전부 이 git 목록(`--no-renames` — 이름 변경 = 삭제 + 추가, deploy 의 기대 목록과 같은 기준)을 소비한다.
+export function gitDiffs(checkout, base, head) {
+  const parts = git(checkout, ['diff', '-z', '--no-renames', '--name-status', base, head]).split('\0').filter(Boolean);
+  const diffs = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const status = parts[i][0];
+    const p = parts[i + 1];
+    diffs.push({ old_path: p, new_path: p, new_file: status === 'A', renamed_file: false, deleted_file: status === 'D', too_large: false, diff: git(checkout, ['diff', '--no-renames', base, head, '--', p]) });
+  }
+  return diffs;
 }
 
 // §5.1-3 — diff-only 검토 루트 `blobs/head/` 는 잘림 유무와 무관하게 항상 만든다: 삭제되지 않은 모든 변경 파일의 head 원문을 고정 SHA 로 받는다
@@ -428,10 +485,20 @@ export function rebuildDiffOnly(projectId, mr, work) {
   }
   // 변경 파일 목록 자체의 완전성 — overflow 면 API 가 파일 항목을 통째로 뺄 수 있다. 메타 changes_count("25" 또는 "25+")와 수신 항목 수를 대조해
   // 못 맞추면(모르면) 불완전으로 둔다(fail-closed) → verdict 의 결정적 증거 부족(M-diff-list). 파일별 복원 성공과는 별개다.
+  // /changes 조회 실패(overflow null)도 「모름」이라 count 대조로만 완전 판정한다(R3-3).
   const expected = String(mr.changes_count ?? '');
   const n = parseInt(expected, 10);
-  const diffListComplete = !mr.overflow || (Number.isFinite(n) && !expected.endsWith('+') && n <= mr.diffs.length);
+  const diffListComplete = mr.overflow === false || (Number.isFinite(n) && !expected.endsWith('+') && n <= mr.diffs.length);
   return { head, base, target: base, unrecovered, rebuilt, diffListComplete };
+}
+
+// diff-only 에서 메타 head 와 diff 버전(versions[0]·diff_refs)의 head 가 다르면 수집 중 push 가 있었다 — 서로 다른 head 의 자료를 한 스냅샷으로 섞지 않는다(R3-2, F6).
+export function diffHeadMismatch(mr) {
+  const vHead = mr.versions[0]?.head_commit_sha || null;
+  const rHead = mr.diff_refs?.head_sha || null;
+  if (vHead && vHead !== mr.api_head) return vHead;
+  if (rHead && rHead !== mr.api_head) return rHead;
+  return null;
 }
 
 export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
@@ -456,10 +523,17 @@ export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
         if (attempt === MAX_ATTEMPTS) throw new CollectError(`HEAD_MOVED — ${MAX_ATTEMPTS}회 재수집에도 API head(${mr.api_head.slice(0, 7)})와 fetch head 가 다르다(push 진행 중?)`, 3);
         continue;
       }
-      snapshot = { mode: 'worktree', target_sha: pin.target, base_sha: pin.base, head_sha: pin.head, checkout: project.checkout, worktree: pin.worktree, attempts: attempt, unrecovered: [], rebuilt: [], diff_list_complete: true, fetched_at: fetchedAt };
+      mr.diffs = gitDiffs(project.checkout, pin.base, pin.head);   // API 목록 → git 정본으로 교체(R3-4). overflow 는 더 이상 의미 없다
+      mr.overflow = false;
+      snapshot = { mode: 'worktree', target_sha: pin.target, base_sha: pin.base, head_sha: pin.head, checkout: project.checkout, worktree: pin.worktree, attempts: attempt, unrecovered: [], rebuilt: [], diff_list_complete: true, api_failures: mr.api_failures, fetched_at: fetchedAt };
     } else {
+      const moved = diffHeadMismatch(mr);
+      if (moved) {
+        if (attempt === MAX_ATTEMPTS) throw new CollectError(`HEAD_MOVED — ${MAX_ATTEMPTS}회 재수집에도 API head(${mr.api_head.slice(0, 7)})와 diff 버전 head(${moved.slice(0, 7)})가 다르다(push 진행 중?)`, 3);
+        continue;
+      }
       const rb = rebuildDiffOnly(project.id, mr, work);
-      snapshot = { mode: 'diff-only', target_sha: rb.target, base_sha: rb.base, head_sha: rb.head, checkout: isGitDir(project.checkout) ? project.checkout : null, worktree: null, attempts: attempt, unrecovered: rb.unrecovered, rebuilt: rb.rebuilt, diff_list_complete: rb.diffListComplete, fetched_at: fetchedAt };
+      snapshot = { mode: 'diff-only', target_sha: rb.target, base_sha: rb.base, head_sha: rb.head, checkout: isGitDir(project.checkout) ? project.checkout : null, worktree: null, attempts: attempt, unrecovered: rb.unrecovered, rebuilt: rb.rebuilt, diff_list_complete: rb.diffListComplete, api_failures: mr.api_failures, fetched_at: fetchedAt };
     }
     break;
   }
@@ -507,7 +581,7 @@ node --test tests/mr-review/adapter.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fa
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: collect 7/7 · adapter 8/8 · `CHECK_DONE`만(CHECK_FAIL 없음).
+기대: collect 9/9 · adapter 8/8 · `CHECK_DONE`만(CHECK_FAIL 없음).
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/gitlab.mjs dev-workflow/skills/mr-review/scripts/lib/collect.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/collect.test.mjs
@@ -516,8 +590,9 @@ git commit -m "feat(mr-review): collect — MR 수집·스냅샷 SHA 고정·워
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/collect.test.mjs` → 7/7, adapter 8/8 유지.
-- 워크트리 모드에서 `snapshot.json.head_sha === mr.json.api_head`(F6) · HEAD 이동 시 `ERR HEAD_MOVED` exit 3 · 3회 재수집 로그.
+- `node --test tests/mr-review/collect.test.mjs` → 9/9, adapter 8/8 유지.
+- 워크트리 모드에서 `snapshot.json.head_sha === mr.json.api_head`(F6) · HEAD 이동 시 `ERR HEAD_MOVED` exit 3 · 3회 재수집 로그 — diff-only 도 메타 head ≠ diff 버전 head 면 같은 처리(plan R3-2).
+- 워크트리 모드의 `mr.json.diffs`는 git `--no-renames` 목록(API overflow 로 빠진 파일도 포함, plan R3-4) · 보조 API(`/changes`·`/closes_issues`·`/versions`·`/approvals`) 실패는 `api_failures`에 남고 `overflow`는 `null`(plan R3-3).
 - diff-only에서 잘린 파일이 양쪽 blob으로 재구성되어 `-`·`+` 양쪽 줄이 diff에 있고, 실패 파일은 `unrecovered`에 남는다.
 - `glab mr …` 호출 0건(헬퍼 로그의 첫 인자는 전부 `api`).
 
@@ -530,3 +605,6 @@ git commit -m "feat(mr-review): collect — MR 수집·스냅샷 SHA 고정·워
 - **`overflow`면 파일 항목 자체가 빠질 수 있다 — `changes_count`와 수신 항목 수를 대조해 `diff_list_complete`를 적고, 못 맞추면 `false`. 이유:** R2-2 — 파일별 복원이 전부 성공해도 목록이 잘렸으면 검토 범위·배포 목록이 함께 줄어 모델 발견 없이 `APPROVE`가 난다. verdict가 `M-diff-list`로 받는다.
 - **워크트리는 `work/worktree` 고정 경로, 기존 잔존물은 먼저 제거. 이유:** spec §5.1-2 「같은 이름 잔존물은 먼저 제거」 — 이전 실행의 잔재가 섞이면 F6·F7.
 - **`notes`의 `system: true`를 버리지 마라. 이유:** `changed the description` 시각이 check의 「낡음」 판정 입력이다(R3-F3).
+- **diff-only 에서 `versions[0].head_commit_sha`·`diff_refs.head_sha`가 `api_head`와 다르면 재수집(3회 뒤 `HEAD_MOVED`) — 그냥 `versions[0].base_commit_sha`를 쓰지 마라. 이유:** plan R3-2 — 메타와 diff 사이에 push 가 있으면 새 head 의 diff·base 를 옛 head 의 raw 와 섞어 다른 커밋의 변경을 검토하고 이전 SHA 로 판정한다.
+- **보조 API 실패를 `overflow=false`·빈 목록으로 바꾸지 마라 — `api_failures`에 이름을 남기고 `overflow`는 `null`. 이유:** plan R3-3 — `/changes` 실패가 「완전한 목록」으로, `/closes_issues` 실패가 「연결 이슈 없음」으로 둔갑해 R2-2 의 보호가 우회되고 verdict 가 증거 부족을 모른다.
+- **워크트리를 고정했으면 `mr.diffs`를 git 목록으로 교체하라 — API 목록을 그대로 두지 마라. 이유:** plan R3-4 — check 의 기준선 후보 탐색·pack 의 문서 지도가 API 목록을 소비하므로 overflow 로 후보 spec 파일이 빠지면 워크트리에 문서가 있어도 「기준선 없음」 조기 종료가 난다.

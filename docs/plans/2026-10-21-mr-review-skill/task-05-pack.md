@@ -30,7 +30,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmp, writeAdapter, writeDocs, runCli, readJson, LIB } from './helpers.mjs';
+import { tmp, writeAdapter, writeDocs, fakeGlab, runCli, readJson, LIB } from './helpers.mjs';
 
 const { extractSection, excerpt, applyMask, residual } = await import(join(LIB, 'pack.mjs'));
 const HEAD = 'a'.repeat(40);
@@ -88,12 +88,17 @@ test('excerpt: 우선 절(이유·이후 변경·함정…)을 먼저, 상한 �
 });
 
 test('applyMask · residual: 패턴별 치환 수, 가린 자리는 [masked:<name>], 남은 패턴은 residual', () => {
-  const rules = [{ name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }, { name: 'token', pattern: '(?<=(?:token=|Authorization:\\s*))[^\\s\\]]+' }];
+  const rules = [{ name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }, { name: 'token', pattern: '(?<=(?:token=|Authorization:\\s*))(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s\\]]+' }];
   const r = applyMask('전화 010-1234-5678, token=abc.def 끝', rules);
   assert.equal(r.text, '전화 [masked:phone], token=[masked:token] 끝');
   assert.deepEqual(r.applied, { phone: 1, token: 1 });
   assert.deepEqual(residual(r.text, rules), []);
   assert.deepEqual(residual('x[masked:phone]5', [{ name: 'weird', pattern: '\\]\\d' }]), [{ name: 'weird' }]);
+  // Authorization 값은 인증 방식 + 자격증명을 한 번에 가린다(R3-1) — `Bearer` 만 가리고 자격증명이 남으면 residual 도 못 잡는다
+  const b = applyMask('헤더 Authorization: Bearer synthetic-credential-123 끝 · Authorization: Basic c3ludGg= 끝', rules);
+  assert.equal(b.text, '헤더 Authorization: [masked:token] 끝 · Authorization: [masked:token] 끝');
+  assert.doesNotMatch(b.text, /synthetic-credential|c3ludGg/);
+  assert.deepEqual(residual(b.text, rules), []);
 });
 
 test('팩: 문서 지도(절 발췌·@sha) · 정책 항상 읽기 · 위키(용어집+grep, 팀만 B) · 기준선 · 어댑터 · 본문 마스킹', () => {
@@ -182,6 +187,26 @@ test('전송 경계: 대상 외 등록 저장소의 기준선 원문은 팩 B �
   assert.ok(!existsSync(join(s3.work, 'pack.json')));
 });
 
+test('repo: 접두 문서 참조 — 대상 저장소 문서를 고정 head 에서 읽어 팩 B 에 넣고, 없으면 missing 으로 계속(R3-6)', () => {
+  const enc = (p) => encodeURIComponent(p).replace(/\./g, '%2E');
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md'], rules: [{ match: ['**/auth/**'], docs: ['repo:docs/security-notes.md#2.'] }] } } });
+  const g = fakeGlab(s.root, [
+    { match: `^api projects/101/repository/files/${enc('AGENTS.md')}/raw\\?ref=${HEAD}$`, text: '# alpha 규약\n\nmapper 는 평면 디렉터리 REPO-AGENTS-TEXT.\n' },
+    // docs/security-notes.md 규칙 없음 → 404 → missing
+  ]);
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], { ...s.env, ...g.env });
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(s.work, 'pack.json'));
+  const ag = p.sources.find((x) => x.ref === `repo:AGENTS.md@${HEAD.slice(0, 7)}`);
+  assert.equal(ag.kind, 'doc');
+  assert.equal(ag.inPackB, true);                                                        // 워크트리 전체가 D4 전송 범위 — 대상 저장소 문서도 B
+  assert.equal(ag.missing, false);
+  assert.match(readFileSync(join(s.work, 'pack-b.md'), 'utf8'), /REPO-AGENTS-TEXT/);
+  const sec = p.sources.find((x) => x.ref === `repo:docs/security-notes.md@${HEAD.slice(0, 7)}#2.`);
+  assert.equal(sec.missing, true);                                                       // 저장소에 없는 문서 — ERR 가 아니라 missing 으로 계속
+  assert.equal(p.codexSkipped, false);
+});
+
 test('위키 루트가 없어도 돈다 · 댓글의 이메일도 B 에서 가려진다', () => {
   const { adapter, work, env, home } = setup({ notes: [{ id: 1, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T00:00:00Z', body: '문의 someone@example.test 로' }] });
   const r = runCli(['pack', '--adapter', adapter, '--work', work], { MR_REVIEW_HOME: join(home, 'nowhere') });
@@ -201,7 +226,7 @@ test('위키 루트가 없어도 돈다 · 댓글의 이메일도 B 에서 가�
 node --test tests/mr-review/pack.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 7 · pass 0 · fail 7.
+기대: tests 8 · pass 0 · fail 8.
 
 ### 2. `pack.mjs`
 
@@ -213,6 +238,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { matchesAny } from './adapter.mjs';
+import { apiRaw, encodePath } from './gitlab.mjs';
 
 export class PackError extends Error {}
 
@@ -273,11 +299,12 @@ export function excerpt(markdown, maxLines) {
   return out.join('\n').trim();
 }
 
+// 규칙 = { name, pattern, flags? } — flags 는 `g` 에 덧붙는다(엔진 내장 SECRET_MASK 의 `i` 용. 어댑터 mask 는 플래그 없이 `g`).
 export function applyMask(text, rules) {
   const applied = {};
   let t = text;
   for (const r of rules) {
-    const re = new RegExp(r.pattern, 'g');
+    const re = new RegExp(r.pattern, 'g' + (r.flags || ''));
     let n = 0;
     t = t.replace(re, () => { n += 1; return `[masked:${r.name}]`; });
     applied[r.name] = (applied[r.name] || 0) + n;
@@ -288,7 +315,7 @@ export function applyMask(text, rules) {
 export function residual(text, rules) {
   const out = [];
   for (const r of rules) {
-    const re = new RegExp(r.pattern, 'g');
+    const re = new RegExp(r.pattern, 'g' + (r.flags || ''));
     for (const m of text.matchAll(re)) { if (!m[0].startsWith('[masked:')) { out.push({ name: r.name }); break; } }
   }
   return out;
@@ -344,14 +371,30 @@ function wikiPages(root, mr, areaText, limits) {
   return [...picked.keys()].map((file) => ({ file, rel: `${path.basename(root.path)}/${path.relative(root.path, file).split(path.sep).join('/')}`, text: excerpt(fs.readFileSync(file, 'utf8'), limits.linesPerPage), export: root.export }));
 }
 
+function sliceDoc(md, rel, anchor) {
+  if (anchor) { const s = extractSection(md, anchor); return { text: s ?? `(절 없음: ${rel}#${anchor} — 문서 전체 생략)`, missing: s == null }; }
+  const lines = md.split('\n');
+  return { text: lines.length > MAX_DOC_LINES ? lines.slice(0, MAX_DOC_LINES).join('\n') + '\n(… 상한으로 생략)' : md, missing: false };
+}
+
 function docText(docsRoot, ref) {
   const [rel, anchor] = ref.split('#');
   const file = path.join(docsRoot, rel);
   if (!fs.existsSync(file)) return { text: `(문서 없음: ${rel})`, missing: true };
-  const md = fs.readFileSync(file, 'utf8');
-  if (anchor) { const s = extractSection(md, anchor); return { text: s ?? `(절 없음: ${rel}#${anchor} — 문서 전체 생략)`, missing: s == null }; }
-  const lines = md.split('\n');
-  return { text: lines.length > MAX_DOC_LINES ? lines.slice(0, MAX_DOC_LINES).join('\n') + '\n(… 상한으로 생략)' : md, missing: false };
+  return sliceDoc(fs.readFileSync(file, 'utf8'), rel, anchor);
+}
+
+// `repo:<경로>[#절]` — 대상 저장소 자신의 문서(AGENTS.md·CLAUDE.md·저장소 docs/)를 고정 head 에서 읽는다(SC-2, R3-6). 워크트리 모드 = 워크트리 파일, diff-only = repository/files raw(ref=head).
+// 전송 허용 = 워크트리 전체가 D4 범위라 true. 저장소마다 있을 수도 없을 수도 있는 문서라 누락은 필수 여부와 무관하게 missing:true 로 계속(ERR 아님).
+function repoDocText(mr, snap, ref) {
+  const [rel, anchor] = ref.slice('repo:'.length).split('#');
+  let md = null;
+  try {
+    if (snap.mode === 'worktree' && snap.worktree) { const f = path.join(snap.worktree, rel); md = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null; }
+    else md = apiRaw(`projects/${mr.project.id}/repository/files/${encodePath(rel)}/raw?ref=${snap.head_sha}`).toString('utf8');
+  } catch { md = null; }
+  if (md == null) return { text: `(대상 저장소 문서 없음: ${rel} @ ${snap.head_sha.slice(0, 7)})`, missing: true };
+  return sliceDoc(md, rel, anchor);
 }
 
 function renderSources(sources, texts, { onlyB }) {
@@ -386,6 +429,12 @@ export function pack({ adapter, work }) {
   const refs = new Set(required);
   for (const d of mr.diffs || []) for (const p of [d.new_path, d.old_path]) if (p) for (const rule of adapter.docsMap.rules) if (matchesAny(p, rule.match)) for (const r of rule.docs) refs.add(r);
   for (const ref of refs) {
+    if (ref.startsWith('repo:')) {   // 대상 저장소 문서(R3-6) — 출처 = repo:<경로>@<head7>[#절]
+      const [rel, anchor] = ref.slice('repo:'.length).split('#');
+      const t = repoDocText(mr, snap, ref);
+      add('doc', `repo:${rel}@${snap.head_sha.slice(0, 7)}${anchor ? `#${anchor}` : ''}`, t.text, true, t.missing);
+      continue;
+    }
     const [rel, anchor] = ref.split('#');
     const t = docText(docsRoot, ref);
     if (t.missing && required.has(ref)) throw new PackError(`필수 정책 문서·절 누락: ${ref} (docsRoot ${docsRoot}) — 어댑터 policy.docs·docsMap.always 와 공통 문서 저장소 체크아웃을 확인하라`);
@@ -452,7 +501,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 node --check dev-workflow/skills/mr-review/scripts/lib/pack.mjs && echo CHECK_OK
 ```
 
-기대: pack 7/7 · 앞선 33/33 · `CHECK_OK`.
+기대: pack 8/8 · 앞선 37/37 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/pack.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/pack.test.mjs
@@ -461,7 +510,8 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/pack.test.mjs` → 7/7.
+- `node --test tests/mr-review/pack.test.mjs` → 8/8.
+- `repo:<경로>[#절]` 참조는 대상 저장소의 고정 head(워크트리 또는 raw API)에서 읽고 출처 `repo:<경로>@<head7>`·팩 B 포함, 누락은 `missing:true`(plan R3-6).
 - 전송 금지 루트(`export:false`)의 텍스트가 `pack-b.md`에 한 글자도 없다(F4) · 마스킹 잔존 시 `pack-b.md`가 없고 `codexSkipped:true`(D14·F5).
 - 출처마다 `[S<n>] <kind> · <경로@sha | 페이지>`가 `pack.json`과 두 팩 헤더에 있다(G4).
 
@@ -474,3 +524,4 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 - **`residual`은 `[masked:` 로 시작하는 매치를 무시한다. 이유:** 뒤보기 패턴(`token=`)이 가린 자리 자체를 다시 매치해 거짓 잔존이 된다.
 - **위키 페이지는 전문이 아니라 `excerpt`. 이유:** 발췌 상한은 어댑터 값(§5.3-2) — 프롬프트 비대화 방지.
 - **공통 문서 참조는 `경로#절접두` 로 절만 뽑는다. 정책 전문을 넣지 마라. 이유:** 어댑터 4.2 「항상 읽을 절」 — 정책 전문(350줄)은 두 모델 프롬프트를 압도한다.
+- **대상 저장소 문서(`repo:` 접두)는 다른 체크아웃의 작업 트리를 상대 경로로 읽지 마라 — 워크트리(고정 head) 또는 `repository/files/…/raw?ref=<head>`. 이유:** plan R3-6 — 어댑터 §2·§4가 요구하는 `AGENTS.md`·저장소 `docs/`를 docsRoot 기준으로는 표현할 수 없고, 작업 트리를 읽으면 고정 head·출처 SHA(F6)가 깨진다. 누락은 저장소 속성이라 `missing:true`로 계속(필수 문서 ERR 규칙의 예외).

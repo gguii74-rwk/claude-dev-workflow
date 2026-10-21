@@ -28,12 +28,12 @@
 | `workspaceRoot` | 확정본 위치(`guide/`) 기준 워크스페이스 루트까지의 상대 경로(그 저장소가 워크스페이스 루트 바로 아래면 `../..`) |
 | `docsRoot` | 그 저장소 자신(워크스페이스 루트 기준 이름) |
 | `projects.<basename>` | §1 표 — `id`·`path`(워크스페이스 루트 기준), 문서 저장소는 `deployExempt: true` |
-| `policy.judgeId` · `acceptedIds` · `docs` | §2 — 판정 기준 ID, 전환기 허용 ID 2종, 항상 읽을 절(`경로#절제목접두` 형식 — 예: `guide/<정책 파일>#5.`) |
+| `policy.judgeId` · `acceptedIds` · `docs` | §2 — 판정 기준 ID, 전환기 허용 ID 2종, 항상 읽을 절(`경로#절제목접두` 형식 — 예: `guide/<정책 파일>#5.`). §2의 「대상 저장소 루트의 `AGENTS.md`·`CLAUDE.md`」는 **`repo:` 접두**(SC-2 — `repo:AGENTS.md`·`repo:CLAUDE.md`, 고정 head 에서 읽고 없으면 `missing`) · §2의 승격 MR 추가 문서는 2차 범위라 넣지 않는다 |
 | `contract.lines` | 정책 §0의 10줄 이름 그대로 |
 | `baselineCandidates` | §4 끝의 후보 경로 패턴(glob) |
-| `docsMap.always` · `docsMap.rules` | §4 표 — 각 행의 변경 파일 패턴 → 읽을 문서(절 지정 가능) |
+| `docsMap.always` · `docsMap.rules` | §4 표 — 각 행의 변경 파일 패턴 → 읽을 문서(절 지정 가능). 공통 문서는 docsRoot 기준 경로, **대상 저장소 자신의 문서(§4의 app `docs/`·app `AGENTS.md`)는 `repo:<저장소 루트 기준 경로>`**(SC-2). 「반대편 저장소의 같은 기능」·위키 entity 는 기계 블록이 아니라 산문(§4 표 그대로 — LLM 이 읽는다) |
 | `wiki.roots` · `linesPerPage` · `pagesPerPack` | §5 표 — 루트 경로(`~` 허용)·`export`(허용/금지)·용어집 파일명·상한 |
-| `mask` | §6 — 패턴마다 `name`·JS 정규식 본문(전화·주민번호·이메일·token/Authorization·인증번호) |
+| `mask` | §6 — 패턴마다 `name`·JS 정규식 본문(전화·주민번호·이메일·token/Authorization·인증번호). **`Authorization:` 뒤 값은 인증 방식(`Bearer`·`Basic` …)과 자격증명을 한 매치로 소비하는 형태**(픽스처 `token` 패턴과 같은 모양 — `[^\s]+` 하나면 `Bearer`만 가려지고 자격증명이 남는다, plan R3-1). §6 산문의 「뒤 값」은 이 뜻으로 옮긴다 |
 | `deploy.targets` · `excludes` | §7 |
 | `comments.verdictFirstLine`(그룹 `policy`·`sha`·`kind`·`verdict`) · `baselineConfirm` · `authorToken`(그룹 `token`·`arg`) · `trustedReviewers` | §7a — 신뢰 리뷰어는 GitLab username(설계 초안에서 비워 둔 칸을 확정본에서 채운다) |
 | `report.dir` | §8 |
@@ -45,7 +45,7 @@ B="<Base directory for this skill>"   # /dev-workflow:mr-review 를 한 번 로�
 node -e 'import(process.argv[1]+"/scripts/lib/adapter.mjs").then(m=>{const a=m.loadAdapter(process.argv[2]);console.log("ADAPTER_OK projects="+Object.keys(a.projects).length+" wiki="+a.resolved.wikiRoots.length+" reportDir="+a.resolved.reportDir)}).catch(e=>{console.log("ADAPTER_FAIL "+e.message);process.exit(1)})' "$B" "<확정본 절대 경로>"
 ```
 
-기대 `ADAPTER_OK …`. `ADAPTER_FAIL`이면 메시지의 누락 키를 채운다. 추가로 닫힌 MR 하나로 `collect`·`check`·`deploy`·`pack`까지만 돌려(검토자 없이) `pack.json.codexSkipped === false`와 `mask.applied`를 확인한다 — 마스킹 패턴이 실제 본문에서 동작하는지 보는 것.
+기대 `ADAPTER_OK …`. `ADAPTER_FAIL`이면 메시지의 누락 키를 채운다. 추가로 닫힌 MR 하나로 `collect`·`check`·`deploy`·`pack`까지만 돌려(검토자 없이) `pack.json.codexSkipped === false`와 `mask.applied`를 확인한다 — 마스킹 패턴이 실제 본문에서 동작하는지 보는 것. 마스킹 회귀 1줄(plan R3-1): 확정본의 `mask` 배열로 `applyMask('Authorization: Bearer synthetic-credential-123', mask).text`가 `Authorization: [masked:token]`이어야 한다(자격증명 잔존 0).
 
 ### 3. 게시
 
@@ -64,3 +64,4 @@ node -e 'import(process.argv[1]+"/scripts/lib/adapter.mjs").then(m=>{const a=m.l
 
 - **이 plan 파일·커밋 메시지에 그 저장소의 실제 값을 옮겨 적지 마라. 이유:** 공개 저장소(D10).
 - **`trustedReviewers`를 비워 두지 마라. 이유:** 비면 지정 리뷰어 외 판정 댓글을 전부 무시한다 — 의도한 운용이면 비워도 되지만 설계 §7a는 Maintainer 계정을 적기로 했다.
+- **대상 저장소 문서를 docsRoot 상대 경로(`../<저장소>/AGENTS.md`)로 적지 마라 — `repo:` 접두. 이유:** plan R3-6 — 상대 경로는 다른 체크아웃의 작업 트리를 읽어 고정 head·출처 SHA·전송 허가(D4 워크트리 범위)가 어긋난다. `repo:`는 pack 이 워크트리 또는 raw API(ref=head)로 읽는다.

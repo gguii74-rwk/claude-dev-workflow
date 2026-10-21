@@ -112,7 +112,7 @@
     { "name": "phone", "pattern": "01[016789]-?\\d{3,4}-?\\d{4}" },
     { "name": "rrn", "pattern": "\\d{6}-?[1-4]\\d{6}" },
     { "name": "email", "pattern": "[\\w.+-]+@[\\w-]+\\.[\\w.-]+" },
-    { "name": "token", "pattern": "(?<=(?:token=|Authorization:\\s*))[^\\s\\]]+" },
+    { "name": "token", "pattern": "(?<=(?:token=|Authorization:\\s*))(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s\\]]+" },
     { "name": "otp", "pattern": "(?<=(?:인증번호|OTP)[^\\n]{0,40}?)\\b\\d{6}\\b" }
   ],
   "deploy": {
@@ -619,3 +619,4 @@ git commit -m "feat(mr-review): 어댑터 기계 블록 파서·glob·CLI 골격
 - **`parseArgs`에서 `--resolve`만 반복 인자다. 이유:** SC-6의 `verdict --resolve <id>=… …` 계약. 다른 키는 마지막 값이 이긴다.
 - **헬퍼의 `git()`은 `GIT_CONFIG_GLOBAL=/dev/null`로 돌린다. 이유:** 개발자 전역 설정(gpg 서명·훅)이 테스트 저장소를 오염시킨다.
 - **픽스처·테스트에 `010-1234-5678` 같은 가짜 값만 쓴다. 이유:** T6 grep 대상이자 D10 — 실제 번호·이름을 넣지 않는다.
+- **`Authorization:` 마스킹 패턴은 인증 방식(`Bearer`·`Basic` …)과 자격증명을 한 매치로 소비한다 — `[^\s]+` 하나로 끝내지 마라. 이유:** plan R3-1 — `Authorization: Bearer x`에서 `Bearer`만 가려지고 `x`가 남는데, `residual`은 `[masked:` 뒤를 다시 보지 않아 Codex 전송이 허용되고 리포트의 `SECRET_MASK`(`Bearer` 뒤 값)도 이미 `Bearer`가 지워져 못 잡는다. 어댑터 확정본(task-10)도 같은 형태여야 한다.
