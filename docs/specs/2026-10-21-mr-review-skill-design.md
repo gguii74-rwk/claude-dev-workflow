@@ -212,3 +212,20 @@
 | D14 | 개인정보 마스킹 실패 시 Codex를 건너뛰고 단일 모델 모드(fail-closed) | 설계 결정 — 전송 경계 확장 금지 |
 | D15 | GitLab 읽기는 `glab api`. 토큰을 스킬이 관리하지 않는다 | 설계 결정 |
 
+## 적대검증 ledger (spec)
+
+보안 크리티컬: no (사용자 확인) — 접촉면 외부 전송·개인정보 경계
+
+base = `origin/main` bf8c5fd · 어댑터 설계(별도 저장소 `common-docs` 브랜치 `docs/mr-review-adapter-design`)는 focus로 함께 검토. 어댑터 수정 커밋은 그 저장소 해시.
+
+| # | fingerprint | severity | disposition | 근거 |
+|---|---|---|---|---|
+| R1-F1 | §5.3 · Codex 워크트리 직접 읽기가 허용 목록·마스킹 우회 · 격리 입력 제공 | high | FIXED (사용자 결정 — ESCALATE 즉시군 ②) | D4를 워크트리 전체로 확정, 마스킹 범위 명시 — 엔진 0925ec3 · 어댑터 5c52b03 |
+| R1-F2 | §5.1 · API head와 fetch head 불일치·target 미갱신 · 스냅샷 SHA 일치 확인 | high | FIXED | target fetch·head 일치 확인·세 SHA 귀속 — 엔진 ba65745 |
+| R1-F3 | §5.1 · diff-only 잘림 과반 이하면 APPROVE 가능 · 복원 못 하면 증거 부족 | high | FIXED | raw 파일 복원, 실패 시 MISSING_EVIDENCE·APPROVE 불가 — 엔진 ba65745 |
+| R1-F4 | §5.5 · 상충 미해결 차단 후보를 판정에서 제외 · 판정 입력 유지 | high | FIXED | 「판정 보류」 상태 신설, APPROVE 차단 — 엔진 ba65745 |
+| R1-F5 | §5.1 · 이전 판정 댓글을 형식만으로 신뢰 · 작성자 검증 | high | FIXED | Human reviewer·신뢰 목록·MR 작성자 조건 — 엔진 ba65745 · 어댑터 c8d175c |
+| R1-F6 | §5.2 · 임의 문서 변경을 기준선 존재로 취급 · 후보로만 취급 | medium | FIXED | 기준선 후보 경로 패턴 + 관련성 확인 — 엔진 ba65745 · 어댑터 c8d175c |
+
+score 이력(전환용, 수정 전 스냅샷 · weight c4/h3/m1): R1 = 16. 미확인 FIXED 큐: R1-F1~F6(6건).
+
