@@ -292,7 +292,7 @@ git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with|claude-s
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 01 | 테스트 하네스 · 어댑터 파서 · CLI 골격 | [ ] | [task-01](2026-10-21-mr-review-skill/task-01-adapter-and-harness.md) | — | |
+| 01 | 테스트 하네스 · 어댑터 파서 · CLI 골격 | [x] | [task-01](2026-10-21-mr-review-skill/task-01-adapter-and-harness.md) | — | `56f55bf` — adapter 8/8, 전사 수정 없음, 태스크 리뷰 승인(minor 3 이월) |
 | 02 | GitLab 수집 · 스냅샷 고정 · diff-only 복원 (collect) | [ ] | [task-02](2026-10-21-mr-review-skill/task-02-collect.md) | 01 | |
 | 03 | 작성 규칙 검사표 · 댓글 신뢰 · 기준선 원문 (check) | [ ] | [task-03](2026-10-21-mr-review-skill/task-03-check.md) | 02 | |
 | 04 | 배포본 zip 대조 (deploy) | [ ] | [task-04](2026-10-21-mr-review-skill/task-04-deploy.md) | 02 | |
