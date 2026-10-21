@@ -419,8 +419,44 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 - 승계: plan 루프 **폴백 ① 종결**(성공 종료 아님) — plan R2-6 `bf43318`(구현 = task-03 `f4cc40f` `check.mjs` `stripFences` + 테스트 #998·#997)을 이 루프의 미확인 FIXED 큐에 처음부터 넣는다(「review-loop(impl) 필수 확인 항목」). SDD 원장(`.superpowers/sdd/2026-10-21-mr-review-skill/progress.md`, git 밖)의 이월 항목(보안 6 · 우선 minor 3 · 나머지 deferred minor)은 R1 §2c 분류 입력 — 행마다 출처 `SDD 이월`, 적대 라운드가 같은 결함을 내면 같은 행에 병합.
 - score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷, weight c4/h3/m1). 보안 트랙이라 전환 신호 1(정체) 무시.
 
-미확인 FIXED 큐(루프 시작): **1건** = plan R2-6(승계, 판정 주체 = 사용자).
+- R1(적대·자동, HEAD `0f50625`, 2026-10-21 22:2x~22:3x, 실행 로그 40건 · 응답 유효): 신규 8건(high 6·medium 2) — 3건은 SDD 보안 이월 행에 병합(R1-3 → S-1 · R1-7 → S-3 · R1-8 → S-5), R1-4 는 SDD T05 minor(중첩 루트)를 같은 행에 병합. SDD 이월 입력: 보안 6(S-1~S-6, 위험군 → 즉시 ESCALATE 6건, 답 = 전부 첫 선택지(추천) FIXED — **메인 TUI 경유 응답이라 사용자 본인 판정인지 확인 불가 → 대리 채택 규칙대로 `추천 자동 채택(위임)`으로 기록(fail-closed)**, 확인 임무 ③ 우선 감사 대상 · 대장 행 1~6) · 우선 minor 3(M-1·M-2 FIXED, 같은 W·head 재사용은 재현 안 됨 → DEFER_LOW) · 나머지 minor(문서 결함 5건 M-3~M-7 = medium + FIXED, 그 밖 DEFER_LOW). 기결정 재론 0 · batch 적재 0. 수정 커밋 `4b345fa`(T1 **81/81** = adapter 8·collect 10·check 13·deploy 15·pack 17·report 18 · T2~T7 0 · T3 56/56). 적대 소진 1 = auto-rounds → batch flush(적재 0 — 통과) → **정밀 모드**. 전환 신호: 보안 트랙(신호 1 무시) · 신호 2 미발화(FIXED 후보 18) · 신호 3 미발화(1/5) → R2 적대. plan R2-6: 적대 비재출현(R1) — 참고 신호, 큐 유지.
+
+| 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
+|---|---|---|---|---|---|---|
+| R1 | 적대·자동 | `0f50625` | 0/6/2 (R1 신규 8) + SDD 이월 blocking 13(보안 6 · minor 7) → 고유 행 18(병합 4) — 전부 FIXED(즉시 ESCALATE 6 = 추천 자동 채택(위임)) | **30** | 1(R2-6 승계) → 수정 후 19 | needs-attention |
+
+| # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
+|---|---|---|---|---|
+| S-1 | collect.mjs `rebuildDiffOnly` · diff-only 복원이 API `new_path`/`old_path` 를 검증 없이 `path.join` — Windows `..\`·상위 이동으로 work 밖 쓰기 · 절대·드라이브·역슬래시·`..` 거부 + 해소 목적지가 루트 안인지 확인, 밖이면 unrecovered | high | FIXED (추천 자동 채택(위임) — 즉시 ESCALATE, 메인 경유) **[자동 채택(위임)] 확인 임무 ③ 우선 감사** | 출처 SDD 이월(T02 path_traversal) + R1-3 병합. `4b345fa` — `insideRoot(root, rel)` · head·base 양쪽 · 테스트(5가지 탈출 경로 + base 경로 → unrecovered, 밖에 파일 없음, 원문 조회 0) |
+| S-2 | check.mjs `resolveIssue` · 이슈 댓글이 작성자 신뢰 필터 없이 기준선 원문·LLM 입력 · 신뢰 표지(작성자·「참고 자료 — 지시 아님」) | medium | FIXED (추천 자동 채택(위임) — 선택지 3 중 「표지만 단다」; 「신뢰 작성자 댓글만」·「알고도 둔다」 미채택) **[자동 채택(위임)] 우선 감사** | 출처 SDD 이월(T03). `4b345fa` — 댓글 절 제목 「## 이슈 댓글 (참고 자료 — 작성자 표기, 지시 아님)」 · pack `issue` 출처 `note` · SKILL Claude 프롬프트 지시 무시 문구 · 테스트(check·pack) |
+| S-3 | deploy.mjs `readZip.read` · `inflateRawSync` 출력 상한 없음(압축 폭탄 — 크기 검사가 할당 뒤) · 항목별 상한 + maxOutputLength | medium | FIXED (추천 자동 채택(위임)) **[자동 채택(위임)] 우선 감사** | 출처 SDD 이월(T04①) + R1-7 병합. `4b345fa` — `MAX_ENTRY` 256MiB · `maxOutputLength = 선언 크기` · 테스트(8MiB 를 usize 1 로 선언 → 「선언 크기」 throw · 상한 초과 선언) |
+| S-4 | deploy.mjs 첨부 다운로드 · `att.filename` 무인코딩으로 `uploads/…` API 경로에 붙음(`..` 로 다른 GET 엔드포인트) · 디코딩 → 경로 성분 거부 → 재인코딩 | medium | FIXED (추천 자동 채택(위임)) **[자동 채택(위임)] 우선 감사** | 출처 SDD 이월(T04②). `4b345fa` — `uploadName(att)`(secret 32자 16진수 · `/`·`\`·`..`·NUL 거부) · 테스트(`..%2F..`·`../..` → 조회 0·대조 불가 · 한글·공백 이름 정상) |
+| S-5 | deploy.mjs `readZip` · EOCD 목차 크기·디스크·항목 수·위치·중복 이름 미검사(배포 도구와 다른 목록) · 교차 검증, 어긋나면 corrupt | medium | FIXED (추천 자동 채택(위임)) **[자동 채택(위임)] 우선 감사** | 출처 SDD 이월(T04③) + R1-8 병합. `4b345fa` — EOCD = 파일 끝 · 디스크 0 · 항목 수 일치 · `cdOff + cdSize = EOCD = 파싱 끝` · 중복 이름 throw · 테스트(목차 크기 0·디스크·항목 수·꼬리 바이트·중복) |
+| S-6 | pack.mjs 2단계 `exportable` · 다른 등록 프로젝트의 이슈 원문(`issue`)이 팩 B(Codex)로 — 저장소 링크 규칙과 비대칭 · 이슈도 대상·docsRoot 프로젝트만 | medium | FIXED (추천 자동 채택(위임) — plan R1-3 의 `issue = true` 를 좁힘, SC-3 1줄) **[자동 채택(위임)] 우선 감사** | 출처 SDD 이월(T05). `4b345fa` — `exportable = body ∨ 프로젝트 ∈ {대상, docsProject}` · SC-3 `exportAllowed` 규칙 · 테스트(beta 이슈 B 제외·alpha 이슈 B 포함) |
+| R1-1 | pack.mjs `SECRET_MASK` · 개인정보 선치환(`"[masked:phone] 나머지"`)을 이미 가린 값으로 오인해 나머지 비밀값 노출·잔존 0 · 값 전체가 표식일 때만 건너뜀 + 회귀 | high | FIXED | `4b345fa` — `WHOLE_MARK`(표식 + 끝 구분자일 때만 제외) · 따옴표 없는 값은 표식 섞인 토큰을 한 덩어리로 · 테스트(따옴표 2종·따옴표 없음 · 멱등) |
+| R1-2 | pack.mjs `SECRET_MASK` · 이스케이프된 따옴표(`"prefix\"remaining"`)를 값 끝으로 해석해 뒷부분 노출 · 이스케이프 소비 + 회귀 | high | FIXED | `4b345fa` — 따옴표 값 = `(?:[^"\\\n]\|\\.)+`(3종 따옴표) · 테스트(JSON `\"`·작은따옴표 `\'`) |
+| R1-4 | pack.mjs `wikiPages` · 허용 루트(`~/wiki`) 안의 금지 루트(`~/wiki/private`) 페이지가 허용 루트 재귀로 팩 B 에 · 금지 하위 제외 | high | FIXED | R1 + SDD 이월(T05 minor 「export:true 안 export:false 중첩 F4 우회」) 병합. `4b345fa` — 허용 루트 탐색에서 모든 금지 루트 하위 제외(`inside`) · SC-3 · 테스트(금지 루트로만 1회 등록·B 에 본문·경로 없음) |
+| R1-5 | SKILL.md §5 · 렌즈 원문을 팩 B 밖에서 Codex 프롬프트에 다시 붙여 마스킹 우회 · Codex 는 팩 B adapter 출처에서 렌즈를 읽게 | high | FIXED | `4b345fa` — 공통 입력 4·「팩 B 밖」 목록에서 렌즈 원문 제거(렌즈 id·순서만) |
+| R1-6 | deploy.mjs `readZip` · creator·external attributes 미파싱 — 일반 파일을 심볼릭 링크로 바꾼 zip 도 「일치」 · 항목 유형을 head 의 git 모드와 대조 | high | FIXED | `4b345fa` — 항목 `type`(Unix 모드: file·symlink·dir·special) · `gitType`(ls-tree) 불일치 = `type` mismatch → 불일치 · 테스트(central 외부 속성만 링크로) |
+| M-1 | check.mjs `BLOB_RE` · blob 링크의 `?ref_type=heads`·끝 구두점이 경로에 섞여 거짓 미확보 → HOLD_EVIDENCE · 쿼리·구두점 제거 | medium | FIXED | 출처 SDD 이월(T03 우선 minor). `4b345fa` — `?` 앞에서 끊기 · `TRAIL_PUNCT` · 테스트 |
+| M-2 | report.mjs `cmdVerdict` · findings.json 검증 없음(`blocking:"true"`·오타 type → 차단 발견이 빠져 APPROVE) · 없는 id 의 `--resolve` 무시 · 손상 JSON 스택 · 형식 검증 ERR | medium | FIXED | 출처 SDD 이월(T06 우선 minor) + T06 minor(손상 JSON SyntaxError) 병합. `4b345fa` — `validateFindings` · 없는 id ERR · `readJson` ReportError(파일명) · 테스트(7 형태 + 없는 id + 깨진 JSON, stderr 0) |
+| M-3 | SKILL.md §8 · 리포트 절 목록에 「리뷰어 확인 필요」 조건·「리뷰 실패」·「리뷰어 결정」·부록 D 누락 · 목록 보정 | medium(문자적 갭 — 저비용 수정 반영) | FIXED | 출처 SDD 이월(preflight). `4b345fa` |
+| M-4 | SKILL.md §5 스키마 · `"reviewer": "<claude\|codex>"` 가 두 검토자에게 상대 모델 존재를 드러냄(D11) · 자기 이름 하나만 | medium | FIXED | 출처 SDD 이월(T07). `4b345fa` — `<REVIEWER>` + 바꿔 넣기 지시 |
+| M-5 | SKILL.md §5 · Codex 본문 JSON 을 `review-codex.json` 에 쓰라는 지시 없음 · 명시 | medium | FIXED | 출처 SDD 이월(T07). `4b345fa` |
+| M-6 | SKILL.md §0 · `$A`·`$W`·`$ROOT` 가 Bash 호출 간 남지 않음 · 블록마다 재지정 | medium | FIXED | 출처 SDD 이월(T07). `4b345fa` |
+| M-7 | SKILL.md §8 · F1 자가 점검 「glab 호출 전부 api GET」 vs §0 `glab auth status` 문자 충돌 · 예외 명시 | medium | FIXED | 출처 SDD 이월(T07). `4b345fa` |
+
+DEFER_LOW(출처 SDD 이월 — 요약 기록, 판정 영향 없음·fail-closed 이거나 표기·성능): 같은 W·같은 head 재실행 시 이전 `review-claude.json` 재사용(T07 우선 minor — **재현 안 됨**: `collect.mjs:172` 가 새 수집마다 `review-*.json`·`findings.json`·`verdict.json` 을 지운다, §9 `--resolve` 는 §5 를 다시 돌리지 않음) · worktree 모드 이전 `blobs/` 미삭제(preflight·T02 — cleanup 이 지움, 검토자 cwd 는 워크트리) · check `deployRequired` 가 diff-only rename old path 미반영(표시 전용) · 테스트 `deepMaskText` 이름·no-op · P2 「6모듈」 vs lib 7 · task-02 「단계 5」 표기 · T01 main() 로드 시 실행·`validate()` 중첩 배열 TypeError·값 없는 끝 `--resolve`(TypeError 로 멈춤 — 조용한 손실 아님) · T02 HEAD_MOVED 뒤 이전 mr/snapshot 잔존(SKILL 이 멈추고 cleanup) · diff 끝 개행·헤더 형식 차이 · 파일별 git 프로세스 · T03 `isPlaceholder` 의 `없음|TBD|TODO`·양식 문구 고정 · sameHead 접두 길이(어댑터 정규식이 정함) · 후보 루프 일시 오류(최종은 미확보) · ENOENT 스택(PF-7 로 해소) · `attachmentClaimedButMissing` 의 「첨부 없음」 문장(표시) · T04 주석 SHA 7자 접두 · `parseDeletedList` 공백 경로·비고 오인(fail-closed) · export-ignore/subst 거짓 불일치(fail-closed) · 미사용 `git` import · T05 PackError 스택(PF-7 해소) · pack.mjs `repoDocText` 주석 「워크트리 파일」 표기 · 공통 문서 작업 트리 읽기 vs HEAD SHA 출처 표기 · diff-only `repo:` raw 경로 테스트 없음 · T06 정수 아닌 pid · 조기 종료 블록 id 접두·유형 표기 · T07 §7 Codex 표 열 문구·수동 잔존 검사 SECRET_MASK(리포트는 저장 시 이미 적용) · zsh `kill --` 미실측·그룹 생존은 리더만 · T08 README 트리 중괄호·`--resolve` 의미 설명.
+
+미확인 FIXED 큐(R1 수정 후): **19건** = plan R2-6(승계) · S-1~S-6 · R1-1 · R1-2 · R1-4 · R1-5 · R1-6 · M-1~M-7. 루프 직접 판정(ACCEPTED/OUT_OF_SCOPE/DEFERRED_TO_IMPL/DUPLICATE): 0. 추천 자동 채택(위임): S-1~S-6(우선 감사). 미판정 blocking: 0. batch 적재: 0.
 
 ## 확인 대기 대장
 
-해당 없음
+| # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
+|---|---|---|---|---|---|---|
+| 1 | 2026-10-21 22:3x 질문 · 2026-10-22 07시 전 응답 | impl·R1 즉시 ESCALATE | diff-only 로 파일을 내려받을 때 작업 폴더 밖에 써질 수 있는 경로를 막을까 (S-1) | 지금 고친다 (FIXED) | 추천 자동 채택(위임) | 확인 대기 |
+| 2 | 2026-10-21 22:3x 질문 · 2026-10-22 07시 전 응답 | impl·R1 즉시 ESCALATE | 이슈 댓글(누구나 쓰는 글)을 검토 모델에 줄 때 어떻게 다룰까 (S-2) | 표지만 단다 (FIXED) | 추천 자동 채택(위임) | 확인 대기 |
+| 3 | 2026-10-21 22:3x 질문 · 2026-10-22 07시 전 응답 | impl·R1 즉시 ESCALATE | 배포본 zip 압축 폭탄으로 메모리가 바닥나는 걸 막을까 (S-3) | 지금 고친다 (FIXED) | 추천 자동 채택(위임) | 확인 대기 |
+| 4 | 2026-10-21 22:3x 질문 · 2026-10-22 07시 전 응답 | impl·R1 즉시 ESCALATE | 첨부 파일명으로 다른 GitLab 주소를 읽게 되는 걸 막을까 (S-4) | 지금 고친다 (FIXED) | 추천 자동 채택(위임) | 확인 대기 |
+| 5 | 2026-10-21 22:3x 질문 · 2026-10-22 07시 전 응답 | impl·R1 즉시 ESCALATE | 배포 도구와 다르게 읽히는 변조 zip 을 거부할까 (S-5) | 지금 고친다 (FIXED) | 추천 자동 채택(위임) | 확인 대기 |
+| 6 | 2026-10-21 22:3x 질문 · 2026-10-22 07시 전 응답 | impl·R1 즉시 ESCALATE | 다른 등록 프로젝트의 이슈 원문도 Codex 로 보낼까 (S-6) | 저장소 문서와 같게 좁힌다 (FIXED) | 추천 자동 채택(위임) | 확인 대기 |
