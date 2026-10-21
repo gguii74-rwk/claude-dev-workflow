@@ -146,6 +146,42 @@ test('마스킹 잔존 → 팩 B 미생성 · codexSkipped(fail-closed, D14)', (
   assert.equal(p.mask.ok, false);
 });
 
+test('전송 경계: 대상 외 등록 저장소의 기준선 원문은 팩 B 제외(R1-3) · 필수 정책 문서 누락은 ERR · 규칙 문서 누락은 missing 표시(R1-8)', () => {
+  const { adapter, work, env } = setup();
+  writeFileSync(join(work, 'baseline', '2.md'), '<!-- mr-review source: beta:guide/other.md@fff -->\n# 베타 저장소 문서 BETA-ONLY-TEXT\n');
+  writeFileSync(join(work, 'baseline', '3.md'), '<!-- mr-review source: alpha:docs/own.md@eee -->\n# 대상 저장소 문서 ALPHA-OWN-TEXT\n');
+  writeFileSync(join(work, 'check.json'), JSON.stringify({ baselineLinks: [
+    { kind: 'repo', project: 'docs', path: 'x.md', status: '확보', file: 'baseline/1.md', version: 'abc' },
+    { kind: 'repo', project: 'beta', path: 'guide/other.md', status: '확보', file: 'baseline/2.md', version: 'fff' },
+    { kind: 'repo', project: 'alpha', path: 'docs/own.md', status: '확보', file: 'baseline/3.md', version: 'eee' },
+  ] }));
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(work, 'pack.json'));
+  assert.equal(p.sources.find((s) => s.ref === 'baseline/1.md').inPackB, true);    // docsRoot 프로젝트
+  assert.equal(p.sources.find((s) => s.ref === 'baseline/2.md').inPackB, false);   // 등록됐지만 대상 외 저장소
+  assert.equal(p.sources.find((s) => s.ref === 'baseline/3.md').inPackB, true);    // 대상 저장소
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.doesNotMatch(b, /BETA-ONLY-TEXT/);
+  assert.match(b, /ALPHA-OWN-TEXT/);
+  assert.match(readFileSync(join(work, 'pack-a.md'), 'utf8'), /BETA-ONLY-TEXT/);
+  assert.match(b, /baseline\/2\.md · \(Codex 미제공\)/);
+  // 규칙 문서 누락 → missing:true 로 계속
+  const s2 = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.'], rules: [{ match: ['**/mapper/**/*.xml'], docs: ['architecture/none.md'] }] } } });
+  const r2 = runCli(['pack', '--adapter', s2.adapter, '--work', s2.work], s2.env);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  const p2 = readJson(join(s2.work, 'pack.json'));
+  const miss = p2.sources.find((s) => s.ref.startsWith('architecture/none.md@'));
+  assert.equal(miss.missing, true);
+  assert.match(readFileSync(join(s2.work, 'pack-a.md'), 'utf8'), /architecture\/none\.md@\w+ · \(누락 — 문서·절 없음\)/);
+  // 필수 정책 문서·절 누락 → ERR(fail-closed)
+  const s3 = setup({ adapterPatch: { policy: { judgeId: 'TEST-POLICY-v1.1', acceptedIds: ['TEST-POLICY-v1.0', 'TEST-POLICY-v1.1'], docs: ['guide/policy.md#9.'] } } });
+  const r3 = runCli(['pack', '--adapter', s3.adapter, '--work', s3.work], s3.env);
+  assert.equal(r3.code, 2);
+  assert.match(r3.first, /^ERR 필수 정책 문서·절 누락: guide\/policy\.md#9\./);
+  assert.ok(!existsSync(join(s3.work, 'pack.json')));
+});
+
 test('위키 루트가 없어도 돈다 · 댓글의 이메일도 B 에서 가려진다', () => {
   const { adapter, work, env, home } = setup({ notes: [{ id: 1, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T00:00:00Z', body: '문의 someone@example.test 로' }] });
   const r = runCli(['pack', '--adapter', adapter, '--work', work], { MR_REVIEW_HOME: join(home, 'nowhere') });
@@ -165,7 +201,7 @@ test('위키 루트가 없어도 돈다 · 댓글의 이메일도 B 에서 가�
 node --test tests/mr-review/pack.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 6 · pass 0 · fail 6.
+기대: tests 7 · pass 0 · fail 7.
 
 ### 2. `pack.mjs`
 
@@ -177,6 +213,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { matchesAny } from './adapter.mjs';
+
+export class PackError extends Error {}
 
 const PRIORITY_HEADING = /이유|이후 변경|함정|교훈|체크리스트|결정/;
 const MAX_DOC_LINES = 400;
@@ -332,28 +370,34 @@ export function pack({ adapter, work }) {
   const sources = [];
   const texts = new Map();
   let n = 0;
-  const add = (kind, ref, text, exportAllowed) => {
+  const add = (kind, ref, text, exportAllowed, missing = false) => {
     n += 1;
     const id = `S${n}`;
-    sources.push({ id, kind, ref, exportAllowed, inPackB: exportAllowed, lines: text.split('\n').length });
+    sources.push({ id, kind, ref, exportAllowed, inPackB: exportAllowed, lines: text.split('\n').length, missing });
     texts.set(id, text);
     return id;
   };
 
-  // 1. 문서 지도 + 정책 항상 읽는 절
+  // 1. 문서 지도 + 정책 항상 읽는 절. 필수 문서(policy.docs·docsMap.always)의 파일·절 누락은 fail-closed(ERR) — 정책을 읽지 않은 판정을 만들지 않는다.
+  //    문서 지도 규칙(docsMap.rules)의 문서 누락은 출처에 missing:true 로 남기고 계속한다(선택 보강 자료).
   const docsRoot = adapter.resolved.docsRoot;
   const docsSha = fs.existsSync(docsRoot) ? gitHead(docsRoot) : 'missing';
-  const refs = new Set([...adapter.docsMap.always, ...adapter.policy.docs]);
+  const required = new Set([...adapter.docsMap.always, ...adapter.policy.docs]);
+  const refs = new Set(required);
   for (const d of mr.diffs || []) for (const p of [d.new_path, d.old_path]) if (p) for (const rule of adapter.docsMap.rules) if (matchesAny(p, rule.match)) for (const r of rule.docs) refs.add(r);
   for (const ref of refs) {
     const [rel, anchor] = ref.split('#');
     const t = docText(docsRoot, ref);
-    add('doc', `${rel}@${docsSha}${anchor ? `#${anchor}` : ''}`, t.text, true);
+    if (t.missing && required.has(ref)) throw new PackError(`필수 정책 문서·절 누락: ${ref} (docsRoot ${docsRoot}) — 어댑터 policy.docs·docsMap.always 와 공통 문서 저장소 체크아웃을 확인하라`);
+    add('doc', `${rel}@${docsSha}${anchor ? `#${anchor}` : ''}`, t.text, true, t.missing);
   }
-  // 2. 기준선·이슈 원문(check 가 확보한 것)
+  // 2. 기준선·이슈 원문(check 가 확보한 것). 외부 전송(팩 B)은 어댑터 §6 허용 범위만 — 연결 이슈 · MR 본문 「배경」 · 대상 저장소 또는 공통 문서 저장소(docsRoot 와 같은 체크아웃인 프로젝트)의 문서.
+  //    어댑터 projects 에 등록됐다는 사실은 전송 허가가 아니다 — 그 밖 저장소의 원문은 Claude(팩 A)만 본다.
+  const docsProject = Object.entries(adapter.resolved.projects).find(([, p]) => path.resolve(p.checkout) === path.resolve(docsRoot))?.[0] ?? null;
   for (const l of check.baselineLinks || []) {
     if (l.status !== '확보' || !l.file) continue;
-    add(l.kind === 'issue' ? 'issue' : 'baseline', l.file, fs.readFileSync(path.join(work, l.file), 'utf8'), true);
+    const exportable = l.kind !== 'repo' || l.project === mr.project.name || (docsProject !== null && l.project === docsProject);
+    add(l.kind === 'issue' ? 'issue' : 'baseline', l.file, fs.readFileSync(path.join(work, l.file), 'utf8'), exportable);
   }
   // 3. 위키 — 용어집(변경 영역 텍스트에 용어가 있으면 슬러그 페이지) + 변경 파일 basename grep
   const areaText = [mr.title, ...(mr.diffs || []).flatMap((d) => [d.new_path, d.old_path])].join(' ');
@@ -367,7 +411,7 @@ export function pack({ adapter, work }) {
   const notesText = (mr.notes || []).filter((x) => !x.system).map((x) => `- (${x.author?.username || '?'} · ${x.created_at} · #${x.id})\n${x.body}`).join('\n\n');
   const body = `# MR !${mr.iid} ${mr.title}\n\nhead ${snap.head_sha} · base ${snap.base_sha}\n\n## 본문\n\n${mr.description || ''}\n\n## 댓글\n\n${notesText || '(없음)'}\n`;
 
-  const header = (label) => `# 컨텍스트 팩 ${label} — MR !${mr.iid} (${mr.project.name}) head ${snap.head_sha.slice(0, 7)}\n\n출처 목록:\n${sources.map((s) => `- [${s.id}] ${s.kind} · ${s.ref}${s.inPackB ? '' : ' · (Codex 미제공)'}`).join('\n')}\n`;
+  const header = (label) => `# 컨텍스트 팩 ${label} — MR !${mr.iid} (${mr.project.name}) head ${snap.head_sha.slice(0, 7)}\n\n출처 목록:\n${sources.map((s) => `- [${s.id}] ${s.kind} · ${s.ref}${s.inPackB ? '' : ' · (Codex 미제공)'}${s.missing ? ' · (누락 — 문서·절 없음)' : ''}`).join('\n')}\n`;
   const packA = `${header('A')}\n## MR\n\n${body}\n## 근거 자료\n${renderSources(sources, texts, { onlyB: false })}`;
   fs.writeFileSync(path.join(work, 'pack-a.md'), packA);
 
@@ -408,7 +452,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 node --check dev-workflow/skills/mr-review/scripts/lib/pack.mjs && echo CHECK_OK
 ```
 
-기대: pack 6/6 · 앞선 30/30 · `CHECK_OK`.
+기대: pack 7/7 · 앞선 32/32 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/pack.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/pack.test.mjs
@@ -417,13 +461,15 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/pack.test.mjs` → 6/6.
+- `node --test tests/mr-review/pack.test.mjs` → 7/7.
 - 전송 금지 루트(`export:false`)의 텍스트가 `pack-b.md`에 한 글자도 없다(F4) · 마스킹 잔존 시 `pack-b.md`가 없고 `codexSkipped:true`(D14·F5).
 - 출처마다 `[S<n>] <kind> · <경로@sha | 페이지>`가 `pack.json`과 두 팩 헤더에 있다(G4).
 
 ## Cautions
 
 - **팩 B에 「허용 목록에 없는 출처」를 넣는 분기를 만들지 마라. 이유:** 전송 범위를 넓히는 쪽으로 실패하지 않는다(D14·F4). 뺀 출처는 `(Codex 미제공)`으로 헤더에 남긴다.
+- **어댑터 `projects` 등록을 전송 허가로 읽지 마라 — 기준선 원문의 팩 B 투입은 대상 저장소·docsRoot 프로젝트·이슈·본문만. 이유:** R1-3 — 어댑터 §6 허용 범위는 「Baseline이 가리키는 공통 문서·대상 저장소 문서」다. `projects`는 수집 가능 범위(§5.1-5 SHA 해소)이지 전송 가능 범위가 아니다.
+- **필수 문서(`policy.docs`·`docsMap.always`)의 파일·절 누락은 `PackError`(ERR exit 2). `missing`을 버리고 정상 출처로 등록하지 마라. 이유:** R1-8 — 정책 절 제목이 바뀌거나 공통 문서 체크아웃이 없으면 정책을 읽지 않은 `APPROVE`가 나온다. 규칙 문서(`docsMap.rules`)만 `missing:true`로 계속.
 - **마스킹은 본문·댓글·발췌 전체에 건다 — 발췌만 걸지 마라. 이유:** D4 범위(본문·댓글·발췌). 워크트리 코드는 Codex가 직접 읽으므로 여기서 가리지 않는다(D4 — 코드 안 개인정보는 L5 발견).
 - **`residual`은 `[masked:` 로 시작하는 매치를 무시한다. 이유:** 뒤보기 패턴(`token=`)이 가린 자리 자체를 다시 매치해 거짓 잔존이 된다.
 - **위키 페이지는 전문이 아니라 `excerpt`. 이유:** 발췌 상한은 어댑터 값(§5.3-2) — 프롬프트 비대화 방지.

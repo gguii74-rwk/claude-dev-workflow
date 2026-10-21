@@ -119,16 +119,25 @@ test('자리표시자·줄 없음 → 미완 · 기준선 없음 + 후보 없음
   assert.equal(c.earlyExit.draftVerdict, 'RETURN_TO_DESIGN');
 });
 
-test('기준선 후보 문서가 diff 에 있으면 조기 종료하지 않고 후보로 남긴다 · 계약만 미완이면 HOLD_EVIDENCE', () => {
+test('기준선 후보 문서가 diff 에 있고 Baseline 만 미완이면 조기 종료하지 않는다(관련성 검토 경로 도달 — R1-10) · 다른 줄도 미완이면 HOLD_EVIDENCE 조기 종료', () => {
   const desc = body({ contractOver: { Baseline: '`<issue/spec/승인 결정 링크>`' } });
   const diffs = [{ old_path: 'docs/specs/2026-10-01-feature.md', new_path: 'docs/specs/2026-10-01-feature.md', new_file: true, renamed_file: false, deleted_file: false, too_large: false, diff: '' }];
   const { root, adapter, work } = setup({ description: desc, diffs });
   runCli(['check', '--adapter', adapter, '--work', work], fakeGlab(root, []).env);
   const c = readJson(join(work, 'check.json'));
   assert.deepEqual(c.baselineCandidateFiles, ['docs/specs/2026-10-01-feature.md']);
-  assert.equal(c.earlyExit.would, true);                 // Baseline 줄이 자리표시자 → 계약 미완
-  assert.equal(c.earlyExit.draftVerdict, 'HOLD_EVIDENCE'); // 후보가 있어 기준선 없음은 아님
+  assert.equal(c.contract.complete, false);
+  assert.deepEqual(c.contract.incompleteLines, ['Baseline']);   // Baseline 미완은 verdict 의 기계 증거 부족으로 그대로 전달된다
+  assert.equal(c.earlyExit.would, false);                        // Baseline 만 미완 + 후보 있음 → §5.3 이후 진행
+  assert.equal(c.earlyExit.draftVerdict, null);
   assert.equal(c.deployRequired, false);
+  const desc2 = body({ contractOver: { Baseline: '`<issue/spec/승인 결정 링크>`', 'Base SHA': '' } });
+  const { root: root2, adapter: adapter2, work: work2 } = setup({ description: desc2, diffs });
+  runCli(['check', '--adapter', adapter2, '--work', work2], fakeGlab(root2, []).env);
+  const c2 = readJson(join(work2, 'check.json'));
+  assert.equal(c2.earlyExit.would, true);                        // Baseline 외 줄(Base SHA) 미완 → 조기 종료
+  assert.equal(c2.earlyExit.draftVerdict, 'HOLD_EVIDENCE');      // 후보가 있어 기준선 없음은 아님
+  assert.match(c2.earlyExit.reason, /^계약 미완: Base SHA$/);
 });
 
 test('문서 링크(브랜치 ref) → 그 저장소의 브랜치 API 로 SHA 해소 · raw 원문 확보 · 고정 아님', () => {
@@ -554,8 +563,11 @@ export function check({ adapter, work }) {
   const baselineConfirm = judgeBaselineConfirm(track, notesC.confirms, mr.description_changed_at);
 
   const baselineMissing = (baselineType === '빈칸·자리표시자' || baselineType === '칸 없음') && baselineCandidateFiles.length === 0;
-  const would = !contract.complete || baselineMissing;
-  const earlyExit = { would, reason: would ? (baselineMissing ? '기준선 없음(후보 문서도 없음)' : `계약 미완: ${contract.incompleteLines.join(', ')}`) : '', draftVerdict: would ? (baselineMissing ? 'RETURN_TO_DESIGN' : 'HOLD_EVIDENCE') : null };
+  // §5.2 조기 종료: Baseline 만 미완이고 diff 에 기준선 후보 문서가 있으면 조기 종료하지 않는다(후보의 관련성은 §5.4 검토자가 본다 — 그 경로가 도달 가능해야 한다).
+  // Baseline 미완 자체는 incompleteLines 에 그대로 남아 verdict 의 기계 증거 부족(M-contract-Baseline → HOLD_EVIDENCE 이상)으로 전달된다.
+  const otherIncomplete = contract.incompleteLines.filter((n) => n !== 'Baseline');
+  const would = otherIncomplete.length > 0 || baselineMissing;
+  const earlyExit = { would, reason: would ? (baselineMissing ? '기준선 없음(후보 문서도 없음)' : `계약 미완: ${otherIncomplete.join(', ')}`) : '', draftVerdict: would ? (baselineMissing ? 'RETURN_TO_DESIGN' : 'HOLD_EVIDENCE') : null };
 
   const out = { contract, track, baselineType, baselineLinks, reason, baselineCandidateFiles, baselineConfirm, attachments, attachmentClaimedButMissing: claimed, deployRequired, deployExempt, deployNote: dNote, rebase, reviewerMismatch, priorVerdicts: notesC.priorVerdicts, authorTokens: notesC.authorTokens, ignoredComments: notesC.ignoredComments, rereview: notesC.rereview, earlyExit };
   fs.writeFileSync(path.join(work, 'check.json'), JSON.stringify(out, null, 2));
@@ -587,7 +599,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs 2>
 node --check dev-workflow/skills/mr-review/scripts/lib/check.mjs && echo CHECK_OK
 ```
 
-기대: check 9/9 · 앞선 14/14 · `CHECK_OK`.
+기대: check 9/9 · 앞선 15/15 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/check.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/check.test.mjs
@@ -607,3 +619,4 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 - **Baseline 링크의 ref를 MR head 로 바꾸지 마라. 이유:** 다른 저장소엔 그 SHA가 없고, 같은 저장소라도 L2는 승인본과 대조해야 한다(R5-F2).
 - **`closes_issues`와 본문 `#n`이 같은 이슈면 한 번만 받는다. 이유:** 팩 중복·API 호출 낭비.
 - **`earlyExit`는 판정만 계산하고 여기서 멈추지 않는다. 이유:** 멈출지(`--full`)는 SKILL.md가 결정한다(§5.2 조기 종료).
+- **Baseline 줄만 미완이고 후보 문서가 있으면 `would:false`. `!contract.complete`로 조기 종료하지 마라. 이유:** R1-10 — Baseline 자리표시자는 항상 계약 미완이라, 그렇게 하면 §5.2의 「후보 문서 관련성 검토」 경로가 기본 실행에서 도달 불가능해진다. Baseline 미완은 `incompleteLines`로 verdict에 남아 `APPROVE`를 막는다.

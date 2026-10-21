@@ -30,11 +30,14 @@
 // collect 계약 테스트 (spec §5.1 · SC-3) — 가짜 glab + 로컬 bare origin
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson } from './helpers.mjs';
 
 const IID = 7;
+const ENC = (p) => encodeURIComponent(p).replace(/\./g, '%2E');
+// diff-only 에서 비삭제 변경 파일마다 head 원문 raw 규칙(blobs/head 는 항상 만든다 — R1-5)
+const headRaw = (headSha, paths) => paths.map((p) => ({ match: `^api projects/101/repository/files/${ENC(p)}/raw\\?ref=${headSha}$`, text: `// head ${p}\n` }));
 const DEAD = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
 
 function meta(headSha, extra = {}) {
@@ -75,9 +78,14 @@ test('worktree 모드: fetch head = API head → 세 SHA 고정 + 워크트리',
   const { checkout, baseSha, headSha } = initRepos(root, { iid: IID });
   const g = fakeGlab(root, rules(headSha));
   const work = join(root, 'work');
+  mkdirSync(work, { recursive: true });
+  writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'APPROVE', head_sha: DEAD }));   // 이전 실행 잔존물
+  writeFileSync(join(work, 'findings.json'), '{}');
   const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work], g.env);
   assert.equal(r.code, 0, r.out + r.err);
   assert.equal(r.first, `COLLECTED worktree head=${headSha.slice(0, 7)} base=${baseSha.slice(0, 7)} target=${baseSha.slice(0, 7)} attempts=1 unrecovered=0`);
+  assert.ok(!existsSync(join(work, 'verdict.json')));          // 새 수집은 이전 판정·검토 산출물을 지운다(R1-1)
+  assert.ok(!existsSync(join(work, 'findings.json')));
   const snap = readJson(join(work, 'snapshot.json'));
   assert.equal(snap.mode, 'worktree');
   assert.equal(snap.head_sha, headSha);
@@ -132,12 +140,13 @@ test('diff-only 모드: 체크아웃이 없으면 잘린 diff 를 양쪽 blob �
   diffs[0] = { ...diffs[0], diff: '', too_large: true };                               // 복원 성공 대상
   diffs.push({ old_path: 'src/main/java/app/C.java', new_path: 'src/main/java/app/C.java', new_file: false, renamed_file: false, deleted_file: false, diff: '', too_large: true }); // raw 규칙 없음 → 실패
   const p = `projects/101/merge_requests/${IID}`;
-  const enc = encodeURIComponent('src/main/java/app/A.java').replace(/\./g, '%2E');
+  const enc = ENC('src/main/java/app/A.java');
   const g = fakeGlab(root, [
     ...rules(headSha).filter((x) => !x.match.includes('/diffs')),
     { match: `^api --paginate ${p}/diffs`, json: diffs },
     { match: `^api projects/101/repository/files/${enc}/raw\\?ref=${base}$`, text: 'class A { int v = 1; }\n' },
     { match: `^api projects/101/repository/files/${enc}/raw\\?ref=${headSha}$`, text: 'class A { int v = 2; }\n' },
+    ...headRaw(headSha, ['src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md']),   // C.java 는 head raw 규칙 없음 → 실패
   ]);
   const work = join(root, 'work');
   const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work], g.env);
@@ -154,9 +163,28 @@ test('diff-only 모드: 체크아웃이 없으면 잘린 diff 를 양쪽 blob �
   assert.equal(mr.diffs[0].too_large, false);
   assert.equal(mr.diffs[4].too_large, true);
   assert.ok(existsSync(join(work, 'blobs', 'head', 'src', 'main', 'java', 'app', 'A.java')));
+  assert.ok(existsSync(join(work, 'blobs', 'head', 'src', 'main', 'java', 'app', 'B.java')));          // 잘리지 않은 파일도 head 원문 확보
+  assert.ok(existsSync(join(work, 'blobs', 'head', 'docs', 'specs', '2026-10-01-feature.md')));
+  assert.ok(!existsSync(join(work, 'blobs', 'head', 'src', 'main', 'java', 'app', 'Old.java')));       // 삭제 파일은 없음
 });
 
-test('--diff-only 는 체크아웃이 있어도 diff-only 로 간다 · overflow 면 빈 diff 를 잘림으로 본다', () => {
+test('정상 diff-only(잘림 없음)에서도 blobs/head 에 비삭제 변경 파일 전문이 전부 있다 — 검토자 cwd (R1-5)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const headSha = 'a'.repeat(40);
+  const g = fakeGlab(root, [...rules(headSha), ...headRaw(headSha, ['src/main/java/app/A.java', 'src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md'])]);
+  const work = join(root, 'work');
+  const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work], g.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^COLLECTED diff-only .* unrecovered=0$/);
+  const snap = readJson(join(work, 'snapshot.json'));
+  assert.deepEqual(snap.rebuilt, []);
+  assert.deepEqual(snap.unrecovered, []);
+  for (const p of ['src/main/java/app/A.java', 'src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md']) assert.equal(readFileSync(join(work, 'blobs', 'head', p), 'utf8'), `// head ${p}\n`);
+  assert.ok(!existsSync(join(work, 'blobs', 'base')));            // 잘림이 없으면 base blob 은 받지 않는다
+});
+
+test('--diff-only 는 체크아웃이 있어도 diff-only 로 간다 · overflow 면 빈 diff 를 잘림으로 본다 · head 원문 실패도 unrecovered', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
   const { headSha } = initRepos(root, { iid: IID });
@@ -167,13 +195,14 @@ test('--diff-only 는 체크아웃이 있어도 diff-only 로 간다 · overflow
     ...rules(headSha).filter((x) => !x.match.includes('/diffs') && !x.match.includes('/changes')),
     { match: `^api --paginate ${p}/diffs`, json: diffs },
     { match: `^api ${p}/changes$`, json: { overflow: true } },
+    ...headRaw(headSha, ['src/main/java/app/A.java', 'docs/specs/2026-10-01-feature.md']),   // B.java 는 head raw 규칙 없음
   ]);
   const work = join(root, 'work');
   const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work, '--diff-only'], g.env);
   assert.equal(r.code, 0, r.out);
   const snap = readJson(join(work, 'snapshot.json'));
   assert.equal(snap.mode, 'diff-only');
-  assert.deepEqual(snap.unrecovered, ['src/main/java/app/B.java']);   // new_file: base blob 불필요, head raw 규칙 없음 → 실패
+  assert.deepEqual(snap.unrecovered, ['src/main/java/app/B.java']);   // new_file·잘림: head raw 규칙 없음 → 원문도 diff 도 확보 실패
   assert.equal(readJson(join(work, 'mr.json')).overflow, true);
 });
 
@@ -192,7 +221,7 @@ test('어댑터에 없는 프로젝트 → ERR exit 2', () => {
 node --test tests/mr-review/collect.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 6 · pass 0 · fail 6.
+기대: tests 7 · pass 0 · fail 7.
 
 ### 2. `gitlab.mjs`
 
@@ -331,29 +360,38 @@ export function pinWorktree(checkout, mr, work) {
   return { head, target, base, worktree };
 }
 
-// §5.1-3 — 잘린 diff 를 base·head 양쪽 blob 으로 재구성. 한쪽만으로는 복원이 아니다(삭제분 누락).
+// §5.1-3 — diff-only 검토 루트 `blobs/head/` 는 잘림 유무와 무관하게 항상 만든다: 삭제되지 않은 모든 변경 파일의 head 원문을 고정 SHA 로 받는다
+// (task-07 의 검토자 cwd·파일 전문 위치). 잘린 diff 는 base·head 양쪽 blob 으로 재구성 — 한쪽만으로는 복원이 아니다(삭제분 누락).
+// head 원문 확보 실패도 unrecovered 로 판정에 전달한다(검토자가 전문을 못 읽은 파일 = 증거 부족).
 export function rebuildDiffOnly(projectId, mr, work) {
   const head = mr.api_head;
   const base = mr.versions[0]?.base_commit_sha || mr.diff_refs?.base_sha || null;
   const unrecovered = [];
   const rebuilt = [];
+  const headRoot = path.join(work, 'blobs', 'head');
+  fs.rmSync(path.join(work, 'blobs'), { recursive: true, force: true });   // 이전 실행의 blob 잔존물 제거
+  fs.mkdirSync(headRoot, { recursive: true });
   const emptyFile = path.join(work, 'blobs', 'empty');
-  fs.mkdirSync(path.dirname(emptyFile), { recursive: true });
   fs.writeFileSync(emptyFile, '');
   for (const d of mr.diffs) {
-    if (!d.too_large) continue;
     const label = d.new_path || d.old_path;
+    const hfile = path.join(headRoot, d.new_path || d.old_path);
+    if (!d.deleted_file) {
+      try {
+        fs.mkdirSync(path.dirname(hfile), { recursive: true });
+        fs.writeFileSync(hfile, apiRaw(`projects/${projectId}/repository/files/${encodePath(d.new_path)}/raw?ref=${head}`));
+      } catch {
+        unrecovered.push(label);
+        continue;
+      }
+    }
+    if (!d.too_large) continue;
     if (!base) { unrecovered.push(label); continue; }
     try {
       const bfile = path.join(work, 'blobs', 'base', d.old_path);
-      const hfile = path.join(work, 'blobs', 'head', d.new_path);
       if (!d.new_file) {
         fs.mkdirSync(path.dirname(bfile), { recursive: true });
         fs.writeFileSync(bfile, apiRaw(`projects/${projectId}/repository/files/${encodePath(d.old_path)}/raw?ref=${base}`));
-      }
-      if (!d.deleted_file) {
-        fs.mkdirSync(path.dirname(hfile), { recursive: true });
-        fs.writeFileSync(hfile, apiRaw(`projects/${projectId}/repository/files/${encodePath(d.new_path)}/raw?ref=${head}`));
       }
       const a = d.new_file ? emptyFile : bfile;
       const b = d.deleted_file ? emptyFile : hfile;
@@ -374,6 +412,9 @@ export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
   if (!project) throw new CollectError(`어댑터에 없는 프로젝트: ${projectName} (있는 것: ${Object.keys(adapter.resolved.projects).join(', ')})`);
   if (!/^\d+$/.test(String(iid))) throw new CollectError(`--iid 는 정수여야 한다: ${iid}`);
   fs.mkdirSync(work, { recursive: true });
+  // 새 수집 = 이전 실행의 검사·팩·검토·판정 산출물 전부 무효화 — 같은 work 를 다시 쓸 때 옛 verdict.json·findings.json 이 render 에 읽히지 않게 한다
+  for (const f of ['check.json', 'deploy.json', 'pack.json', 'pack-a.md', 'pack-b.md', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json']) fs.rmSync(path.join(work, f), { force: true });
+  fs.rmSync(path.join(work, 'baseline'), { recursive: true, force: true });
   const useWorktree = !diffOnly && isGitDir(project.checkout);
   let mr = null;
   let snapshot = null;
@@ -439,7 +480,7 @@ node --test tests/mr-review/adapter.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fa
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: collect 6/6 · adapter 8/8 · `CHECK_DONE`만(CHECK_FAIL 없음).
+기대: collect 7/7 · adapter 8/8 · `CHECK_DONE`만(CHECK_FAIL 없음).
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/gitlab.mjs dev-workflow/skills/mr-review/scripts/lib/collect.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/collect.test.mjs
@@ -448,7 +489,7 @@ git commit -m "feat(mr-review): collect — MR 수집·스냅샷 SHA 고정·워
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/collect.test.mjs` → 6/6, adapter 8/8 유지.
+- `node --test tests/mr-review/collect.test.mjs` → 7/7, adapter 8/8 유지.
 - 워크트리 모드에서 `snapshot.json.head_sha === mr.json.api_head`(F6) · HEAD 이동 시 `ERR HEAD_MOVED` exit 3 · 3회 재수집 로그.
 - diff-only에서 잘린 파일이 양쪽 blob으로 재구성되어 `-`·`+` 양쪽 줄이 diff에 있고, 실패 파일은 `unrecovered`에 남는다.
 - `glab mr …` 호출 0건(헬퍼 로그의 첫 인자는 전부 `api`).

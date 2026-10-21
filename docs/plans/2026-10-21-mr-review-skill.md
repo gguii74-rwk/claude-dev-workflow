@@ -117,8 +117,8 @@
 | `deploy.json` | deploy | verdict·render | §5.2b 결과 |
 | `pack.json` · `pack-a.md` · `pack-b.md` | pack | SKILL(검토자 프롬프트)·render | 출처 목록·마스킹 보고·팩 본문 |
 | `review-claude.json` · `review-codex.json` | SKILL(검토자) | SKILL(병합) · `review-validate` | SC-4 |
-| `findings.json` | SKILL(메인 병합) | verdict·render | SC-5 |
-| `verdict.json` | verdict | render | 판정 결과 |
+| `findings.json` | SKILL(메인 병합) · verdict(`--resolve` 결정 영속화) | verdict·render | SC-5 — `head_sha` = `snapshot.head_sha` |
+| `verdict.json` | verdict | render | 판정 결과 — render는 `head_sha` ≠ `snapshot.head_sha`이거나 부재(비-early)면 리뷰 실패로 렌더 |
 | `codex.prompt` · `codex.out` · `codex.sh` · `codex.pid` | SKILL | cleanup | Codex 실행 파일(원시 — 보존 금지) |
 | `zip/<파일명>` · `worktree/` · `blobs/` | deploy·collect | cleanup | 임시 산출물(F7) |
 
@@ -145,7 +145,7 @@
   "attempts": 1, "unrecovered": ["<path>"], "rebuilt": ["<path>"], "fetched_at": "<ISO>" }
 ```
 - `mode: worktree` — `head_sha` = fetch한 `refs/mr-review/<iid>/head`가 가리키는 SHA(= `mr.json.api_head`와 같아야 함 — 다르면 collect가 1부터 다시, 최대 3회, 초과 시 exit 3 `HEAD_MOVED`). `target_sha` = fetch 직후 `origin/<target>`. `base_sha` = `merge-base`.
-- `mode: diff-only` — `head_sha` = `api_head`, `base_sha`·`target_sha` = `versions[0].base_commit_sha`(없으면 `diff_refs.base_sha`). `unrecovered` = 양쪽 blob으로 diff를 재구성하지 못한 변경 파일. `rebuilt` = 재구성에 성공해 `mr.json.diffs[*].diff`를 교체한 파일.
+- `mode: diff-only` — `head_sha` = `api_head`, `base_sha`·`target_sha` = `versions[0].base_commit_sha`(없으면 `diff_refs.base_sha`). **검토 루트 `<work>/blobs/head/`는 잘림 유무와 무관하게 항상 만들고 삭제되지 않은 모든 변경 파일의 head 원문을 그 SHA로 받는다**(task-07의 검토자 cwd·파일 전문 위치). `unrecovered` = head 원문을 받지 못했거나 양쪽 blob으로 diff를 재구성하지 못한 변경 파일. `rebuilt` = 재구성에 성공해 `mr.json.diffs[*].diff`를 교체한 파일. 새 `collect`는 이전 실행의 `check.json`·`deploy.json`·`pack*`·`review-*.json`·`findings.json`·`verdict.json`·`baseline/`·`blobs/`를 먼저 지운다.
 
 **`check.json`**:
 ```json
@@ -173,7 +173,7 @@
 - `baselineType` 판정: Baseline 줄 값에 저장소 blob 링크(`/-/blob/<ref>/<path>`) 있음 → `문서 링크`; `#<n>`·`/-/issues/<n>` → `이슈`; 「배경」·`MR 본문` 문구 → `MR 본문 배경`; 자리표시자 → `빈칸·자리표시자`; 줄 없음 → `칸 없음`; 그 밖 비어 있지 않은 글 → `서술만`.
 - `baselineConfirm`: 경량일 때만 평가. 댓글 작성자가 `reviewers` 또는 `trustedReviewers`이고 본문 첫 줄이 `baselineConfirm` 정규식에 맞으면 후보. 최신 후보의 `created_at` < `description_changed_at`이면 `낡음`. 정식·핫픽스 = `해당 없음`.
 - `priorVerdicts[*].trusted` = 작성자가 `reviewers`∪`trustedReviewers`에 있고 **MR 작성자가 아님**. `rereview.active` = 신뢰 이전 판정 중 최신의 `sha`가 `snapshot.head_sha`와 다름(7자 이상 접두 비교).
-- `earlyExit.would` = `!contract.complete || baselineType ∈ {빈칸·자리표시자, 칸 없음} && baselineCandidateFiles.length === 0`. `draftVerdict` = 기준선 없음이면 `RETURN_TO_DESIGN`, 아니면 `HOLD_EVIDENCE`.
+- `earlyExit.would` = `(incompleteLines 중 Baseline 외 줄 있음) || (baselineType ∈ {빈칸·자리표시자, 칸 없음} && baselineCandidateFiles.length === 0)` — **Baseline 줄만 미완이고 후보 문서가 있으면 `false`**(§5.2 후보 관련성 검토 경로 보장 — Baseline 미완은 `incompleteLines`로 verdict의 기계 증거 부족에 남는다). `draftVerdict` = 기준선 없음이면 `RETURN_TO_DESIGN`, 아니면 `HOLD_EVIDENCE`.
 
 **`deploy.json`**:
 ```json
@@ -189,10 +189,11 @@
 
 **`pack.json`**:
 ```json
-{ "sources": [{ "id": "S1", "kind": "doc|wiki|baseline|issue|adapter", "ref": "<docsRoot 기준 경로@sha | 위키 페이지명 | baseline/1.md>", "exportAllowed": true, "inPackB": true, "lines": 0 }],
+{ "sources": [{ "id": "S1", "kind": "doc|wiki|baseline|issue|adapter", "ref": "<docsRoot 기준 경로@sha | 위키 페이지명 | baseline/1.md>", "exportAllowed": true, "inPackB": true, "lines": 0, "missing": false }],
   "mask": { "applied": { "phone": 0 }, "residual": [{ "name": "", "where": "pack-b|body|note" }], "ok": true },
   "packA": "pack-a.md", "packB": "pack-b.md", "codexSkipped": false, "codexSkipReason": null }
 ```
+- `exportAllowed`(= 팩 B 투입) 규칙: `doc`·`adapter`·`issue`·본문 기준선 = `true` · `wiki` = 루트의 `export` · **`baseline`(저장소 링크) = 링크의 프로젝트가 리뷰 대상 프로젝트이거나 `docsRoot`와 같은 체크아웃인 프로젝트일 때만 `true`** — 어댑터 `projects` 등록은 수집 가능 범위이지 전송 허가가 아니다(어댑터 §6). `missing` = 문서 지도 규칙 문서의 파일·절 누락(계속 진행) — **필수 문서(`policy.docs`·`docsMap.always`) 누락은 `pack`이 `ERR` exit 2**(fail-closed).
 
 **`verdict.json`**:
 ```json
@@ -231,7 +232,8 @@
   "outsideWorktreePaths": [] }
 ```
 - `blocking` = `type ∈ {DEFECT, MISSING_EVIDENCE}` 또는 `DESIGN_DRIFT`이면서 어댑터 렌즈의 차단 승격 조건(산문 — 메인이 판단)에 해당. `FOLLOW_UP`은 항상 `false`.
-- `unresolved: true` = §5.5-2 상충 또는 한쪽만의 낮은 확신 차단 후보를 메인이 코드로 확인하지 못함. `resolution`은 `--resolve <id>=confirmed|dismissed`로만 채워진다.
+- `unresolved: true` = §5.5-2 상충 또는 한쪽만의 낮은 확신 차단 후보를 메인이 코드로 확인하지 못함. `resolution`은 `--resolve <id>=confirmed|dismissed`로만 채워지며 `verdict`가 이 파일에 **영속화**한다(호출을 나눠도 유지 — `unresolved`는 `false`로). `dismissReason`은 메인이 리뷰어 말대로 미리 적고 리포트 「리뷰어 결정」·부록 D에 남는다.
+- `head_sha` = `snapshot.head_sha`. `verdict`는 다르면 `review-failed`(이전 실행의 검토 결과로 판정하지 않는다 — F6).
 
 ### SC-6. CLI 계약 — `node <Base directory>/scripts/mr-review.mjs <서브커맨드> …` (`<Base directory>` = 스킬 로드 때 표시되는 「Base directory for this skill」)
 

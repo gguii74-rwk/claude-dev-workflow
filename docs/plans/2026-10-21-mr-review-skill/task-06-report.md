@@ -167,8 +167,47 @@ test('verdict CLI → verdict.json · render 전체 리포트(실행 블록 형�
   assert.match(md, /## 부록 A/);
   assert.match(md, /## 부록 B[\s\S]*wiki-private\/x\.md.*Codex 미제공/);
   assert.match(md, /## 부록 C[\s\S]*claude[\s\S]*codex/);
+  assert.match(md, /## 부록 C[\s\S]*근거: S1 · 시나리오: 로그 유출 · 설계 내 수정: yes/);        // 원본 발견의 근거·시나리오 보존(R1-9)
+  assert.match(md, /## 부록 D[\s\S]*\*\*F1\*\*[\s\S]*실패 시나리오: 로그에 평문[\s\S]*\*\*F3\*\*/);   // 병합 발견 상세
   assert.match(md, /정책 버전: 계약 TEST-POLICY-v1\.0 \/ 판정 기준 TEST-POLICY-v1\.1/);
   assert.match(md, /교차 검토: 있음/);
+});
+
+test('--resolve 영속화: 호출을 나눠도 앞선 결정이 유지되고 리포트에 기각 근거가 남는다(R1-7) · head 불일치 verdict·findings 는 review-failed(R1-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const fnd = findings([F({ unresolved: true, source: 'codex', confidence: 'low', dismissReason: '리뷰어: 해당 로그는 테스트 전용 경로' }), F({ id: 'F2', unresolved: true, source: 'claude', confidence: 'medium', title: '널 역참조' })]);
+  const work = fullWork(root, { fnd });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT undetermined -');
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=dismissed']).first, 'VERDICT undetermined -');   // F2 아직 미확정
+  const persisted = readJson(join(work, 'findings.json')).findings.find((f) => f.id === 'F1');
+  assert.equal(persisted.resolution, 'dismissed');
+  assert.equal(persisted.unresolved, false);
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F2=confirmed']).first, 'VERDICT determined CHANGES_REQUESTED');   // F1 기각이 보존돼 F2 만으로 계산
+  const out = join(root, 'r.md');
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  const md = readFileSync(out, 'utf8');
+  assert.match(md, /## 리뷰어 결정\(--resolve\)[\s\S]*\*\*F1\*\* DEFECT — 비밀번호 평문 로그: 기각 · 근거: 리뷰어: 해당 로그는 테스트 전용 경로/);
+  assert.match(md, /## 부록 D[\s\S]*\*\*F2\*\*[\s\S]*리뷰어 결정: confirmed/);
+  const block = md.match(/```text\n([\s\S]*?)\n```/)[1];
+  assert.doesNotMatch(block, /비밀번호 평문 로그/);                    // 기각된 F1 은 실행 블록에서 빠진다
+  assert.match(block, /DEFECT — 널 역참조/);
+  // head 불일치 — 이전 실행의 판정·검토 결과 재사용 차단
+  const stale = { ...readJson(join(work, 'verdict.json')), head_sha: 'c'.repeat(40) };
+  writeFileSync(join(work, 'verdict.json'), JSON.stringify(stale));
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  const md2 = readFileSync(out, 'utf8');
+  assert.match(md2, /리뷰 실패[^\n]*verdict\.json 의 head ccccccc ≠ 스냅샷 head/);
+  assert.doesNotMatch(md2, /^리뷰 계약 TEST-POLICY/m);
+  const oldFnd = findings([F()], { head_sha: 'c'.repeat(40) });
+  writeFileSync(join(work, 'findings.json'), JSON.stringify(oldFnd));
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT review-failed -');
+  assert.match(readJson(join(work, 'verdict.json')).reasons[0], /findings\.json\)의 head ccccccc/);
+  // verdict.json 없이 render → 리뷰 실패(블록 없음)
+  const work2 = fullWork(tmp(), { fnd: findings([]) });
+  const out2 = join(root, 'nv.md');
+  runCli(['render', '--adapter', adapter, '--work', work2, '--out', out2]);
+  assert.match(readFileSync(out2, 'utf8'), /리뷰 실패[^\n]*verdict\.json 없음/);
 });
 
 test('판정 미확정: 게시용 블록 없음 · 헤더 표시 · 리뷰어 확인 필요 절에 두 갈래 (R1-F4·R2-F4)', () => {
@@ -257,7 +296,7 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
 node --test tests/mr-review/report.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 11 · pass 0 · fail 11.
+기대: tests 12 · pass 0 · fail 12.
 
 ### 2. `report.mjs`
 
@@ -318,6 +357,9 @@ export function computeVerdict({ check, snapshot, deploy, findings, resolves = {
   const base = { contractPolicyId, judgeId, head_sha: snapshot?.head_sha || null, defects: [], evidence: [], unresolved: [], baselineMissing: false, returnToDesignBy: [], branches: {}, machineEvidence: [], reasons: [] };
   if (!findings || !Array.isArray(findings.validReviewers) || findings.validReviewers.length === 0) {
     return { ...base, status: 'review-failed', verdict: null, reasons: ['완료되고 스키마를 통과한 검토 결과가 0개 — 판정을 만들지 않는다(§5.4)'] };
+  }
+  if (findings.head_sha && snapshot?.head_sha && findings.head_sha !== snapshot.head_sha) {
+    return { ...base, status: 'review-failed', verdict: null, reasons: [`병합 발견(findings.json)의 head ${s7(findings.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 검토 결과로는 판정을 만들지 않는다(F6)`] };
   }
   const list = (findings.findings || []).map((f) => ({ ...f }));
   for (const f of list) {
@@ -449,7 +491,14 @@ export function renderReport({ adapter, work, early = false }) {
   const deploy = readJson(work, 'deploy.json');
   const pack = readJson(work, 'pack.json');
   const findings = early ? null : readJson(work, 'findings.json');
-  const verdict = early ? null : readJson(work, 'verdict.json');
+  let verdict = early ? null : readJson(work, 'verdict.json');
+  // 판정 입력의 head 일치 검증 — 같은 work 에 남은 이전 실행의 verdict.json·findings.json 을 현재 head 의 판정으로 쓰지 않는다(F6). 비-early 인데 verdict 가 없으면 리뷰 실패로 렌더한다(판정 블록 없음).
+  const failed = (reason) => ({ status: 'review-failed', verdict: null, reasons: [reason], unresolved: [], branches: {}, defects: [], evidence: [], machineEvidence: [], contractPolicyId: check.contract?.policyId || adapter.policy.judgeId, head_sha: snapshot.head_sha });
+  if (!early) {
+    if (!verdict) verdict = failed('verdict.json 없음 — verdict 를 실행하지 않았다(검토 결과 0개 경로에서도 verdict 를 실행한다)');
+    else if (verdict.head_sha !== snapshot.head_sha) verdict = failed(`verdict.json 의 head ${s7(verdict.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 판정은 쓰지 않는다(verdict 를 다시 실행)`);
+    else if (findings?.head_sha && findings.head_sha !== snapshot.head_sha) verdict = failed(`findings.json 의 head ${s7(findings.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 검토 결과는 쓰지 않는다`);
+  }
   const adapterId = `${path.basename(adapter.file)}@${createHash('sha1').update(adapter.markdown).digest('hex').slice(0, 8)}`;
   const mode = early ? '조기 종료(결정적 검사만)' : `${check.rereview?.active ? '재리뷰' : '전체'}${snapshot.mode === 'diff-only' ? ' · diff-only' : ''}`;
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
@@ -464,7 +513,7 @@ export function renderReport({ adapter, work, early = false }) {
   if (check.track === '경량' && (check.baselineConfirm?.status === '없음' || check.baselineConfirm?.status === '낡음')) header.push(`- **기준선 미확인**(${check.baselineConfirm.status}) — 아래 확인 문안을 먼저 게시한 뒤 판정을 게시`);
   if (check.rereview?.active) header.push(`- 재리뷰: 이전 판정 ${check.rereview.prior_verdict} @ ${s7(check.rereview.prior_head)} (댓글 #${check.rereview.prior_note_id})`);
   if (verdict?.status === 'undetermined') header.push(`- **판정 미확정 — 리뷰어 확인 필요 ${verdict.unresolved.length}건**`);
-  if (verdict?.status === 'review-failed') header.push('- **리뷰 실패** — 유효한 검토 결과 0개. 게시용 판정 블록을 만들지 않는다');
+  if (verdict?.status === 'review-failed') header.push(`- **리뷰 실패** — ${verdict.reasons?.[0] || '유효한 검토 결과 0개'}. 게시용 판정 블록을 만들지 않는다`);
   if ((findings?.outsideWorktreePaths || []).length) header.push(`- **격리 위반 의심** — Codex 가 워크트리 밖을 읽었을 수 있음: ${findings.outsideWorktreePaths.join(', ')}`);
   if (early) header.push(`- **조기 종료** — ${check.earlyExit?.reason}`);
 
@@ -493,6 +542,12 @@ export function renderReport({ adapter, work, early = false }) {
     parts.push('');
   }
   if (verdict?.status === 'review-failed') parts.push('## 리뷰 실패', '', ...verdict.reasons.map((r) => `- ${r}`), '');
+  const resolved = (findings?.findings || []).filter((f) => f.resolution === 'confirmed' || f.resolution === 'dismissed');
+  if (resolved.length) {
+    parts.push('## 리뷰어 결정(--resolve)', '');
+    for (const f of resolved) parts.push(`- **${f.id}** ${f.type} — ${f.title}: ${f.resolution === 'confirmed' ? '확인(차단 유지)' : '기각'}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}`);
+    parts.push('');
+  }
   parts.push('## 부록 A — 작성 규칙 검사표 · 배포본 대조', '', checkTable(check, deploy), '');
   if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · zip ${deploy.zip.attachment || '없음'}(주석 ${deploy.zip.comment_sha ? s7(deploy.zip.comment_sha) : '-'})${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}`, '');
   if (!early) {
@@ -503,8 +558,20 @@ export function renderReport({ adapter, work, early = false }) {
       const r = readJson(work, `review-${name}.json`);
       parts.push(`### ${name}`, '');
       if (!r) { parts.push('(없음)', ''); continue; }
-      parts.push(...((r.findings || []).map((f) => `- [${f.lens}] ${f.type} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 확신 ${f.confidence} · ${f.recommendation || ''}`)), (r.findings || []).length ? '' : '(발견 없음)', '');
+      // §5.7 원본 발견 보존 — 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제까지(마스킹은 아래 전체 적용)
+      parts.push(...((r.findings || []).map((f) => `- [${f.lens}] ${f.type} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 확신 ${f.confidence} · 근거: ${f.evidence || '-'} · 시나리오: ${f.scenario || '-'} · 설계 내 수정: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''} · 권고: ${f.recommendation || ''}`)), (r.findings || []).length ? '' : '(발견 없음)', '');
     }
+    // 부록 D — 병합 발견 상세: 실행 블록(40줄)이 생략한 근거·시나리오·전제·리뷰어 결정을 발견마다 보존한다(사람이 차단 판단을 검증할 수 있게)
+    parts.push('## 부록 D — 병합 발견 상세 · 리뷰어 결정', '');
+    const merged = findings?.findings || [];
+    if (!merged.length) parts.push('(발견 없음)', '');
+    for (const f of merged) {
+      parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? ' (차단)' : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}`,
+        `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}`,
+        `  - 권고: ${f.recommendation || '-'}`,
+        `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);
+    }
+    parts.push('');
   }
   const text = parts.join('\n');
   return applyMask(text, adapter.mask).text;   // F5 — 산출물 전체 비밀값 제거
@@ -553,6 +620,12 @@ export async function cmdVerdict(args, ctx) {
   const resolves = {};
   for (const r of args.resolve || []) { const m = String(r).match(/^([^=]+)=(.+)$/); if (!m) throw new ReportError(`--resolve 형식: <id>=confirmed|dismissed (${r})`); resolves[m[1]] = m[2]; }
   const v = computeVerdict({ check, snapshot, deploy, findings, resolves, judgeId: ctx.adapter.policy.judgeId });
+  // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다.
+  if (Object.keys(resolves).length) {
+    let touched = false;
+    for (const f of findings.findings || []) { const r = resolves[f.id]; if (r !== undefined) { f.resolution = r; f.unresolved = false; touched = true; } }
+    if (touched) fs.writeFileSync(path.join(ctx.work, 'findings.json'), JSON.stringify(findings, null, 2));
+  }
   fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify(v, null, 2));
   return `VERDICT ${v.status} ${v.verdict || '-'}`;
 }
@@ -609,7 +682,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: report 11/11 · 전체 47/47 · `CHECK_DONE`만.
+기대: report 12/12 · 전체 51/51 · `CHECK_DONE`만.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/report.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/report.test.mjs
@@ -618,8 +691,9 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/report.test.mjs` → 11/11, 전체 47/47.
+- `node --test tests/mr-review/report.test.mjs` → 12/12, 전체 51/51.
 - 판정은 정책 4종만(D9) · 미해결 후보가 있으면 게시용 블록을 만들지 않고 헤더에 「판정 미확정」(R1-F4·R2-F4) · 발견 0건이어도 계약 미완·미복원 diff·배포본 불일치·원문 미확보면 `HOLD_EVIDENCE`(R5-F1·R1-F3·R4-F1·R4-F3) · 유효 검토 0개면 블록 없음(R4-F2) · 리포트 전체에 마스킹 패턴 잔존 0(F5) · `cleanup` 뒤 워크트리·zip·blobs·codex 원시 파일 없음(F7).
+- `--resolve` 결정이 `findings.json`에 영속돼 호출을 나눠도 유지되고 리포트 「리뷰어 결정」·부록 D에 근거가 남는다(plan R1-7) · `verdict.json`·`findings.json`의 head가 `snapshot.head_sha`와 다르면 판정 블록 없이 리뷰 실패, 비-early에서 `verdict.json` 부재도 리뷰 실패(plan R1-1) · 부록 C·D에 근거·시나리오·깨진 전제 보존(plan R1-9).
 
 ## Cautions
 
@@ -629,3 +703,6 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 - **리포트 마스킹은 마지막에 전체 텍스트에 한 번. 절별로 빼먹지 마라. 이유:** 부록 C(모델 원문)가 비밀값 누출의 전형(R2-F3).
 - **`review-validate`는 `ERR` 접두 없이 `INVALID …` exit 1. 이유:** SC-6 — SKILL이 `VALID`/`INVALID`만 본다.
 - **`cleanup`은 JSON·리포트·`baseline/`을 지우지 않는다. 이유:** 재리뷰 입력(§5.6)·`--resolve` 재계산 입력이다.
+- **`--resolve` 결정은 `findings.json`에 써서 영속화한다 — `verdict.json`에만 두지 마라. 이유:** R1-7 — 후보를 호출을 나눠 해결하면 앞선 결정이 사라진다. 기각 근거는 리포트 「리뷰어 결정」·부록 D에 남는다(§5.5-2).
+- **`render`·`verdict`는 입력의 head 일치를 검증한다(`verdict.json`·`findings.json` ↔ `snapshot.json`). 이유:** R1-1·F6 — 같은 `W`에 남은 이전 실행의 APPROVE가 현재 head 의 판정으로 게시된다. 비-early에서 `verdict.json`이 없으면 리뷰 실패로 렌더한다.
+- **부록 C·D에 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제를 남겨라(마스킹은 전체 적용 뒤). 이유:** R1-9·§5.7 — 실행 블록 40줄은 제목만 담으므로, 사람이 차단 판단을 검증할 근거가 리포트 밖에 없다.

@@ -77,7 +77,9 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 ```
 
 - `RESOLVE_FAIL`·`COMPANION_TOO_OLD`면 **단일 모델 모드**로 계속하되 시작 요약에 한 줄로 알린다(멈추지 않는다 — G5).
-- 아래의 `<CLI>` = `node "<Base directory>/scripts/mr-review.mjs"` — `<Base directory>` = 이 스킬을 로드할 때 표시된 「Base directory for this skill」. 모든 명령은 **stdout 첫 줄**만 판독한다(`ERR …`면 멈추고 그 줄을 보고).
+- 아래의 `<CLI>` = `node "<Base directory>/scripts/mr-review.mjs"` — `<Base directory>` = 이 스킬을 로드할 때 표시된 「Base directory for this skill」. 모든 명령은 **stdout 첫 줄**만 판독한다(`ERR …`면 멈추고 그 줄을 보고 — 단 `collect`가 한 번이라도 돌았으면 멈추기 **전에** 아래 「공통 종료 절차」의 `cleanup`을 먼저 실행한다).
+
+**공통 종료 절차(F5·F7 — 성공·실패 무관)**: `collect`가 실행된 뒤 이 스킬이 어떤 이유로든 끝나는 모든 경로(정상 출력 §8 · 조기 종료 §3 · `ERR` 중단 · 검토자 유효 결과 0개 · `verdict`·`render` 실패 · 사용자 중단)의 **마지막 동작은 항상** `<CLI> cleanup --adapter "$A" --work "$W"`다. 보고(리포트 경로·`ERR` 원문·검토자 실패 원문)는 cleanup **뒤에**, 어댑터 마스킹을 거쳐 한다. cleanup 자체가 `ERR`면 남은 경로(`W/worktree` · `W/zip` · `W/blobs` · `W/codex.*`)를 보고에 적어 사람이 지우게 한다. `--resolve` 재실행(§9)은 `collect`를 돌리지 않으므로 해당 없음.
 
 ## 1. 작업 디렉터리
 
@@ -104,7 +106,7 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 <CLI> cleanup --adapter "$A" --work "$W"
 ```
 
-리포트 경로를 알리고 끝낸다(초안 판정 = `RETURN_TO_DESIGN` 또는 `HOLD_EVIDENCE` + 작성자 보완 요청 문안). `--full`이면 계속 — 계약 미완·기준선 없음은 `verdict`가 그대로 판정 입력으로 받는다.
+리포트 경로를 알리고 끝낸다(초안 판정 = `RETURN_TO_DESIGN` 또는 `HOLD_EVIDENCE` + 작성자 보완 요청 문안). `--full`이면 계속 — 계약 미완·기준선 없음은 `verdict`가 그대로 판정 입력으로 받는다. **Baseline 줄만 미완이고 diff에 기준선 후보 문서가 있으면 `would`는 `false`다**(check가 그렇게 계산한다) — §5.3 이후로 진행하고 후보의 관련성은 검토자(`baselineCandidateRelevant`)가 판정한다. Baseline 미완은 `incompleteLines`로 남아 `verdict`가 증거 부족으로 받는다.
 
 ## 4. 컨텍스트 팩
 
@@ -123,6 +125,8 @@ V=$(node -p 'require(process.argv[1]+"/.claude-plugin/plugin.json").version' "$R
 4. 렌즈 = 어댑터 문서의 렌즈 절(표) **원문 그대로**(질문·근거·발견 유형·차단 승격 조건). 어댑터가 모델별 강조 순서를 적었으면 그 순서로 렌즈를 나열한다(같은 렌즈를 다른 순서·자료로 보게 해 오류를 비상관화한다).
 5. 의도 대조표 입력 = MR 본문 「검증」 표의 행.
 6. 출력 스키마(아래 블록 그대로) — **JSON 하나만** 출력하게 한다.
+
+**Codex 프롬프트의 비코드 입력은 전부 마스킹된 팩 B에서만 온다(D4·D14·F5)**: 위 1(계약 10줄·MR 제목·트랙)·5(검증 표 행)와 §7 재리뷰 추가 입력(이전 판정 댓글의 「4. 차단 발견」·작성자 토큰 댓글·이전 리포트 절)은 `check.json`·`mr.json`·리포트 원문에서 **다시 붙이지 않는다** — 팩 B의 「## MR」 절(본문·댓글 — Review Contract·검증 표·판정 댓글이 마스킹된 채 들어 있다)을 가리켜 「계약 10줄·검증 표는 팩 B 「## 본문」의 `## Review Contract`·「검증」 표에서 읽어라」로 준다. 팩 B 밖에서 Codex 프롬프트에 들어가는 것은 **diff(코드 — D4는 코드를 마스킹하지 않는다)·렌즈 원문·출력 스키마·고정 문구뿐**이다. Claude 프롬프트는 원문 그대로(팩 A + `check.json`).
 
 ```text
 출력은 아래 JSON 객체 하나만(코드펜스 ```json … ``` 안에). 설명 문장을 밖에 쓰지 마라.
@@ -164,14 +168,14 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 ## 6. 병합 · 판정 (메인 세션)
 
-유효한 결과가 **0개**면 `findings.json`에 `validReviewers: []`만 쓰고 §8로(리뷰 실패 — 판정 블록 없음).
+유효한 결과가 **0개**면 `findings.json`에 `head_sha: <snapshot.head_sha>` · `validReviewers: []` · `crossChecked: false` · 빈 `findings`·`intent`를 쓰고 **그래도 아래 `verdict`를 실행한 뒤**(`VERDICT review-failed -`) §8로 간다(리뷰 실패 — 판정 블록 없음). `verdict`를 건너뛰면 같은 `W`에 남은 이전 실행의 `verdict.json`(예: APPROVE)이 render에 읽힌다 — render·verdict는 입력의 head 일치를 검증하지만, 이 절차도 건너뛰지 않는다.
 
 1. **지문** = `file` + 정규화 제목(공백·구두점 제거, 소문자) — 같은 지문은 하나로 합치고 `source`를 `both | claude | codex`로 적는다. 유형이 다르면 더 센 쪽(DEFECT > DESIGN_DRIFT > MISSING_EVIDENCE > FOLLOW_UP), 확신은 높은 쪽.
 2. **blocking** = `DEFECT`·`MISSING_EVIDENCE`는 항상 `true`. `DESIGN_DRIFT`는 어댑터 렌즈 표의 「차단 승격」 조건(승인 범위·전제·인터페이스 이탈, 접촉 표면 추가 등)에 해당할 때만 `true` — 최소 범위 렌즈의 범위 밖 변경은 기본 `FOLLOW_UP`이다(접촉 표면을 건드릴 때만 `DESIGN_DRIFT`). `FOLLOW_UP`은 `false`.
 3. **상충·낮은 확신**: 한쪽은 차단, 다른 쪽은 같은 자리를 무해로 봤거나(상충), 한쪽만 잡은 `confidence: low|medium` 차단 후보는 **메인이 코드를 다시 읽어** 확인한다. 확인되면 `blocking:true`, 반박되면 `type` 유지·`blocking:false`·`dismissReason`에 근거. **확인도 반박도 못 하면 `unresolved: true`** — 판정 입력에서 빼지 않는다(`verdict`가 「판정 미확정」으로 만든다).
 4. `baselineCandidateRelevant` = 두 검토자 값이 **모두** `true`일 때만 `true`(하나라도 `false`·부재면 `false`). 후보가 없으면 `false`.
 5. `intent` = 두 결과를 행별로 합친다(둘이 다르면 `UNKNOWN`, `basis`는 「코드로 확인」이 하나라도 있으면 그것).
-6. `W/findings.json`(엔트리포인트 SC-5 형식)을 쓴다 — `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함.
+6. `W/findings.json`(엔트리포인트 SC-5 형식)을 쓴다 — `head_sha` = `snapshot.head_sha`(verdict·render가 대조한다 — 다르면 리뷰 실패) · `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함.
 
 ```bash
 <CLI> verdict --adapter "$A" --work "$W"
@@ -183,8 +187,8 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 이전 신뢰 판정의 head(`rereview.prior_head`) ≠ 현재 head다. §5 프롬프트에 **추가 절**을 넣는다:
 - delta: `git -C "<worktree>" diff <prior_head> <head_sha>`(diff-only면 생략하고 「이전 head 이후 변경을 중심으로」만 적는다).
-- 이전 차단 발견 ↔ 작성자 응답 토큰 대조표: `check.json.priorVerdicts`(신뢰된 최신)의 댓글 본문 「4. 차단 발견」 항목마다 `check.json.authorTokens`(`FIXED <sha>`·`EVIDENCE`·`BASELINE_UPDATED`·`REFUTED`·`FOLLOW_UP_REQUESTED`)와 대조해 `해소 / 미해소 / 재발` 후보를 표로 준다 — 검토자가 현재 head에서 확인해 `findings`에 반영한다(미해소·재발은 그대로 차단 발견).
-- 이전 리포트 파일이 `<reportDir>/<프로젝트>-<iid>-<prior_head 7자>.md`에 있으면 「이전 리포트」로 함께 읽힌다(Claude에만 경로로, Codex에는 그 리포트의 「4. 차단 발견」 절만 본문 복사).
+- 이전 차단 발견 ↔ 작성자 응답 토큰 대조표: `check.json.priorVerdicts`(신뢰된 최신)의 댓글 본문 「4. 차단 발견」 항목마다 `check.json.authorTokens`(`FIXED <sha>`·`EVIDENCE`·`BASELINE_UPDATED`·`REFUTED`·`FOLLOW_UP_REQUESTED`)와 대조해 `해소 / 미해소 / 재발` 후보를 표로 준다 — 검토자가 현재 head에서 확인해 `findings`에 반영한다(미해소·재발은 그대로 차단 발견). **Codex에는** 댓글 본문을 다시 붙이지 않고 팩 B 「## 댓글」 절의 해당 댓글(`#<note_id>`)을 가리키며, 표에는 항목 번호·`note_id`·토큰·`해소/미해소/재발` 후보 값만 적는다(§5 「비코드 입력은 팩 B에서만」).
+- 이전 리포트 파일이 `<reportDir>/<프로젝트>-<iid>-<prior_head 7자>.md`에 있으면 「이전 리포트」로 함께 읽힌다(Claude에만 경로로). **Codex에는** 그 리포트의 「4. 차단 발견」 절만 본문 복사하되 — 리포트는 저장 시 마스킹됐지만(F5) 어댑터 패턴이 그 뒤 바뀌었을 수 있으므로 — 복사한 절에 어댑터 `mask` 패턴이 하나라도 매치되면(`[masked:` 제외) 넣지 않고 「이전 리포트 절 생략(마스킹 잔존)」으로 적는다.
 - target이 바뀌었거나(`mr.json.target_branch` ≠ 이전 리포트 헤더의 target) 충돌 해결 커밋이 있으면 「영향 범위를 넓혀라」를 명시한다. 판정은 **현재 전체 head**에 귀속한다.
 
 ## 8. 출력 · 정리
@@ -196,7 +200,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 - `REPORT <경로>` — 어댑터 리포트 디렉터리(git 밖) `<프로젝트>-<iid>-<head 7자>.md`. 리포트 구성(순서 고정): 헤더 → 판정 초안(정책 실행 블록 — 복사해 게시) → 기준선 확인 문안(경량 + 확인 댓글 없음·낡음) → 작성자 보완 요청 문안 → 리뷰어 확인 필요 → 부록 A·B·C. 어댑터 마스킹 패턴으로 전체를 가린 뒤 저장된다.
 - **터미널 요약 10줄 이내**: 판정(또는 미확정·리뷰 실패) · head · 돈 모델/교차 검토 · 차단 발견 수(결함/증거 부족) · 기준선 미확인 여부 · 배포본 대조 결과 · 리포트 경로 · 다음 행동(「확인 문안 먼저 게시」 / 「`--resolve`로 확정」 / 「복사해 게시」).
-- `cleanup`은 워크트리·zip·blobs·`codex.*` 원시 파일을 지운다(F7·F5). JSON·리포트는 남는다(재리뷰·`--resolve` 입력).
+- `cleanup`은 워크트리·zip·blobs·`codex.*` 원시 파일을 지운다(F7·F5). JSON·리포트는 남는다(재리뷰·`--resolve` 입력). **실패 경로도 여기로 온다** — §0 「공통 종료 절차」: `collect` 이후 어느 단계에서 멈추든 `cleanup`을 마지막에 실행한다.
 - 종료 전 자가 점검(각 1줄로 보고): F1 GitLab 쓰기 0건(이 세션의 `glab` 호출이 전부 `api` GET) · F2 헤더 교차 검토 표시 · F3 판정 4종 · F5 리포트 마스킹(`pack.json.mask`·리포트 grep) · F6 SHA 일치 · F7 정리 결과 줄 · F8 기준선 미확인 표시.
 
 ## 9. `--resolve` 재실행
@@ -214,7 +218,8 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 - `git add`·`commit`·`push`·`glab api` POST/PUT·`glab mr` 하위 명령 — 전부 금지(읽기 전용).
 - Codex `task` 실패 시 자동 재실행·`--help`·무인자 호출(실제 job이 뜬다)·`| head` 파이프(job 잔존).
-- 팩 B에 어댑터 허용 목록 밖 자료를 넣는 것 · 마스킹 실패를 무시하고 Codex를 띄우는 것.
+- 팩 B에 어댑터 허용 목록 밖 자료를 넣는 것 · 마스킹 실패를 무시하고 Codex를 띄우는 것 · 팩 B 밖의 MR 원문(계약 줄·검증 표·댓글)을 Codex 프롬프트에 다시 붙이는 것.
+- `collect` 이후 `cleanup` 없이 끝내는 것(`ERR`·검토자 실패·render 실패 포함) · 유효 검토 0개일 때 `verdict`를 건너뛰는 것.
 - 판정 어휘 추가(「보류」·「조건부」) · 판정 순서를 손으로 바꾸는 것(스크립트 결과를 그대로 쓴다).
 - 리포트에 프로젝트 외 경로·개인 위키 본문을 인용하는 것(출처 id `[S?]`로만).
 ````
@@ -238,11 +243,14 @@ git commit -m "feat(mr-review): SKILL.md — 전제·수집·검사·조기 종�
 - SKILL.md frontmatter `name: mr-review` · description에 트리거·비트리거(review-loop 구분) 포함.
 - 셸 블록에 맨 `$`+숫자 0건 · 프로젝트 식별자 0건.
 - §5의 Codex 실행 블록이 review-loop §2b와 같은 구조(래퍼·`spawn(detached)`·마커·대기·유효 판정·자동 재실행 금지)이고 `adversarial-review`를 쓰지 않는다.
-- §6에 SC-5의 모든 필드(`validReviewers`·`crossChecked`·`baselineCandidateRelevant`·`unresolved`·`dismissReason`·`outsideWorktreePaths`)를 채우는 규칙이 있다.
+- §6에 SC-5의 모든 필드(`head_sha`·`validReviewers`·`crossChecked`·`baselineCandidateRelevant`·`unresolved`·`dismissReason`·`outsideWorktreePaths`)를 채우는 규칙이 있고, 유효 결과 0개 경로도 `verdict`를 실행한다(plan R1-1).
+- §0에 「공통 종료 절차」가 있고 `ERR`·검토자 실패·render 실패 경로가 전부 `cleanup`으로 끝난다(plan R1-6) · §5·§7의 Codex 비코드 입력이 팩 B 참조뿐이다(plan R1-2).
 
 ## Cautions
 
 - **Codex 프롬프트에 팩 B를 경로로 주지 마라 — 본문을 붙여라. 이유:** Codex는 cwd(워크트리) 밖을 읽어선 안 된다(D16 ⓐ) — 경로를 주면 스스로 금지를 어기게 만든다.
+- **Codex 프롬프트에 `check.json.contract.lines`·MR 검증 표·댓글 원문을 따로 붙이지 마라 — 팩 B 안의 마스킹된 본문을 가리켜라. 이유:** R1-2 — 그 값들은 pack 단계의 마스킹·잔존 검사를 거치지 않은 원문이라, `Required tests/evidence`에 이메일·`token=` 값이 있으면 팩 B에서 가려져도 공통 입력으로 다시 전송된다(D4·D14 위반).
+- **`ERR`·실패에서 바로 멈추지 마라 — `cleanup`을 먼저. 이유:** R1-6 — F5·F7(원시 프롬프트·로그·워크트리·zip 제거)은 정상 경로 끝에만 두면 render 실패 한 번에 `codex.prompt`·`codex.out`이 남는다.
 - **Claude 서브에이전트에게 Codex가 돈다는 말을 하지 마라(반대도). 이유:** D11 오류 비상관화.
 - **판정 순서를 SKILL.md 산문으로 다시 쓰지 마라 — `verdict` 결과를 쓴다. 이유:** 두 곳에 있으면 어긋난다(P5).
 - **상충·낮은 확신 후보를 확인 못 했다고 빼지 마라 — `unresolved:true`. 이유:** R1-F4 — 빼면 APPROVE로 샌다.

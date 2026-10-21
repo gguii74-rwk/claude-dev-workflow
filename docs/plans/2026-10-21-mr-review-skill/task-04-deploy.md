@@ -147,6 +147,31 @@ test('zip 누락 · 어댑터 배포 제외 프로젝트 · 삭제만(zip 없이
   assert.equal(readJson(join(w4, 'deploy.json')).mismatches[0].kind, 'deleted_list');
 });
 
+test('본문에만 있는 삭제 경로: 기대 삭제 목록이 비어 있어도 집합 비교해 deleted_list 불일치 (R1-4)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const zip = archive(checkout, headSha, join(root, 'd.zip'), ['src/main/java/app/A.java']);
+  const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: zip }]);
+  const diffs = [{ old_path: 'src/main/java/app/A.java', new_path: 'src/main/java/app/A.java', new_file: false, renamed_file: false, deleted_file: false }];   // 삭제 없음
+  const att = [{ url: `/uploads/${SECRET}/d.zip`, kind: 'zip', filename: 'd.zip', secret: SECRET, where: 'body' }];
+  const w1 = workdir(root, { checkout: null, baseSha, headSha, mode: 'diff-only', attachments: att, diffs, description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: src/main/java/app/Keep.java\n' });
+  const r1 = runCli(['deploy', '--adapter', adapter, '--work', w1], g.env);
+  assert.equal(r1.code, 0, r1.out + r1.err);
+  const d1 = readJson(join(w1, 'deploy.json'));
+  assert.deepEqual(d1.expected.deleted, []);
+  assert.deepEqual(d1.bodyDeletedList, ['src/main/java/app/Keep.java']);
+  const dl = d1.mismatches.find((m) => m.kind === 'deleted_list');
+  assert.ok(dl, JSON.stringify(d1.mismatches));
+  assert.match(dl.detail, /Keep\.java/);
+  const w2 = workdir(root, { checkout: null, baseSha, headSha, mode: 'diff-only', attachments: att, diffs, description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n' });
+  runCli(['deploy', '--adapter', adapter, '--work', w2], g.env);
+  assert.ok(!readJson(join(w2, 'deploy.json')).mismatches.some((m) => m.kind === 'deleted_list'));   // 둘 다 비어 있으면 일치
+  const w3 = workdir(root, { checkout, baseSha, headSha, attachments: att, description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - src/main/java/app/Old.java\n  - src/main/java/app/Keep.java\n' });
+  runCli(['deploy', '--adapter', adapter, '--work', w3], g.env);
+  assert.ok(readJson(join(w3, 'deploy.json')).mismatches.some((m) => m.kind === 'deleted_list' && /Keep\.java/.test(m.detail)));   // 기대 ⊂ 본문이어도 불일치
+});
+
 test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 바이트 대조', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
@@ -184,7 +209,7 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
 node --test tests/mr-review/deploy.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 7 · pass 0 · fail 7.
+기대: tests 8 · pass 0 · fail 8.
 
 ### 2. `deploy.mjs`
 
@@ -349,10 +374,12 @@ export function deploy({ adapter, work }) {
       }
     }
   }
-  if (out.expected.deleted.length > 0) {
-    const a = out.expected.deleted.join('\n');
-    const b = out.bodyDeletedList.join('\n');
-    if (a !== b) mm.push({ kind: 'deleted_list', path: null, detail: `삭제 목록 불일치 — 기대 ${out.expected.deleted.length}건 / 본문 ${out.bodyDeletedList.length}건` });
+  // ④ 삭제 목록은 기대가 비어 있어도 항상 집합 비교(순서 무관) — 본문에만 있는 삭제 지시(기대에 없는 경로)는 배포자가 정상 파일을 지우게 하므로 불일치다
+  {
+    const expDel = new Set(out.expected.deleted);
+    const bodyDel = new Set(out.bodyDeletedList);
+    const same = expDel.size === bodyDel.size && [...expDel].every((p) => bodyDel.has(p));
+    if (!same) mm.push({ kind: 'deleted_list', path: null, detail: `삭제 목록 불일치 — 기대 [${[...expDel].join(', ') || '없음'}] / 본문 [${[...bodyDel].join(', ') || '없음'}]` });
   }
   if (out.result !== 'zip 누락') {
     if (mm.some((m) => m.kind === 'download' || m.kind === 'corrupt' || (m.kind === 'bytes' && m.path === null))) out.result = '대조 불가';
@@ -391,7 +418,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 node --check dev-workflow/skills/mr-review/scripts/lib/deploy.mjs && echo CHECK_OK
 ```
 
-기대: deploy 7/7 · 앞선 23/23 · `CHECK_OK`.
+기대: deploy 8/8 · 앞선 24/24 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/deploy.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/deploy.test.mjs
@@ -400,7 +427,7 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/deploy.test.mjs` → 7/7.
+- `node --test tests/mr-review/deploy.test.mjs` → 8/8.
 - `git archive`로 만든 zip의 주석 SHA·목록·바이트를 외부 `unzip` 없이 읽는다(P3).
 - 삭제만 있는 변경은 zip 없이 ④ 삭제 목록만으로 판정(R3-F2) · 기대 목록은 4.7 규칙으로 거른 것(R3-F4) · 결과가 무엇이든 exit 0(판정은 verdict 몫).
 
@@ -408,6 +435,7 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 
 - **기대 목록을 전체 diff 로 비교하지 마라 — 4.7 규칙으로 거른 뒤에만. 이유:** spec·문서를 함께 고친 정상 MR이 불일치로 떨어진다(R3-F4).
 - **삭제 목록은 zip 유무와 무관하게 대조한다. 「배포본: 삭제만」 표기만으로 통과시키지 마라. 이유:** OTA 단말의 이전 파일 제거 누락(R3-F2).
+- **삭제 목록 대조는 기대 목록이 비어 있어도 항상 집합 비교다. `expected.deleted.length > 0`일 때만 대조하지 마라. 이유:** R1-4 — 본문에만 적힌 삭제 경로(변경하지 않은 파일)가 통과하면 배포자가 정상 파일을 지운다. 문자열 join 비교도 금지(순서 차이가 거짓 불일치).
 - **`git diff`는 `-z`로 읽어라. 이유:** 한글·공백 경로가 `core.quotePath`로 인용돼 목록이 어긋난다(정책 §6.1과 같은 이유).
 - **zip 리더에 zip64·암호화를 넣지 마라. 이유:** git archive 산출물 범위 밖 — YAGNI. 판독 실패는 `corrupt` → 「대조 불가」로 fail-closed.
 - **내려받은 zip은 `work/zip/`에만 둔다. 이유:** F7 — `cleanup`(task-06)이 지운다.
