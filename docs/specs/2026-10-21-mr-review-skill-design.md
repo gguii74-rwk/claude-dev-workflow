@@ -246,8 +246,8 @@ base = `origin/main` bf8c5fd · 어댑터 설계(별도 저장소 `common-docs` 
 | R4-F2 | §5.4 · 두 검토자 모두 실패해도 APPROVE 계산 가능 · 유효 결과 최소 1개 전제 | high | FIXED | 유효 결과 0개 = 리뷰 실패·블록 미생성 — 엔진 0a8631d |
 | R4-F3 | §5.5 · 미복원 diff가 CHANGES_REQUESTED·HOLD_EVIDENCE 양쪽에 해당 · 집합 분리 | medium | FIXED | 결함 집합·증거 부족 집합 분리 — 엔진 0a8631d |
 
-| R5-F1 | §5.2·§5.5 · `--full`에서 계약 미완을 판정 입력으로 보존하는 규칙 없음 · 계약 미완 = MISSING_EVIDENCE | high | **미판정**(컨텍스트 넛지로 중단 — 재개 세션이 정밀 모드로 판정) | — |
-| R5-F2 | §5.1-5 · 브랜치형 Baseline 링크를 MR head로 읽으면 다른 기준선 · 링크의 프로젝트·ref를 그 저장소에서 SHA로 해소 | medium | **미판정**(동상) | — |
+| R5-F1 | §5.2·§5.5 · `--full`에서 계약 미완을 판정 입력으로 보존하는 규칙 없음 · 계약 미완 = MISSING_EVIDENCE | high | FIXED (재개 세션 정밀 모드) | 미완 줄마다 MISSING_EVIDENCE로 증거 부족 집합에 결정적 투입, `--full`은 범위만 확장 — 엔진 ea4b427 |
+| R5-F2 | §5.1-5 · 브랜치형 Baseline 링크를 MR head로 읽으면 다른 기준선 · 링크의 프로젝트·ref를 그 저장소에서 SHA로 해소 | medium | FIXED (재개 세션 정밀 모드) | 링크를 호스트·프로젝트·ref·경로로 분해, 어댑터 4.1 프로젝트에서 SHA 해소, MR head 대체 금지 — 엔진 ea4b427 |
 
-score 이력(전환용, 수정 전 스냅샷 · weight c4/h3/m1): R1 = 16 · R2 = 10 · R3 = 11 · R4 = 7 · R5 = 4. 미확인 FIXED 큐: R1-F1~F6, R2-F1~F4, R3-F2~F5, R4-F1~F3(17건). 이전 FIXED는 R5에서 재출현하지 않음(적대 비재출현 — 큐 유지). 적대 소진 3 = auto-rounds → batch 적재 0건, R4부터 정밀 모드. **적대 소진 5 = max(신호 3)** — R5 판정 뒤 확인 모드 진입 예정.
+score 이력(전환용, 수정 전 스냅샷 · weight c4/h3/m1): R1 = 16 · R2 = 10 · R3 = 11 · R4 = 7 · R5 = 4. 미확인 FIXED 큐: R1-F1~F6, R2-F1~F4, R3-F2~F5, R4-F1~F3, R5-F1~F2(19건). 이전 FIXED는 R5에서 재출현하지 않음(적대 비재출현 — 큐 유지). 적대 소진 3 = auto-rounds → batch 적재 0건, R4부터 정밀 모드. **적대 소진 5 = max(신호 3)** → batch flush 0건 → 확인 모드 C1 진입.
 
