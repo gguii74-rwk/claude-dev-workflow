@@ -76,3 +76,4 @@ git commit -m "release: 1.3.0 — mr-review 스킬(남의 MR 두 모델 독립 �
 
 - **version 외의 파일을 이 커밋에 섞지 마라. 이유:** 릴리스 커밋은 설치 사용자가 받는 경계 — 리뷰 안 받은 변경이 섞이면 안 된다.
 - **게이트 ①을 grep 한 줄로 끝내지 말고 ledger 절을 눈으로 확인하라. 이유:** 패턴은 형식만 본다.
+- (impl 2026-10-21, PF-3 이월) version bump 때 `.claude-plugin/marketplace.json` description 의 스킬 목록에도 `mr-review` 를 넣는다(`… · orchestrate · mr-review 스킬 + …`) — task-08 이 넘김

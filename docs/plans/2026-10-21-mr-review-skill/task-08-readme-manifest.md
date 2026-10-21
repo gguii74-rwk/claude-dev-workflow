@@ -188,3 +188,4 @@ git commit -m "docs(manifest): description 에 mr-review 추가 (version 유지)
 - **세 README를 한 파일만 고치지 마라. 이유:** 「3개 언어로 유지」 규칙 — 드리프트.
 - **README에 어댑터 예시로 실제 프로젝트 값을 쓰지 마라. 이유:** D10 — 기계 블록 키만 설명한다.
 - (impl 2026-10-21 전사 수정, PF-10) 목차 §10 링크는 기존 §9 줄 뒤에 넣는다 · README 3종 `--resolve` 설명에 `confirmed:fixable|confirmed:design` 포함
+- (impl 2026-10-21, PF-3) `.claude-plugin/marketplace.json` description 의 mr-review 추가는 이 task 에서 하지 않고 task-09(릴리스)로 넘겼다 — impl 세션 편집 범위가 plugin.json description 만이었고 삽입 앵커 `orchestrate)` 가 실재하지 않음(실제 = `… · doctor · orchestrate 스킬 + …`)
