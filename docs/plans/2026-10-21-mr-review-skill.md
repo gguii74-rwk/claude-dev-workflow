@@ -333,6 +333,7 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 - R4 도 분류 전 중단(컨텍스트 넛지, 소진 4 저장)이라 재개 세션(2026-10-21 18:0x, 오르카 후계)이 수신 시점 모드 = **정밀**로 §2c·§2d 처리 — ESCALATE 즉시 질문 2건(R4-5 설계 선택지 4 · R4-2 R1-4 계열 재출현 → 사용자 결정) 모두 추천안 FIXED 채택, 나머지 3건 FIXED 후보. 수정 커밋 `f693a72`(scratch 62/62 = adapter 8·collect 9·check 11·deploy 11·pack 9·report 14). 전환 신호 1: 16→16→9 미발화 · 신호 2: FIXED 후보 5 미발화 → R5 적대.
 - R5(적대·정밀, HEAD `6beafe6`, 2026-10-21 19:1x): 신규 3건(high 1·medium 2) 전부 FIXED 후보(기결정 재론 0·ESCALATE 0) → 수정 커밋 `2f760e8`(scratch 64/64 = adapter 8·collect 9·check 11·deploy 11·pack 10·report 15). score 5(16→9→5 — 신호 1 미발화, 신호 2 미발화). **적대 소진 5 = max → 신호 3 발화** → batch 정리(적재 0건) → **확인 모드 C1 진입**(확인 예산 2 중 0 소진, 복귀 미사용).
 - C1(확인, HEAD `28c66a5`, 2026-10-21 19:2x, `task --prompt-file`, 응답 완전 — 36건 전부 명시·감사 4·신규·verdict): **소멸 32 · 잔존 4**(R2-1·R2-6·R3-8·R4-3 — blocking 재분류) · 신규 high 1(C1-1) · 판정 감사 R1-8·R3-6·R3-9 **타당**, **R5-2 이의**(SHA 보호가 이메일 마스킹 우회) · verdict **fail**. 확인 소진 1. 처리: 잔존 4 + C1-1 을 §2c 로 분류 — R2-6(설계 선택지: 수집 범위)·R5-2 감사 이의는 즉시 ESCALATE → 사용자 판정(둘 다 추천안 FIXED: 본문 전체 수집·경계 조건으로 보호 보정), 나머지 FIXED → 수정 커밋 `32db86e`(scratch 64/64) → **복귀 적대 1회(R6, 상한 밖) + 재진입 확인 1회(C2, 예산 밖) 진입**. 복귀 사용 = 예.
+- R6(복귀 적대 — 예약분, 카운터 불변, HEAD `ed1b05f`, 2026-10-21 19:4x): 신규 4건(high 2·medium 2) 수신 — **미판정**(컨텍스트 넛지 42%로 분류 전 중단, 세션 인계). 재개 세션이 **정밀 모드**로 §2c·§2d(ESCALATE 즉시 질문) → §2f 수정 → 커밋 → ledger → **재진입 확인 C2**(예산 밖 — C2 에서 또 blocking 이면 ESCALATE + whole-branch 리뷰 권고). 원 지적 원문은 루프 파일.
 
 | 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
 |---|---|---|---|---|---|---|
@@ -342,6 +343,7 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 | R4 | 적대·정밀(수신 시점) | `f1fbc40` | 0/2/3 (신규 5 · R1~R3 잔존 0 — 적대 비재출현, 큐 유지) — 전부 FIXED(기결정 재론 0 · ESCALATE 즉시 2 = R4-2·R4-5 사용자 결정 FIXED) | **9** | 28 → 수정 후 33 | needs-attention |
 | R5 | 적대·정밀 | `6beafe6` | 0/1/2 (신규 3 · R1~R4 잔존 0 — 적대 비재출현, 큐 유지) — 전부 FIXED(기결정 재론 0·ESCALATE 0) · **적대 예산 소진(신호 3)** | **5** | 33 → 수정 후 36 | needs-attention |
 | C1 | 확인 | `28c66a5` | 소멸 32 / 잔존 4(R2-1·R2-6·R3-8·R4-3) / 신규 0/1/0(C1-1) · 감사 3 타당·1 이의(R5-2) — 잔존·신규 전부 FIXED(사용자 판정 2 = R2-6·R5-2 재판정) | (확인 — 산정 없음) | 36 → 소멸 32 → 수정 후 **5**(R2-1·R2-6·R3-8·R4-3·C1-1) | **fail** → 복귀 |
+| R6 | 복귀 적대(예약분)·정밀 | `ed1b05f` | 0/2/2 (신규 4 · 큐 5 잔존 0 — 적대 비재출현, 큐 유지) — **미판정**(컨텍스트 넛지로 중단, 재개 세션이 정밀 모드로 §2c·§2d) | (판정 뒤 — 수신분 기준 2×3+2×1 = 8 예상) | 5 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -387,6 +389,11 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 | R5-3 | task-06 render 부록 D · 실행 블록 축약 ④ 가 모델 발견과 `machineEvidence` 를 함께 접고 부록 D 로 안내하지만 부록 D 는 `findings.findings` 만 출력 — 접힌 `M-deploy` 는 리포트가 있어도 `source:missing`·`priorBlockingComplete:false` → 다음 head 에서 전부 고쳐도 `M-rereview` 로 HOLD_EVIDENCE(R4-3 복원 정책이 아니라 생성측 누락) · 기계 항목도 복원 가능한 형식으로 부록 저장 + 회귀 | medium | FIXED | `2f760e8` — 부록 D 에 `machineEvidence` 항목을 같은 줄 형식(`- **M-…** [기계] MISSING_EVIDENCE (차단) — <detail> (-:-) · 출처 machine · 확신 -` + 근거 줄)으로 기재 · 「(발견 없음)」은 둘 다 없을 때만 · SC-3 verdict 절 · Cautions · 테스트(report: 30건+M-deploy 축약 → 접힌 id 에 M-deploy·부록 D 에 기계 줄 / check: 부록 D 의 M-deploy 복원 → `source:report`·complete) |
 
 | C1-1 | task-06 `maskText` · SHA 자리표시자가 이메일 마스킹을 우회 — local-part 가 16진수 40자인 주소(`aaaa…40hex@example.test`)의 앞부분이 먼저 빠져 이메일 정규식이 매치하지 못하고 주소가 리포트·cleanup JSON 에 남음 · 개인정보 마스킹이 SHA 보존보다 우선, 두 검증 함께 | high | FIXED (사용자 재판정 — R5-2 감사 이의 처리) | `32db86e` — `SHA40_RE` 에 경계: 앞에 `@`·`.`·단어 문자, 뒤에 `@`·`.<영숫자>`·단어 문자가 붙은 토큰은 보호하지 않음(URL 경로 `/<sha>/`·문장 끝 `<sha>.` 은 유지) · Cautions · 테스트(`<sha>@example.test` → 주소·온전한 local-part 잔존 없음, 같은 문장의 진짜 SHA 보존, URL·문장 끝 보존). 어댑터 패턴 순서(rrn → email)상 local-part 는 `aaaaaaaaaa[masked:rrn][masked:email]` 로 가려진다(주소 미노출) |
+
+| R6-1 | task-05 pack 팩 B · 어댑터 개인정보 패턴만 적용해 MR 본문·댓글·발췌의 비밀값(`password = "…"`·API 키)이 그대로 Codex 전송, 잔존 검사도 통과(codexSkipped=false) — task-06 SECRET_MASK 는 리포트에만(F5) · 팩 B 에도 엔진 비밀값 제거 규칙 공유 + 잔존 검사 포함 + 회귀(D4 코드 전송 범위는 유지) | high | 미판정 | — |
+| R6-2 | task-06 cleanup / task-07 §0 · 사용자 중단 시 백그라운드 검토자(Claude·Codex)의 종료·회수 계약이 없어 cleanup 뒤 살아 있는 검토자가 review-*.json 원문을 다시 쓰거나 같은 W 재사용 시 경합(codex.pid 도 먼저 삭제) · 공통 종료 절차에 두 검토자 종료 확인을 cleanup 선행 조건으로, 확인 전 PID 삭제·W 재사용 금지 | high | 미판정 | — |
+| R6-3 | task-07 §6 병합 · 같은 지문의 두 결과가 `fixableInDesign` yes/no 로 갈릴 때 병합 규칙 없음(유형·확신만 선택, 상충 확인은 차단 여부 차이만) — 이 값으로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀜 · fixableInDesign·brokenPremise 불일치도 메인 확인 대상, 미해소면 양쪽 보존 + 판정 미확정·리뷰어 확정 절차 연결 | medium | 미판정 | — |
+| R6-4 | task-10 §검증 / task-11 표본 · 직접 CLI 호출(collect→check→deploy→pack)에 공통 종료 절차가 적용되지 않아 워크트리·zip·pack-a·원문 JSON 잔존 · 성공·실패 모두 cleanup 하는 종료 절차 + 측정값은 정리 전 추출 | medium | 미판정 | — |
 
 미확인 FIXED 큐(C1 뒤·재수정 후): **5건** = R2-1 · R2-6 · R3-8 · R4-3(C1 잔존 → 재수정 `32db86e`) · C1-1(신규 → 수정 `32db86e`). C1 소멸 확인 32건: R1-1~R1-10 · R2-2~R2-5 · R2-7 · R2-8 · R3-1~R3-7 · R3-9 · R3-10 · R4-1 · R4-2 · R4-4 · R4-5 · R5-1~R5-3(큐 이탈). (R5 수정 후 참고: 36건 = R1-1~R1-10 · R2-1~R2-8 · R3-1~R3-10 · R4-1~R4-5 · R5-1~R5-3) — 소멸 확인은 확인 라운드 임무 ①. 루프 직접 판정: R1-8 · R3-6 · R3-9 (C1 감사 「타당」 — 재진입 확인 C2 에서도 감사 대상 유지) · R5-2 는 C1 감사 이의 → 사용자 재판정으로 전환(루프 판정 아님). 사용자 판정: R4-2 · R4-5 · R2-6(C1) · R5-2 재판정/C1-1(C1) — 확인 첨부물 ⑥ 사용자 기결정 목록에 넣는다. 사용자 판정: R4-2 · R4-5(정밀 모드 즉시 ESCALATE → FIXED, 감사 대상 아님 — 확인 첨부물 ⑥ 사용자 기결정 목록에 넣는다). batch ESCALATE 적재: 0건(flush 통과). 미판정 blocking: 0.
 
