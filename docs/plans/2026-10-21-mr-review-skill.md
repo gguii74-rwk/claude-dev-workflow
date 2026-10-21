@@ -305,6 +305,31 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 
 **트랙 밖(여기서 하지 않는다)**: 고도화 포크 승격·포크 내부 MR(spec §9) · GitLab 쓰기(D8) · 스킬 포장 분리(spec §9 — 첫 운용 뒤) · 다른 리뷰어 PC 배포(D2 — 결과 뒤).
 
+## 적대검증 ledger (plan)
+
+보안 크리티컬: no (호출자 지정) — 접촉면 외부 전송·개인정보 경계(마스킹·전송 허용 목록 코드 계획) 감지
+
+- 루프: base `9017d1e`(9017d1e00a595993b73b2a684bdb74a6b655c5fc, 호출자 지정 — spec 루프 종결 커밋 = plan 착수 직전, diff = plan만) · branch `docs/mr-review-skill-design` · 예산 max 5 · confirm 2 · auto 3 · 수동 모드.
+- 사전 게이트: 형식 관문 ①②④ = repo에 CLAUDE.md/AGENTS.md 분할 규약 없음 → 스킵(참고: Execution contract 블록 = 설치본 writing-plans-split canonical과 동일 · §Shared Contracts · status·outcome 컬럼 실재) · ③ spec ledger fingerprint 컬럼 실재 · 대장 대기 0.
+- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷). R1은 분류 전 중단(컨텍스트 넛지)이라 score 미기록 — 재개 세션이 §2c 뒤 기록.
+
+| 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
+|---|---|---|---|---|---|---|
+| R1 | 적대·자동(수신 시점) | `3f47b98` | 0/6/4 (신규 10) — **미판정**(넛지로 중단, 재개 세션이 자동 모드로 §2c·§2d) | (판정 뒤) | 0 | needs-attention |
+
+| # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
+|---|---|---|---|---|
+| R1-1 | task-07 §6 · 검토 결과 0개 분기가 verdict 를 건너뛰어 이전 verdict.json(APPROVE)이 재사용됨 · 0개 분기도 review-failed 저장 + render 가 검토자 수·head 일치 검증 + 새 수집 시 이전 판정 무효화 | high | 미판정 | — |
+| R1-2 | task-07 §5 · 팩 B 밖 공통 입력(계약 10줄·검증 표)이 마스킹 없이 Codex 프롬프트에 들어감 · 비코드 입력은 마스킹된 자료에서만 또는 조립 단계에 동일 마스킹·잔존 검사(재리뷰 추가 입력 포함) | high | 미판정 | — |
+| R1-3 | task-05 pack · 어댑터 projects 등록 = 외부 전송 허가로 취급(대상 외 저장소 Baseline 원문이 팩 B 로) · 수집 가능 프로젝트와 전송 가능 출처 구분(SC-2·SC-3) | high | 미판정 | — |
+| R1-4 | task-04 deploy · expected.deleted 가 비면 본문 삭제 목록을 대조하지 않아 잘못 추가된 삭제 지시가 통과 · 항상 집합 비교 + 회귀 테스트 | high | 미판정 | — |
+| R1-5 | task-02 collect · 정상 diff-only(잘림 없음)에서는 blobs/head 가 생기지 않아 task-07 의 검토자 cwd·파일 전문 위치가 없음(래퍼 exit 97) · diff-only 검토 루트를 항상 만들고 비삭제 변경 파일 head 원문을 고정 SHA 로 확보, 실패는 판정 전달 | high | 미판정 | — |
+| R1-6 | task-07 · ERR 즉시 중단 경로에 cleanup 이 없어 F5·F7 이 제어 흐름에 미연결 · 수집 이후 모든 종료 경로의 공통 종료 절차 | high | 미판정 | — |
+| R1-7 | task-06 verdict · --resolve 결정이 findings 복사본에만 적용돼 호출 간 보존되지 않음, dismissReason 리포트 출력 경로 없음 · 결정·근거 영속화 + 리포트 출력 + 다회 resolve 테스트 | medium | 미판정 | — |
+| R1-8 | task-05 pack · docText 의 missing 을 버려 필수 정책 문서·절 누락이 정상 출처로 등록됨 · 확보 상태를 pack.json 에 포함, 누락은 중단 또는 결정적 MISSING_EVIDENCE(선택 위키와 구분) | medium | 미판정 | — |
+| R1-9 | task-06 render · 부록 C·본문이 evidence·scenario·brokenPremise 를 버림(§5.7 원본 보존 미충족) · 부록에 마스킹 후 보존 | medium | 미판정 | — |
+| R1-10 | task-03 check · Baseline 자리표시자면 contract.complete=false 라 후보 문서가 있어도 earlyExit=true → §5.2 후보 관련성 검토 경로 도달 불가 · 다른 줄 완성 + Baseline 만 미완 + 후보 있음이면 검토 진행(Baseline 미완 기계 증거는 유지) | medium | 미판정 | — |
+
 ## 확인 대기 대장
 
 해당 없음
