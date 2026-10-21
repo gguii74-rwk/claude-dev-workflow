@@ -313,24 +313,27 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 
 - 루프: base `9017d1e`(9017d1e00a595993b73b2a684bdb74a6b655c5fc, 호출자 지정 — spec 루프 종결 커밋 = plan 착수 직전, diff = plan만) · branch `docs/mr-review-skill-design` · 예산 max 5 · confirm 2 · auto 3 · 수동 모드.
 - 사전 게이트: 형식 관문 ①②④ = repo에 CLAUDE.md/AGENTS.md 분할 규약 없음 → 스킵(참고: Execution contract 블록 = 설치본 writing-plans-split canonical과 동일 · §Shared Contracts · status·outcome 컬럼 실재) · ③ spec ledger fingerprint 컬럼 실재 · 대장 대기 0.
-- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷). R1은 분류 전 중단(컨텍스트 넛지)이라 score 미기록 — 재개 세션이 §2c 뒤 기록.
+- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷, weight c4/h3/m1). R1은 분류 전 중단(컨텍스트 넛지)이라 재개 세션(2026-10-21 16:5x)이 자동 모드로 §2c 처리 — 수신 시점 모드 유지, 적대 소진 1 불변.
+- 인라인 코드 검증 = task-01~06 4-backtick 블록을 scratch 로 추출해 `node --test` 실행(R1 수정 전 47/47 재현 → 수정 후 **51/51**: collect 7·check 9·deploy 8·pack 7·report 12·adapter 8).
 
 | 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
 |---|---|---|---|---|---|---|
-| R1 | 적대·자동(수신 시점) | `3f47b98` | 0/6/4 (신규 10) — **미판정**(넛지로 중단, 재개 세션이 자동 모드로 §2c·§2d) | (판정 뒤) | 0 | needs-attention |
+| R1 | 적대·자동 | `3f47b98` | 0/6/4 (신규 10) — 전부 FIXED 후보(기결정 재론 0·ESCALATE 0) | **22** | 0 → 수정 후 10 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
-| R1-1 | task-07 §6 · 검토 결과 0개 분기가 verdict 를 건너뛰어 이전 verdict.json(APPROVE)이 재사용됨 · 0개 분기도 review-failed 저장 + render 가 검토자 수·head 일치 검증 + 새 수집 시 이전 판정 무효화 | high | 미판정 | — |
-| R1-2 | task-07 §5 · 팩 B 밖 공통 입력(계약 10줄·검증 표)이 마스킹 없이 Codex 프롬프트에 들어감 · 비코드 입력은 마스킹된 자료에서만 또는 조립 단계에 동일 마스킹·잔존 검사(재리뷰 추가 입력 포함) | high | 미판정 | — |
-| R1-3 | task-05 pack · 어댑터 projects 등록 = 외부 전송 허가로 취급(대상 외 저장소 Baseline 원문이 팩 B 로) · 수집 가능 프로젝트와 전송 가능 출처 구분(SC-2·SC-3) | high | 미판정 | — |
-| R1-4 | task-04 deploy · expected.deleted 가 비면 본문 삭제 목록을 대조하지 않아 잘못 추가된 삭제 지시가 통과 · 항상 집합 비교 + 회귀 테스트 | high | 미판정 | — |
-| R1-5 | task-02 collect · 정상 diff-only(잘림 없음)에서는 blobs/head 가 생기지 않아 task-07 의 검토자 cwd·파일 전문 위치가 없음(래퍼 exit 97) · diff-only 검토 루트를 항상 만들고 비삭제 변경 파일 head 원문을 고정 SHA 로 확보, 실패는 판정 전달 | high | 미판정 | — |
-| R1-6 | task-07 · ERR 즉시 중단 경로에 cleanup 이 없어 F5·F7 이 제어 흐름에 미연결 · 수집 이후 모든 종료 경로의 공통 종료 절차 | high | 미판정 | — |
-| R1-7 | task-06 verdict · --resolve 결정이 findings 복사본에만 적용돼 호출 간 보존되지 않음, dismissReason 리포트 출력 경로 없음 · 결정·근거 영속화 + 리포트 출력 + 다회 resolve 테스트 | medium | 미판정 | — |
-| R1-8 | task-05 pack · docText 의 missing 을 버려 필수 정책 문서·절 누락이 정상 출처로 등록됨 · 확보 상태를 pack.json 에 포함, 누락은 중단 또는 결정적 MISSING_EVIDENCE(선택 위키와 구분) | medium | 미판정 | — |
-| R1-9 | task-06 render · 부록 C·본문이 evidence·scenario·brokenPremise 를 버림(§5.7 원본 보존 미충족) · 부록에 마스킹 후 보존 | medium | 미판정 | — |
-| R1-10 | task-03 check · Baseline 자리표시자면 contract.complete=false 라 후보 문서가 있어도 earlyExit=true → §5.2 후보 관련성 검토 경로 도달 불가 · 다른 줄 완성 + Baseline 만 미완 + 후보 있음이면 검토 진행(Baseline 미완 기계 증거는 유지) | medium | 미판정 | — |
+| R1-1 | task-07 §6 · 검토 결과 0개 분기가 verdict 를 건너뛰어 이전 verdict.json(APPROVE)이 재사용됨 · 0개 분기도 review-failed 저장 + render 가 검토자 수·head 일치 검증 + 새 수집 시 이전 판정 무효화 | high | FIXED | `6bf5e1b` — task-07 §6 0개 경로도 `verdict` 실행·`findings.head_sha` 기재 · task-06 `computeVerdict` findings head ≠ snapshot → review-failed, `renderReport` verdict 부재·head 불일치 → 리뷰 실패 렌더 · task-02 `collect` 가 하류 산출물(check·deploy·pack·review·findings·verdict·baseline·blobs) 선제 삭제 · SC-3 갱신 · 테스트(collect 잔존물 제거·report head 불일치) |
+| R1-2 | task-07 §5 · 팩 B 밖 공통 입력(계약 10줄·검증 표)이 마스킹 없이 Codex 프롬프트에 들어감 · 비코드 입력은 마스킹된 자료에서만 또는 조립 단계에 동일 마스킹·잔존 검사(재리뷰 추가 입력 포함) | high | FIXED | `6bf5e1b` — task-07 §5 「Codex 비코드 입력은 팩 B에서만」(계약·검증 표·댓글은 팩 B 「## MR」 절 참조, 팩 B 밖은 diff·렌즈·스키마·고정 문구뿐) · §7 재리뷰 대조표는 note_id·토큰만, 이전 리포트 절은 마스킹 잔존 검사 후 복사 · 금지·AC·Cautions |
+| R1-3 | task-05 pack · 어댑터 projects 등록 = 외부 전송 허가로 취급(대상 외 저장소 Baseline 원문이 팩 B 로) · 수집 가능 프로젝트와 전송 가능 출처 구분(SC-2·SC-3) | high | FIXED | `6bf5e1b` — pack 2단계 `exportable` = 이슈·본문 또는 링크 프로젝트 ∈ {대상 프로젝트, docsRoot 와 같은 체크아웃인 프로젝트}(어댑터 §6 원문 범위) · 그 밖은 팩 A 만 + `(Codex 미제공)` · SC-3 pack.json 규칙 명시 · 테스트(beta 원문 B 제외) |
+| R1-4 | task-04 deploy · expected.deleted 가 비면 본문 삭제 목록을 대조하지 않아 잘못 추가된 삭제 지시가 통과 · 항상 집합 비교 + 회귀 테스트 | high | FIXED | `6bf5e1b` — ④ 삭제 목록을 기대 유무와 무관하게 집합 비교(순서 무관 — 기존 join 문자열 비교도 제거) · 회귀 테스트(기대 비고 본문만 Keep.java · 기대 ⊂ 본문) |
+| R1-5 | task-02 collect · 정상 diff-only(잘림 없음)에서는 blobs/head 가 생기지 않아 task-07 의 검토자 cwd·파일 전문 위치가 없음(래퍼 exit 97) · diff-only 검토 루트를 항상 만들고 비삭제 변경 파일 head 원문을 고정 SHA 로 확보, 실패는 판정 전달 | high | FIXED | `6bf5e1b` — `rebuildDiffOnly` 가 `blobs/head/` 를 항상 만들고 비삭제 변경 파일 전부의 head 원문을 api_head 로 확보, 실패는 `unrecovered`(→ M-diff 증거 부족) · SC-3 snapshot 규칙 · 테스트(잘림 없는 diff-only 신규 + 기존 2건 보강) |
+| R1-6 | task-07 · ERR 즉시 중단 경로에 cleanup 이 없어 F5·F7 이 제어 흐름에 미연결 · 수집 이후 모든 종료 경로의 공통 종료 절차 | high | FIXED | `6bf5e1b` — task-07 §0 「공통 종료 절차」(collect 이후 모든 종료 경로의 마지막 동작 = cleanup, 보고는 cleanup 뒤 마스킹 거쳐, cleanup ERR 시 잔존 경로 보고) · §8·금지·AC·Cautions 연결 |
+| R1-7 | task-06 verdict · --resolve 결정이 findings 복사본에만 적용돼 호출 간 보존되지 않음, dismissReason 리포트 출력 경로 없음 · 결정·근거 영속화 + 리포트 출력 + 다회 resolve 테스트 | medium | FIXED | `6bf5e1b` — `cmdVerdict` 가 resolution 을 findings.json 에 영속화(unresolved=false) · render 「리뷰어 결정(--resolve)」 절 + 부록 D 에 근거 · SC-5 갱신 · 테스트(F1 기각 → 별도 호출 F2 확인 → CHANGES_REQUESTED, 블록에서 F1 제외) |
+| R1-8 | task-05 pack · docText 의 missing 을 버려 필수 정책 문서·절 누락이 정상 출처로 등록됨 · 확보 상태를 pack.json 에 포함, 누락은 중단 또는 결정적 MISSING_EVIDENCE(선택 위키와 구분) | medium | FIXED **[루프 판정 — 선택지 2 중 「중단」 채택]** | `6bf5e1b` — 필수 문서(`policy.docs`·`docsMap.always`)의 파일·절 누락 = `PackError` ERR exit 2(fail-closed — 환경 결함이라 판정 입력이 아니라 중단으로 봄) · 규칙 문서(`docsMap.rules`) 누락 = `sources[*].missing:true` + 헤더 `(누락)` 표시로 계속 · SC-3 갱신 · 테스트. 대안(결정적 MISSING_EVIDENCE 투입)은 verdict 가 pack.json 을 읽어야 해 계약 확장 — 채택 안 함. **확인 임무 ③ 우선 감사 대상** |
+| R1-9 | task-06 render · 부록 C·본문이 evidence·scenario·brokenPremise 를 버림(§5.7 원본 보존 미충족) · 부록에 마스킹 후 보존 | medium | FIXED | `6bf5e1b` — 부록 C 행에 근거·시나리오·설계 내 수정·깨진 전제 · 신규 부록 D(병합 발견 상세·리뷰어 결정: 근거·실패 시나리오·전제·resolution·dismissReason) · 마스킹은 전체 텍스트에 그대로 적용 · 테스트 |
+| R1-10 | task-03 check · Baseline 자리표시자면 contract.complete=false 라 후보 문서가 있어도 earlyExit=true → §5.2 후보 관련성 검토 경로 도달 불가 · 다른 줄 완성 + Baseline 만 미완 + 후보 있음이면 검토 진행(Baseline 미완 기계 증거는 유지) | medium | FIXED | `6bf5e1b` — `would` = (Baseline 외 미완 줄 있음) ‖ (기준선 없음 ∧ 후보 0) · Baseline 미완은 incompleteLines 로 verdict 에 전달(APPROVE 불가) · SC-3·task-07 §3 문구 · 기존 테스트가 고정하던 반대 동작을 바꿈(+ 다른 줄 미완 사례). spec §5.2 문면(「계약이 미완이거나 … 후보 문서가 있으면 진행」)의 두 문장 중 후자를 따름 — spec 변경 없음 |
+
+미확인 FIXED 큐(R1 수정 후): R1-1~R1-10(10건) — 소멸 확인은 확인 라운드 임무 ①. 루프 직접 판정: R1-8 의 선택지 채택 1건(위 표시).
 
 ## 확인 대기 대장
 
