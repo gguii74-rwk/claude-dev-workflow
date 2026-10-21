@@ -263,7 +263,7 @@ test('댓글: 신뢰 이전 판정(옛 head) → 재리뷰 · 작성자의 판�
   const notes = [
     { id: 10, system: false, author: { id: 2, username: 'rev-b' }, created_at: '2026-10-19T00:00:00Z', body: '기준선 확인 — 배경 ①② 동의' },
     { id: 11, system: true, author: { id: 1, username: 'author-a' }, created_at: '2026-10-19T02:00:00Z', body: 'changed the description' },
-    { id: 12, system: false, author: { id: 2, username: 'rev-b' }, created_at: '2026-10-20T00:00:00Z', body: `리뷰 계약 TEST-POLICY-v1.0 · head ${OLD} · 사람 판정 CHANGES_REQUESTED\n\n4. 차단 발견\n- F1 DEFECT — x\n- … 외 2건(차단 — 전부 부록 D 에 있음): F2, F3\n5. 비차단 후속\n- 없음` },
+    { id: 12, system: false, author: { id: 2, username: 'rev-b' }, created_at: '2026-10-20T00:00:00Z', body: `리뷰 계약 TEST-POLICY-v1.0 · head ${OLD} · 사람 판정 CHANGES_REQUESTED\n\n4. 차단 발견\n- F1 DEFECT — x\n- … 외 3건(차단 — 전부 부록 D 에 있음): F2, F3, M-deploy\n5. 비차단 후속\n- 없음` },
     { id: 13, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T01:00:00Z', body: `리뷰 계약 TEST-POLICY-v1.0 · head ${HEAD} · 사람 판정 APPROVE` },
     { id: 14, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T02:00:00Z', body: `FIXED ${HEAD}\n설명\nREFUTED` },
     { id: 15, system: false, author: { id: 9, username: 'someone' }, created_at: '2026-10-20T03:00:00Z', body: 'FIXED abc1234' },
@@ -293,17 +293,17 @@ test('댓글: 신뢰 이전 판정(옛 head) → 재리뷰 · 작성자의 판�
   assert.equal(c.rereview.prior_note_id, 12);
   // 이전 차단 발견 전체 목록(R4-3): 댓글 축약분(F2·F3)은 이전 리포트가 없으면 title:null → 불완전
   assert.equal(c.rereview.priorReport, null);
-  assert.deepEqual(c.rereview.priorBlocking.map((b) => [b.id, b.title, b.source]), [['F1', 'x', 'comment'], ['F2', null, 'missing'], ['F3', null, 'missing']]);
+  assert.deepEqual(c.rereview.priorBlocking.map((b) => [b.id, b.title, b.source]), [['F1', 'x', 'comment'], ['F2', null, 'missing'], ['F3', null, 'missing'], ['M-deploy', null, 'missing']]);
   assert.equal(c.rereview.priorBlockingComplete, false);
   // 이전 리포트가 있으면 부록 D 에서 제목을 복원한다 → 완전
   const reportDir = join(root, 'reviews');
   mkdirSync(reportDir, { recursive: true });
-  writeFileSync(join(reportDir, `alpha-7-${OLD.slice(0, 7)}.md`), '# 이전 리포트\n\n## 부록 D — 병합 발견 상세 · 리뷰어 결정\n\n- **F1** [L1] DEFECT (차단) — x (src/A.java:1) · 출처 both · 확신 high\n- **F2** [L2] DEFECT (차단) — 널 역참조 (src/B.java:9) · 출처 claude · 확신 medium\n- **F3** [L3] MISSING_EVIDENCE (차단) — 회귀 결과 없음 (-:-) · 출처 both · 확신 high\n');
+  writeFileSync(join(reportDir, `alpha-7-${OLD.slice(0, 7)}.md`), '# 이전 리포트\n\n## 부록 D — 병합 발견 상세 · 리뷰어 결정\n\n- **F1** [L1] DEFECT (차단) — x (src/A.java:1) · 출처 both · 확신 high\n- **F2** [L2] DEFECT (차단) — 널 역참조 (src/B.java:9) · 출처 claude · 확신 medium\n- **F3** [L3] MISSING_EVIDENCE (차단) — 회귀 결과 없음 (-:-) · 출처 both · 확신 high\n- **M-deploy** [기계] MISSING_EVIDENCE (차단) — 배포본 불일치 — deleted_list (-:-) · 출처 machine · 확신 -\n  - 근거: 스크립트 결정적 검사(deploy) — 모델 발견이 아니다\n');
   runCli(['check', '--adapter', adapter, '--work', work], fakeGlab(root, []).env);
   const c2 = readJson(join(work, 'check.json'));
   assert.equal(c2.rereview.priorBlockingComplete, true);
   assert.match(c2.rereview.priorReport, /alpha-7-ccccccc\.md$/);
-  assert.deepEqual(c2.rereview.priorBlocking.map((b) => [b.id, b.type, b.title, b.source]), [['F1', 'DEFECT', 'x', 'comment'], ['F2', 'DEFECT', '널 역참조', 'report'], ['F3', 'MISSING_EVIDENCE', '회귀 결과 없음', 'report']]);
+  assert.deepEqual(c2.rereview.priorBlocking.map((b) => [b.id, b.type, b.title, b.source]), [['F1', 'DEFECT', 'x', 'comment'], ['F2', 'DEFECT', '널 역참조', 'report'], ['F3', 'MISSING_EVIDENCE', '회귀 결과 없음', 'report'], ['M-deploy', 'MISSING_EVIDENCE', '배포본 불일치 — deleted_list', 'report']]);   // 기계 항목(R5-3)도 부록 D 에서
 });
 
 test('신뢰 판정의 head 가 현재 head 면 재리뷰 아님 · 기준선 확인 있음(본문 변경 없음)', () => {

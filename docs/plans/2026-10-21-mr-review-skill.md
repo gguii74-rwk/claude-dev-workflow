@@ -123,7 +123,7 @@
 | `codex.prompt` · `codex.out` · `codex.sh` · `codex.pid` | SKILL | cleanup | Codex 실행 파일(원시 — 보존 금지) |
 | `zip/<파일명>` · `worktree/` · `blobs/` · `baseline/` | deploy·collect·check | cleanup | 임시 산출물(F7) — `baseline/`은 원문이라 cleanup이 지운다(pack이 이미 소비) |
 
-**산출물 수명주기(cleanup — F5·F7)**: 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`deploy.json`·`review-*.json`·`findings.json`·`verdict.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `deploy.json`(zip 파일명·주석·API 오류 문자열)·`verdict.json`(`machineEvidence`에 복사된 미확보 링크 `raw`·`reason`)도 MR 원문이 흘러드는 파일이라 「원문 없음」으로 가정하지 않는다(plan R4-1). `snapshot.json`·`pack.json`·리포트는 그대로(경로·SHA·카운트·패턴 이름만, 리포트는 저장 시 마스킹). 파싱 불가 JSON은 마스킹할 수 없으므로 지운다.
+**산출물 수명주기(cleanup — F5·F7)**: 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`deploy.json`·`review-*.json`·`findings.json`·`verdict.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `deploy.json`(zip 파일명·주석·API 오류 문자열)·`verdict.json`(`machineEvidence`에 복사된 미확보 링크 `raw`·`reason`)도 MR 원문이 흘러드는 파일이라 「원문 없음」으로 가정하지 않는다(plan R4-1). `snapshot.json`·`pack.json`·리포트는 그대로(경로·SHA·카운트·패턴 이름만, 리포트는 저장 시 마스킹). 파싱 불가 JSON은 마스킹할 수 없으므로 지운다. **마스킹(리포트·JSON 사본 모두)은 40자 SHA(16진수, 글자 포함)를 보존한다**(`maskText` — 자리표시자로 빼고 복원, plan R5-2: 개인정보 패턴에 걸리는 정상 SHA 가 변조되면 이전 판정 파싱·`--resolve` head 대조가 깨진다).
 
 **`mr.json`**:
 ```json
@@ -205,7 +205,7 @@
   "packA": "pack-a.md", "packB": "pack-b.md", "codexSkipped": false, "codexSkipReason": null }
 ```
 - `wikiTerms` = 위키 grep 검색어 중 변경 코드에서 뽑은 것(`codeTerms` — diff **추가 줄**의 SQL 테이블명(FROM/JOIN/INTO/UPDATE/TABLE 뒤·`@Table(name=)`)·선언 식별자(class/interface/enum/record/function/def·MyBatis `<select id>`), 길이 ≥ 4·SQL 예약어 제외·상한 40). 검색어 전체 = MR 제목·경로(용어집 대조 텍스트에는 추가 줄 본문도 포함) + 파일 basename + `wikiTerms`(spec §5.3-2 「변경 파일명·기능명·테이블명」, plan R4-5 — 스크립트 규칙, 어댑터 키 없음).
-- `exportAllowed`(= 팩 B 투입) 규칙: `doc`(공통 문서·`repo:` 대상 저장소 문서 모두)·`adapter`·`issue`·본문 기준선 = `true` · `wiki` = 루트의 `export` · **`baseline`(저장소 링크) = 링크의 프로젝트가 리뷰 대상 프로젝트이거나 `docsRoot`와 같은 체크아웃인 프로젝트일 때만 `true`** — 어댑터 `projects` 등록은 수집 가능 범위이지 전송 허가가 아니다(어댑터 §6). `missing` = 문서 지도 규칙 문서의 파일·절 누락(계속 진행) — **공통 문서의 필수 참조(`policy.docs`·`docsMap.always`) 누락은 `pack`이 `ERR` exit 2**(fail-closed). **`repo:` 참조는 필수 여부와 무관하게 누락 = `missing:true`로 계속**(SC-2).
+- `exportAllowed`(= 팩 B 투입) 규칙: `doc`(공통 문서·`repo:` 대상 저장소 문서 모두)·`adapter`·`issue`·본문 기준선 = `true` · `wiki` = 루트의 `export` · **`baseline`(저장소 링크) = 링크의 프로젝트가 리뷰 대상 프로젝트이거나 `docsRoot`와 같은 체크아웃인 프로젝트일 때만 `true`** — 어댑터 `projects` 등록은 수집 가능 범위이지 전송 허가가 아니다(어댑터 §6). `missing` = 문서 지도 규칙 문서의 파일·절 누락(계속 진행) — **공통 문서의 필수 참조(`policy.docs`·`docsMap.always`) 누락은 `pack`이 `ERR` exit 2**(fail-closed). **`repo:` 참조는 필수 여부와 무관하게 누락 = `missing:true`로 계속**(SC-2). `repo:` 문서는 **고정 head 의 git blob**(`git ls-tree`로 모드 확인 → 일반 blob 만 `git show <head>:<경로>`, diff-only 는 raw API)으로 읽는다 — 작업 트리 파일을 fs 로 읽지 않으며 심볼릭 링크(120000)·서브모듈은 `missing`(plan R5-1, F4·F6).
 
 **`verdict.json`**:
 ```json
@@ -218,6 +218,7 @@
   "machineEvidence": [{ "id": "M-contract-Baseline", "kind": "contract|diff|deploy|baseline|api|rereview", "detail": "" }],
   "reasons": ["<한 줄>"] }
 ```
+- 리포트 부록 D 는 병합 발견뿐 아니라 `machineEvidence` 항목도 같은 줄 형식(`- **M-…** [기계] MISSING_EVIDENCE (차단) — <detail> (-:-) · 출처 machine · 확신 -`)으로 싣는다 — 실행 블록 축약 ④ 가 접은 기계 항목을 재리뷰 `parseAppendixD`가 복원할 수 있게(plan R5-3).
 - `machineEvidence` 투입원: 계약 미완 줄(`M-contract-<name>`) · 미복원 diff(`M-diff-<n>`) · diff-only 목록 불완전(`M-diff-list`) · 배포본 비일치(`M-deploy`) · 기준선·이슈 원문 미확보(`M-baseline-<n>`) · **보조 API 조회 실패 `M-api-<name>`**(`snapshot.api_failures` — `closes_issues`는 모든 모드, `changes`·`versions`는 diff-only만, `approvals`는 판정 입력 아님) · **재리뷰 이전 차단 발견 목록 불완전 `M-rereview`**(`check.rereview.active && priorBlockingComplete === false`, plan R4-3). 하나라도 있으면 `HOLD_EVIDENCE` 이상.
 
 ### SC-4. 검토자 출력 스키마 — `review-claude.json` · `review-codex.json` (P5, spec §5.4)

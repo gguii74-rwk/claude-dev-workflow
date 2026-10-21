@@ -264,7 +264,8 @@ test('실행 블록 40줄 보장: 차단 발견 30건·후속 5건·의도 10행
   const many = Array.from({ length: 30 }, (_, i) => F({ id: `F${i + 1}`, title: `차단 결함 ${i + 1}`, file: `src/X${i + 1}.java` }));
   const fus = Array.from({ length: 5 }, (_, i) => F({ id: `F${100 + i}`, type: 'FOLLOW_UP', blocking: false, title: `후속 ${i + 1}` }));
   const intent = Array.from({ length: 10 }, (_, i) => ({ criterion: `V${i + 1}`, result: 'UNKNOWN', location: '-', basis: '작성자 주장' }));
-  const work = fullWork(root, { fnd: findings([...many, ...fus], { intent }) });
+  const d = baseDeploy(); d.applicable = true; d.result = '불일치'; d.mismatches = [{ kind: 'deleted_list', path: null, detail: '삭제 목록 불일치' }];   // 기계 증거도 차단 목록에 — 축약돼도 부록 D 에서 복원돼야 한다(R5-3)
+  const work = fullWork(root, { fnd: findings([...many, ...fus], { intent }), deploy: d });
   assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT determined CHANGES_REQUESTED');
   const out = join(root, 'big.md');
   runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
@@ -279,8 +280,33 @@ test('실행 블록 40줄 보장: 차단 발견 30건·후속 5건·의도 10행
   assert.ok(more, '축약 ④ 줄');
   assert.equal(more[2].split(', ').length, Number(more[1]));                          // 생략분 id 전부 — 재리뷰 대조표 복원용(R4-3)
   assert.ok(more[2].split(', ').includes('F30'));
+  assert.ok(more[2].split(', ').includes('M-deploy'));                                       // 기계 항목도 접혔다
   assert.match(block, /- … 외 4건 — 부록 D/);
   assert.match(md, /## 부록 D[\s\S]*\*\*F30\*\*/);                                  // 생략분은 부록 D 에 전부 있다
+  assert.match(md, /## 부록 D[\s\S]*- \*\*M-deploy\*\* \[기계\] MISSING_EVIDENCE \(차단\) — 배포본 불일치 — deleted_list \(-:-\) · 출처 machine/);   // 기계 항목도 같은 형식으로(R5-3)
+});
+
+test('마스킹은 SHA 를 변조하지 않는다 — 개인정보 패턴(rrn)에 걸리는 정상 40자 SHA 가 게시 블록·헤더·cleanup 뒤 verdict/findings 에 그대로 남는다 (R5-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const SHA = 'aaaaaaaaaa1234561123456bbbbbbbbbbbbbbbbb';                                   // 40자 · rrn 패턴(\d{6}-?[1-4]\d{6}) 매치
+  assert.equal(SHA.length, 40);
+  const snap = baseSnap(); snap.head_sha = SHA;
+  const fnd = findings([F({ title: '비밀번호 평문 로그 010-1234-5678' })], { head_sha: SHA });
+  const work = fullWork(root, { snap, fnd, reviews: false });
+  writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: SHA, findings: [], intent: [], baselineCandidateRelevant: true }));
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT determined CHANGES_REQUESTED');
+  const out = join(root, 'sha.md');
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  const md = readFileSync(out, 'utf8');
+  assert.match(md, new RegExp(`^리뷰 계약 TEST-POLICY-v1\\.0 · head ${SHA} · 추천 판정\\(초안\\) CHANGES_REQUESTED$`, 'm'));   // 이전 판정 정규식이 다시 읽을 첫 줄
+  assert.doesNotMatch(md, /\[masked:rrn\]/);
+  assert.match(md, /\[masked:phone\]/);                                                   // 진짜 개인정보는 여전히 가려진다
+  const rc = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(rc.code, 0, rc.out + rc.err);
+  assert.equal(readJson(join(work, 'verdict.json')).head_sha, SHA);
+  assert.equal(readJson(join(work, 'findings.json')).head_sha, SHA);
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed']).first, 'VERDICT determined CHANGES_REQUESTED');   // --resolve 재계산이 head 불일치로 깨지지 않는다
 });
 
 test('부록 C: 무효 검토 결과(비-배열 findings · JSON 오류)가 있어도 단일 모델 리포트는 끝까지 렌더된다 (R3-7)', () => {
@@ -425,8 +451,17 @@ export const SECRET_MASK = [
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
 ];
 // 정리(cleanup) 때 남기는 JSON 의 문자열 값에 어댑터 마스킹 + 비밀값 제거를 적용한다(R3-9) — 키 이름은 건드리지 않는다(`"token": "FIXED"` 같은 값이 키워드 패턴에 걸리지 않게 값만 본다).
+// 마스킹이 정상 SHA 를 변조하지 않게(R5-2) — 40자 16진수 토큰(글자 a-f 1개 이상)은 개인정보일 수 없다. 자리표시자로 빼고 마스킹 뒤 복원한다(리포트 자유 텍스트·cleanup 의 JSON 문자열 값 공통).
+// 글자 조건: 숫자만 40자인 토큰은 SHA 로 보지 않는다 — 전화·주민번호 같은 숫자열을 보호 대상으로 오인하지 않게. 7자 짧은 SHA 는 어떤 어댑터 패턴 길이(≥10)에도 못 미쳐 보호가 필요 없다.
+const SHA40_RE = /\b(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}\b/g;
+export function maskText(text, maskRules) {
+  const keep = [];
+  const held = text.replace(SHA40_RE, (m) => { keep.push(m); return `\u0000S${keep.length - 1}\u0000`; });
+  const masked = applyMask(applyMask(held, maskRules).text, SECRET_MASK).text;
+  return masked.replace(/\u0000S(\d+)\u0000/g, (_, i) => keep[Number(i)]);
+}
 export function deepMask(v, maskRules) {
-  if (typeof v === 'string') return applyMask(applyMask(v, maskRules).text, SECRET_MASK).text;
+  if (typeof v === 'string') return maskText(v, maskRules);
   if (Array.isArray(v)) return v.map((x) => deepMask(x, maskRules));
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepMask(x, maskRules)]));
   return v;
@@ -695,18 +730,20 @@ export function renderReport({ adapter, work, early = false }) {
     // 부록 D — 병합 발견 상세: 실행 블록(40줄)이 생략한 근거·시나리오·전제·리뷰어 결정을 발견마다 보존한다(사람이 차단 판단을 검증할 수 있게)
     parts.push('## 부록 D — 병합 발견 상세 · 리뷰어 결정', '');
     const merged = findings?.findings || [];
-    if (!merged.length) parts.push('(발견 없음)', '');
+    if (!merged.length && !(verdict?.machineEvidence || []).length) parts.push('(발견 없음)', '');
     for (const f of merged) {
       parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? ' (차단)' : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}`,
         `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}`,
         `  - 권고: ${f.recommendation || '-'}`,
         `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);
     }
+    // 기계 증거(machineEvidence)도 같은 줄 형식으로 — 실행 블록 축약 ④ 가 접은 `M-…` 항목을 재리뷰(task-03 parseAppendixD)가 여기서 복원한다(R5-3). 모델 발견만 적으면 접힌 기계 항목은 영구 미확보 → M-rereview 가 남는다.
+    for (const m of verdict?.machineEvidence || []) parts.push(`- **${m.id}** [기계] MISSING_EVIDENCE (차단) — ${m.detail} (-:-) · 출처 machine · 확신 -`, `  - 근거: 스크립트 결정적 검사(${m.kind}) — 모델 발견이 아니다`);
     parts.push('');
   }
   const text = parts.join('\n');
-  // F5 — 산출물 전체 비밀값 제거: 어댑터 개인정보 패턴 + 엔진 내장 비밀값 리터럴 패턴(§5.7 「하드코딩 비밀값은 [masked:secret] <파일:줄>로만」 — 어댑터 mask 에 비밀번호·API 키 패턴이 없어도 적용)
-  return applyMask(applyMask(text, adapter.mask).text, SECRET_MASK).text;
+  // F5 — 산출물 전체 비밀값 제거: 어댑터 개인정보 패턴 + 엔진 내장 비밀값 리터럴 패턴(§5.7 「하드코딩 비밀값은 [masked:secret] <파일:줄>로만」 — 어댑터 mask 에 비밀번호·API 키 패턴이 없어도 적용). SHA 는 보존(R5-2 — maskText).
+  return maskText(text, adapter.mask);
 }
 
 // ── 정리(F7·F5) ───────────────────────────────────────────────────────────
@@ -830,7 +867,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: report 14/14 · 전체 62/62(adapter 8·collect 9·check 11·deploy 11·pack 9·report 14) · `CHECK_DONE`만.
+기대: report 15/15 · 전체 64/64(adapter 8·collect 9·check 11·deploy 11·pack 10·report 15) · `CHECK_DONE`만.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/report.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/report.test.mjs
@@ -839,7 +876,7 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/report.test.mjs` → 14/14, 전체 62/62.
+- `node --test tests/mr-review/report.test.mjs` → 15/15, 전체 64/64.
 - 실행 블록은 발견·표가 많아도 5개 절 유지 + 40줄 이하(plan R3-10) · 무효 검토 결과 파일이 있어도 render 는 실패하지 않고 부록 C 에 「무효 결과」(plan R3-7) · `cleanup` 뒤 `pack-*.md`·`baseline/` 없음, 남는 JSON(`deploy.json`·`verdict.json` 포함 — plan R4-1) 의 문자열 값에 마스킹 패턴·비밀값 잔존 0(plan R3-9) · `snapshot.api_failures`는 기계 증거 `M-api-<name>`(plan R3-3) · 실행 블록 차단 줄은 id 접두, 축약 ④ 는 생략분 id 목록을 남기고, 재리뷰 이전 차단 목록 불완전은 `M-rereview`(plan R4-3).
 - 판정은 정책 4종만(D9) · 미해결 후보가 있으면 게시용 블록을 만들지 않고 헤더에 「판정 미확정」(R1-F4·R2-F4) · 발견 0건이어도 계약 미완·미복원 diff·배포본 불일치·원문 미확보면 `HOLD_EVIDENCE`(R5-F1·R1-F3·R4-F1·R4-F3) · 유효 검토 0개면 블록 없음(R4-F2) · 리포트 전체에 마스킹 패턴 잔존 0(F5) · `cleanup` 뒤 워크트리·zip·blobs·codex 원시 파일 없음(F7).
 - `--resolve` 결정이 `findings.json`에 영속돼 호출을 나눠도 유지되고 리포트 「리뷰어 결정」·부록 D에 근거가 남는다(plan R1-7) · `verdict.json`·`findings.json`의 head가 `snapshot.head_sha`와 다르면 판정 블록 없이 리뷰 실패, 비-early에서 `verdict.json` 부재도 리뷰 실패(plan R1-1) · 부록 C·D에 근거·시나리오·깨진 전제 보존(plan R1-9).
@@ -854,6 +891,8 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 - **`review-validate`에 `--head`·`--reviewer`를 받아 원본 결과의 head·검토자 일치를 검사하라. 이유:** plan R2-4 — 형식만 보면 이전 head 의 검토 결과가 VALID 로 통과하고, 병합에서 `findings.head_sha`를 새로 적으면 후속 대조가 그것을 못 잡는다.
 - **`review-validate`는 `ERR` 접두 없이 `INVALID …` exit 1. 이유:** SC-6 — SKILL이 `VALID`/`INVALID`만 본다.
 - **`cleanup`은 원문(`pack-a.md`·`pack-b.md`·`baseline/`·`codex.*`·워크트리·zip·blobs)을 지우고, JSON(`mr`·`check`·`deploy`·`review-*`·`findings`·`verdict`)은 문자열 값에 어댑터 마스킹 + `SECRET_MASK`를 적용한 사본으로 남긴다. JSON 을 통째로 지우거나 원문 그대로 두지 마라. 이유:** plan R3-9 — `pack-a.md`는 MR 원문·개인 위키 발췌를, `review-*.json`은 비밀값 인용을 그대로 담는데 `codex.*`만 지우면 P4·F5 의 정리 요구를 못 채운다. 반대로 JSON 을 지우면 `--resolve` 재계산(§9)·재리뷰(§5.6)가 같은 `W`에서 불가능하다. 마스킹은 값만(키 이름 제외) — `deepMask`.
+- **마스킹(리포트 전체·cleanup `deepMask`)은 40자 SHA 를 보존해야 한다 — `maskText`가 16진수 40자(글자 포함) 토큰을 자리표시자로 빼고 복원한다. 어댑터 패턴을 SHA 에 그대로 돌리지 마라. 이유:** plan R5-2 — `aaaaaaaaaa1234561123456bbbb…` 같은 정상 SHA 가 rrn 패턴에 걸려 게시 블록 첫 줄의 head 가 `[masked:rrn]`으로 바뀌면 다음 리뷰의 이전 판정 정규식이 못 읽고, cleanup 이 `verdict`·`findings`의 `head_sha`를 바꾸면 `--resolve`가 head 불일치로 review-failed 가 된다. 글자 조건으로 숫자열(전화·주민번호)은 보호하지 않는다.
+- **부록 D 에는 모델 발견뿐 아니라 `machineEvidence` 항목도 같은 줄 형식(`- **M-…** [기계] MISSING_EVIDENCE (차단) — <detail> (-:-) · 출처 machine …`)으로 적어라. 이유:** plan R5-3 — 축약 ④ 는 모델 발견과 기계 항목을 함께 접고 생략 id 를 부록 D 로 안내하는데, 부록 D 가 `findings.findings`만 담으면 접힌 `M-deploy`는 리포트가 있어도 재리뷰에서 `source:missing` → `M-rereview`가 남아 다음 head 에서 전부 고쳐도 HOLD_EVIDENCE 다.
 - **`deploy.json`·`verdict.json`을 「원문 없음」으로 보고 마스킹에서 빼지 마라. 이유:** plan R4-1 — `machineEvidence()`는 미확보 링크의 `raw`·`reason`을, deploy 는 zip 파일명·주석·API 오류 문자열을 그대로 복사한다. 링크의 `?token=…`이 `check.json`에서는 가려지고 `verdict.json`에는 남는 데이터 흐름 결함. 제외는 경로·SHA·카운트만 담는 `snapshot.json`·`pack.json`뿐.
 - **실행 블록의 차단 발견 줄에는 발견 id(`F3`·`M-deploy`)를 앞에 두고, 축약 ④ 의 「… 외 n건」 줄에는 생략분 id 목록을 붙여라. 이유:** plan R4-3 — 재리뷰(§5.6)는 이전 판정 댓글의 「4. 차단 발견」으로 대조표를 만드는데, R3-10 축약이 일부를 부록 D(로컬 리포트)로 옮기면 댓글만 남은 환경에서는 그 항목을 복원할 입력이 없다. id 가 있으면 이전 리포트 부록 D 에서 제목을 복원하고, 없으면 `title:null`로 미확보가 되어 `M-rereview`로 판정에 전달된다.
 - **실행 블록은 40줄을 「보장」한다 — 넘치면 안내 문장을 덧붙이고 끝내지 마라. 축약 순서(의도 표 → 차단 짧은 형태 → 후속 1건 → 차단 앞 n건 + 「외 n건 — 부록 D」)는 결정적이다. 이유:** plan R3-10 — 차단 발견 30건이면 48줄이 나와 §5.7·정책 §8.1(40줄)을 어기고 리뷰어가 게시 전에 요약 방식을 새로 정해야 한다. 생략분은 부록 D 에 전부 남는다.

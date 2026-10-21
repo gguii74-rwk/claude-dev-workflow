@@ -28,9 +28,9 @@
 // pack 계약 테스트 (spec §5.3 · SC-3 pack.json) — 공통 문서(git) + 팀/개인 위키(MR_REVIEW_HOME) + 마스킹 fail-closed
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmp, writeAdapter, writeDocs, fakeGlab, runCli, readJson, LIB } from './helpers.mjs';
+import { tmp, writeAdapter, writeDocs, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
 const { extractSection, excerpt, applyMask, residual } = await import(join(LIB, 'pack.mjs'));
 const HEAD = 'a'.repeat(40);
@@ -205,6 +205,34 @@ test('repo: 접두 문서 참조 — 대상 저장소 문서를 고정 head 에�
   const sec = p.sources.find((x) => x.ref === `repo:docs/security-notes.md@${HEAD.slice(0, 7)}#2.`);
   assert.equal(sec.missing, true);                                                       // 저장소에 없는 문서 — ERR 가 아니라 missing 으로 계속
   assert.equal(p.codexSkipped, false);
+});
+
+test('repo: 문서는 고정 head 의 git blob 으로 읽는다 — 워크트리 밖을 가리키는 심볼릭 링크는 missing(팩 B 에 대상 본문 없음) · 작업 트리의 미커밋 변경도 읽지 않는다 (R5-1)', () => {
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md', 'repo:docs/notes.md'], rules: [] } } });
+  const outside = join(s.root, 'private-wiki.md');
+  writeFileSync(outside, 'OUTSIDE-PRIVATE-TEXT 전송 금지\n');
+  const wt = join(s.root, 'wt');
+  mkdirSync(join(wt, 'docs'), { recursive: true });
+  git(wt, 'init', '-q', '-b', 'master');
+  symlinkSync(outside, join(wt, 'AGENTS.md'));                                             // MR 이 AGENTS.md 를 바깥 파일로 향하는 링크로 바꿈
+  writeFileSync(join(wt, 'docs', 'notes.md'), '# notes\n\nCOMMITTED-NOTES-TEXT\n');
+  git(wt, 'add', '-A');
+  git(wt, 'commit', '-q', '-m', 'link');
+  const head = git(wt, 'rev-parse', 'HEAD');
+  writeFileSync(join(wt, 'docs', 'notes.md'), '# notes\n\nDIRTY-UNCOMMITTED-TEXT\n');          // 작업 트리만 바뀐 상태
+  writeFileSync(join(s.work, 'snapshot.json'), JSON.stringify({ mode: 'worktree', target_sha: 'b'.repeat(40), base_sha: 'b'.repeat(40), head_sha: head, checkout: wt, worktree: wt, attempts: 1, unrecovered: [], rebuilt: [] }));
+  const mr = readJson(join(s.work, 'mr.json')); mr.api_head = head; writeFileSync(join(s.work, 'mr.json'), JSON.stringify(mr));
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(s.work, 'pack.json'));
+  const ag = p.sources.find((x) => x.ref.startsWith('repo:AGENTS.md@'));
+  assert.equal(ag.missing, true);                                                         // 링크 → missing(ERR 아님)
+  const a = readFileSync(join(s.work, 'pack-a.md'), 'utf8');
+  const b = readFileSync(join(s.work, 'pack-b.md'), 'utf8');
+  assert.doesNotMatch(a + b, /OUTSIDE-PRIVATE-TEXT/);                                    // 링크 대상 본문은 어느 팩에도 없다
+  assert.match(a, /심볼릭 링크/);
+  assert.match(b, /COMMITTED-NOTES-TEXT/);                                                // 일반 blob 은 커밋된 내용으로
+  assert.doesNotMatch(a + b, /DIRTY-UNCOMMITTED-TEXT/);                                   // 작업 트리의 미커밋 변경은 읽지 않는다(고정 head)
 });
 
 test('위키 검색어에 diff 추가 줄의 테이블명·선언 식별자가 들어간다 — 제목·파일명에 없는 테이블명만 언급한 페이지가 선택된다 (R4-5)', () => {
@@ -420,14 +448,26 @@ function docText(docsRoot, ref) {
 
 // `repo:<경로>[#절]` — 대상 저장소 자신의 문서(AGENTS.md·CLAUDE.md·저장소 docs/)를 고정 head 에서 읽는다(SC-2, R3-6). 워크트리 모드 = 워크트리 파일, diff-only = repository/files raw(ref=head).
 // 전송 허용 = 워크트리 전체가 D4 범위라 true. 저장소마다 있을 수도 없을 수도 있는 문서라 누락은 필수 여부와 무관하게 missing:true 로 계속(ERR 아님).
+// 대상 저장소 문서(repo:)는 **고정 head 의 git blob** 으로 읽는다 — 작업 트리 파일을 fs 로 읽지 않는다(R5-1). 작업 트리를 읽으면 MR 이 AGENTS.md 를 워크트리 밖(개인 위키 등)으로
+// 향하는 심볼릭 링크로 바꿨을 때 그 대상 본문이 「대상 저장소 문서」로 팩 B(Codex)에 들어간다(F4 위반 — D16 의 Codex 직접 읽기 한계와 별개로 엔진이 금지 자료를 삽입하는 경로).
+// `git ls-tree` 로 항목 모드를 확인해 일반 blob(100644·100755)만 읽고, 심볼릭 링크(120000)·서브모듈(160000)·부재는 missing. 경로 중간의 링크도 커밋 트리 조회라 따라가지 않는다.
+// diff-only 의 raw API 도 blob 내용을 돌려주므로(링크면 링크 대상 문자열) 외부 파일을 따라가지 않는다.
 function repoDocText(mr, snap, ref) {
   const [rel, anchor] = ref.slice('repo:'.length).split('#');
   let md = null;
+  let why = '없음';
   try {
-    if (snap.mode === 'worktree' && snap.worktree) { const f = path.join(snap.worktree, rel); md = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null; }
-    else md = apiRaw(`projects/${mr.project.id}/repository/files/${encodePath(rel)}/raw?ref=${snap.head_sha}`).toString('utf8');
+    if (snap.mode === 'worktree' && snap.worktree) {
+      const ls = spawnSync('git', ['-C', snap.worktree, 'ls-tree', snap.head_sha, '--', rel], { encoding: 'utf8' });
+      const mode = ls.status === 0 ? (ls.stdout.trim().split(/\s+/)[0] || '') : '';
+      if (mode === '100644' || mode === '100755') {
+        const show = spawnSync('git', ['-C', snap.worktree, 'show', `${snap.head_sha}:${rel}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+        md = show.status === 0 ? show.stdout : null;
+      } else if (mode === '120000') why = '심볼릭 링크 — 링크 대상은 읽지 않는다(F4)';
+      else if (mode === '160000') why = '서브모듈';
+    } else md = apiRaw(`projects/${mr.project.id}/repository/files/${encodePath(rel)}/raw?ref=${snap.head_sha}`).toString('utf8');
   } catch { md = null; }
-  if (md == null) return { text: `(대상 저장소 문서 없음: ${rel} @ ${snap.head_sha.slice(0, 7)})`, missing: true };
+  if (md == null) return { text: `(대상 저장소 문서 ${why}: ${rel} @ ${snap.head_sha.slice(0, 7)})`, missing: true };
   return sliceDoc(md, rel, anchor);
 }
 
@@ -545,7 +585,7 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/pack.test.mjs` → 9/9.
+- `node --test tests/mr-review/pack.test.mjs` → 10/10.
 - `repo:<경로>[#절]` 참조는 대상 저장소의 고정 head(워크트리 또는 raw API)에서 읽고 출처 `repo:<경로>@<head7>`·팩 B 포함, 누락은 `missing:true`(plan R3-6).
 - 전송 금지 루트(`export:false`)의 텍스트가 `pack-b.md`에 한 글자도 없다(F4) · 마스킹 잔존 시 `pack-b.md`가 없고 `codexSkipped:true`(D14·F5).
 - 출처마다 `[S<n>] <kind> · <경로@sha | 페이지>`가 `pack.json`과 두 팩 헤더에 있다(G4).
@@ -561,4 +601,5 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 - **위키 검색어를 제목·파일명에서만 뽑지 마라 — diff 추가 줄의 테이블명(FROM/JOIN/INTO/UPDATE/TABLE 뒤·`@Table`)·선언 식별자(class/function/MyBatis id)를 `codeTerms`로 더하고 용어집 대조 텍스트에도 추가 줄을 넣어라. 추출은 스크립트 규칙(결정적)이고 어댑터 키·LLM 입력을 두지 않는다. 이유:** plan R4-5(사용자 결정) — spec §5.3-2·어댑터 §5 가 요구한 기능명·테이블명 검색이 빠지면 테이블명만 언급한 위키 교훈이 조용히 누락된다. 삭제 줄은 제외(바뀐 뒤 코드가 기준).
 - **위키 페이지는 전문이 아니라 `excerpt`. 이유:** 발췌 상한은 어댑터 값(§5.3-2) — 프롬프트 비대화 방지.
 - **공통 문서 참조는 `경로#절접두` 로 절만 뽑는다. 정책 전문을 넣지 마라. 이유:** 어댑터 4.2 「항상 읽을 절」 — 정책 전문(350줄)은 두 모델 프롬프트를 압도한다.
+- **`repo:` 문서를 워크트리의 파일로 `readFileSync` 하지 마라 — `git ls-tree <head> -- <경로>`로 모드를 확인한 뒤 일반 blob(100644·100755)만 `git show <head>:<경로>`로 읽고, 심볼릭 링크(120000)·서브모듈·부재는 `missing`. 이유:** plan R5-1 — MR 이 AGENTS.md 를 워크트리 밖(개인 위키 등)으로 향하는 링크로 바꾸면 fs 읽기는 그 대상 본문을 「대상 저장소 문서」로 팩 B 에 넣는다(F4 위반, 개인정보 정규식에 안 걸리는 내용은 그대로 전송). 커밋 트리 조회는 경로 중간의 링크도 따라가지 않고 작업 트리의 미커밋 변경도 읽지 않는다(F6).
 - **대상 저장소 문서(`repo:` 접두)는 다른 체크아웃의 작업 트리를 상대 경로로 읽지 마라 — 워크트리(고정 head) 또는 `repository/files/…/raw?ref=<head>`. 이유:** plan R3-6 — 어댑터 §2·§4가 요구하는 `AGENTS.md`·저장소 `docs/`를 docsRoot 기준으로는 표현할 수 없고, 작업 트리를 읽으면 고정 head·출처 SHA(F6)가 깨진다. 누락은 저장소 속성이라 `missing:true`로 계속(필수 문서 ERR 규칙의 예외).
