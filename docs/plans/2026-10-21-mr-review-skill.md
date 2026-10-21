@@ -179,7 +179,7 @@
 - `contract.lines[*].status`: 값이 비어 있거나 꺾쇠 `<…>`·`#`만이면 `자리표시자`, 줄 자체가 없으면 `없음`, `Policy` 값이 `acceptedIds`에 있으나 `judgeId`와 다르면 `채움(구버전)`, 그 밖 `채움`. `complete` = 10줄 모두 `채움`/`채움(구버전)`. `Policy` 값이 `acceptedIds`에 없으면 `자리표시자`(알 수 없는 ID = 미완).
 - `baselineType` 판정: Baseline 줄 값에 저장소 blob 링크(`/-/blob/<ref>/<path>`) 있음 → `문서 링크`; `#<n>`·`/-/issues/<n>` → `이슈`; 「배경」·`MR 본문` 문구 → `MR 본문 배경`; 자리표시자 → `빈칸·자리표시자`; 줄 없음 → `칸 없음`; 그 밖 비어 있지 않은 글 → `서술만`.
 - `baselineConfirm`: 경량일 때만 평가. 댓글 작성자가 `reviewers` 또는 `trustedReviewers`이고 본문 첫 줄이 `baselineConfirm` 정규식에 맞으면 후보. 최신 후보의 `created_at` < `description_changed_at`이면 `낡음`. 정식·핫픽스 = `해당 없음`.
-- `baselineLinks` 수집 범위 = Baseline 줄의 링크·`#n` + `closes_issues` + **MR 본문 「배경」 절의 `#n`·이슈 URL**(프로젝트·IID로 중복 제거). `closes_issues`의 `project_id`가 어댑터에 없으면 `project:null`·`미확보`(현재 프로젝트로 대체하지 않는다). 저장소 링크의 `ref`/`path` 경계는 URL 첫 세그먼트가 아니라 **그 저장소의 branch/tag API로 긴 후보부터 해소**한다(`feature/topic` 브랜치 지원 — SHA permalink만 첫 세그먼트 확정). **URL 링크(저장소·이슈)는 `project_url`을 보존하고 해소 때 등록 프로젝트의 `web_url`과 대조해 다르면 `미확보`**(SC-2 — basename만 같은 범위 밖 링크를 확보로 기록하지 않는다; `#n`·`closes_issues`는 `project_id`가 정체성이라 대조 없음). 이슈의 댓글 조회 실패는 「댓글 없음」이 아니라 `미확보`.
+- `baselineLinks` 수집 범위 = Baseline 줄의 링크·`#n` + `closes_issues` + **MR 본문 전체의 `#n`·이슈 URL**(코드펜스 안·Review Contract 블록 제외 — 프로젝트·IID로 중복 제거, plan C1 R2-6 사용자 결정; 존재하지 않는 번호는 미확보 → `M-baseline`). `closes_issues`의 `project_id`가 어댑터에 없으면 `project:null`·`미확보`(현재 프로젝트로 대체하지 않는다). 저장소 링크의 `ref`/`path` 경계는 URL 첫 세그먼트가 아니라 **그 저장소의 branch/tag API로 긴 후보부터 해소**한다(`feature/topic` 브랜치 지원 — SHA permalink만 첫 세그먼트 확정). **URL 링크(저장소·이슈)는 `project_url`을 보존하고 해소 때 등록 프로젝트의 `web_url`과 대조해 다르면 `미확보`**(SC-2 — basename만 같은 범위 밖 링크를 확보로 기록하지 않는다; `#n`·`closes_issues`는 `project_id`가 정체성이라 대조 없음). 이슈의 댓글 조회 실패는 「댓글 없음」이 아니라 `미확보`.
 - `priorVerdicts[*].trusted` = 작성자가 `reviewers`∪`trustedReviewers`에 있고 **MR 작성자가 아님**. `rereview.active` = 신뢰 이전 판정 중 최신의 `sha`가 `snapshot.head_sha`와 다름(7자 이상 접두 비교).
 - `rereview.priorBlocking`(재리뷰일 때만 — 아니면 `[]`·`priorBlockingComplete:null`) = 그 판정 댓글 「4. 차단 발견」의 **전체** 항목: 댓글 줄(`- <id> <type> — <제목>`, `source:comment`) + 40줄 축약 줄 `- … 외 n건(차단 — 전부 부록 D 에 있음): F9, F10`의 id 들을 이전 리포트 `<reportDir>/<프로젝트>-<iid>-<prior_head 7자>.md` 부록 D 에서 복원(`source:report`). 리포트가 없거나 부록 D 에 없으면 `title:null`·`source:missing`. `priorBlockingComplete` = 모든 항목에 `title`이 있음 — `false`면 verdict `M-rereview`(§5.6 「이전 차단 발견마다」 확인을 완료한 것으로 취급하지 않는다, plan R4-3).
 - `reason.source` = 본문 「배경」에 **실내용**(①·② 표지와 꺾쇠 자리표시자 `<…>`를 뺀 글)이 있을 때만 `body`, 없으면 연결 이슈 원문이 있을 때 `issue`, 그 밖 `none`. 양식 문구만 남은 본문은 「없음」(§5.2, plan R4-4).
@@ -195,7 +195,7 @@
   "mismatches": [{ "kind": "comment_sha|missing_in_zip|extra_in_zip|bytes|deleted_list|download|corrupt", "path": "<path|null>", "detail": "" }] }
 ```
 - `applicable` = `!deployExempt && (expected.deploy.length + expected.deleted.length > 0 || bodyDeletedList.length > 0)` — 기대 변경이 없어도 본문에 삭제 목록이 있으면 해당(zip 단계는 건너뛰고 ④ 삭제 목록 비교만, `reason` = 「운영 배포 대상 변경 없음 — 본문 삭제 목록만 대조(④)」) → 기대에 없는 삭제 지시는 `deleted_list` 불일치 → `M-deploy`(plan R4-2). 둘 다 비면 `applicable:false`·「해당 없음」. `expected`는 `--no-renames` 기준 `git diff --name-only --diff-filter=ACMR|D base..head`를 `deploy.targets`로 걸러 `deploy.excludes`를 뺀 것. diff-only 모드는 `mr.json.diffs`로 같은 목록을 계산하되 `bytes` 대조는 `대조 불가`.
-- 결과 순서: zip 첨부 없음 + `expected.deploy` 비어 있지 않음 → `zip 누락`; 다운로드 실패·zip 손상(central directory·local header signature·**local header ↔ central directory 파일명·압축 방식 불일치**·**CRC-32·비압축 크기 불일치** 포함) → `대조 불가`; 그 밖 mismatches 비면 `일치`, 아니면 `불일치`. `bodyDeletedList`는 본문 「배포본」 항목 아래 목록(줄 시작 `-`·`*`·숫자. 또는 코드펜스 안 한 줄 한 경로)에서 뽑는다. `expected.deleted`와 집합 비교(순서 무관).
+- 결과 순서: zip 첨부 없음 + `expected.deploy` 비어 있지 않음 → `zip 누락`; 다운로드 실패·zip 손상(central directory·local header signature·**local header ↔ central directory 파일명·압축 방식·일반 목적 플래그 불일치**·**암호화 플래그(bit0·bit6, 미지원)**·**CRC-32·비압축 크기 불일치** 포함) → `대조 불가`; 그 밖 mismatches 비면 `일치`, 아니면 `불일치`. `bodyDeletedList`는 본문 「배포본」 항목 아래 목록(줄 시작 `-`·`*`·숫자. 또는 코드펜스 안 한 줄 한 경로)에서 뽑는다. `expected.deleted`와 집합 비교(순서 무관).
 
 **`pack.json`**:
 ```json
@@ -219,7 +219,7 @@
   "reasons": ["<한 줄>"] }
 ```
 - 리포트 부록 D 는 병합 발견뿐 아니라 `machineEvidence` 항목도 같은 줄 형식(`- **M-…** [기계] MISSING_EVIDENCE (차단) — <detail> (-:-) · 출처 machine · 확신 -`)으로 싣는다 — 실행 블록 축약 ④ 가 접은 기계 항목을 재리뷰 `parseAppendixD`가 복원할 수 있게(plan R5-3).
-- `machineEvidence` 투입원: 계약 미완 줄(`M-contract-<name>`) · 미복원 diff(`M-diff-<n>`) · diff-only 목록 불완전(`M-diff-list`) · 배포본 비일치(`M-deploy`) · 기준선·이슈 원문 미확보(`M-baseline-<n>`) · **보조 API 조회 실패 `M-api-<name>`**(`snapshot.api_failures` — `closes_issues`는 모든 모드, `changes`·`versions`는 diff-only만, `approvals`는 판정 입력 아님) · **재리뷰 이전 차단 발견 목록 불완전 `M-rereview`**(`check.rereview.active && priorBlockingComplete === false`, plan R4-3). 하나라도 있으면 `HOLD_EVIDENCE` 이상.
+- `machineEvidence` 투입원: 계약 미완 줄(`M-contract-<name>` — 공백은 `_`, id 는 항상 `[A-Za-z][\w-]*` 로 실행 블록 축약 id 목록·재리뷰 파서 문법과 같다) · 미복원 diff(`M-diff-<n>`) · diff-only 목록 불완전(`M-diff-list`) · 배포본 비일치(`M-deploy`) · 기준선·이슈 원문 미확보(`M-baseline-<n>`) · **보조 API 조회 실패 `M-api-<name>`**(`snapshot.api_failures` — `closes_issues`는 모든 모드, `changes`·`versions`는 diff-only만, `approvals`는 판정 입력 아님) · **재리뷰 이전 차단 발견 목록 불완전 `M-rereview`**(`check.rereview.active && priorBlockingComplete === false`, plan R4-3). 하나라도 있으면 `HOLD_EVIDENCE` 이상.
 
 ### SC-4. 검토자 출력 스키마 — `review-claude.json` · `review-codex.json` (P5, spec §5.4)
 

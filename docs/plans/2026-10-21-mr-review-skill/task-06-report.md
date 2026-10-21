@@ -33,7 +33,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB } from './helpers.mjs';
 
-const { computeVerdict, validateReview } = await import(join(LIB, 'report.mjs'));
+const { computeVerdict, validateReview, maskText: deepMaskText } = await import(join(LIB, 'report.mjs'));
 const HEAD = 'a'.repeat(40);
 
 const baseCheck = () => ({
@@ -85,7 +85,8 @@ test('기계 증거 부족: 계약 미완·미복원 diff·배포본 불일치·
   const c1 = baseCheck(); c1.contract.complete = false; c1.contract.incompleteLines = ['Base SHA'];
   const v1 = V(findings([]), { check: c1 });
   assert.equal(v1.verdict, 'HOLD_EVIDENCE');
-  assert.ok(v1.machineEvidence.some((m) => m.id === 'M-contract-Base SHA'));
+  assert.ok(v1.machineEvidence.some((m) => m.id === 'M-contract-Base_SHA'));                    // id 에 공백 없음 — 재리뷰 파서 문법(C1 R4-3)
+  assert.ok(v1.machineEvidence.every((m) => /^[A-Za-z][\w-]*$/.test(m.id)));
   const s2 = baseSnap(); s2.mode = 'diff-only'; s2.unrecovered = ['src/X.java'];
   assert.equal(V(findings([]), { snapshot: s2 }).verdict, 'HOLD_EVIDENCE');
   const d3 = baseDeploy(); d3.applicable = true; d3.result = '불일치'; d3.mismatches = [{ kind: 'comment_sha', path: null, detail: 'x' }];
@@ -158,7 +159,7 @@ function fullWork(root, { check = baseCheck(), snap = baseSnap(), deploy = baseD
   writeFileSync(join(work, 'deploy.json'), JSON.stringify(deploy));
   if (pack) writeFileSync(join(work, 'pack.json'), JSON.stringify({ sources: [{ id: 'S1', kind: 'doc', ref: 'guide/policy.md@abc#5.', exportAllowed: true, inPackB: true, lines: 3 }, { id: 'S2', kind: 'wiki', ref: 'wiki-private/x.md', exportAllowed: false, inPackB: false, lines: 2 }], mask: { applied: { phone: 1 }, residual: [], ok: true }, packA: 'pack-a.md', packB: 'pack-b.md', codexSkipped: false, codexSkipReason: null }));
   if (reviews) {
-    writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L5', type: 'DEFECT', title: '비밀번호 평문 로그 010-1234-5678', file: 'src/A.java', line_start: 3, line_end: 3, evidence: 'S1 · src/A.java:3 db.password = "synthetic-db-password"; api_key: SYNTH-KEY-12345', scenario: '로그 유출', confidence: 'high', recommendation: '마스킹', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true }));
+    writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L5', type: 'DEFECT', title: '비밀번호 평문 로그 010-1234-5678', file: 'src/A.java', line_start: 3, line_end: 3, evidence: 'S1 · src/A.java:3 db.password = "synthetic-db-password"; api_key: SYNTH-KEY-12345; cfg {"password": "synthetic-json-password"}; secret = "two word secret"', scenario: '로그 유출', confidence: 'high', recommendation: '마스킹', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true }));
     writeFileSync(join(work, 'review-codex.json'), JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [], intent: [], baselineCandidateRelevant: true }));
   }
   if (fnd) writeFileSync(join(work, 'findings.json'), JSON.stringify(fnd));
@@ -191,6 +192,8 @@ test('verdict CLI → verdict.json · render 전체 리포트(실행 블록 형�
   assert.match(block, /\[판독\]/);
   assert.doesNotMatch(md, /010-1234-5678/);                       // F5 — 리포트 전체 마스킹(부록 C 포함)
   assert.doesNotMatch(md, /synthetic-db-password|SYNTH-KEY-12345/); // 어댑터 mask 에 없는 비밀값 리터럴도 내장 패턴으로 제거(R2-1)
+  assert.doesNotMatch(md, /synthetic-json-password|two word secret|word secret/); // JSON 키 형태·공백 포함 따옴표 값도 전체(C1 R2-1 잔존)
+  assert.match(md, /\{"password": "\[masked:secret\]"\}; secret = "\[masked:secret\]"/);
   assert.match(md, /db\.password = "\[masked:secret\]"/);
   assert.match(md, /src\/A\.java:3/);                              // 파일:줄 위치는 남는다(§5.7)
   assert.match(md, /기준선 확인 — /);                               // 경량 + 확인 댓글 없음 → 리뷰어가 먼저 게시할 문안
@@ -198,7 +201,7 @@ test('verdict CLI → verdict.json · render 전체 리포트(실행 블록 형�
   assert.match(md, /## 부록 A/);
   assert.match(md, /## 부록 B[\s\S]*wiki-private\/x\.md.*Codex 미제공/);
   assert.match(md, /## 부록 C[\s\S]*claude[\s\S]*codex/);
-  assert.match(md, /## 부록 C[\s\S]*근거: S1 · src\/A\.java:3 db\.password = "\[masked:secret\]"; api_key: \[masked:secret\] · 시나리오: 로그 유출 · 설계 내 수정: yes/);   // 원본 발견의 근거·시나리오 보존(R1-9) + 비밀값만 제거
+  assert.match(md, /## 부록 C[\s\S]*근거: S1 · src\/A\.java:3 db\.password = "\[masked:secret\]"; api_key: \[masked:secret\]; cfg \{"password": "\[masked:secret\]"\}; secret = "\[masked:secret\]" · 시나리오: 로그 유출 · 설계 내 수정: yes/);   // 원본 발견의 근거·시나리오 보존(R1-9) + 비밀값만 제거
   assert.match(md, /## 부록 D[\s\S]*\*\*F1\*\*[\s\S]*실패 시나리오: 로그에 평문[\s\S]*\*\*F3\*\*/);   // 병합 발견 상세
   assert.match(md, /정책 버전: 계약 TEST-POLICY-v1\.0 \/ 판정 기준 TEST-POLICY-v1\.1/);
   assert.match(md, /교차 검토: 있음/);
@@ -302,6 +305,14 @@ test('마스킹은 SHA 를 변조하지 않는다 — 개인정보 패턴(rrn)�
   assert.match(md, new RegExp(`^리뷰 계약 TEST-POLICY-v1\\.0 · head ${SHA} · 추천 판정\\(초안\\) CHANGES_REQUESTED$`, 'm'));   // 이전 판정 정규식이 다시 읽을 첫 줄
   assert.doesNotMatch(md, /\[masked:rrn\]/);
   assert.match(md, /\[masked:phone\]/);                                                   // 진짜 개인정보는 여전히 가려진다
+  // 이메일의 local-part·도메인 라벨이 40자 16진수여도 보호하지 않는다 — 개인정보 마스킹 우선(C1-1, 사용자 재판정)
+  const { maskText } = { maskText: (t, r) => deepMaskText(t, r) };
+  const rules = JSON.parse(readFileSync(adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).mask;
+  const m1 = maskText(`담당 ${SHA}@example.test · head ${SHA}`, rules);                   // local-part 는 보호 대상에서 빠져 어댑터 패턴(rrn → email 순)에 그대로 걸린다 — 주소는 남지 않는다
+  assert.ok(!m1.includes('@example.test') && !m1.includes(`${SHA}@`), m1);               // 주소도, 온전한 local-part 도 남지 않는다
+  assert.match(m1, /\[masked:email\]/);
+  assert.ok(m1.endsWith(`· head ${SHA}`), m1);                                          // 같은 문장의 진짜 SHA 는 보존
+  assert.equal(maskText(`blob/${SHA}/docs/a.md 와 ${SHA}.`, rules), `blob/${SHA}/docs/a.md 와 ${SHA}.`);   // URL 경로·문장 끝은 보호 유지
   const rc = runCli(['cleanup', '--adapter', adapter, '--work', work]);
   assert.equal(rc.code, 0, rc.out + rc.err);
   assert.equal(readJson(join(work, 'verdict.json')).head_sha, SHA);
@@ -445,15 +456,21 @@ const CONF = ['high', 'medium', 'low'];
 const BLOCK_MAX_LINES = 40;
 // 엔진 내장 비밀값 리터럴 패턴(프로젝트 무관 — D10 위배 아님): `password = "x"` · `api_key: x` · `secret=x` · `Authorization: Bearer x`(인증 방식 + 자격증명을 한 매치로, R3-1) · `Bearer x` · PEM 블록. 값만 가린다. 키워드는 대소문자 무관(`flags: 'i'`).
 // 이미 가려진 자리(`[masked:…]`)는 다시 매치하지 않는다(부정 전방탐색) — 어댑터 마스킹 뒤에 적용되므로 이중 마스킹으로 자리표시자를 깨지 않는다.
+// 비밀값 리터럴 — 따옴표 안 값은 공백을 포함해 **전체**를 가린다(C1 R2-1 잔존 보정: `"password": "two word secret"`·JSON 키 형태 `"password": "…"`). 따옴표 없는 값은 토큰 하나.
+const SECRET_KEYS = '(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)';
 export const SECRET_MASK = [
-  { name: 'secret', pattern: '(?<=\\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)\\b\\s*[:=]\\s*["\'`]?)(?!\\[masked:)(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s"\'`,;)\\]]+', flags: 'i' },
+  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*")(?!\\[masked:)[^"\\n]+(?=")`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*')(?!\\[masked:)[^'\\n]+(?=')`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*\`)(?!\\[masked:)[^\`\\n]+(?=\`)`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*)(?!\\[masked:)(?!["'\`])(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s"'\`,;)\\]]+`, flags: 'i' },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[A-Za-z0-9._~+/=-]{8,}' },
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
 ];
 // 정리(cleanup) 때 남기는 JSON 의 문자열 값에 어댑터 마스킹 + 비밀값 제거를 적용한다(R3-9) — 키 이름은 건드리지 않는다(`"token": "FIXED"` 같은 값이 키워드 패턴에 걸리지 않게 값만 본다).
 // 마스킹이 정상 SHA 를 변조하지 않게(R5-2) — 40자 16진수 토큰(글자 a-f 1개 이상)은 개인정보일 수 없다. 자리표시자로 빼고 마스킹 뒤 복원한다(리포트 자유 텍스트·cleanup 의 JSON 문자열 값 공통).
 // 글자 조건: 숫자만 40자인 토큰은 SHA 로 보지 않는다 — 전화·주민번호 같은 숫자열을 보호 대상으로 오인하지 않게. 7자 짧은 SHA 는 어떤 어댑터 패턴 길이(≥10)에도 못 미쳐 보호가 필요 없다.
-const SHA40_RE = /\b(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}\b/g;
+// 경계(C1-1, 사용자 재판정): 바로 앞뒤에 `@` 가 붙거나 `.<영숫자>` 로 이어지는 토큰은 이메일 local-part·도메인 라벨이라 보호하지 않는다 — 개인정보 마스킹이 SHA 보존보다 우선. 커밋 SHA 는 그런 자리에 오지 않는다(URL 경로 `/<sha>/`·문장 끝 `<sha>.` 은 보호 유지).
+const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\.[A-Za-z0-9]|\w)/g;
 export function maskText(text, maskRules) {
   const keep = [];
   const held = text.replace(SHA40_RE, (m) => { keep.push(m); return `\u0000S${keep.length - 1}\u0000`; });
@@ -498,7 +515,8 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
 // ── §5.5-4 판정 ───────────────────────────────────────────────────────────
 export function machineEvidence({ check, snapshot, deploy }) {
   const out = [];
-  for (const name of check?.contract?.incompleteLines || []) out.push({ id: `M-contract-${name}`, kind: 'contract', detail: `Review Contract 「${name}」 미완(${check.contract.lines.find((l) => l.name === name)?.status || '없음'})` });
+  // id 는 공백 없이(`[\w-]+`) — 실행 블록 축약 ④ 의 id 목록·task-03 파서(BLOCK_ITEM_RE·APPENDIX_D_RE)와 문법을 맞춘다(C1 R4-3 잔존: `M-contract-Base SHA` 가 파서에 안 읽혀 재리뷰 목록이 유실됐다)
+  for (const name of check?.contract?.incompleteLines || []) out.push({ id: `M-contract-${String(name).replace(/\s+/g, '_')}`, kind: 'contract', detail: `Review Contract 「${name}」 미완(${check.contract.lines.find((l) => l.name === name)?.status || '없음'})` });
   (snapshot?.unrecovered || []).forEach((p, i) => out.push({ id: `M-diff-${i + 1}`, kind: 'diff', detail: `복원하지 못한 diff: ${p} (diff-only — 로컬 clone 권장)` }));
   if (snapshot?.mode === 'diff-only' && snapshot.diff_list_complete === false) out.push({ id: 'M-diff-list', kind: 'diff', detail: '변경 파일 목록 불완전(API overflow — 파일 항목이 통째로 빠졌을 수 있음, 검토 범위·배포 목록 축소) — 로컬 clone 권장' });
   // 보조 API 조회 실패(R3-3) — 빈 응답이 아니라 「모름」: 연결 이슈 목록(모든 모드), 변경 목록 overflow·diff 버전(diff-only — 워크트리 모드는 git 이 정본). approvals 는 승인 표시용이라 판정 입력이 아니다.
@@ -887,10 +905,12 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 - **`MISSING_EVIDENCE`를 결함 집합에 넣지 마라. 이유:** §5.5-4 집합 분리(R4-F3) — 결함이 함께 있으면 `CHANGES_REQUESTED`, 증거 부족만이면 `HOLD_EVIDENCE`.
 - **`--full`이나 조기 종료 여부로 기계 증거 투입을 끄지 마라. 이유:** R5-F1 — `--full`은 검토 범위만 넓힌다.
 - **리포트 마스킹은 마지막에 전체 텍스트에 한 번. 절별로 빼먹지 마라. 이유:** 부록 C(모델 원문)가 비밀값 누출의 전형(R2-F3).
+- **`SECRET_MASK`는 따옴표 안 값을 공백 포함 전체로, JSON 키 형태(`"password": "…"`)도 가려야 한다 — 첫 토큰만 가리는 패턴으로 끝내지 마라. 이유:** plan C1(R2-1 잔존) — `{"password": "synthetic-json-password"}` 가 그대로 남고 `"two word secret"` 은 첫 단어만 가려졌다. 리포트·cleanup 사본이 같은 함수라 F5 미충족.
 - **어댑터 `mask`(개인정보)와 별도로 엔진 내장 `SECRET_MASK`(비밀번호·API 키·토큰·Bearer·PEM 값)를 리포트 전체에 적용하라. 이유:** plan R2-1 — 어댑터 패턴은 개인정보용이라 L5 발견이 인용한 `password = "…"` 리터럴이 부록 C·D에 그대로 남는다(§5.7 `[masked:secret] <파일:줄>` 계약·F5). 파일:줄은 남긴다.
 - **`review-validate`에 `--head`·`--reviewer`를 받아 원본 결과의 head·검토자 일치를 검사하라. 이유:** plan R2-4 — 형식만 보면 이전 head 의 검토 결과가 VALID 로 통과하고, 병합에서 `findings.head_sha`를 새로 적으면 후속 대조가 그것을 못 잡는다.
 - **`review-validate`는 `ERR` 접두 없이 `INVALID …` exit 1. 이유:** SC-6 — SKILL이 `VALID`/`INVALID`만 본다.
 - **`cleanup`은 원문(`pack-a.md`·`pack-b.md`·`baseline/`·`codex.*`·워크트리·zip·blobs)을 지우고, JSON(`mr`·`check`·`deploy`·`review-*`·`findings`·`verdict`)은 문자열 값에 어댑터 마스킹 + `SECRET_MASK`를 적용한 사본으로 남긴다. JSON 을 통째로 지우거나 원문 그대로 두지 마라. 이유:** plan R3-9 — `pack-a.md`는 MR 원문·개인 위키 발췌를, `review-*.json`은 비밀값 인용을 그대로 담는데 `codex.*`만 지우면 P4·F5 의 정리 요구를 못 채운다. 반대로 JSON 을 지우면 `--resolve` 재계산(§9)·재리뷰(§5.6)가 같은 `W`에서 불가능하다. 마스킹은 값만(키 이름 제외) — `deepMask`.
+- **SHA 보호는 토큰 경계를 본다 — 바로 앞뒤에 `@` 가 붙거나 `.<영숫자>` 로 이어지는 40자 16진수는 보호하지 않는다(이메일 local-part·도메인 라벨). 이유:** plan C1-1(사용자 재판정으로 R5-2 보정) — `aaaa…40hex@example.test` 의 앞부분이 SHA 자리표시자로 먼저 빠지면 이메일 정규식이 매치하지 못해 주소 전체가 리포트·cleanup JSON 에 남는다. 개인정보 마스킹이 SHA 보존보다 우선이다.
 - **마스킹(리포트 전체·cleanup `deepMask`)은 40자 SHA 를 보존해야 한다 — `maskText`가 16진수 40자(글자 포함) 토큰을 자리표시자로 빼고 복원한다. 어댑터 패턴을 SHA 에 그대로 돌리지 마라. 이유:** plan R5-2 — `aaaaaaaaaa1234561123456bbbb…` 같은 정상 SHA 가 rrn 패턴에 걸려 게시 블록 첫 줄의 head 가 `[masked:rrn]`으로 바뀌면 다음 리뷰의 이전 판정 정규식이 못 읽고, cleanup 이 `verdict`·`findings`의 `head_sha`를 바꾸면 `--resolve`가 head 불일치로 review-failed 가 된다. 글자 조건으로 숫자열(전화·주민번호)은 보호하지 않는다.
 - **부록 D 에는 모델 발견뿐 아니라 `machineEvidence` 항목도 같은 줄 형식(`- **M-…** [기계] MISSING_EVIDENCE (차단) — <detail> (-:-) · 출처 machine …`)으로 적어라. 이유:** plan R5-3 — 축약 ④ 는 모델 발견과 기계 항목을 함께 접고 생략 id 를 부록 D 로 안내하는데, 부록 D 가 `findings.findings`만 담으면 접힌 `M-deploy`는 리포트가 있어도 재리뷰에서 `source:missing` → `M-rereview`가 남아 다음 head 에서 전부 고쳐도 HOLD_EVIDENCE 다.
 - **`deploy.json`·`verdict.json`을 「원문 없음」으로 보고 마스킹에서 빼지 마라. 이유:** plan R4-1 — `machineEvidence()`는 미확보 링크의 `raw`·`reason`을, deploy 는 zip 파일명·주석·API 오류 문자열을 그대로 복사한다. 링크의 `?token=…`이 `check.json`에서는 가려지고 `verdict.json`에는 남는 데이터 흐름 결함. 제외는 경로·SHA·카운트만 담는 `snapshot.json`·`pack.json`뿐.

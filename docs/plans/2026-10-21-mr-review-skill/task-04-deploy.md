@@ -225,6 +225,15 @@ test('local header 가 central directory 와 다른 파일을 가리키면 corru
   const zb = readZip(bad);
   assert.equal(zb.comment.trim(), headSha);
   assert.throws(() => zb.read(zb.entries.find((x) => x.name === e.name)), /local header 파일명 불일치/);
+  const badFlag = Buffer.from(good);                                                   // central 플래그만 1(암호화) — 파일명·CRC·바이트는 정상(C1 R3-8 잔존)
+  badFlag.writeUInt16LE(1, e.cd + 8);
+  const zf = readZip(badFlag);
+  assert.throws(() => zf.read(zf.entries.find((x) => x.name === e.name)), /플래그 불일치/);
+  const badEnc = Buffer.from(good);                                                    // local·central 둘 다 1 — 정합은 맞지만 암호화라 읽을 수 없는 배포본
+  badEnc.writeUInt16LE(1, e.cd + 8);
+  badEnc.writeUInt16LE(1, e.lho + 6);
+  const ze = readZip(badEnc);
+  assert.throws(() => ze.read(ze.entries.find((x) => x.name === e.name)), /암호화 플래그/);
   const badFile = join(root, 'bad-local.zip');
   writeFileSync(badFile, bad);
   const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: badFile }]);
@@ -358,6 +367,7 @@ export function readZip(buf) {
   let p = cdOff;
   for (let i = 0; i < count; i++) {
     if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) throw new Error('zip central directory 손상');
+    const flags = buf.readUInt16LE(p + 8);
     const method = buf.readUInt16LE(p + 10);
     const crc = buf.readUInt32LE(p + 16);
     const csize = buf.readUInt32LE(p + 20);
@@ -367,7 +377,7 @@ export function readZip(buf) {
     const cmLen = buf.readUInt16LE(p + 32);
     const lho = buf.readUInt32LE(p + 42);
     const name = buf.subarray(p + 46, p + 46 + nLen).toString('utf8');
-    entries.push({ name, method, crc, csize, usize, lho, cd: p });
+    entries.push({ name, flags, method, crc, csize, usize, lho, cd: p });
     p += 46 + nLen + eLen + cmLen;
   }
   const read = (e) => {
@@ -380,6 +390,10 @@ export function readZip(buf) {
     const lMethod = buf.readUInt16LE(h + 8);
     if (lName !== e.name) throw new Error(`zip local header 파일명 불일치(${lName} ≠ ${e.name})`);
     if (lMethod !== e.method) throw new Error(`zip local header 압축 방식 불일치(${lMethod} ≠ ${e.method}): ${e.name}`);
+    // 일반 목적 플래그도 대조(C1 R3-8 잔존) — local 0·central 1(암호화) 처럼 어긋나면 표준 리더가 거부하는 zip 이고, 암호화(bit0)·강한 암호화(bit6)는 미지원이라 읽을 수 없는 배포본이다
+    const lFlags = buf.readUInt16LE(h + 6);
+    if (lFlags !== e.flags) throw new Error(`zip local header 플래그 불일치(${lFlags} ≠ ${e.flags}): ${e.name}`);
+    if (e.flags & 0x0041) throw new Error(`zip 암호화 플래그(미지원): ${e.name}`);
     const start = h + 30 + nLen + eLen;
     if (start + e.csize > buf.length) throw new Error(`zip 데이터 범위 초과: ${e.name}`);
     const data = buf.subarray(start, start + e.csize);
@@ -527,5 +541,6 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 - **`git diff`는 `-z`로 읽어라. 이유:** 한글·공백 경로가 `core.quotePath`로 인용돼 목록이 어긋난다(정책 §6.1과 같은 이유).
 - **zip 리더에 zip64·암호화를 넣지 마라. 이유:** git archive 산출물 범위 밖 — YAGNI. 판독 실패는 `corrupt` → 「대조 불가」로 fail-closed.
 - **`read()`는 CRC-32·비압축 크기를 central directory 값과 대조한다 — inflate 성공만으로 정상으로 보지 마라. 이유:** R2-7 — 내용·목록·주석이 맞고 CRC만 깨진 zip은 표준 압축 해제가 거부하는 배포본인데 「일치」로 보증된다.
+- **`read()`는 일반 목적 플래그도 local ↔ central 로 대조하고, 암호화 비트(bit0·bit6)가 서 있으면 `corrupt`(미지원)로 처리한다. 이유:** plan C1(R3-8 잔존) — local 0·central 1 인 정상 CRC zip 을 계획 리더는 읽지만 Python 표준 리더는 암호화 파일로 거부한다. 바이트까지 맞으면 「일치」로 보증될 수 있는 배포본이다.
 - **`read()`는 local header 의 파일명·압축 방식을 central directory 와 대조한다 — signature·길이만 보지 마라. 이유:** plan R3-8 — central 에는 `A.txt`, local 에는 `B.txt`인 zip 도 CRC·크기가 맞으면 「일치」로 보증되는데 표준 리더(Python `zipfile`)는 BadZipFile 로 거부한다.
 - **내려받은 zip은 `work/zip/`에만 둔다. 이유:** F7 — `cleanup`(task-06)이 지운다.
