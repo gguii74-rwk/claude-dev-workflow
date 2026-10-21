@@ -279,6 +279,7 @@ grep -nE '(172\.|safetyreport|안전신문고|kimkfc|gguii)' dev-workflow/skills
 git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with|claude-session' | wc -l                    # T7 — 0 (no-AI-trace)
 ```
 
+- T6 의 README 부분은 **base 대비 추가 줄** 기준(`git diff <base> -- 'README*.md' | grep '^+' | grep -E '<같은 패턴>' | wc -l` = 0) — base 에 이미 있던 6줄은 플러그인 자체 공개 저장소 slug(`gguii74-rwk/claude-dev-workflow`)라 D10(리뷰 대상 프로젝트 식별자) 밖이다(SDD PF-1). `skills/mr-review`·`tests/mr-review` 는 전체 grep 0.
 - `<base>` = 구현 착수 직전 main SHA(plan 루프 종결 커밋). 테스트 전용 환경변수: `MR_REVIEW_GLAB`(가짜 `glab` 경로 — 미설정이면 PATH의 `glab`), `MR_REVIEW_HOME`(위키 `~` 해소용 — 미설정이면 `os.homedir()`). 운영 문서에 쓰지 않는다.
 
 ### SC-8. 커밋 규칙
@@ -408,6 +409,17 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 미확인 FIXED 큐(C3 뒤·재수정 후 — **루프 종결 시점**): **1건** = R2-6(C3 잔존 4회째 → 재수정 `bf43318`, 판정 주체 = 사용자) — **impl review-loop 첫 확인 라운드 임무 ① 필수 항목으로 이월(폴백 ①, 사용자 결정 2026-10-21)**. C3 소멸 확인 1건: C2-1(큐 이탈). (C2 뒤 참고: 2건 = R2-6 · C2-1) C2 소멸 확인 8건: R2-1 · R3-8 · R4-3 · C1-1 · R6-1 · R6-2 · R6-3 · R6-4(큐 이탈). (R6 수정 후 참고: 9건 = R2-1 · R2-6 · R3-8 · R4-3 · C1-1 · R6-1~R6-4) C1 소멸 확인 32건: R1-1~R1-10 · R2-2~R2-5 · R2-7 · R2-8 · R3-1~R3-7 · R3-9 · R3-10 · R4-1 · R4-2 · R4-4 · R4-5 · R5-1~R5-3(큐 이탈). (R5 수정 후 참고: 36건 = R1-1~R1-10 · R2-1~R2-8 · R3-1~R3-10 · R4-1~R4-5 · R5-1~R5-3) — 소멸 확인은 확인 라운드 임무 ①. 루프 직접 판정: R1-8 · R3-6 · R3-9 (C1·C2 감사 모두 「타당」 — 다음 확인 C3 에서도 감사 대상 유지) · R5-2 는 C1 감사 이의 → 사용자 재판정으로 전환(루프 판정 아님). 사용자 판정: R4-2 · R4-5 · R2-6(C1·C2) · R5-2 재판정/C1-1(C1) · R6-2 · R6-3(R6, 정밀 모드 즉시 ESCALATE → 추천안 FIXED) · **C2-1(C2 ESCALATE → 복원 전 검사)** · 진행 결정(C2 → 새 세션 전체 브랜치 확인 C3) · R2-6 C3 재판정(FIXED) · 확인 부채 처리(폴백 ① impl 이월) — 감사 대상 아님, 확인 첨부물 ⑥ 사용자 기결정 목록에 넣는다. batch ESCALATE 적재: 0건(flush 통과). 미판정 blocking: 0.
 
 **종결(2026-10-21)**: plan 루프 종결 — 폴백 ①(확인 예산 2/2 소진 · 복귀 1회 사용 · 폴백 ② 미소비) · 미확인 FIXED 큐 **1**(R2-6 `bf43318` — impl 리뷰 이월, 위 문단) · 미판정 blocking 0 · 최종 verdict **fail**(C3, 사유 = R2-6 뿐 → 수정 `bf43318`·사용자 판정으로 닫음) · 적대 6(R1~R5 + 복귀 R6) · 확인 3(C1·C2 + 재진입 C2 는 예약분 — C1·C3 가 예산) · 루프 건강(분모 = 고유 blocking 42 = R1 10·R2 8·R3 10·R4 5·R5 3·R6 4·C1-1·C2-1): 재론률 0/42 · 철회 조항 0 · 사람개입률 8/42(R4-2·R4-5·R2-6·R5-2/C1-1·R6-2·R6-3·C2-1 + 진행 결정) · 추천 자동 채택(위임) 해당 없음(수동 모드) · no-AI-trace grep 0.
+
+## 적대검증 ledger (impl)
+
+보안 크리티컬: yes (호출자 지정 — 기동 전 사용자 확인 2026-10-21 22:2x) — 접촉면 외부 전송(팩 B → Codex)·개인정보 경계(마스킹)·zip 해석·경로(diff-only 복원·첨부 API 경로) · 근거 = SDD 자동 보안 리뷰 이월 6건
+
+- 루프: base `6c0f5e7`(6c0f5e7ab3f346ff18897c2ba42531e23b9e9a18, 호출자 지정 — plan 루프 종결 커밋 = 구현 착수 직전, SC-7 `<base>`) · branch `gguii74-rwk/mr-review-skill-impl`(오르카 워크트리) · 착수 HEAD `2c80ce9` · 예산 max 5 · confirm 2 · auto 1 · **위임 모드**(`DEV_WORKFLOW_MODE=delegated`) · 입도 = 통합 1회(task 별 증분 없음 — 「review-loop(impl) 입도」).
+- 사전 게이트(SC-7, HEAD `2c80ce9`): T1 69/69 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0(skills·tests 전체 0 · README 추가 줄 0 — 위 SC-7 T6 기준 줄) · T7 0 · 대장 대기 0 · codex companion 1.0.6.
+- 승계: plan 루프 **폴백 ① 종결**(성공 종료 아님) — plan R2-6 `bf43318`(구현 = task-03 `f4cc40f` `check.mjs` `stripFences` + 테스트 #998·#997)을 이 루프의 미확인 FIXED 큐에 처음부터 넣는다(「review-loop(impl) 필수 확인 항목」). SDD 원장(`.superpowers/sdd/2026-10-21-mr-review-skill/progress.md`, git 밖)의 이월 항목(보안 6 · 우선 minor 3 · 나머지 deferred minor)은 R1 §2c 분류 입력 — 행마다 출처 `SDD 이월`, 적대 라운드가 같은 결함을 내면 같은 행에 병합.
+- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷, weight c4/h3/m1). 보안 트랙이라 전환 신호 1(정체) 무시.
+
+미확인 FIXED 큐(루프 시작): **1건** = plan R2-6(승계, 판정 주체 = 사용자).
 
 ## 확인 대기 대장
 
