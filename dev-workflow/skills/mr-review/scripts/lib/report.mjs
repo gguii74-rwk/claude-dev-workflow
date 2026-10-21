@@ -20,7 +20,12 @@ export function deepMask(v, maskRules) {
   return v;
 }
 
-const readJson = (work, name) => { const p = path.join(work, name); return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null; };
+// 손상 JSON 은 파일 이름과 함께 도메인 오류로(stdout ERR 한 줄 — SC-6) — 메인(LLM)이 쓰는 findings.json 은 깨질 수 있다(impl SDD 이월 T06)
+const readJson = (work, name) => {
+  const p = path.join(work, name);
+  if (!fs.existsSync(p)) return null;
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { throw new ReportError(`${name} JSON 파싱 실패: ${e.message.slice(0, 160)}`); }
+};
 const s7 = (s) => (s ? String(s).slice(0, 7) : '-');
 
 // ── SC-4 검토자 출력 검증 ─────────────────────────────────────────────────
@@ -46,6 +51,30 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
     });
   }
   return { ok: errors.length === 0, errors };
+}
+
+// ── SC-5 병합 발견 검증(impl SDD 이월 T06 우선 minor) ──────────────────────────────
+// findings.json 은 메인(LLM)이 손으로 쓴다 — `blocking:"true"`(문자열)·오타 type 이 판정 집합에서 조용히 빠지면 차단 발견이 있는데도 APPROVE 가 된다.
+// verdict 가 계산 전에 형식을 검사하고 어긋나면 ERR(fail-closed) — 판정 규칙은 바꾸지 않는다(D9).
+export function validateFindings(fnd) {
+  const errors = [];
+  if (!fnd || typeof fnd !== 'object' || Array.isArray(fnd)) return ['객체가 아니다'];
+  if (!/^[0-9a-f]{40}$/.test(String(fnd.head_sha || ''))) errors.push('head_sha 는 40자 SHA(snapshot.head_sha)');
+  if (!Array.isArray(fnd.validReviewers) || fnd.validReviewers.some((r) => !['claude', 'codex'].includes(r))) errors.push('validReviewers 는 claude|codex 배열');
+  if (!Array.isArray(fnd.findings)) { errors.push('findings 배열 필요'); return errors; }
+  const ids = new Set();
+  fnd.findings.forEach((f, i) => {
+    if (!f || typeof f !== 'object') { errors.push(`findings[${i}] 객체 아님`); return; }
+    if (!/^F\d+$/.test(String(f.id))) errors.push(`findings[${i}].id 는 F<n>`);
+    else if (ids.has(f.id)) errors.push(`중복 id ${f.id}`);
+    ids.add(f.id);
+    if (!TYPES.includes(f.type)) errors.push(`${f.id ?? i}.type 은 ${TYPES.join('|')}`);
+    if (typeof f.blocking !== 'boolean') errors.push(`${f.id ?? i}.blocking 은 boolean(true|false)`);
+    if (f.unresolved != null && typeof f.unresolved !== 'boolean') errors.push(`${f.id ?? i}.unresolved 는 boolean`);
+    if (!['yes', 'no', null, undefined].includes(f.fixableInDesign)) errors.push(`${f.id ?? i}.fixableInDesign 은 yes|no|null`);
+    if (![null, undefined, 'confirmed', 'dismissed'].includes(f.resolution)) errors.push(`${f.id ?? i}.resolution 은 confirmed|dismissed|null`);
+  });
+  return errors;
 }
 
 // ── §5.5-4 판정 ───────────────────────────────────────────────────────────
@@ -386,8 +415,11 @@ export async function cmdVerdict(args, ctx) {
   const findings = readJson(ctx.work, 'findings.json');
   if (!check || !snapshot) throw new ReportError('check.json·snapshot.json 이 필요하다');
   if (!findings) throw new ReportError('findings.json 이 없다 — 메인이 두 검토자 결과를 병합해 먼저 써야 한다(SC-5)');
+  const ferr = validateFindings(findings);
+  if (ferr.length) throw new ReportError(`findings.json 검증 실패: ${ferr.slice(0, 5).join('; ')}${ferr.length > 5 ? ` 외 ${ferr.length - 5}건` : ''}`);
   const resolves = {};
   for (const r of args.resolve || []) { const m = String(r).match(/^([^=]+)=(.+)$/); if (!m) throw new ReportError(`--resolve 형식: <id>=confirmed|dismissed|confirmed:fixable|confirmed:design (${r})`); resolves[m[1]] = m[2]; }
+  for (const id of Object.keys(resolves)) if (!findings.findings.some((f) => f.id === id)) throw new ReportError(`--resolve ${id}: findings.json 에 없는 id — 리뷰어 결정이 조용히 버려지지 않게 멈춘다`);
   const v = computeVerdict({ check, snapshot, deploy, findings, resolves, judgeId: ctx.adapter.policy.judgeId });
   // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다. 접미(fixable|design)는 fixableInDesign 확정값으로 남는다(R6-3).
   if (Object.keys(resolves).length) {

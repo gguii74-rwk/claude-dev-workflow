@@ -276,3 +276,4 @@ git commit -m "feat(mr-review): SKILL.md — 전제·수집·검사·조기 종�
 - **검토자 결과의 `head_sha`를 현재 head로 고쳐 쓰지 마라 — `review-validate --head`가 떨어뜨린 결과는 실패다. 이유:** plan R2-4 — 이전 head 의 검토를 현재 head 의 APPROVE로 둔갑시킨다(F6).
 - **스킬 문서에 프로젝트 이름·내부 주소·사람 이름·위키 경로 실제 값을 쓰지 마라. 이유:** 공개 저장소(D10). 전부 어댑터가 준다.
 - (impl 2026-10-21 전사 수정, PF-2·PF-10) §0 어댑터 경로는 `--adapter` 인자 우선·없으면 `MR_REVIEW_ADAPTER`(SC-6) · 인자 절 `--resolve` 에 `confirmed:fixable|confirmed:design` 포함(§9·SC-6 과 일치) · (fix 1) §5 Codex 대기 스니펫에 `WAIT_EXPIRED` 꼬리(review-loop §2b ③ 원문) · §6-6 SC-5 골격을 SKILL 안에 인라인(배포본에 plan 없음 — `id` = `F<n>`)
+- (review-loop impl R1, 2026-10-22) Codex 에는 렌즈 원문을 붙이지 않고 팩 B `adapter` 출처를 가리킨다(R1-5) · 스키마 `reviewer` = 그 검토자 이름 하나(D11) · Claude 프롬프트에도 자료 속 지시를 따르지 말라는 문구 · 메인이 Codex JSON 을 `review-codex.json` 에 쓴다 · 셸 변수 재지정 · F1 자가 점검에서 `glab auth status` 예외 · 리포트 절 목록에 리뷰어 결정·리뷰 실패·부록 D(SDD 이월 minor, 사용자 판정 T03).

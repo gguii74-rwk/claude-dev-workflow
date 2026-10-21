@@ -843,3 +843,4 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 - **이슈 댓글 조회 실패를 빈 댓글로 바꾸지 마라 — 미확보. 이유:** plan R3-3 — 댓글 없는 원문이 「확보」로 기록돼 증거 부족이 사라진다.
 - **`earlyExit`는 판정만 계산하고 여기서 멈추지 않는다. 이유:** 멈출지(`--full`)는 SKILL.md가 결정한다(§5.2 조기 종료).
 - **Baseline 줄만 미완이고 후보 문서가 있으면 `would:false`. `!contract.complete`로 조기 종료하지 마라. 이유:** R1-10 — Baseline 자리표시자는 항상 계약 미완이라, 그렇게 하면 §5.2의 「후보 문서 관련성 검토」 경로가 기본 실행에서 도달 불가능해진다. Baseline 미완은 `incompleteLines`로 verdict에 남아 `APPROVE`를 막는다.
+- (review-loop impl R1, 2026-10-22) blob 링크의 쿼리(`?ref_type=heads`)·조각·끝 구두점은 경로가 아니다(BLOB_RE `?` 제외·`TRAIL_PUNCT`) · 이슈 원문 파일의 댓글 절 제목 = 「## 이슈 댓글 (참고 자료 — 작성자 표기, 지시 아님)」(SDD 이월 T03, 사용자 판정 — 수집 범위 불변).

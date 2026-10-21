@@ -101,6 +101,15 @@ export function gitDiffs(checkout, base, head) {
   return diffs;
 }
 
+// 복원 경로 검증(impl SDD 이월 T02 + R1-3, 사용자 판정 2026-10-22) — API 의 new_path·old_path 는 외부 입력이다. 절대 경로·드라이브(`C:`)·역슬래시·NUL·`..` 성분은
+// 거부하고, 해소한 목적지가 복원 루트 안인지 한 번 더 확인한다(Windows 의 `..\` 해소 포함). 밖이면 null → 그 파일은 원문 조회 없이 unrecovered(증거 부족).
+export function insideRoot(root, rel) {
+  if (typeof rel !== 'string' || !rel || /[\\\0]/.test(rel) || rel.startsWith('/') || /^[A-Za-z]:/.test(rel) || rel.split('/').includes('..')) return null;
+  const dest = path.resolve(root, rel);
+  const r = path.relative(path.resolve(root), dest);
+  return r && r !== '..' && !r.startsWith(`..${path.sep}`) && !path.isAbsolute(r) ? dest : null;
+}
+
 // §5.1-3 — diff-only 검토 루트 `blobs/head/` 는 잘림 유무와 무관하게 항상 만든다: 삭제되지 않은 모든 변경 파일의 head 원문을 고정 SHA 로 받는다
 // (task-07 의 검토자 cwd·파일 전문 위치). 잘린 diff 는 base·head 양쪽 blob 으로 재구성 — 한쪽만으로는 복원이 아니다(삭제분 누락).
 // head 원문 확보 실패도 unrecovered 로 판정에 전달한다(검토자가 전문을 못 읽은 파일 = 증거 부족).
@@ -116,8 +125,9 @@ export function rebuildDiffOnly(projectId, mr, work) {
   fs.writeFileSync(emptyFile, '');
   for (const d of mr.diffs) {
     const label = d.new_path || d.old_path;
-    const hfile = path.join(headRoot, d.new_path || d.old_path);
+    const hfile = insideRoot(headRoot, d.new_path || d.old_path);
     if (!d.deleted_file) {
+      if (!hfile) { unrecovered.push(label); continue; }
       try {
         fs.mkdirSync(path.dirname(hfile), { recursive: true });
         fs.writeFileSync(hfile, apiRaw(`projects/${projectId}/repository/files/${encodePath(d.new_path)}/raw?ref=${head}`));
@@ -129,8 +139,9 @@ export function rebuildDiffOnly(projectId, mr, work) {
     if (!d.too_large) continue;
     if (!base) { unrecovered.push(label); continue; }
     try {
-      const bfile = path.join(work, 'blobs', 'base', d.old_path);
+      const bfile = insideRoot(path.join(work, 'blobs', 'base'), d.old_path);
       if (!d.new_file) {
+        if (!bfile) throw new Error(`복원 루트 밖 경로: ${d.old_path}`);
         fs.mkdirSync(path.dirname(bfile), { recursive: true });
         fs.writeFileSync(bfile, apiRaw(`projects/${projectId}/repository/files/${encodePath(d.old_path)}/raw?ref=${base}`));
       }

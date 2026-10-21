@@ -462,3 +462,36 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
   assert.equal(vj.verdict, 'HOLD_EVIDENCE');
   assert.doesNotMatch(git(checkout, 'worktree', 'list'), /work\/worktree/);
 });
+
+test('findings.json 검증: 문자열 blocking·모르는 type·중복 id·head 누락·없는 id 의 --resolve·깨진 JSON 은 조용히 APPROVE 하지 않고 ERR (impl SDD 이월 T06 우선 minor)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const cases = [
+    [findings([F({ blocking: 'true' })]), /blocking/],
+    [findings([F({ type: 'DEFCT' })]), /type/],
+    [findings([F(), F()]), /중복 id/],
+    [findings([F({ id: 'M-x' })]), /id/],
+    [findings([F()], { head_sha: undefined }), /head_sha/],
+    [findings([F()], { validReviewers: ['gemini'] }), /validReviewers/],
+    [{ ...findings([]), findings: 'none' }, /findings/],
+  ];
+  for (const [fnd, re] of cases) {
+    const work = fullWork(tmp(), { fnd });
+    const r = runCli(['verdict', '--adapter', adapter, '--work', work]);
+    assert.equal(r.code, 2, JSON.stringify(fnd));
+    assert.match(r.first, /^ERR findings\.json 검증 실패: /);
+    assert.match(r.first, re);
+    assert.ok(!existsSync(join(work, 'verdict.json')));
+  }
+  const ok = fullWork(tmp(), { fnd: findings([F()]) });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', ok]).first, 'VERDICT determined CHANGES_REQUESTED');
+  const r2 = runCli(['verdict', '--adapter', adapter, '--work', ok, '--resolve', 'F9=dismissed']);
+  assert.equal(r2.code, 2);
+  assert.match(r2.first, /^ERR --resolve F9: findings\.json 에 없는 id/);
+  const broken = fullWork(tmp(), {});
+  writeFileSync(join(broken, 'findings.json'), '{ "head_sha": ');
+  const r3 = runCli(['verdict', '--adapter', adapter, '--work', broken]);
+  assert.equal(r3.code, 2);
+  assert.match(r3.first, /^ERR findings\.json JSON 파싱 실패/);
+  assert.equal(r3.err, '');
+});

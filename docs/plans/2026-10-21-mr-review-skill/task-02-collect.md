@@ -608,3 +608,4 @@ git commit -m "feat(mr-review): collect — MR 수집·스냅샷 SHA 고정·워
 - **diff-only 에서 `versions[0].head_commit_sha`·`diff_refs.head_sha`가 `api_head`와 다르면 재수집(3회 뒤 `HEAD_MOVED`) — 그냥 `versions[0].base_commit_sha`를 쓰지 마라. 이유:** plan R3-2 — 메타와 diff 사이에 push 가 있으면 새 head 의 diff·base 를 옛 head 의 raw 와 섞어 다른 커밋의 변경을 검토하고 이전 SHA 로 판정한다.
 - **보조 API 실패를 `overflow=false`·빈 목록으로 바꾸지 마라 — `api_failures`에 이름을 남기고 `overflow`는 `null`. 이유:** plan R3-3 — `/changes` 실패가 「완전한 목록」으로, `/closes_issues` 실패가 「연결 이슈 없음」으로 둔갑해 R2-2 의 보호가 우회되고 verdict 가 증거 부족을 모른다.
 - **워크트리를 고정했으면 `mr.diffs`를 git 목록으로 교체하라 — API 목록을 그대로 두지 마라. 이유:** plan R3-4 — check 의 기준선 후보 탐색·pack 의 문서 지도가 API 목록을 소비하므로 overflow 로 후보 spec 파일이 빠지면 워크트리에 문서가 있어도 「기준선 없음」 조기 종료가 난다.
+- (review-loop impl R1, 2026-10-22) diff-only 복원 경로는 `insideRoot` 로 검증한다 — 절대 경로·드라이브·역슬래시·NUL·`..` 성분 거부 + 해소 목적지가 복원 루트 안인지 재확인, 밖이면 원문 조회 없이 unrecovered(SDD 이월 T02 + R1-3, 사용자 판정).

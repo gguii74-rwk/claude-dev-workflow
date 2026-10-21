@@ -544,3 +544,4 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 - **`read()`는 일반 목적 플래그도 local ↔ central 로 대조하고, 암호화 비트(bit0·bit6)가 서 있으면 `corrupt`(미지원)로 처리한다. 이유:** plan C1(R3-8 잔존) — local 0·central 1 인 정상 CRC zip 을 계획 리더는 읽지만 Python 표준 리더는 암호화 파일로 거부한다. 바이트까지 맞으면 「일치」로 보증될 수 있는 배포본이다.
 - **`read()`는 local header 의 파일명·압축 방식을 central directory 와 대조한다 — signature·길이만 보지 마라. 이유:** plan R3-8 — central 에는 `A.txt`, local 에는 `B.txt`인 zip 도 CRC·크기가 맞으면 「일치」로 보증되는데 표준 리더(Python `zipfile`)는 BadZipFile 로 거부한다.
 - **내려받은 zip은 `work/zip/`에만 둔다. 이유:** F7 — `cleanup`(task-06)이 지운다.
+- (review-loop impl R1, 2026-10-22) zip 리더 강화 — EOCD 교차 검증(파일 끝·디스크 0·항목 수·목차 범위 = 파싱 끝)·중복 이름 거부 · 비압축 상한 `MAX_ENTRY` + `inflateRawSync` `maxOutputLength` = 선언 크기 · 항목 유형(Unix 모드)을 head 의 `git ls-tree` 유형과 대조(`type` 불일치) · 첨부 파일명은 `uploadName`(디코딩 → 경로 성분 거부 → 재인코딩)(SDD 이월 T04①②③ + R1-6·R1-7·R1-8, 사용자 판정).

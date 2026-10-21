@@ -7,6 +7,7 @@ import { apiRaw } from './gitlab.mjs';
 import { matchesAny } from './adapter.mjs';
 
 const MAX_BUFFER = 512 * 1024 * 1024;
+const MAX_ENTRY = 256 * 1024 * 1024;   // 항목 하나의 비압축 상한(압축 폭탄 — impl SDD 이월 T04①). 소스·리소스 배포본 범위
 
 function gitZ(cwd, args) {
   const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', maxBuffer: MAX_BUFFER });
@@ -63,18 +64,25 @@ export function crc32(buf) {
 
 // 자체 ZIP 리더(P3) — central directory 로 목록, stored(0)·deflate(8) 만. zip64 미지원(git archive 산출물 범위).
 // read() 는 central directory 의 CRC-32·비압축 크기와 대조한다 — 표준 리더가 Bad CRC 로 거부할 배포본을 「일치」로 보증하지 않는다.
+// 구조 교차 검증(impl SDD 이월 T04③ + R1-8, 사용자 판정) — 우리 리더와 배포 도구(unzip·Python zipfile)가 다른 목록을 읽는 zip 을 「일치」로 보증하지 않는다:
+// EOCD 는 파일 끝(주석 길이까지 정확히) · 디스크 번호 0 · 이 디스크 항목 수 = 전체 · 목차 시작 + 목차 크기 = EOCD 위치 = 파싱한 목차의 실제 끝 · 같은 이름 두 번 금지. 어긋나면 throw → corrupt.
 export function readZip(buf) {
   const EOCD = 0x06054b50;
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
-    if (buf.readUInt32LE(i) === EOCD) { eocd = i; break; }
+    if (buf.readUInt32LE(i) === EOCD && i + 22 + buf.readUInt16LE(i + 20) === buf.length) { eocd = i; break; }
   }
-  if (eocd < 0) throw new Error('zip EOCD 없음');
+  if (eocd < 0) throw new Error('zip EOCD 없음(또는 EOCD 가 파일 끝이 아님)');
   const count = buf.readUInt16LE(eocd + 10);
+  const cdSize = buf.readUInt32LE(eocd + 12);
   const cdOff = buf.readUInt32LE(eocd + 16);
   const cLen = buf.readUInt16LE(eocd + 20);
+  if (buf.readUInt16LE(eocd + 4) !== 0 || buf.readUInt16LE(eocd + 6) !== 0) throw new Error('zip EOCD 디스크 번호가 0 이 아님(분할 zip 미지원)');
+  if (buf.readUInt16LE(eocd + 8) !== count) throw new Error('zip EOCD 항목 수 불일치(이 디스크 ≠ 전체)');
+  if (cdOff + cdSize !== eocd) throw new Error(`zip EOCD 목차 범위 불일치(시작 ${cdOff} + 크기 ${cdSize} ≠ EOCD ${eocd})`);
   const comment = buf.subarray(eocd + 22, eocd + 22 + cLen).toString('utf8');
   const entries = [];
+  const seen = new Set();
   let p = cdOff;
   for (let i = 0; i < count; i++) {
     if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) throw new Error('zip central directory 손상');
@@ -88,9 +96,16 @@ export function readZip(buf) {
     const cmLen = buf.readUInt16LE(p + 32);
     const lho = buf.readUInt32LE(p + 42);
     const name = buf.subarray(p + 46, p + 46 + nLen).toString('utf8');
-    entries.push({ name, flags, method, crc, csize, usize, lho, cd: p });
+    if (seen.has(name)) throw new Error(`zip 중복 항목 이름: ${name}`);
+    seen.add(name);
+    // 항목 유형(impl R1-6) — Unix(made-by 상위 바이트 3)면 외부 속성 상위 16비트가 st_mode. 링크·특수 파일을 일반 파일로 보지 않는다
+    const made = buf.readUInt16LE(p + 4) >>> 8;
+    const ifmt = ((buf.readUInt32LE(p + 38) >>> 16) & 0o170000);
+    const type = made !== 3 || ifmt === 0 || ifmt === 0o100000 ? 'file' : ifmt === 0o120000 ? 'symlink' : ifmt === 0o040000 ? 'dir' : 'special';
+    entries.push({ name, flags, method, crc, csize, usize, lho, cd: p, type });
     p += 46 + nLen + eLen + cmLen;
   }
+  if (p !== eocd) throw new Error(`zip EOCD 목차 크기 불일치(파싱한 목차 끝 ${p} ≠ EOCD ${eocd})`);
   const read = (e) => {
     const h = e.lho;
     if (h + 30 > buf.length || buf.readUInt32LE(h) !== 0x04034b50) throw new Error(`zip local header 손상: ${e.name}`);
@@ -108,9 +123,14 @@ export function readZip(buf) {
     const start = h + 30 + nLen + eLen;
     if (start + e.csize > buf.length) throw new Error(`zip 데이터 범위 초과: ${e.name}`);
     const data = buf.subarray(start, start + e.csize);
+    // 압축 폭탄(impl SDD 이월 T04① + R1-7) — 선언 크기를 먼저 상한과 대조하고, 풀기는 선언 크기까지만 허용한다(넘으면 할당 전에 멈춘다)
+    if (e.usize > MAX_ENTRY) throw new Error(`zip 항목 비압축 크기 상한 초과(${e.usize} > ${MAX_ENTRY}): ${e.name}`);
     let out;
     if (e.method === 0) out = Buffer.from(data);
-    else if (e.method === 8) out = zlib.inflateRawSync(data);
+    else if (e.method === 8) {
+      try { out = zlib.inflateRawSync(data, { maxOutputLength: Math.max(1, e.usize) }); }
+      catch (err) { throw new Error(`zip 압축 해제가 선언 크기(${e.usize})를 넘거나 손상: ${e.name} (${err.code || err.message})`); }
+    }
     else throw new Error(`지원하지 않는 압축 방식(${e.method}): ${e.name}`);
     if (out.length !== e.usize) throw new Error(`zip 크기 불일치(${out.length} ≠ ${e.usize}): ${e.name}`);
     const c = crc32(out);
@@ -118,6 +138,22 @@ export function readZip(buf) {
     return out;
   };
   return { comment, entries, read };
+}
+
+// git 트리의 항목 유형 — 100644·100755 = file · 120000 = symlink · 그 밖(서브모듈 등)·부재 = other
+function gitType(cwd, sha, p) {
+  const r = spawnSync('git', ['-C', cwd, 'ls-tree', sha, '--', p], { encoding: 'utf8' });
+  const mode = r.status === 0 ? (r.stdout.trim().split(/\s+/)[0] || '') : '';
+  return mode === '100644' || mode === '100755' ? 'file' : mode === '120000' ? 'symlink' : 'other';
+}
+
+// 첨부 파일명(impl SDD 이월 T04②, 사용자 판정) — 본문의 링크 파일명은 URL 인코딩된 외부 입력이다. 한 번 디코딩해 경로 성분(`/`·`\`·`..`·NUL)이 있으면 거부하고,
+// 아니면 다시 인코딩해 API 경로에 붙인다(다른 GitLab 엔드포인트로 새지 않게). secret 도 32자 16진수만.
+export function uploadName(att) {
+  let name;
+  try { name = decodeURIComponent(String(att.filename || '')); } catch { return null; }
+  if (!name || name === '.' || name === '..' || /[\/\\\0]/.test(name) || !/^[0-9a-f]{32}$/.test(String(att.secret || ''))) return null;
+  return name;
 }
 
 function gitShow(cwd, sha, p) {
@@ -149,13 +185,17 @@ export function deploy({ adapter, work }) {
     else {
       out.zip.attachment = att.filename;
       let buf = null;
-      try {
-        buf = apiRaw(`projects/${mr.project.id}/uploads/${att.secret}/${att.filename}`);
-        fs.mkdirSync(path.join(work, 'zip'), { recursive: true });
-        fs.writeFileSync(path.join(work, 'zip', path.basename(att.filename)), buf);
-        out.zip.downloaded = true;
-      } catch (e) {
-        mm.push({ kind: 'download', path: null, detail: `다운로드 실패: ${e.message.slice(0, 160)}` });
+      const name = uploadName(att);
+      if (!name) mm.push({ kind: 'download', path: null, detail: `첨부 파일명·경로가 안전하지 않아 조회하지 않음: ${String(att.filename).slice(0, 120)}` });
+      else {
+        try {
+          buf = apiRaw(`projects/${mr.project.id}/uploads/${att.secret}/${encodeURIComponent(name)}`);
+          fs.mkdirSync(path.join(work, 'zip'), { recursive: true });
+          fs.writeFileSync(path.join(work, 'zip', name), buf);
+          out.zip.downloaded = true;
+        } catch (e) {
+          mm.push({ kind: 'download', path: null, detail: `다운로드 실패: ${e.message.slice(0, 160)}` });
+        }
       }
       let z = null;
       if (buf) {
@@ -174,6 +214,8 @@ export function deploy({ adapter, work }) {
         if (snap.mode === 'worktree') {
           for (const e of files) {
             if (!expSet.has(e.name)) continue;
+            const gt = gitType(snap.checkout, snap.head_sha, e.name);
+            if (e.type !== gt) { mm.push({ kind: 'type', path: e.name, detail: `zip 항목 유형 ${e.type} ≠ head 의 git 유형 ${gt}` }); continue; }
             let zb;
             try { zb = z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: e.name, detail: err.message }); continue; }
             const gb = gitShow(snap.checkout, snap.head_sha, e.name);

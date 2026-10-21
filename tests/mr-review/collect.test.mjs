@@ -248,3 +248,33 @@ test('어댑터에 없는 프로젝트 → ERR exit 2', () => {
   assert.equal(r.code, 2);
   assert.match(r.first, /^ERR .*zeta/);
 });
+
+test('diff-only 복원 경로 검증: 상위 이동·절대 경로·역슬래시·드라이브 경로는 blobs 밖에 쓰지 않고 unrecovered (impl SDD 이월 T02 + R1-3, 사용자 판정)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const headSha = 'a'.repeat(40);
+  const bad = ['../../../escape.txt', '/abs-escape.txt', '..\\..\\..\\win-escape.txt', 'C:/drive-escape.txt', 'ok/../../../../mid-escape.txt'];
+  const diffs = [
+    ...bad.map((p) => ({ old_path: p, new_path: p, new_file: true, renamed_file: false, deleted_file: false, diff: '@@ -0,0 +1 @@\n+x\n' })),
+    { old_path: '../../../base-escape.txt', new_path: 'src/main/java/app/A.java', new_file: false, renamed_file: true, deleted_file: false, too_large: true, diff: '' },   // base 쪽 경로도 검증
+    DIFFS[0],
+  ];
+  const g = fakeGlab(root, [
+    { match: `^api --paginate projects/101/merge_requests/${IID}/diffs`, json: diffs },
+    ...rules(headSha),
+    { match: '^api projects/101/repository/files/.*/raw', text: 'PAYLOAD\n' },
+  ]);
+  const work = join(root, 'work');
+  const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work], g.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const snap = readJson(join(work, 'snapshot.json'));
+  for (const p of bad) assert.ok(snap.unrecovered.includes(p), `${p} ∉ ${JSON.stringify(snap.unrecovered)}`);
+  assert.ok(snap.unrecovered.includes('src/main/java/app/A.java'));                    // base 경로가 밖이면 그 파일 재구성도 미확보
+  for (const f of ['escape.txt', 'abs-escape.txt', 'win-escape.txt', 'drive-escape.txt', 'mid-escape.txt', 'base-escape.txt']) {
+    assert.ok(!existsSync(join(root, f)), f);
+    assert.ok(!existsSync(join(work, f)), f);
+  }
+  assert.ok(!existsSync('/abs-escape.txt'));
+  assert.equal(readFileSync(join(work, 'blobs', 'head', 'src/main/java/app/A.java'), 'utf8'), 'PAYLOAD\n');   // 정상 경로는 그대로 받는다
+  assert.ok(!g.calls().some((c) => /escape/.test(decodeURIComponent(c.join(' ')))));     // 밖으로 나가는 경로는 원문 조회도 하지 않는다
+});

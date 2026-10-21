@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import zlib from 'node:zlib';
 import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
 const { readZip, crc32, parseDeletedList, expectedLists } = await import(join(LIB, 'deploy.mjs'));
@@ -242,4 +243,91 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
   const d3 = readJson(join(w3, 'deploy.json'));
   assert.equal(d3.zip.comment_sha, headSha);
   assert.ok(d3.mismatches.some((m) => m.kind === 'bytes' && /diff-only/.test(m.detail)));
+});
+
+// 최소 zip 작성기(테스트 전용) — entries = [{ name, data, method = 0|8, usize?, made?, ext? }]
+function mkZip(entries, comment = '') {
+  const locals = [];
+  const cds = [];
+  let off = 0;
+  for (const e of entries) {
+    const raw = Buffer.from(e.data);
+    const comp = e.method === 8 ? zlib.deflateRawSync(raw) : raw;
+    const name = Buffer.from(e.name, 'utf8');
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0, 6); lh.writeUInt16LE(e.method || 0, 8);
+    lh.writeUInt32LE(crc32(raw), 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(e.usize ?? raw.length, 22); lh.writeUInt16LE(name.length, 26);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(e.made ?? 0x0314, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(0, 8); cd.writeUInt16LE(e.method || 0, 10);
+    cd.writeUInt32LE(crc32(raw), 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(e.usize ?? raw.length, 24); cd.writeUInt16LE(name.length, 28);
+    cd.writeUInt32LE(e.ext ?? ((0o100644 << 16) >>> 0), 38); cd.writeUInt32LE(off, 42);
+    locals.push(lh, name, comp);
+    cds.push(cd, name);
+    off += 30 + name.length + comp.length;
+  }
+  const cdBuf = Buffer.concat(cds);
+  const c = Buffer.from(comment, 'utf8');
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(entries.length, 8); eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cdBuf.length, 12); eocd.writeUInt32LE(off, 16); eocd.writeUInt16LE(c.length, 20);
+  return Buffer.concat([...locals, cdBuf, eocd, c]);
+}
+
+test('압축 폭탄: 선언 크기를 넘게 풀리는 항목은 할당 전에 멈춘다 — corrupt (impl SDD 이월 T04① + R1-7, 사용자 판정)', () => {
+  const z = readZip(mkZip([{ name: 'src/main/java/app/A.java', data: Buffer.alloc(8 << 20), method: 8, usize: 1 }]));
+  assert.throws(() => z.read(z.entries[0]), /선언 크기/);
+  const big = readZip(mkZip([{ name: 'x.bin', data: Buffer.alloc(4), method: 0, usize: 0x7fffffff }]));
+  assert.throws(() => big.read(big.entries[0]), /상한/);
+  assert.equal(readZip(mkZip([{ name: 'ok.txt', data: 'hello', method: 8 }])).read(readZip(mkZip([{ name: 'ok.txt', data: 'hello', method: 8 }])).entries[0]).toString(), 'hello');
+});
+
+test('zip 구조 교차 검증: EOCD 목차 크기·항목 수·디스크 번호·위치가 어긋나거나 같은 이름이 두 번이면 거부 (impl SDD 이월 T04③ + R1-8, 사용자 판정)', () => {
+  const root = tmp();
+  const { checkout, headSha } = initRepos(root);
+  const good = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), ['src/main/java/app/A.java', 'src/main/java/app/B.java']));
+  assert.doesNotThrow(() => readZip(good));
+  const eocdAt = good.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const mut = (fn) => { const b = Buffer.from(good); fn(b); return b; };
+  assert.throws(() => readZip(mut((b) => b.writeUInt32LE(0, eocdAt + 12))), /EOCD/);                 // 목차 크기 0(R1 재현)
+  assert.throws(() => readZip(mut((b) => b.writeUInt16LE(1, eocdAt + 4))), /EOCD/);                  // 디스크 번호
+  assert.throws(() => readZip(mut((b) => b.writeUInt16LE(b.readUInt16LE(eocdAt + 10) - 1, eocdAt + 8))), /EOCD/);   // 이 디스크 항목 수 ≠ 전체
+  assert.throws(() => readZip(Buffer.concat([good, Buffer.from('trailing')])), /EOCD/);              // EOCD 가 끝이 아니다(주석 길이 불일치)
+  assert.throws(() => readZip(mkZip([{ name: 'a.txt', data: '1' }, { name: 'a.txt', data: '2' }])), /중복/);
+});
+
+test('zip 항목 유형: 일반 파일을 심볼릭 링크로 바꾼 항목은 git 모드와 대조해 불일치 (impl R1-6)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const good = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), ['src/main/java/app/A.java', 'src/main/java/app/B.java']));
+  const e = readZip(good).entries.find((x) => x.name === 'src/main/java/app/A.java');
+  const bad = Buffer.from(good);
+  bad.writeUInt16LE((3 << 8) | (bad.readUInt16LE(e.cd + 4) & 0xff), e.cd + 4);                      // made-by = Unix
+  bad.writeUInt32LE((0o120777 << 16) >>> 0, e.cd + 38);                                              // 외부 속성 = 심볼릭 링크
+  const badFile = join(root, 'link.zip');
+  writeFileSync(badFile, bad);
+  const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: badFile }]);
+  const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/d.zip`, kind: 'zip', filename: 'd.zip', secret: SECRET, where: 'body' }], description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: src/main/java/app/Old.java\n' });
+  const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
+  assert.equal(r.first, 'DEPLOY 불일치', r.out + r.err);
+  assert.ok(readJson(join(work, 'deploy.json')).mismatches.some((m) => m.kind === 'type' && m.path === 'src/main/java/app/A.java'));
+});
+
+test('첨부 파일명은 디코딩 뒤 경로 성분(`/`·`..`)이 있으면 조회하지 않고 대조 불가 · 정상 이름은 인코딩해 조회 (impl SDD 이월 T04②, 사용자 판정)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const desc = '## 배포·롤백\n- 배포본: 첨부\n  - 삭제: src/main/java/app/Old.java\n';
+  for (const filename of ['..%2F..%2Fmerge_requests%2F7', '../../merge_requests/7.zip']) {
+    const g = fakeGlab(root, [{ match: 'uploads', text: 'NOT A ZIP' }]);
+    const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/${filename}`, kind: 'zip', filename, secret: SECRET, where: 'body' }], description: desc });
+    const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
+    assert.equal(r.first, 'DEPLOY 대조 불가', filename);
+    assert.equal(g.calls().length, 0, filename);
+  }
+  const zip = archive(checkout, headSha, join(root, 'k.zip'), ['src/main/java/app/A.java', 'src/main/java/app/B.java']);
+  const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/%EB%B0%B0%ED%8F%AC%20%EB%B3%B8\\.zip$`, file: zip }]);
+  const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/%EB%B0%B0%ED%8F%AC%20%EB%B3%B8.zip`, kind: 'zip', filename: '%EB%B0%B0%ED%8F%AC%20%EB%B3%B8.zip', secret: SECRET, where: 'body' }], description: desc });
+  assert.equal(runCli(['deploy', '--adapter', adapter, '--work', work], g.env).first, 'DEPLOY 일치');
+  assert.ok(existsSync(join(work, 'zip', '배포 본.zip')));
 });

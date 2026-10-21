@@ -997,3 +997,4 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 - **`render`·`verdict`는 입력의 head 일치를 검증한다(`verdict.json`·`findings.json` ↔ `snapshot.json`). 이유:** R1-1·F6 — 같은 `W`에 남은 이전 실행의 APPROVE가 현재 head 의 판정으로 게시된다. 비-early에서 `verdict.json`이 없으면 리뷰 실패로 렌더한다.
 - **부록 C·D에 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제를 남겨라(마스킹은 전체 적용 뒤). 이유:** R1-9·§5.7 — 실행 블록 40줄은 제목만 담으므로, 사람이 차단 판단을 검증할 근거가 리포트 밖에 없다.
 - (impl 2026-10-21 전사 수정, PF-7) CLI `.catch` 의 stderr 스택 출력은 프로그래밍 오류(TypeError·ReferenceError·RangeError·SyntaxError)로만 한정 — 도메인 오류는 stdout `ERR` 한 줄만(SC-6「stderr 없이」)
+- (review-loop impl R1, 2026-10-22) `verdict` 는 계산 전에 `validateFindings`(id `F<n>` 유일·type·boolean blocking·head_sha·validReviewers)로 findings.json 을 검사하고 어긋나면 ERR · 없는 id 의 `--resolve` 도 ERR · 손상 JSON 은 파일명과 함께 ReportError(SDD 이월 T06 우선 minor).
