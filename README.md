@@ -14,6 +14,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 | setup | skill | `/dev-workflow:setup` | (On explicit request) idempotently insert a pipeline-convention pointer into this repo's CLAUDE.md |
 | doctor | skill | `/dev-workflow:doctor` | Read-only diagnosis of four environment items (installed version · marketplace freshness · codex · context window); every fix is delegated to the existing path |
 | orchestrate | skill | `/dev-workflow:orchestrate` | (1.2.0+) Shared procedure for a **main session** that runs tracks in Orca terminals — launch · watch · question routing · stage-end verification and handoff · successors (project rules come first) |
+| mr-review | skill | `/dev-workflow:mr-review <project> <iid>` | (1.3.0+) Read-only review of **someone else's MR** — deterministic authoring-rule checks · pinned review head · two independent model reviews (Claude subagent + Codex task) · draft report in the team policy's four-verdict format. Requires a project adapter document |
 | Context-threshold nudge | Stop hook | (automatic) | Past a threshold (default 40%), nudges to write a handoff + `/clear` — and again every 15pp band after it (40 → 55 → 70 → 85%, no cap) |
 
 ## Table of Contents
@@ -30,6 +31,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
   - [doctor](#7-doctor--diagnose-the-environment)
   - [orchestrate](#8-orchestrate--main-session-track-operation)
   - [Context-threshold handoff hook](#9-context-threshold-handoff-hook-automatic)
+  - [mr-review](#10-mr-review--two-model-review-draft-for-someone-elses-mr)
 - [Auto-prompting the plugin when a repo is cloned](#auto-prompting-the-plugin-when-a-repo-is-cloned)
 - [Troubleshooting](#troubleshooting)
 - [Caveats](#caveats)
@@ -40,6 +42,7 @@ A marketplace that ships a set of battle-tested development-workflow tools as a 
 - **Claude Code v2.1.140 or later** recommended (includes plugin dependency support).
 - **codex plugin** — `review-loop` calls codex's `adversarial-review`, so this plugin depends on `codex@openai-codex`. The dependency is declared in `plugin.json`'s `dependencies`, so it is **installed automatically alongside** (provided the `openai-codex` marketplace is registered — see Installation below).
 - **codex CLI authentication is separate** — the plugin dependency only pulls in the codex *plugin*. You must install and log in to the codex CLI yourself (`/codex:setup`) for `review-loop` to actually work. `writing-plans-split` and the context hook work without this authentication.
+- **`glab` CLI (authenticated)** — `mr-review` reads the GitLab REST API via `glab api` (GET only). The other skills work without `glab`.
 
 ## Installation
 
@@ -229,6 +232,21 @@ Since 1.0.0, in an **Orca terminal** (a session with `ORCA_TERMINAL_HANDLE`), th
 
 **Session mode — manual / delegated (1.1.0+).** For setups where a main session (orchestrator) launches track sessions and answers their questions, you pick a session mode. **Manual** (default — `DEV_WORKFLOW_MODE` unset) means a person confirms each step; **delegated** (`DEV_WORKFLOW_MODE=delegated` — only when the value, with surrounding whitespace trimmed, matches exactly; any other value means manual) is for overnight or away-from-keyboard runs, where an agent (usually the main session) stands in for this session's user — the orchestrator answers its questions and launches its successor. Brainstorming, harden-spec and ui-mockup are human, taste-driven stages and stay with a person regardless of mode; from review-loop(spec) on, a track runs manual or delegated. The main session itself stays manual (its own successor uses the automatic handover above). **Set it as a prefix on the track terminal's launch command** (the default): `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — and use the same prefix when launching successor terminals (leave it off and that successor falls back to the automatic handover). On Windows (PowerShell): `$env:DEV_WORKFLOW_MODE='delegated'; claude …` (not yet verified). Putting it in settings.json `env` makes every session of the project delegated — **including the main session**, which then can't launch its own successor — so only do that knowingly. **Delegated-mode effects (1.2.0)**: ① even in an Orca terminal, the nudge is the same `/clear` guidance as outside Orca instead of the automatic handover — the orchestrator launches the successor (1.1.0; no effect outside Orca) ② review-loop and dev-cycle auto-adopt the recommended answer for non-risky questions — risky ones (critical · security · direction · AC/goal/non-goal/decision changes) are still asked, and every auto-adopted decision is recorded with the source `추천 자동 채택(위임)` (auto-adopted recommendation) and is an audit target of the confirmation round ③ those decisions are collected in a **confirmation-pending ledger** (`## 확인 대기 대장` at the end of the spec/plan) that you confirm or overturn at the stage boundary. A 1.1.x install gets ① only. Older installs don't know this variable — check the version with `doctor`.
 
+### 10. `mr-review` — two-model review draft for someone else's MR
+
+A designated reviewer gets a **draft verdict report** from one MR number. Nothing in the repository or GitLab is changed (comments and approval are done by a human). It is different from `review-loop`, which fixes your own spec/plan/implementation.
+
+```
+/dev-workflow:mr-review <project> <iid> [--adapter <adapter file>] [--full] [--diff-only] [--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design …]
+```
+
+- **Adapter document required** — one Markdown file kept in the project's shared docs repository (`--adapter` or env `MR_REVIEW_ADAPTER`). It carries repository IDs, policy documents, review lenses, doc map, wiki roots (export allowed/forbidden), masking patterns, deploy-target rules, comment formats and the report directory. Scripts read only its ```` ```json mr-review-adapter ```` machine block; models read the prose (lenses, policy notes). The plugin holds no project-specific values.
+- Flow: collect via `glab api` → fetch target and MR head, confirm **API head = fetched head**, pin three SHAs (temporary worktree) → authoring-rule table (10 contract lines, baseline, change reason, attachments, rebase, comment trust) → deploy-zip comparison (comment SHA, file list, bytes, deletion list — built-in zip reader) → context packs (section excerpts of shared docs, wiki, baseline originals; the Codex pack holds allowed sources only, with PII masking — Codex is skipped if masking fails) → Claude subagent and Codex `task` **independently in parallel** → merged by the main session → verdict computed in policy order → report (the policy execution block verbatim, fully masked) → temporary artifacts removed.
+- If authoring rules are unmet (incomplete contract, no baseline) it **exits early** with a draft verdict plus a request-for-completion note for the author, without running the reviewers. With `--full` it runs to the end; the gaps remain as missing evidence.
+- When the two models conflict, or only one flags a low-confidence blocker, and the main session cannot confirm it from code, the verdict is **undetermined** — no postable block, both branches are shown, and the reviewer settles it with `--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design`.
+- Without the Codex plugin or `glab`: it does not run without `glab`; without Codex it runs in **single-model mode** (report header says "no cross-check").
+- Tests and builds are never executed (every verification status is "read"). Only the deploy-zip comparison is performed by the skill itself.
+
 ## Auto-prompting the plugin when a repo is cloned
 
 To automatically prompt collaborators to install this plugin when they clone and trust a repo, declare the marketplace and enablement in that repo's `.claude/settings.json`:
@@ -274,14 +292,16 @@ claude-dev-workflow/
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies (codex@openai-codex)
 │   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
 │   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
+│   ├── skills/mr-review/{SKILL.md,scripts/mr-review.mjs,scripts/lib/{adapter,gitlab,collect,check,deploy,pack,report}.mjs}
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── tests/orchestrate/                # orchestrate.mjs tests (stub orca — outside the plugin)
+├── tests/mr-review/                  # mr-review tests (fake glab + local bare git — outside the plugin)
 ├── README.md                         # English (default)
 └── README.ko.md / README.ja.md       # Korean / Japanese
 ```
 
 Users receive updates only from commits that bump `version` in `plugin.json`. If the version is omitted, the git commit SHA becomes the version and every commit is treated as a new release. Users update via `/plugin update` or background auto-update.
 
-Tests: `node --test tests/orchestrate/orchestrate.test.mjs` (orchestrate script — a stub `orca` stands in, no real Orca needed; this repo has no npm gate).
+Tests: `node --test tests/orchestrate/orchestrate.test.mjs` (orchestrate — stub `orca`) · `node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs tests/mr-review/check.test.mjs tests/mr-review/deploy.test.mjs tests/mr-review/pack.test.mjs tests/mr-review/report.test.mjs` (mr-review — fake `glab` and a local bare git repo; no real GitLab or Orca needed). This repo has no npm gate (do not pass a directory — Node 21+ treats it as a module path).
 
 **The README is maintained in three languages** — `README.md` (English, default) / `README.ko.md` / `README.ja.md`. When changing content, **update all three files together** (drift prevention).

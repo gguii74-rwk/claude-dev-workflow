@@ -14,6 +14,7 @@
 | setup | skill | `/dev-workflow:setup` | (명시 요청 시) 이 repo의 CLAUDE.md에 파이프라인 규약 포인터를 멱등 삽입 |
 | doctor | skill | `/dev-workflow:doctor` | 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 컨텍스트 윈도)을 읽기 전용으로 일괄 진단하고, 조치는 기존 경로로 위임 |
 | orchestrate | skill | `/dev-workflow:orchestrate` | (1.2.0 이상) **메인 세션**이 트랙을 오르카 터미널로 운영하는 공통 절차 — 기동 · 감시 · 질문 라우팅 · 단계 종료 검증·핸드오프 · 후계 (프로젝트 규약 우선) |
+| mr-review | skill | `/dev-workflow:mr-review <프로젝트> <iid>` | (1.3.0 이상) **남의 MR**을 읽기 전용으로 리뷰 — 작성 규칙 기계 검사 · 리뷰 head 고정 · 두 모델(Claude 서브에이전트 + Codex task) 독립 검토 · 팀 정책 판정 4종 형식의 초안 리포트. 프로젝트 어댑터 문서 필요 |
 | 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%)를 넘으면 핸드오프 작성 + `/clear` 안내를 넛지하고, 이후 **15%p 구간마다 재넛지**(40 → 55 → 70 → 85%, 상한 없음) |
 
 ## 목차
@@ -30,6 +31,7 @@
   - [doctor](#7-doctor--환경-진단)
   - [orchestrate](#8-orchestrate--메인-세션의-트랙-운영)
   - [컨텍스트 임계 핸드오프 훅](#9-컨텍스트-임계-핸드오프-훅-자동)
+  - [mr-review](#10-mr-review--남의-mr-두-모델-리뷰-초안)
 - [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
 - [트러블슈팅](#트러블슈팅)
 - [주의](#주의)
@@ -40,6 +42,7 @@
 - **Claude Code v2.1.140 이상** 권장 (플러그인 의존성 기능 포함).
 - **codex 플러그인** — `review-loop`가 codex의 `adversarial-review`를 호출하므로 `codex@openai-codex` 플러그인을 의존한다. `plugin.json`의 `dependencies`로 선언돼 **설치 시 자동으로 함께 설치**된다(단 `openai-codex` 마켓플레이스가 등록돼 있어야 함 — 아래 설치 참고).
 - **codex CLI 인증은 별도** — 플러그인 의존은 codex *플러그인*만 끌어온다. codex CLI 자체 설치·로그인(`/codex:setup`)은 직접 해야 `review-loop`가 실제로 동작한다. `writing-plans-split`·컨텍스트 훅은 이 인증 없이 바로 동작한다.
+- **`glab` CLI(인증 완료)** — `mr-review`가 GitLab REST를 `glab api`로 읽는다(GET만). 다른 스킬은 `glab` 없이 동작한다.
 
 ## 설치
 
@@ -229,6 +232,21 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 
 **세션 모드 — 수동 / 위임 (1.1.0 이상).** 메인 세션(오케스트레이터)이 트랙 세션을 띄우고 그 질문에 대신 답하는 운영을 위해 세션 모드를 고른다. **수동**(기본 — `DEV_WORKFLOW_MODE` 미설정)은 사람이 단계별로 확인하며 진행하고, **위임**(`DEV_WORKFLOW_MODE=delegated` — 앞뒤 공백을 뗀 값이 정확히 일치할 때만, 그 외 값은 수동)은 야간·부재 중에 에이전트(통상 메인 세션)가 이 세션의 사용자 역할을 대행한다 — 질문은 오케스트레이터가 답하고 후계도 오케스트레이터가 띄운다. 브레인스토밍·harden-spec·ui-mockup은 사람·취향 단계라 모드와 무관하게 사람이 하고, 그 뒤 review-loop(spec)부터 수동 또는 위임으로 진행한다. 메인 세션 자신은 수동이다(자기 후계는 위 자동 인계 그대로). **설정은 트랙 터미널 생성 명령의 접두**가 기본이다: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 후계 터미널을 띄울 때도 같은 접두를 붙인다(빠뜨리면 그 후계만 자동 인계로 돌아간다). Windows(PowerShell)는 `$env:DEV_WORKFLOW_MODE='delegated'; claude …` 형태(미실측). settings.json `env`에 넣으면 프로젝트의 모든 세션 — **메인 세션까지** — 위임이 되어 자기 후계를 못 띄우므로 그 점을 알고 쓸 때만 쓴다. **위임 효과(1.2.0)**: ① 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다 — 후계는 오케스트레이터가 띄운다(1.1.0, 오르카 밖에서는 효과 없음) ② review-loop·dev-cycle이 위험군 외 질문의 추천안을 자동 채택한다 — 위험군(critical·보안·방향 전제·AC·목표·비목표·기결정 변경)은 여전히 묻고, 자동 채택한 결정은 출처 `추천 자동 채택(위임)`으로 기록되어 확인 라운드의 감사 대상이 된다 ③ 그 결정은 **확인 대기 대장**(spec·plan 말미 `## 확인 대기 대장`)에 모여 단계 경계에서 사용자가 확인·번복한다. 1.1.x 설치본은 ①만 받는다. 구버전 설치본은 이 변수를 모른다 — `doctor`로 버전을 확인한다.
 
+### 10. `mr-review` — 남의 MR 두 모델 리뷰 초안
+
+지정된 리뷰어가 MR 번호 하나로 **판정 초안 리포트**를 받는다. 저장소도 GitLab도 바꾸지 않는다(댓글·승인은 사람이 한다). 자기 spec/plan/구현을 고치는 `review-loop`와 다르다.
+
+```
+/dev-workflow:mr-review <프로젝트> <iid> [--adapter <어댑터 파일>] [--full] [--diff-only] [--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design …]
+```
+
+- **어댑터 문서 필수** — 프로젝트의 공통 문서 저장소에 두는 마크다운 한 파일(`--adapter` 또는 환경변수 `MR_REVIEW_ADAPTER`). 저장소 ID·정책 문서·렌즈·문서 지도·위키 루트(전송 허용/금지)·마스킹 패턴·배포 대상 규칙·댓글 형식·리포트 경로를 담는다. 스크립트는 그 안의 ```` ```json mr-review-adapter ```` 기계 블록만 읽고, 모델은 산문(렌즈·정책 설명)을 읽는다. 플러그인에는 프로젝트 고유 값이 없다.
+- 흐름: `glab api`로 수집 → target·MR head를 fetch해 **API head = fetch head** 확인·세 SHA 고정(임시 워크트리) → 작성 규칙 검사표(계약 10줄·기준선·변경 사유·첨부·리베이스·댓글 신뢰) → 배포본 zip 대조(주석 SHA·목록·바이트·삭제 목록, 자체 zip 리더) → 컨텍스트 팩(공통 문서 절 발췌·위키·기준선 원문, Codex용 팩은 허용 출처 + 개인정보 마스킹 — 실패 시 Codex 생략) → Claude 서브에이전트·Codex `task` **독립 병렬** → 메인 병합 → 정책 순서로 판정 계산 → 리포트(정책 실행 블록 그대로, 전체 마스킹) → 임시 산출물 정리.
+- 작성 규칙 미충족(계약 미완·기준선 없음)이면 검토 없이 **조기 종료** 리포트(초안 판정 + 작성자 보완 요청 문안). `--full`이면 끝까지 가되 미완은 증거 부족으로 남는다.
+- 두 모델이 상충하거나 한쪽만 낮은 확신으로 잡은 차단 후보를 메인이 코드로 확인 못 하면 **판정 미확정** — 게시용 블록 없이 두 갈래를 보여 주고, 리뷰어가 `--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design`로 확정한다.
+- Codex 플러그인·`glab`이 없으면: `glab` 없이는 돌지 않고, Codex가 없으면 **단일 모델 모드**(리포트 헤더에 「교차 검토 없음」).
+- 테스트·빌드는 실행하지 않는다(검증 상태 전부 `[판독]`). 배포본 zip 대조만 스킬이 직접 수행한다.
+
 ## 특정 repo에서 clone 시 자동 적용
 
 협업자가 repo를 clone하고 trust할 때 이 플러그인을 자동으로 설치 프롬프트하려면, 그 repo의 `.claude/settings.json`에 마켓플레이스와 활성화를 선언한다:
@@ -274,14 +292,16 @@ claude-dev-workflow/
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
 │   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
 │   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
+│   ├── skills/mr-review/{SKILL.md,scripts/mr-review.mjs,scripts/lib/{adapter,gitlab,collect,check,deploy,pack,report}.mjs}
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── tests/orchestrate/                # orchestrate.mjs 테스트(스텁 orca — 플러그인 밖)
+├── tests/mr-review/                  # mr-review 테스트(가짜 glab + 로컬 bare git — 플러그인 밖)
 ├── README.md                         # 영어(기본)
 └── README.ko.md / README.ja.md       # 한국어 / 일본어
 ```
 
 `plugin.json`의 `version`을 올린 커밋에서만 사용자가 업데이트를 받는다. 버전을 생략하면 git commit SHA가 버전이 되어 매 커밋이 새 버전으로 취급된다. 사용자는 `/plugin update` 또는 백그라운드 자동 업데이트로 갱신한다.
 
-테스트: `node --test tests/orchestrate/orchestrate.test.mjs`(orchestrate 스크립트 — 스텁 `orca`로 돌아 실제 오르카 불필요, 이 repo에는 npm 게이트가 없다).
+테스트: `node --test tests/orchestrate/orchestrate.test.mjs`(orchestrate — 스텁 `orca`) · `node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs tests/mr-review/check.test.mjs tests/mr-review/deploy.test.mjs tests/mr-review/pack.test.mjs tests/mr-review/report.test.mjs`(mr-review — 가짜 `glab`·로컬 bare git, 실제 GitLab·오르카 불필요). 이 repo에는 npm 게이트가 없다(폴더 인자 금지 — Node 21 이상은 모듈 경로로 해석).
 
 **README는 3개 언어로 유지한다** — `README.md`(영어, 기본) / `README.ko.md` / `README.ja.md`. 내용을 바꿀 때는 **3개 파일을 함께 갱신**한다(드리프트 방지).

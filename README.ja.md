@@ -14,6 +14,7 @@
 | setup | skill | `/dev-workflow:setup` | （明示的な依頼時のみ）このリポジトリの CLAUDE.md にパイプライン規約へのポインタを冪等に挿入 |
 | doctor | skill | `/dev-workflow:doctor` | 環境4項目（インストール版・マーケットプレイス最新・codex・コンテキストウィンドウ）を読み取り専用で一括診断し、対処は既存の経路に委譲 |
 | orchestrate | skill | `/dev-workflow:orchestrate` | （1.2.0 以上）**メインセッション**がトラックを Orca ターミナルで運用する共通手順 — 起動 · 監視 · 質問ルーティング · 段階終了の検証・ハンドオフ · 後継（プロジェクト規約優先） |
+| mr-review | skill | `/dev-workflow:mr-review <プロジェクト> <iid>` | (1.3.0 以上) **他人の MR** を読み取り専用でレビュー — 作成ルールの機械チェック · レビュー head の固定 · 2 モデル（Claude サブエージェント + Codex task）の独立レビュー · チームポリシーの判定 4 種形式のドラフトレポート。プロジェクトのアダプター文書が必要 |
 | コンテキスト閾値ナッジ | Stop hook | （自動） | コンテキスト使用量が閾値（デフォルト 40%）を超えたらハンドオフ作成 + `/clear` を促し、以降は **15%p 区間ごとに再ナッジ**（40 → 55 → 70 → 85%、上限なし） |
 
 ## 目次
@@ -30,6 +31,7 @@
   - [doctor](#7-doctor--環境診断)
   - [orchestrate](#8-orchestrate--メインセッションのトラック運用)
   - [コンテキスト閾値ハンドオフフック](#9-コンテキスト閾値ハンドオフフック自動)
+  - [mr-review](#10-mr-review--他人の-mr-の-2-モデルレビュードラフト)
 - [リポジトリ clone 時の自動適用](#リポジトリ-clone-時の自動適用)
 - [トラブルシューティング](#トラブルシューティング)
 - [注意](#注意)
@@ -40,6 +42,7 @@
 - **Claude Code v2.1.140 以上**を推奨（プラグイン依存関係機能を含む）。
 - **codex プラグイン** — `review-loop` が codex の `adversarial-review` を呼び出すため、`codex@openai-codex` プラグインに依存する。`plugin.json` の `dependencies` で宣言されており、**インストール時に自動で同時インストール**される（ただし `openai-codex` マーケットプレイスが登録済みであること — 下記インストール参照）。
 - **codex CLI の認証は別途必要** — プラグイン依存で入るのは codex *プラグイン*だけ。codex CLI 自体のインストール・ログイン（`/codex:setup`）を自分で行わないと `review-loop` は実際には動かない。`writing-plans-split`・コンテキストフックはこの認証なしで動作する。
+- **`glab` CLI（認証済み）** — `mr-review` が GitLab REST を `glab api` で読む（GET のみ）。他のスキルは `glab` なしで動く。
 
 ## インストール
 
@@ -229,6 +232,21 @@ CLAUDE_CTX_LIMIT=200000     # コンテキストトークン上限を直接指�
 
 **セッションモード — 手動 / 委任（1.1.0 以上）。** メインセッション（オーケストレーター）がトラックセッションを起動し、その質問に代わりに答える運用のためにセッションモードを選ぶ。**手動**（デフォルト — `DEV_WORKFLOW_MODE` 未設定）は人が段階ごとに確認しながら進め、**委任**（`DEV_WORKFLOW_MODE=delegated` — 前後の空白を除いた値が完全一致する場合のみ、それ以外の値は手動）は夜間・不在時にエージェント（通常はメインセッション）がこのセッションのユーザー役を代行する — 質問はオーケストレーターが答え、後継もオーケストレーターが起動する。ブレインストーミング・harden-spec・ui-mockup は人・好みの段階なのでモードに関係なく人が行い、その後の review-loop(spec) から手動または委任で進める。メインセッション自身は手動（自分の後継は上の自動引き継ぎのまま）。**設定はトラックターミナル作成コマンドの接頭辞**が基本: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 後継ターミナルを起動するときも同じ接頭辞を付ける（付け忘れるとその後継だけ自動引き継ぎに戻る）。Windows（PowerShell）は `$env:DEV_WORKFLOW_MODE='delegated'; claude …` の形（未実測）。settings.json の `env` に入れるとプロジェクトのすべてのセッション — **メインセッションまで** — が委任になり自分の後継を起動できなくなるので、それを承知の上でのみ使う。**委任の効果（1.2.0）**: ① Orca ターミナルでも自動引き継ぎの代わりに Orca の外と同じ `/clear` 案内ナッジを受ける — 後継はオーケストレーターが起動する（1.1.0、Orca の外では効果なし）② review-loop・dev-cycle がリスク群以外の質問の推奨案を自動採用する — リスク群（critical・セキュリティ・方向の前提・AC・目標・非目標・既決定の変更）は引き続き質問し、自動採用した決定は出典 `추천 자동 채택(위임)`（推奨の自動採用）で記録され確認ラウンドの監査対象になる ③ その決定は**確認待ち台帳**（spec・plan 末尾の `## 확인 대기 대장`）に集まり、段階境界でユーザーが確認・撤回する。1.1.x のインストールは ① のみ。旧バージョンのインストールはこの変数を知らない — `doctor` でバージョンを確認する。
 
+### 10. `mr-review` — 他人の MR の 2 モデルレビュードラフト
+
+指名されたレビュアーが MR 番号ひとつで **判定ドラフトのレポート** を受け取る。リポジトリも GitLab も変更しない（コメント・承認は人が行う）。自分の spec/plan/実装を直す `review-loop` とは別物。
+
+```
+/dev-workflow:mr-review <プロジェクト> <iid> [--adapter <アダプターファイル>] [--full] [--diff-only] [--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design …]
+```
+
+- **アダプター文書が必須** — プロジェクトの共通文書リポジトリに置く Markdown 1 ファイル（`--adapter` または環境変数 `MR_REVIEW_ADAPTER`）。リポジトリ ID・ポリシー文書・レンズ・文書マップ・wiki ルート（送信許可/禁止）・マスキングパターン・デプロイ対象ルール・コメント形式・レポート出力先を持つ。スクリプトはその中の ```` ```json mr-review-adapter ```` 機械ブロックだけを読み、モデルは散文（レンズ・ポリシー説明）を読む。プラグインにはプロジェクト固有の値はない。
+- 流れ: `glab api` で収集 → target と MR head を fetch し **API head = fetch head** を確認、3 つの SHA を固定（一時 worktree） → 作成ルール表（契約 10 行・ベースライン・変更理由・添付・リベース・コメント信頼） → デプロイ zip 照合（コメント SHA・ファイル一覧・バイト・削除一覧、内蔵 zip リーダー） → コンテキストパック（共通文書の節抜粋・wiki・ベースライン原文。Codex 用パックは許可ソースのみ + 個人情報マスキング、失敗時は Codex をスキップ） → Claude サブエージェントと Codex `task` を **独立に並列** → メインが統合 → ポリシー順で判定を計算 → レポート（ポリシー実行ブロックをそのまま、全体マスキング） → 一時成果物を削除。
+- 作成ルール未達（契約未完・ベースラインなし）なら、レビューせずに **早期終了** レポート（ドラフト判定 + 作成者への補完依頼文）。`--full` なら最後まで進むが、未達は証拠不足として残る。
+- 2 モデルが対立する、または片方だけが低確信のブロッカーを挙げ、メインがコードで確認できない場合は **判定未確定** — 投稿用ブロックなしで両分岐を示し、レビュアーが `--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design` で確定する。
+- Codex プラグイン・`glab` がない場合: `glab` なしでは動かず、Codex なしは **単一モデルモード**（レポートヘッダーに「クロスレビューなし」）。
+- テスト・ビルドは実行しない（検証状態はすべて「判読」）。デプロイ zip 照合だけはスキル自身が行う。
+
 ## リポジトリ clone 時の自動適用
 
 コラボレーターがリポジトリを clone して trust したときにこのプラグインのインストールを自動でプロンプトするには、そのリポジトリの `.claude/settings.json` にマーケットプレイスと有効化を宣言する:
@@ -274,14 +292,16 @@ claude-dev-workflow/
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
 │   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
 │   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
+│   ├── skills/mr-review/{SKILL.md,scripts/mr-review.mjs,scripts/lib/{adapter,gitlab,collect,check,deploy,pack,report}.mjs}
 │   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
 ├── tests/orchestrate/                # orchestrate.mjs のテスト（スタブ orca — プラグインの外）
+├── tests/mr-review/                  # mr-review テスト（偽 glab + ローカル bare git — プラグイン外）
 ├── README.md                         # 英語（デフォルト）
 └── README.ko.md / README.ja.md       # 韓国語 / 日本語
 ```
 
 `plugin.json` の `version` を上げたコミットでのみユーザーは更新を受け取る。version を省略すると git commit SHA がバージョンになり、毎コミットが新バージョン扱いになる。ユーザーは `/plugin update` またはバックグラウンド自動更新で更新する。
 
-テスト: `node --test tests/orchestrate/orchestrate.test.mjs`（orchestrate スクリプト — スタブ `orca` で動き実際の Orca は不要、この repo には npm ゲートがない）。
+テスト: `node --test tests/orchestrate/orchestrate.test.mjs`（orchestrate — スタブ `orca`）· `node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs tests/mr-review/check.test.mjs tests/mr-review/deploy.test.mjs tests/mr-review/pack.test.mjs tests/mr-review/report.test.mjs`（mr-review — 偽 `glab` とローカル bare git。実際の GitLab・Orca は不要）。この repo に npm ゲートはない（ディレクトリ引数は禁止 — Node 21 以上はモジュールパスとして解釈）。
 
 **README は 3 言語で維持する** — `README.md`（英語、デフォルト）/ `README.ko.md` / `README.ja.md`。内容を変えるときは **3 ファイルを一緒に更新**する（ドリフト防止）。

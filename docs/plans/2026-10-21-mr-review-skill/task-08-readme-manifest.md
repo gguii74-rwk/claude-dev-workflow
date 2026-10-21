@@ -187,3 +187,4 @@ git commit -m "docs(manifest): description 에 mr-review 추가 (version 유지)
 - **version을 올리지 마라. 이유:** P6 — 릴리스는 task-09(SDD 밖). 여기서 올리면 설치 사용자가 리뷰 전 코드를 받는다.
 - **세 README를 한 파일만 고치지 마라. 이유:** 「3개 언어로 유지」 규칙 — 드리프트.
 - **README에 어댑터 예시로 실제 프로젝트 값을 쓰지 마라. 이유:** D10 — 기계 블록 키만 설명한다.
+- (impl 2026-10-21 전사 수정, PF-10) 목차 §10 링크는 기존 §9 줄 뒤에 넣는다 · README 3종 `--resolve` 설명에 `confirmed:fixable|confirmed:design` 포함
