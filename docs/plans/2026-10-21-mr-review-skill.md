@@ -322,6 +322,7 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 |---|---|---|---|---|---|---|
 | R1 | 적대·자동 | `3f47b98` | 0/6/4 (신규 10) — 전부 FIXED 후보(기결정 재론 0·ESCALATE 0) | **22** | 0 → 수정 후 10 | needs-attention |
 | R2 | 적대·자동 | `b5ff996` | 0/4/4 (신규 8 · R1 잔존 0 — 적대 비재출현, 큐 유지) — 전부 FIXED 후보(기결정 재론 0·ESCALATE 0) | **16** | 10 → 수정 후 18 | needs-attention |
+| R3 | 적대·자동(수신 시점) | `4c50019` | 0/3/7 (신규 10 · R1·R2 잔존 0 — 적대 비재출현, 큐 유지) — **미판정**(컨텍스트 넛지로 중단, 재개 세션이 자동 모드로 §2c·§2d 뒤 batch flush → 정밀) | (판정 뒤) | 18 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -345,7 +346,18 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 | R2-7 | task-04 deploy · zip 리더가 CRC 를 검증하지 않아 CRC 손상 zip 이 「일치」 · CRC32·크기·헤더 정합 검증, 실패는 corrupt | medium | FIXED | `1e4e75b` — `crc32()` 내장, `read()` 가 central directory 의 CRC·비압축 크기와 대조·범위 초과 검사 → `corrupt` → 「대조 불가」 · SC-3 결과 순서 문구 · 테스트(central CRC 만 뒤집은 zip) |
 | R2-8 | task-03 check · BLOB_RE 가 blob 뒤 첫 세그먼트를 ref 로 취해 `feature/topic` 브랜치 링크 오해소 · 저장소 branch/tag 로 경계 해소·URL 디코딩 | medium | FIXED | `1e4e75b` — `refpath` 보존, `resolveRepoLink` 가 긴 후보부터 branch→tag API 로 최장 일치 해소(SHA permalink 만 첫 세그먼트 확정), 세그먼트 URL 디코딩 · SC-3 · 테스트(`feature/topic` + 최장 후보 먼저 호출 확인) |
 
-미확인 FIXED 큐(R2 수정 후): R1-1~R1-10 · R2-1~R2-8(18건) — 소멸 확인은 확인 라운드 임무 ①. 루프 직접 판정: R1-8 의 선택지 채택 1건(위 표시).
+| R3-1 | task-01 fixture mask · `Authorization:` 패턴이 인증 방식(Bearer)만 가리고 자격증명 값이 남음(residual 통과·SECRET_MASK 도 못 잡음) · 인증 방식+자격증명 전체 제거 패턴(fixture·task-10) + Bearer·Basic 회귀 | high | 미판정 | — |
+| R3-2 | task-02 collect diff-only · head(메타)와 versions[0](base)의 head_commit_sha 를 대조하지 않아 중간 push 시 다른 head 자료가 결합 · 메타 head 와 일치하는 버전 선택·수집 중 head 변경 검출(재수집 또는 증거 부족) | high | 미판정 | — |
+| R3-3 | task-02/03 · /changes·/closes_issues·이슈 댓글 API 실패가 overflow=false·빈 목록·「확보」로 둔갑(R2-2 우회) · 실패와 빈 응답 구분, 미확보 상태 보존 → 결정적 MISSING_EVIDENCE, overflow 모르면 완전 판정 금지 | high | 미판정 | — |
+| R3-4 | task-02 collect worktree · 고정 뒤에도 mr.diffs 를 git 목록으로 교체하지 않아 check(후보 탐색)·pack(문서 지도)이 불완전 API 목록 사용 · base..head 완전 목록을 git 에서 만들어 check·pack 에 공급 | medium | 미판정 | — |
+| R3-5 | task-03 check · Baseline URL 의 호스트·namespace 를 버리고 basename 만으로 등록 프로젝트에 매칭(범위 밖 URL 이 확보) · 호스트·전체 경로 보존·등록 정체성 대조, 범위 밖은 미확보 | medium | 미판정 | — |
+| R3-6 | task-10/SC-2 · 어댑터가 요구하는 대상 저장소 문서(AGENTS.md·로컬 docs)를 SC-2(docsRoot 기준만)로 표현 불가 · 문서 참조에 출처(공통/대상 저장소) 구분·적용 조건·고정 워크트리 읽기·전송 허가 계약 | medium | 미판정 | — |
+| R3-7 | task-06 render · 부록 C 가 validReviewers 와 무관하게 review-*.json 을 다시 읽어 INVALID(비-배열 findings·JSON 오류) 결과에서 TypeError — 단일 모델 전환이 끝까지 안 됨 · 유효 결과만 구조화 렌더, 무효는 실패 기록 | medium | 미판정 | — |
+| R3-8 | task-04 deploy zip · local header 의 파일명·압축 방식을 central directory 와 대조하지 않음 · 정합 검증, 불일치 corrupt + 회귀 | medium | 미판정 | — |
+| R3-9 | task-06 cleanup · pack-a.md(원문·개인 위키 발췌)·baseline 원문·review-*.json(비밀값 원문)이 cleanup 뒤 잔존(P4·F5) · 원문 팩·baseline 을 임시 산출물로 삭제, --resolve 용 구조화 결과는 비밀값 제거 사본 | medium | 미판정 | — |
+| R3-10 | task-06 executionBlock · 40줄 제한을 보장하지 않음(차단 발견 30건 → 48줄) · 5절 유지 + 상세를 부록으로 넘기는 결정적 축약 규칙 + 검증 | medium | 미판정 | — |
+
+미확인 FIXED 큐(R2 수정 후): R1-1~R1-10 · R2-1~R2-8(18건) — 소멸 확인은 확인 라운드 임무 ①. 루프 직접 판정: R1-8 의 선택지 채택 1건(위 표시). R3 10건은 미판정(위 행) — 원 지적 원문은 루프 파일 `.remember/loop-2026-10-21-mr-review-skill-plan.md`.
 
 ## 확인 대기 대장
 
