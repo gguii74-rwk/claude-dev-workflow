@@ -1,0 +1,98 @@
+// adapter.mjs 계약 테스트 (SC-2) + CLI 골격 (SC-6 공통 규약)
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmp, writeAdapter, runCli, LIB } from './helpers.mjs';
+
+const { loadAdapter, extractBlock, globToRegExp, matchesAny, AdapterError } = await import(join(LIB, 'adapter.mjs'));
+
+test('기계 블록 하나를 추출하고 필수 키를 검증한다', () => {
+  const root = tmp();
+  const file = writeAdapter(root);
+  const a = loadAdapter(file);
+  assert.equal(a.schema, 1);
+  assert.equal(a.projects.alpha.id, 101);
+  assert.equal(a.resolved.workspaceRoot, root);
+  assert.equal(a.resolved.docsRoot, join(root, 'docs'));
+  assert.equal(a.resolved.reportDir, join(root, 'reviews'));
+  assert.equal(a.resolved.projects.alpha.checkout, join(root, 'repos', 'alpha'));
+  assert.equal(a.resolved.projects.docs.deployExempt, true);
+  assert.equal(a.contract.lines.length, 10);
+});
+
+test('블록이 없거나 둘 이상이면 AdapterError', () => {
+  assert.throws(() => extractBlock('# no block\n'), AdapterError);
+  const two = '```json mr-review-adapter\n{}\n```\n\n```json mr-review-adapter\n{}\n```\n';
+  assert.throws(() => extractBlock(two), /둘 이상/);
+});
+
+test('필수 키 누락은 누락 키 이름을 담아 던진다', () => {
+  const root = tmp();
+  const file = writeAdapter(root, { report: { dir: undefined } });   // writeAdapter 는 1단계 병합이라 {} 로는 키가 안 지워진다 — undefined 로 비운다
+  assert.throws(() => loadAdapter(file), (e) => e instanceof AdapterError && /report\.dir/.test(e.message));
+  const file2 = writeAdapter(root, { comments: { verdictFirstLine: '^x$', baselineConfirm: '^y', authorToken: '^(?<token>A)', trustedReviewers: [] } });
+  assert.throws(() => loadAdapter(file2), /verdictFirstLine/);
+});
+
+test('wiki 루트의 ~ 는 MR_REVIEW_HOME 으로 해소한다', () => {
+  const root = tmp();
+  const home = join(root, 'home');
+  mkdirSync(home, { recursive: true });
+  process.env.MR_REVIEW_HOME = home;
+  try {
+    const a = loadAdapter(writeAdapter(root));
+    assert.equal(a.resolved.wikiRoots[0].path, join(home, 'wiki-team'));
+    assert.equal(a.resolved.wikiRoots[0].export, true);
+    assert.equal(a.resolved.wikiRoots[1].export, false);
+    assert.equal(a.resolved.wikiRoots[0].glossaryFile, join(home, 'wiki-team', 'glossary.md'));
+  } finally {
+    delete process.env.MR_REVIEW_HOME;
+  }
+});
+
+test('workspaceRoot 절대 경로도 허용한다', () => {
+  const root = tmp();
+  const file = writeAdapter(root, { workspaceRoot: join(root, 'elsewhere') });
+  const a = loadAdapter(file);
+  assert.equal(a.resolved.workspaceRoot, join(root, 'elsewhere'));
+});
+
+test('glob: ** · * · ? · 리터럴', () => {
+  assert.ok(globToRegExp('src/main/**').test('src/main/java/app/A.java'));
+  assert.ok(globToRegExp('src/main/**').test('src/main'));
+  assert.ok(!globToRegExp('src/main/**').test('src/test/java/A.java'));
+  assert.ok(globToRegExp('**/mapper/**/*.xml').test('src/main/resources/mapper/XMapper.xml'));
+  assert.ok(globToRegExp('**/mapper/**/*.xml').test('mapper/X.xml'));
+  assert.ok(!globToRegExp('**/mapper/**/*.xml').test('src/mapper/X.xmlx'));
+  assert.ok(globToRegExp('README*').test('README.ko.md'));
+  assert.ok(!globToRegExp('README*').test('docs/README.md'));
+  assert.ok(globToRegExp('docs/*-design.md').test('docs/2026-10-21-x-design.md'));
+  assert.ok(!globToRegExp('docs/*-design.md').test('docs/sub/2026-10-21-x-design.md'));
+  assert.ok(globToRegExp('a?c').test('abc'));
+  assert.ok(!globToRegExp('a?c').test('a/c'));
+  assert.ok(globToRegExp('AGENTS.md').test('AGENTS.md'));
+  assert.ok(!globToRegExp('AGENTS.md').test('xAGENTS.md'));
+  assert.ok(matchesAny('src/main/x.sql', ['docs/**', '**/*.sql']));
+  assert.ok(!matchesAny('docs/x.md', ['src/**']));
+});
+
+test('CLI: 알 수 없는 서브커맨드·어댑터 누락은 ERR exit 2 (stdout 한 줄)', () => {
+  const r1 = runCli(['nope']);
+  assert.equal(r1.code, 2);
+  assert.match(r1.first, /^ERR /);
+  const r2 = runCli(['check', '--work', tmp()], { MR_REVIEW_ADAPTER: '' });
+  assert.equal(r2.code, 2);
+  assert.match(r2.first, /^ERR .*--adapter/);
+});
+
+test('CLI: --adapter 는 MR_REVIEW_ADAPTER 로 대체되고 인자가 우선한다 (parseArgs)', async () => {
+  const { parseArgs } = await import(join(LIB, 'adapter.mjs'));
+  const p = parseArgs(['--work', '/w', '--resolve', 'F1=confirmed', '--resolve', 'F2=dismissed', '--diff-only', '--adapter', '/a']);
+  assert.equal(p.work, '/w');
+  assert.deepEqual(p.resolve, ['F1=confirmed', 'F2=dismissed']);
+  assert.equal(p['diff-only'], true);
+  assert.equal(p.adapter, '/a');
+  const q = parseArgs(['--work', '/w'], { MR_REVIEW_ADAPTER: '/env' });
+  assert.equal(q.adapter, '/env');
+});
