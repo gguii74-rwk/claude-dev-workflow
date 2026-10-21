@@ -3,6 +3,7 @@
 //   collect · check · deploy · pack · review-validate · verdict · render · cleanup — 각 lib 모듈이 구현(task-02~06).
 import { loadAdapter, parseArgs, AdapterError } from './lib/adapter.mjs';
 import { cmdCollect } from './lib/collect.mjs';
+import { cmdCheck } from './lib/check.mjs';
 
 export class CliError extends Error {
   constructor(message, code = 2) { super(message); this.code = code; }
@@ -11,7 +12,7 @@ export class CliError extends Error {
 // 서브커맨드 → async (args, ctx) => string(stdout 첫 줄). ctx = { adapter, work }
 const COMMANDS = {
   collect: cmdCollect,
-  // task-03: check
+  check: cmdCheck,
   // task-04: deploy
   // task-05: pack
   // task-06: 'review-validate', verdict, render, cleanup
