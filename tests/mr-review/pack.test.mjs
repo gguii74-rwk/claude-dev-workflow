@@ -1,0 +1,274 @@
+// pack 계약 테스트 (spec §5.3 · SC-3 pack.json) — 공통 문서(git) + 팀/개인 위키(MR_REVIEW_HOME) + 마스킹 fail-closed
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmp, writeAdapter, writeDocs, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
+
+const { extractSection, excerpt, applyMask, residual, SECRET_MASK, maskTextWithCounts } = await import(join(LIB, 'pack.mjs'));
+const HEAD = 'a'.repeat(40);
+
+function wiki(home) {
+  const team = join(home, 'wiki-team');
+  mkdirSync(join(team, 'entities'), { recursive: true });
+  mkdirSync(join(team, 'decisions'), { recursive: true });
+  writeFileSync(join(team, 'glossary.md'), '# 용어집\n\n| 용어 | 슬러그 | 정의 |\n| --- | --- | --- |\n| 자동분류 | auto-classify | 신고 자동 배정 |\n| 결제 | billing | 요금 |\n');
+  writeFileSync(join(team, 'entities', 'auto-classify.md'), '# 자동분류\n\n개요 줄.\n\n## 이유\n\n패턴분류를 먼저 둔 이유.\n두 번째 줄.\n\n## 이후 변경\n\n2026-10 변경.\n\n## 기타\n\n긴 본문 1.\n긴 본문 2.\n긴 본문 3.\n긴 본문 4.\n긴 본문 5.\n긴 본문 6.\n');
+  writeFileSync(join(team, 'decisions', 'xmapper-note.md'), '# XMapper 결정\n\nXMapper 를 평면 디렉터리에 둔다.\n');
+  writeFileSync(join(team, 'entities', 'billing.md'), '# 결제\n\n무관.\n');
+  const priv = join(home, 'wiki-private');
+  mkdirSync(priv, { recursive: true });
+  writeFileSync(join(priv, 'glossary.md'), '| 용어 | 슬러그 | 정의 |\n| --- | --- | --- |\n| 자동분류 | sr-auto | 개인 메모 |\n');
+  writeFileSync(join(priv, 'sr-auto.md'), '# 개인 메모\n\n비밀 연락처 010-9999-0000 은 전송 금지.\n');
+}
+
+function setup({ adapterPatch = {}, notes = [], description = '## 배경\n- ① 왜: 민원 010-1234-5678 번호로 접수\n- ② 무엇을: 자동분류 패턴', diffs } = {}) {
+  const root = tmp();
+  const home = join(root, 'home');
+  mkdirSync(home, { recursive: true });
+  wiki(home);
+  const adapter = writeAdapter(root, adapterPatch);
+  const docs = writeDocs(root);
+  const work = join(root, 'work');
+  mkdirSync(join(work, 'baseline'), { recursive: true });
+  writeFileSync(join(work, 'baseline', '1.md'), '<!-- mr-review source: docs:x.md@abc ref=master pinned=false -->\n# 기준선 원문\n');
+  const d = diffs || [
+    { old_path: 'src/main/resources/mapper/XMapper.xml', new_path: 'src/main/resources/mapper/XMapper.xml', new_file: false, renamed_file: false, deleted_file: false, too_large: false, diff: '' },
+    { old_path: 'src/main/java/app/auth/Login.java', new_path: 'src/main/java/app/auth/Login.java', new_file: false, renamed_file: false, deleted_file: false, too_large: false, diff: '' },
+  ];
+  writeFileSync(join(work, 'mr.json'), JSON.stringify({ project: { name: 'alpha', id: 101, checkout: null, deployExempt: false }, iid: 7, title: 'fix(autoClsf): 자동분류 보정', description, api_head: HEAD, author: { id: 1, username: 'author-a' }, reviewers: [], diffs: d, notes, closes_issues: [], versions: [] }));
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ mode: 'diff-only', target_sha: 'b'.repeat(40), base_sha: 'b'.repeat(40), head_sha: HEAD, checkout: null, worktree: null, attempts: 1, unrecovered: [], rebuilt: [] }));
+  writeFileSync(join(work, 'check.json'), JSON.stringify({ baselineLinks: [{ kind: 'repo', project: 'docs', path: 'x.md', status: '확보', file: 'baseline/1.md', version: 'abc' }, { kind: 'issue', status: '미확보', file: null }] }));
+  return { root, home, adapter, docs, work, env: { MR_REVIEW_HOME: home } };
+}
+
+test('extractSection: 절 제목 접두로 같은 레벨 다음 절까지', () => {
+  const md = '# T\n\n## 5. 판정\n\n본문5.\n\n### 5.1 유형\n\n하위.\n\n## 6. 증거\n\n본문6.\n';
+  const s = extractSection(md, '5.');
+  assert.match(s, /본문5/);
+  assert.match(s, /하위/);
+  assert.doesNotMatch(s, /본문6/);
+  assert.equal(extractSection(md, '9.'), null);
+});
+
+test('excerpt: 우선 절(이유·이후 변경·함정…)을 먼저, 상한 줄 수까지', () => {
+  const md = readFileSync(join(setup().home, 'wiki-team', 'entities', 'auto-classify.md'), 'utf8');
+  const e = excerpt(md, 8);
+  assert.match(e, /## 이유/);
+  assert.match(e, /## 이후 변경/);
+  assert.doesNotMatch(e, /긴 본문 6/);
+  assert.ok(e.split('\n').length <= 9);   // 상한 + 생략 표시 1줄
+});
+
+test('applyMask · residual: 패턴별 치환 수, 가린 자리는 [masked:<name>], 남은 패턴은 residual', () => {
+  const rules = [{ name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }, { name: 'token', pattern: '(?<=(?:token=|Authorization:\\s*))(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s\\]]+' }];
+  const r = applyMask('전화 010-1234-5678, token=abc.def 끝', rules);
+  assert.equal(r.text, '전화 [masked:phone], token=[masked:token] 끝');
+  assert.deepEqual(r.applied, { phone: 1, token: 1 });
+  assert.deepEqual(residual(r.text, rules), []);
+  assert.deepEqual(residual('x[masked:phone]5', [{ name: 'weird', pattern: '\\]\\d' }]), [{ name: 'weird' }]);
+  // Authorization 값은 인증 방식 + 자격증명을 한 번에 가린다(R3-1) — `Bearer` 만 가리고 자격증명이 남으면 residual 도 못 잡는다
+  const b = applyMask('헤더 Authorization: Bearer synthetic-credential-123 끝 · Authorization: Basic c3ludGg= 끝', rules);
+  assert.equal(b.text, '헤더 Authorization: [masked:token] 끝 · Authorization: [masked:token] 끝');
+  assert.doesNotMatch(b.text, /synthetic-credential|c3ludGg/);
+  assert.deepEqual(residual(b.text, rules), []);
+});
+
+test('팩: 문서 지도(절 발췌·@sha) · 정책 항상 읽기 · 위키(용어집+grep, 팀만 B) · 기준선 · 어댑터 · 본문 마스킹', () => {
+  const { adapter, docs, work, env } = setup();
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^PACKED sources=\d+ codexSkipped=false$/);
+  const p = readJson(join(work, 'pack.json'));
+  const refs = p.sources.map((s) => s.ref);
+  assert.ok(refs.includes(`architecture/database.md@${docs.sha}`), refs.join(','));
+  assert.ok(refs.includes(`security/README.md@${docs.sha}`));
+  assert.ok(refs.includes(`guide/policy.md@${docs.sha}#5.`));
+  assert.ok(refs.includes(`guide/policy.md@${docs.sha}#0.`));
+  assert.ok(refs.includes(`guide/workflow.md@${docs.sha}#3.1.1`));
+  assert.ok(refs.includes('wiki-team/entities/auto-classify.md'));        // 용어집: 제목 「자동분류」
+  assert.ok(refs.includes('wiki-team/decisions/xmapper-note.md'));        // grep: 파일 basename XMapper
+  assert.ok(!refs.includes('wiki-team/entities/billing.md'));
+  assert.ok(refs.includes('wiki-private/sr-auto.md'));
+  assert.ok(refs.includes('baseline/1.md'));
+  assert.ok(p.sources.some((s) => s.kind === 'adapter'));
+  assert.equal(p.sources.find((s) => s.ref === 'wiki-private/sr-auto.md').inPackB, false);
+  assert.equal(p.sources.find((s) => s.ref === 'wiki-team/entities/auto-classify.md').inPackB, true);
+  const a = readFileSync(join(work, 'pack-a.md'), 'utf8');
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.match(a, /010-1234-5678/);
+  assert.doesNotMatch(b, /010-1234-5678/);
+  assert.match(b, /\[masked:phone\]/);
+  assert.match(a, /010-9999-0000/);           // 개인 위키는 A 에만
+  assert.doesNotMatch(b, /010-9999-0000/);
+  assert.doesNotMatch(b, /개인 메모/);
+  assert.match(a, /## 5\. MR 리뷰 판정/);
+  assert.doesNotMatch(a, /## 6\. 증거/);        // 절 발췌 — 6절은 안 들어간다
+  assert.match(b, /\[S\d+\]/);                  // 출처 id 표기
+  assert.equal(p.mask.ok, true);
+  assert.equal(p.mask.applied.phone >= 1, true);
+  assert.equal(p.codexSkipped, false);
+});
+
+test('팩 B 는 엔진 비밀값 패턴(SECRET_MASK)도 적용·잔존 검사한다 — 본문·댓글의 password/API 키가 Codex 로 가지 않는다 (R6-1, F5) · SHA 는 보존', () => {
+  const { adapter, work, env } = setup({ description: '## 배경\n- ① 왜: 설정 password = "synthetic-secret-only" 교체\n- ② 무엇을: 자동분류 패턴', notes: [{ id: 5, system: false, author: { username: 'u' }, created_at: 't', body: '참고 api_key: SYNTH-KEY-999 · {"client_secret": "two word value"}' }] });
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /codexSkipped=false$/);                                  // 비밀값은 가려졌으므로 Codex 를 건너뛰지 않는다
+  const p = readJson(join(work, 'pack.json'));
+  assert.ok(p.mask.applied.secret >= 3, JSON.stringify(p.mask));
+  const a = readFileSync(join(work, 'pack-a.md'), 'utf8');
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.match(a, /synthetic-secret-only/);                                     // Claude(팩 A)는 원문(D4)
+  assert.doesNotMatch(b, /synthetic-secret-only|SYNTH-KEY-999|two word value/);
+  assert.match(b, /password = "\[masked:secret\]"/);
+  assert.match(b, /api_key: \[masked:secret\]/);
+  assert.match(b, /\{"client_secret": "\[masked:secret\]"\}/);
+  assert.match(b, new RegExp(`head ${HEAD} · base`));                            // 팩 B 헤더의 SHA 는 변조되지 않는다
+  // 잔존 검사는 SECRET_MASK 도 본다 — applyMask 가 못 가린 비밀값 형태가 있으면 fail-closed
+  assert.deepEqual(residual(b, SECRET_MASK), []);
+});
+
+test('잔존 검사는 SHA 복원 전에 — rrn 패턴에 걸리는 정상 head SHA 가 거짓 잔존으로 Codex 를 생략시키지 않는다 (C2-1) · 진짜 잔존은 여전히 잡는다', () => {
+  const RRN_SHA = 'aaaaaaaaaa1234561123456bbbbbbbbbbbbbbbbb';                                  // 40자 · rrn(\d{6}-?[1-4]\d{6}) 매치
+  const { adapter, work, env } = setup({ description: `## 배경\n- ① 왜: 민원 010-1234-5678 · head ${RRN_SHA} 기준 · password = "synthetic-secret-only"\n- ② 무엇을: 자동분류 패턴` });
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ ...readJson(join(work, 'snapshot.json')), head_sha: RRN_SHA }));
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /codexSkipped=false$/);
+  const p = readJson(join(work, 'pack.json'));
+  assert.deepEqual(p.mask.residual, []);
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.match(b, new RegExp(`head ${RRN_SHA} · base`));                                        // 헤더·본문의 SHA 보존
+  assert.match(b, new RegExp(`head ${RRN_SHA} 기준`));
+  assert.doesNotMatch(b, /\[masked:rrn\]|010-1234-5678|synthetic-secret-only/);                // 진짜 개인정보·비밀값은 가려진다
+  assert.match(b, /\[masked:phone\]/);
+  // 단위: 복원 전 잔존 검사 — 보존 SHA 는 잔존이 아니고, 패턴이 못 가린 값은 잔존이다
+  const rules = JSON.parse(readFileSync(adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).mask;
+  assert.deepEqual(maskTextWithCounts(`head ${RRN_SHA} · 전화 010-1234-5678`, rules).residual, []);
+  assert.deepEqual(maskTextWithCounts('전화 010-1234-56789', [{ name: 'weird', pattern: '\\]\\d' }, { name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }]).residual, [{ name: 'weird' }]);   // 앞 규칙이 가린 자리 뒤에 남은 숫자가 뒤 규칙에 걸리는 잔존(위 CLI 사례와 같은 형태)
+});
+
+test('마스킹 잔존 → 팩 B 미생성 · codexSkipped(fail-closed, D14)', () => {
+  const { adapter, work, env } = setup({ adapterPatch: { mask: [{ name: 'weird', pattern: '\\]\\d' }, { name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }] }, description: '## 배경\n- 연락 010-1234-56789\n' });
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /codexSkipped=true$/);
+  const p = readJson(join(work, 'pack.json'));
+  assert.equal(p.codexSkipped, true);
+  assert.match(p.codexSkipReason, /weird/);
+  assert.equal(p.packB, null);
+  assert.ok(!existsSync(join(work, 'pack-b.md')));
+  assert.ok(existsSync(join(work, 'pack-a.md')));
+  assert.equal(p.mask.ok, false);
+});
+
+test('전송 경계: 대상 외 등록 저장소의 기준선 원문은 팩 B 제외(R1-3) · 필수 정책 문서 누락은 ERR · 규칙 문서 누락은 missing 표시(R1-8)', () => {
+  const { adapter, work, env } = setup();
+  writeFileSync(join(work, 'baseline', '2.md'), '<!-- mr-review source: beta:guide/other.md@fff -->\n# 베타 저장소 문서 BETA-ONLY-TEXT\n');
+  writeFileSync(join(work, 'baseline', '3.md'), '<!-- mr-review source: alpha:docs/own.md@eee -->\n# 대상 저장소 문서 ALPHA-OWN-TEXT\n');
+  writeFileSync(join(work, 'check.json'), JSON.stringify({ baselineLinks: [
+    { kind: 'repo', project: 'docs', path: 'x.md', status: '확보', file: 'baseline/1.md', version: 'abc' },
+    { kind: 'repo', project: 'beta', path: 'guide/other.md', status: '확보', file: 'baseline/2.md', version: 'fff' },
+    { kind: 'repo', project: 'alpha', path: 'docs/own.md', status: '확보', file: 'baseline/3.md', version: 'eee' },
+  ] }));
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(work, 'pack.json'));
+  assert.equal(p.sources.find((s) => s.ref === 'baseline/1.md').inPackB, true);    // docsRoot 프로젝트
+  assert.equal(p.sources.find((s) => s.ref === 'baseline/2.md').inPackB, false);   // 등록됐지만 대상 외 저장소
+  assert.equal(p.sources.find((s) => s.ref === 'baseline/3.md').inPackB, true);    // 대상 저장소
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.doesNotMatch(b, /BETA-ONLY-TEXT/);
+  assert.match(b, /ALPHA-OWN-TEXT/);
+  assert.match(readFileSync(join(work, 'pack-a.md'), 'utf8'), /BETA-ONLY-TEXT/);
+  assert.match(b, /baseline\/2\.md · \(Codex 미제공\)/);
+  // 규칙 문서 누락 → missing:true 로 계속
+  const s2 = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.'], rules: [{ match: ['**/mapper/**/*.xml'], docs: ['architecture/none.md'] }] } } });
+  const r2 = runCli(['pack', '--adapter', s2.adapter, '--work', s2.work], s2.env);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  const p2 = readJson(join(s2.work, 'pack.json'));
+  const miss = p2.sources.find((s) => s.ref.startsWith('architecture/none.md@'));
+  assert.equal(miss.missing, true);
+  assert.match(readFileSync(join(s2.work, 'pack-a.md'), 'utf8'), /architecture\/none\.md@\w+ · \(누락 — 문서·절 없음\)/);
+  // 필수 정책 문서·절 누락 → ERR(fail-closed)
+  const s3 = setup({ adapterPatch: { policy: { judgeId: 'TEST-POLICY-v1.1', acceptedIds: ['TEST-POLICY-v1.0', 'TEST-POLICY-v1.1'], docs: ['guide/policy.md#9.'] } } });
+  const r3 = runCli(['pack', '--adapter', s3.adapter, '--work', s3.work], s3.env);
+  assert.equal(r3.code, 2);
+  assert.match(r3.first, /^ERR 필수 정책 문서·절 누락: guide\/policy\.md#9\./);
+  assert.ok(!existsSync(join(s3.work, 'pack.json')));
+});
+
+test('repo: 접두 문서 참조 — 대상 저장소 문서를 고정 head 에서 읽어 팩 B 에 넣고, 없으면 missing 으로 계속(R3-6)', () => {
+  const enc = (p) => encodeURIComponent(p).replace(/\./g, '%2E');
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md'], rules: [{ match: ['**/auth/**'], docs: ['repo:docs/security-notes.md#2.'] }] } } });
+  const g = fakeGlab(s.root, [
+    { match: `^api projects/101/repository/files/${enc('AGENTS.md')}/raw\\?ref=${HEAD}$`, text: '# alpha 규약\n\nmapper 는 평면 디렉터리 REPO-AGENTS-TEXT.\n' },
+    // docs/security-notes.md 규칙 없음 → 404 → missing
+  ]);
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], { ...s.env, ...g.env });
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(s.work, 'pack.json'));
+  const ag = p.sources.find((x) => x.ref === `repo:AGENTS.md@${HEAD.slice(0, 7)}`);
+  assert.equal(ag.kind, 'doc');
+  assert.equal(ag.inPackB, true);                                                        // 워크트리 전체가 D4 전송 범위 — 대상 저장소 문서도 B
+  assert.equal(ag.missing, false);
+  assert.match(readFileSync(join(s.work, 'pack-b.md'), 'utf8'), /REPO-AGENTS-TEXT/);
+  const sec = p.sources.find((x) => x.ref === `repo:docs/security-notes.md@${HEAD.slice(0, 7)}#2.`);
+  assert.equal(sec.missing, true);                                                       // 저장소에 없는 문서 — ERR 가 아니라 missing 으로 계속
+  assert.equal(p.codexSkipped, false);
+});
+
+test('repo: 문서는 고정 head 의 git blob 으로 읽는다 — 워크트리 밖을 가리키는 심볼릭 링크는 missing(팩 B 에 대상 본문 없음) · 작업 트리의 미커밋 변경도 읽지 않는다 (R5-1)', () => {
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md', 'repo:docs/notes.md'], rules: [] } } });
+  const outside = join(s.root, 'private-wiki.md');
+  writeFileSync(outside, 'OUTSIDE-PRIVATE-TEXT 전송 금지\n');
+  const wt = join(s.root, 'wt');
+  mkdirSync(join(wt, 'docs'), { recursive: true });
+  git(wt, 'init', '-q', '-b', 'master');
+  symlinkSync(outside, join(wt, 'AGENTS.md'));                                             // MR 이 AGENTS.md 를 바깥 파일로 향하는 링크로 바꿈
+  writeFileSync(join(wt, 'docs', 'notes.md'), '# notes\n\nCOMMITTED-NOTES-TEXT\n');
+  git(wt, 'add', '-A');
+  git(wt, 'commit', '-q', '-m', 'link');
+  const head = git(wt, 'rev-parse', 'HEAD');
+  writeFileSync(join(wt, 'docs', 'notes.md'), '# notes\n\nDIRTY-UNCOMMITTED-TEXT\n');          // 작업 트리만 바뀐 상태
+  writeFileSync(join(s.work, 'snapshot.json'), JSON.stringify({ mode: 'worktree', target_sha: 'b'.repeat(40), base_sha: 'b'.repeat(40), head_sha: head, checkout: wt, worktree: wt, attempts: 1, unrecovered: [], rebuilt: [] }));
+  const mr = readJson(join(s.work, 'mr.json')); mr.api_head = head; writeFileSync(join(s.work, 'mr.json'), JSON.stringify(mr));
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(s.work, 'pack.json'));
+  const ag = p.sources.find((x) => x.ref.startsWith('repo:AGENTS.md@'));
+  assert.equal(ag.missing, true);                                                         // 링크 → missing(ERR 아님)
+  const a = readFileSync(join(s.work, 'pack-a.md'), 'utf8');
+  const b = readFileSync(join(s.work, 'pack-b.md'), 'utf8');
+  assert.doesNotMatch(a + b, /OUTSIDE-PRIVATE-TEXT/);                                    // 링크 대상 본문은 어느 팩에도 없다
+  assert.match(a, /심볼릭 링크/);
+  assert.match(b, /COMMITTED-NOTES-TEXT/);                                                // 일반 blob 은 커밋된 내용으로
+  assert.doesNotMatch(a + b, /DIRTY-UNCOMMITTED-TEXT/);                                   // 작업 트리의 미커밋 변경은 읽지 않는다(고정 head)
+});
+
+test('위키 검색어에 diff 추가 줄의 테이블명·선언 식별자가 들어간다 — 제목·파일명에 없는 테이블명만 언급한 페이지가 선택된다 (R4-5)', () => {
+  const diff = '@@ -1,3 +1,4 @@\n <select id="findAssign" resultType="map">\n-  SELECT * FROM report_queue\n+  SELECT * FROM report_assign ra\n+  JOIN assign_rule r ON r.id = ra.rule_id\n+  -- from the old queue\n';
+  const diffs = [{ old_path: 'src/main/resources/mapper/XMapper.xml', new_path: 'src/main/resources/mapper/XMapper.xml', new_file: false, renamed_file: false, deleted_file: false, too_large: false, diff }];
+  const { home, adapter, work, env } = setup({ diffs });
+  writeFileSync(join(home, 'wiki-team', 'decisions', 'assign-table-pitfall.md'), '# 배정 테이블 함정\n\nreport_assign 은 rule_id 가 NULL 일 수 있다.\n');
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(work, 'pack.json'));
+  assert.ok(p.wikiTerms.includes('report_assign') && p.wikiTerms.includes('assign_rule'), p.wikiTerms.join(','));   // SQL 테이블명 — 추가 줄만(report_queue 는 삭제 줄)
+  assert.ok(!p.wikiTerms.includes('report_queue'));
+  assert.ok(!p.wikiTerms.some((t) => /^(the|old|queue)$/i.test(t)));                                                 // 산문 「from the」 는 식별자가 아니다
+  assert.ok(p.sources.map((s) => s.ref).includes('wiki-team/decisions/assign-table-pitfall.md'));                     // 제목·파일명엔 없는 테이블명만 언급한 페이지
+});
+
+test('위키 루트가 없어도 돈다 · 댓글의 이메일도 B 에서 가려진다', () => {
+  const { adapter, work, env, home } = setup({ notes: [{ id: 1, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T00:00:00Z', body: '문의 someone@example.test 로' }] });
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], { MR_REVIEW_HOME: join(home, 'nowhere') });
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(work, 'pack.json'));
+  assert.equal(p.sources.filter((s) => s.kind === 'wiki').length, 0);
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.doesNotMatch(b, /someone@example\.test/);
+  assert.match(b, /\[masked:email\]/);
+  assert.ok(p.mask.applied.email >= 1);
+});
