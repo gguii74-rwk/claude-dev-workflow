@@ -187,7 +187,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 이전 신뢰 판정의 head(`rereview.prior_head`) ≠ 현재 head다. §5 프롬프트에 **추가 절**을 넣는다:
 - delta: `git -C "<worktree>" diff <prior_head> <head_sha>`(diff-only면 생략하고 「이전 head 이후 변경을 중심으로」만 적는다).
-- 이전 차단 발견 ↔ 작성자 응답 토큰 대조표: `check.json.priorVerdicts`(신뢰된 최신)의 댓글 본문 「4. 차단 발견」 항목마다 `check.json.authorTokens`(`FIXED <sha>`·`EVIDENCE`·`BASELINE_UPDATED`·`REFUTED`·`FOLLOW_UP_REQUESTED`)와 대조해 `해소 / 미해소 / 재발` 후보를 표로 준다 — 검토자가 현재 head에서 확인해 `findings`에 반영한다(미해소·재발은 그대로 차단 발견). **Codex에는** 댓글 본문을 다시 붙이지 않고 팩 B 「## 댓글」 절의 해당 댓글(`#<note_id>`)을 가리키며, 표에는 항목 번호·`note_id`·토큰·`해소/미해소/재발` 후보 값만 적는다(§5 「비코드 입력은 팩 B에서만」).
+- 이전 차단 발견 ↔ 작성자 응답 토큰 대조표: 원본은 **`check.json.rereview.priorBlocking` 전체**(댓글 「4. 차단 발견」 항목 + 40줄 축약으로 접힌 항목을 이전 리포트 부록 D 에서 복원한 것 — 댓글 절만 보지 않는다, §5.6 「이전 차단 발견마다」) 항목마다 `check.json.authorTokens`(`FIXED <sha>`·`EVIDENCE`·`BASELINE_UPDATED`·`REFUTED`·`FOLLOW_UP_REQUESTED`)와 대조해 `해소 / 미해소 / 재발` 후보를 표로 준다 — 검토자가 현재 head에서 확인해 `findings`에 반영한다(미해소·재발은 그대로 차단 발견). `title:null`(`source:missing`) 항목은 표에 「미확보 — 이전 리포트 없음」으로 적고 **확인 완료로 취급하지 않는다**(`priorBlockingComplete:false` → `verdict`가 `M-rereview` 증거 부족으로 받는다 — 스킬이 따로 판정하지 않는다). **Codex에는** 댓글 본문을 다시 붙이지 않고 팩 B 「## 댓글」 절의 해당 댓글(`#<note_id>`)을 가리키며, 표에는 항목 id·`note_id`·토큰·`해소/미해소/재발` 후보 값만 적는다(§5 「비코드 입력은 팩 B에서만」). 이전 리포트에서 복원한 항목의 제목은 아래 「이전 리포트」 절과 같은 마스킹 잔존 검사를 거친 뒤에만 Codex 표에 넣는다.
 - 이전 리포트 파일이 `<reportDir>/<프로젝트>-<iid>-<prior_head 7자>.md`에 있으면 「이전 리포트」로 함께 읽힌다(Claude에만 경로로). **Codex에는** 그 리포트의 「4. 차단 발견」 절만 본문 복사하되 — 리포트는 저장 시 마스킹됐지만(F5) 어댑터 패턴이 그 뒤 바뀌었을 수 있으므로 — 복사한 절에 어댑터 `mask` 패턴이 하나라도 매치되면(`[masked:` 제외) 넣지 않고 「이전 리포트 절 생략(마스킹 잔존)」으로 적는다.
 - target이 바뀌었거나(`mr.json.target_branch` ≠ 이전 리포트 헤더의 target) 충돌 해결 커밋이 있으면 「영향 범위를 넓혀라」를 명시한다. 판정은 **현재 전체 head**에 귀속한다.
 
@@ -200,7 +200,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 - `REPORT <경로>` — 어댑터 리포트 디렉터리(git 밖) `<프로젝트>-<iid>-<head 7자>.md`. 리포트 구성(순서 고정): 헤더 → 판정 초안(정책 실행 블록 — 복사해 게시) → 기준선 확인 문안(경량 + 확인 댓글 없음·낡음) → 작성자 보완 요청 문안 → 리뷰어 확인 필요 → 부록 A·B·C. 어댑터 마스킹 패턴으로 전체를 가린 뒤 저장된다.
 - **터미널 요약 10줄 이내**: 판정(또는 미확정·리뷰 실패) · head · 돈 모델/교차 검토 · 차단 발견 수(결함/증거 부족) · 기준선 미확인 여부 · 배포본 대조 결과 · 리포트 경로 · 다음 행동(「확인 문안 먼저 게시」 / 「`--resolve`로 확정」 / 「복사해 게시」).
-- `cleanup`(`CLEANED worktree=<b> zip=<n> raw=<n> masked=<n>`)은 워크트리·zip·blobs·`codex.*`·원문 팩(`pack-a.md`·`pack-b.md`)·`baseline/`을 지우고, JSON(`mr`·`check`·`review-*`·`findings`)은 문자열 값을 어댑터 마스킹·비밀값 제거한 사본으로 남긴다(F7·F5 — 재리뷰·`--resolve` 입력은 그 사본으로 충분하다). 리포트는 저장 시 이미 마스킹됐다. **실패 경로도 여기로 온다** — §0 「공통 종료 절차」: `collect` 이후 어느 단계에서 멈추든 `cleanup`을 마지막에 실행한다.
+- `cleanup`(`CLEANED worktree=<b> zip=<n> raw=<n> masked=<n>`)은 워크트리·zip·blobs·`codex.*`·원문 팩(`pack-a.md`·`pack-b.md`)·`baseline/`을 지우고, JSON(`mr`·`check`·`deploy`·`review-*`·`findings`·`verdict`)은 문자열 값을 어댑터 마스킹·비밀값 제거한 사본으로 남긴다(F7·F5 — 재리뷰·`--resolve` 입력은 그 사본으로 충분하다. `deploy`·`verdict`도 zip 파일명·API 오류·미확보 링크 원문이 섞여 대상이다). 리포트는 저장 시 이미 마스킹됐다. **실패 경로도 여기로 온다** — §0 「공통 종료 절차」: `collect` 이후 어느 단계에서 멈추든 `cleanup`을 마지막에 실행한다.
 - 종료 전 자가 점검(각 1줄로 보고): F1 GitLab 쓰기 0건(이 세션의 `glab` 호출이 전부 `api` GET) · F2 헤더 교차 검토 표시 · F3 판정 4종 · F5 리포트 마스킹(`pack.json.mask`·리포트 grep) · F6 SHA 일치 · F7 정리 결과 줄 · F8 기준선 미확인 표시.
 
 ## 9. `--resolve` 재실행

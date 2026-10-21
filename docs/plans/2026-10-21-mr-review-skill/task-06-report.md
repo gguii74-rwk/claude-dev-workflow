@@ -109,6 +109,13 @@ test('기계 증거 부족: 계약 미완·미복원 diff·배포본 불일치·
   assert.equal(V(findings([]), { snapshot: s9 }).verdict, 'APPROVE');
   const s10 = baseSnap(); s10.mode = 'diff-only'; s10.api_failures = ['changes'];
   assert.ok(V(findings([]), { snapshot: s10 }).machineEvidence.some((m) => m.id === 'M-api-changes'));
+  // 재리뷰의 이전 차단 발견 목록이 불완전하면(댓글 축약분을 이전 리포트로 복원 못 함) 「이전 차단 발견마다 확인」을 완료할 수 없다 — 증거 부족(R4-3)
+  const c11 = baseCheck(); c11.rereview = { active: true, prior_head: 'c'.repeat(40), prior_verdict: 'CHANGES_REQUESTED', prior_note_id: 12, priorReport: null, priorBlocking: [{ id: 'F1', type: 'DEFECT', title: 'x', source: 'comment' }, { id: 'F2', type: null, title: null, source: 'missing' }], priorBlockingComplete: false };
+  const v11 = V(findings([]), { check: c11 });
+  assert.equal(v11.verdict, 'HOLD_EVIDENCE');
+  assert.ok(v11.machineEvidence.some((m) => m.id === 'M-rereview' && /1건 미확보/.test(m.detail)));
+  const c12 = baseCheck(); c12.rereview = { ...c11.rereview, priorBlocking: [c11.rereview.priorBlocking[0]], priorBlockingComplete: true };
+  assert.equal(V(findings([]), { check: c12 }).verdict, 'APPROVE');
 });
 
 test('기준선 없음: 후보도 없으면 RTD · 후보가 있고 검토자가 관련 있다고 하면 통과 · 무관하면 RTD', () => {
@@ -267,8 +274,11 @@ test('실행 블록 40줄 보장: 차단 발견 30건·후속 5건·의도 10행
   assert.ok(n <= 40, `block lines = ${n}`);
   for (const h of ['1. 의도 대조표', '2. 검증 상태', '3. 통과해야 할 테스트', '4. 차단 발견', '5. 비차단 후속']) assert.ok(block.includes(h), h);
   assert.match(block, /\| … 외 4건 — 부록 A \|/);
-  assert.match(block, /- DEFECT — 차단 결함 1$/m);                                   // 짧은 형태(위치·권고 생략)
-  assert.match(block, /- … 외 \d+건\(차단 — 전부 부록 D 에 있음\)/);
+  assert.match(block, /- F1 DEFECT — 차단 결함 1$/m);                                // 짧은 형태(위치·권고 생략) — id 접두(R4-3)
+  const more = block.match(/- … 외 (\d+)건\(차단 — 전부 부록 D 에 있음\): (.*)$/m);
+  assert.ok(more, '축약 ④ 줄');
+  assert.equal(more[2].split(', ').length, Number(more[1]));                          // 생략분 id 전부 — 재리뷰 대조표 복원용(R4-3)
+  assert.ok(more[2].split(', ').includes('F30'));
   assert.match(block, /- … 외 4건 — 부록 D/);
   assert.match(md, /## 부록 D[\s\S]*\*\*F30\*\*/);                                  // 생략분은 부록 D 에 전부 있다
 });
@@ -320,7 +330,7 @@ test('리뷰 실패(유효 결과 0): 판정 블록 없이 실패 원인 + 결�
   assert.doesNotMatch(md, /^리뷰 계약 TEST-POLICY/m);
 });
 
-test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 파일·원문 팩·baseline 을 지우고 JSON 은 마스킹 사본으로 남긴다 (F5·F7·R3-9)', () => {
+test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 파일·원문 팩·baseline 을 지우고 JSON 은 마스킹 사본으로 남긴다 (F5·F7·R3-9) · deploy.json·verdict.json 도 마스킹 대상 (R4-1)', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
   const good = join(root, 'ok.json');
@@ -352,10 +362,11 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
   writeFileSync(join(work, 'check.json'), JSON.stringify({ reason: { text: '민원 010-1234-5678' }, authorTokens: [{ note_id: 1, token: 'FIXED', arg: headSha }] }));
   writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: headSha, findings: [{ title: 'x', evidence: 'db.password = "synthetic-db-password"' }] }));
   writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ mode: 'worktree', checkout, worktree: join(work, 'worktree'), head_sha: headSha }));
-  writeFileSync(join(work, 'verdict.json'), '{}');
+  writeFileSync(join(work, 'deploy.json'), JSON.stringify({ applicable: true, result: '대조 불가', zip: { attachment: 'd.zip' }, mismatches: [{ kind: 'download', path: null, detail: '다운로드 실패: 403 https://gitlab.test/u/d.zip?token=synthetic-credential-abc' }] }));
+  writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'HOLD_EVIDENCE', head_sha: headSha, machineEvidence: [{ id: 'M-baseline-1', kind: 'baseline', detail: '기준선·이슈 원문 미확보: https://gitlab.test/g/x.md?token=synthetic-credential-xyz — 담당 someone@example.test' }] }));
   const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.equal(r.first, 'CLEANED worktree=true zip=1 raw=7 masked=3');            // raw = codex.* 4 + pack-a·pack-b 2 + baseline 1 · masked = mr·check·review-claude
+  assert.equal(r.first, 'CLEANED worktree=true zip=1 raw=7 masked=5');            // raw = codex.* 4 + pack-a·pack-b 2 + baseline 1 · masked = mr·check·deploy·review-claude·verdict
   assert.ok(!existsSync(join(work, 'worktree')));
   assert.ok(!existsSync(join(work, 'zip')));
   assert.ok(!existsSync(join(work, 'blobs')));
@@ -370,6 +381,12 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
   assert.equal(ck.reason.text, '민원 [masked:phone]');
   assert.deepEqual(ck.authorTokens[0], { note_id: 1, token: 'FIXED', arg: headSha });   // 키 이름은 패턴에 안 걸린다 — 값만 본다
   assert.equal(readJson(join(work, 'review-claude.json')).findings[0].evidence, 'db.password = "[masked:secret]"');
+  const dj = readJson(join(work, 'deploy.json'));
+  assert.doesNotMatch(dj.mismatches[0].detail, /synthetic-credential/);                 // deploy.json(API 오류 문자열) 도 마스킹 사본(R4-1)
+  assert.equal(dj.result, '대조 불가');
+  const vj = readJson(join(work, 'verdict.json'));
+  assert.doesNotMatch(vj.machineEvidence[0].detail, /synthetic-credential|example\.test/);   // verdict.json(미확보 링크 raw·reason) 도(R4-1)
+  assert.equal(vj.verdict, 'HOLD_EVIDENCE');
   assert.doesNotMatch(git(checkout, 'worktree', 'list'), /work\/worktree/);
 });
 ````
@@ -454,6 +471,8 @@ export function machineEvidence({ check, snapshot, deploy }) {
     if (name === 'closes_issues' || (snapshot.mode === 'diff-only' && (name === 'changes' || name === 'versions'))) out.push({ id: `M-api-${name}`, kind: 'api', detail: `GitLab 조회 실패: ${name} — 자료가 없는 것이 아니라 받지 못한 것(재실행 또는 로컬 clone 권장)` });
   }
   if (deploy?.applicable && deploy.result !== '일치') out.push({ id: 'M-deploy', kind: 'deploy', detail: `배포본 ${deploy.result}${deploy.mismatches?.length ? ' — ' + deploy.mismatches.map((m) => m.kind + (m.path ? `(${m.path})` : '')).join(', ') : ''}` });
+  // 재리뷰의 이전 차단 발견 목록이 불완전하면(댓글 축약분을 이전 리포트 부록 D 로 복원 못 함, R4-3) §5.6 「이전 차단 발견마다 확인」을 완료할 수 없다 — 원문 미확보와 같은 증거 부족
+  if (check?.rereview?.active && check.rereview.priorBlockingComplete === false) out.push({ id: 'M-rereview', kind: 'rereview', detail: `이전 차단 발견 목록 불완전 — ${(check.rereview.priorBlocking || []).filter((b) => b.title === null).length}건 미확보(댓글 축약분 · 이전 리포트 ${check.rereview.priorReport ? '부록 D 에 없음' : '없음'}) — 확인 완료로 취급 금지` });
   (check?.baselineLinks || []).forEach((l, i) => { if (l.status === '미확보') out.push({ id: `M-baseline-${i + 1}`, kind: 'baseline', detail: `기준선·이슈 원문 미확보: ${l.raw || l.kind} — ${l.reason || ''}` }); });
   return out;
 }
@@ -530,13 +549,15 @@ function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack }
     '- [다른 주체 제공] 작성자 검증 표 결과 — 작성자 주장(이 스킬은 테스트·빌드를 실행하지 않는다)'];
   const evidenceItems = verdict.evidence.map((id) => byId[id] ? `${byId[id].title}` : (verdict.machineEvidence.find((m) => m.id === id)?.detail || id));
   const s3 = ['3. 통과해야 할 테스트', evidenceItems.length ? `- 머지 전: ${evidenceItems.map((t) => `[ ] ${t}`).join(' · ')}` : '- 머지 전: 없음', '- 배포 후: —(릴리즈 게이트 이관)'];
+  // 차단 발견 줄은 id 를 앞에 둔다(`- F3 DEFECT — …` · `- M-deploy MISSING_EVIDENCE — …`) — 재리뷰(task-03 `priorBlockingList`)가 댓글 항목을 부록 D 와 id 로 맞추고, 축약 ④ 가 생략분 id 를 댓글에 남길 수 있게(R4-3)
   const blockingFull = [];
   const blockingShort = [];
-  for (const id of verdict.defects) { const f = byId[id]; if (f) { blockingFull.push(`- ${f.type} — ${f.title} (${f.file || '-'}${f.line_start ? `:${f.line_start}` : ''}) · ${f.recommendation || ''}`.trim()); blockingShort.push(`- ${f.type} — ${f.title}`); } }
+  const blockingIds = [];
+  for (const id of verdict.defects) { const f = byId[id]; if (f) { blockingIds.push(f.id); blockingFull.push(`- ${f.id} ${f.type} — ${f.title} (${f.file || '-'}${f.line_start ? `:${f.line_start}` : ''}) · ${f.recommendation || ''}`.trim()); blockingShort.push(`- ${f.id} ${f.type} — ${f.title}`); } }
   for (const id of verdict.evidence) {
     const f = byId[id];
-    if (f) { blockingFull.push(`- MISSING_EVIDENCE — ${f.title} (${f.file || '-'}) · ${f.recommendation || ''}`.trim()); blockingShort.push(`- MISSING_EVIDENCE — ${f.title}`); }
-    else { const m = verdict.machineEvidence.find((x) => x.id === id); if (m) { blockingFull.push(`- MISSING_EVIDENCE — ${m.detail}`); blockingShort.push(`- MISSING_EVIDENCE — ${m.detail}`); } }
+    if (f) { blockingIds.push(f.id); blockingFull.push(`- ${f.id} MISSING_EVIDENCE — ${f.title} (${f.file || '-'}) · ${f.recommendation || ''}`.trim()); blockingShort.push(`- ${f.id} MISSING_EVIDENCE — ${f.title}`); }
+    else { const m = verdict.machineEvidence.find((x) => x.id === id); if (m) { blockingIds.push(m.id); blockingFull.push(`- ${m.id} MISSING_EVIDENCE — ${m.detail}`); blockingShort.push(`- ${m.id} MISSING_EVIDENCE — ${m.detail}`); } }
   }
   const fu = fnd.filter((f) => f.type === 'FOLLOW_UP' || (f.blocking === false && f.resolution !== 'dismissed' && f.type !== 'MISSING_EVIDENCE' && f.type !== 'DEFECT')).map((f) => `- ${f.title}`);
   let blocking = blockingFull.length ? blockingFull : ['- 없음'];
@@ -548,7 +569,7 @@ function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack }
   if (over() > 0 && fu.length > 1) follow = [fu[0], `- … 외 ${fu.length - 1}건 — 부록 D`];                                          // ③
   if (over() > 0 && blockingShort.length > 1) {                                                                                      // ④
     const keep = Math.max(1, blockingShort.length - over() - 1);
-    blocking = [...blockingShort.slice(0, keep), `- … 외 ${blockingShort.length - keep}건(차단 — 전부 부록 D 에 있음)`];
+    blocking = [...blockingShort.slice(0, keep), `- … 외 ${blockingShort.length - keep}건(차단 — 전부 부록 D 에 있음): ${blockingIds.slice(keep).join(', ')}`];   // 생략분 id 는 댓글에 남긴다 — 재리뷰 대조표가 댓글만으로 전체 목록을 세울 수 있게(R4-3)
   }
   return assemble().join('\n');
 }
@@ -689,9 +710,11 @@ export function renderReport({ adapter, work, early = false }) {
 }
 
 // ── 정리(F7·F5) ───────────────────────────────────────────────────────────
-// 산출물 수명주기(R3-9): 원문(워크트리·zip·blobs·codex.*·pack-a/b.md·baseline/)은 삭제, `--resolve`·재리뷰·re-render 에 필요한 JSON(mr·check·review-*·findings)은
+// 산출물 수명주기(R3-9): 원문(워크트리·zip·blobs·codex.*·pack-a/b.md·baseline/)은 삭제, `--resolve`·재리뷰·re-render 에 필요한 JSON(mr·check·deploy·review-*·findings·verdict)은
 // 문자열 값에 어댑터 마스킹 + 비밀값 제거를 적용한 사본으로 보존한다. 리포트는 저장 시 이미 마스킹됐다.
-const MASKED_JSON = ['mr.json', 'check.json', 'review-claude.json', 'review-codex.json', 'findings.json'];
+// deploy.json(zip 파일명·주석·API 오류 문자열)·verdict.json(machineEvidence 에 복사된 미확보 링크 raw·reason 등)에도 MR 원문이 흘러든다(R4-1) — 「원문 없음」으로 가정하지 않고 같은 마스킹을 건다.
+// snapshot.json·pack.json 은 경로·SHA·카운트·패턴 이름만 담아 제외한다.
+const MASKED_JSON = ['mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json'];
 export function cleanup({ work, adapter }) {
   const snapshot = readJson(work, 'snapshot.json') || {};
   let worktree = false;
@@ -807,7 +830,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: report 14/14 · 전체 59/59(adapter 8·collect 9·check 10·deploy 10·pack 8·report 14) · `CHECK_DONE`만.
+기대: report 14/14 · 전체 62/62(adapter 8·collect 9·check 11·deploy 11·pack 9·report 14) · `CHECK_DONE`만.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/report.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/report.test.mjs
@@ -816,8 +839,8 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/report.test.mjs` → 14/14, 전체 59/59.
-- 실행 블록은 발견·표가 많아도 5개 절 유지 + 40줄 이하(plan R3-10) · 무효 검토 결과 파일이 있어도 render 는 실패하지 않고 부록 C 에 「무효 결과」(plan R3-7) · `cleanup` 뒤 `pack-*.md`·`baseline/` 없음, 남는 JSON 의 문자열 값에 마스킹 패턴·비밀값 잔존 0(plan R3-9) · `snapshot.api_failures`는 기계 증거 `M-api-<name>`(plan R3-3).
+- `node --test tests/mr-review/report.test.mjs` → 14/14, 전체 62/62.
+- 실행 블록은 발견·표가 많아도 5개 절 유지 + 40줄 이하(plan R3-10) · 무효 검토 결과 파일이 있어도 render 는 실패하지 않고 부록 C 에 「무효 결과」(plan R3-7) · `cleanup` 뒤 `pack-*.md`·`baseline/` 없음, 남는 JSON(`deploy.json`·`verdict.json` 포함 — plan R4-1) 의 문자열 값에 마스킹 패턴·비밀값 잔존 0(plan R3-9) · `snapshot.api_failures`는 기계 증거 `M-api-<name>`(plan R3-3) · 실행 블록 차단 줄은 id 접두, 축약 ④ 는 생략분 id 목록을 남기고, 재리뷰 이전 차단 목록 불완전은 `M-rereview`(plan R4-3).
 - 판정은 정책 4종만(D9) · 미해결 후보가 있으면 게시용 블록을 만들지 않고 헤더에 「판정 미확정」(R1-F4·R2-F4) · 발견 0건이어도 계약 미완·미복원 diff·배포본 불일치·원문 미확보면 `HOLD_EVIDENCE`(R5-F1·R1-F3·R4-F1·R4-F3) · 유효 검토 0개면 블록 없음(R4-F2) · 리포트 전체에 마스킹 패턴 잔존 0(F5) · `cleanup` 뒤 워크트리·zip·blobs·codex 원시 파일 없음(F7).
 - `--resolve` 결정이 `findings.json`에 영속돼 호출을 나눠도 유지되고 리포트 「리뷰어 결정」·부록 D에 근거가 남는다(plan R1-7) · `verdict.json`·`findings.json`의 head가 `snapshot.head_sha`와 다르면 판정 블록 없이 리뷰 실패, 비-early에서 `verdict.json` 부재도 리뷰 실패(plan R1-1) · 부록 C·D에 근거·시나리오·깨진 전제 보존(plan R1-9).
 
@@ -830,7 +853,9 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 - **어댑터 `mask`(개인정보)와 별도로 엔진 내장 `SECRET_MASK`(비밀번호·API 키·토큰·Bearer·PEM 값)를 리포트 전체에 적용하라. 이유:** plan R2-1 — 어댑터 패턴은 개인정보용이라 L5 발견이 인용한 `password = "…"` 리터럴이 부록 C·D에 그대로 남는다(§5.7 `[masked:secret] <파일:줄>` 계약·F5). 파일:줄은 남긴다.
 - **`review-validate`에 `--head`·`--reviewer`를 받아 원본 결과의 head·검토자 일치를 검사하라. 이유:** plan R2-4 — 형식만 보면 이전 head 의 검토 결과가 VALID 로 통과하고, 병합에서 `findings.head_sha`를 새로 적으면 후속 대조가 그것을 못 잡는다.
 - **`review-validate`는 `ERR` 접두 없이 `INVALID …` exit 1. 이유:** SC-6 — SKILL이 `VALID`/`INVALID`만 본다.
-- **`cleanup`은 원문(`pack-a.md`·`pack-b.md`·`baseline/`·`codex.*`·워크트리·zip·blobs)을 지우고, JSON(`mr`·`check`·`review-*`·`findings`)은 문자열 값에 어댑터 마스킹 + `SECRET_MASK`를 적용한 사본으로 남긴다. JSON 을 통째로 지우거나 원문 그대로 두지 마라. 이유:** plan R3-9 — `pack-a.md`는 MR 원문·개인 위키 발췌를, `review-*.json`은 비밀값 인용을 그대로 담는데 `codex.*`만 지우면 P4·F5 의 정리 요구를 못 채운다. 반대로 JSON 을 지우면 `--resolve` 재계산(§9)·재리뷰(§5.6)가 같은 `W`에서 불가능하다. 마스킹은 값만(키 이름 제외) — `deepMask`.
+- **`cleanup`은 원문(`pack-a.md`·`pack-b.md`·`baseline/`·`codex.*`·워크트리·zip·blobs)을 지우고, JSON(`mr`·`check`·`deploy`·`review-*`·`findings`·`verdict`)은 문자열 값에 어댑터 마스킹 + `SECRET_MASK`를 적용한 사본으로 남긴다. JSON 을 통째로 지우거나 원문 그대로 두지 마라. 이유:** plan R3-9 — `pack-a.md`는 MR 원문·개인 위키 발췌를, `review-*.json`은 비밀값 인용을 그대로 담는데 `codex.*`만 지우면 P4·F5 의 정리 요구를 못 채운다. 반대로 JSON 을 지우면 `--resolve` 재계산(§9)·재리뷰(§5.6)가 같은 `W`에서 불가능하다. 마스킹은 값만(키 이름 제외) — `deepMask`.
+- **`deploy.json`·`verdict.json`을 「원문 없음」으로 보고 마스킹에서 빼지 마라. 이유:** plan R4-1 — `machineEvidence()`는 미확보 링크의 `raw`·`reason`을, deploy 는 zip 파일명·주석·API 오류 문자열을 그대로 복사한다. 링크의 `?token=…`이 `check.json`에서는 가려지고 `verdict.json`에는 남는 데이터 흐름 결함. 제외는 경로·SHA·카운트만 담는 `snapshot.json`·`pack.json`뿐.
+- **실행 블록의 차단 발견 줄에는 발견 id(`F3`·`M-deploy`)를 앞에 두고, 축약 ④ 의 「… 외 n건」 줄에는 생략분 id 목록을 붙여라. 이유:** plan R4-3 — 재리뷰(§5.6)는 이전 판정 댓글의 「4. 차단 발견」으로 대조표를 만드는데, R3-10 축약이 일부를 부록 D(로컬 리포트)로 옮기면 댓글만 남은 환경에서는 그 항목을 복원할 입력이 없다. id 가 있으면 이전 리포트 부록 D 에서 제목을 복원하고, 없으면 `title:null`로 미확보가 되어 `M-rereview`로 판정에 전달된다.
 - **실행 블록은 40줄을 「보장」한다 — 넘치면 안내 문장을 덧붙이고 끝내지 마라. 축약 순서(의도 표 → 차단 짧은 형태 → 후속 1건 → 차단 앞 n건 + 「외 n건 — 부록 D」)는 결정적이다. 이유:** plan R3-10 — 차단 발견 30건이면 48줄이 나와 §5.7·정책 §8.1(40줄)을 어기고 리뷰어가 게시 전에 요약 방식을 새로 정해야 한다. 생략분은 부록 D 에 전부 남는다.
 - **부록 C 는 `validReviewers`에 있는 검토자의 배열 `findings`만 구조화한다 — `review-*.json`을 무조건 읽어 `.map`하지 마라. 이유:** plan R3-7 — Codex 가 `findings`를 문자열로 내면 `review-validate`는 INVALID 로 빼지만 render 가 TypeError 로 죽어 단일 모델 전환(§5.4)이 끝까지 동작하지 않는다. JSON 오류도 같은 경로.
 - **`--resolve` 결정은 `findings.json`에 써서 영속화한다 — `verdict.json`에만 두지 마라. 이유:** R1-7 — 후보를 호출을 나눠 해결하면 앞선 결정이 사라진다. 기각 근거는 리포트 「리뷰어 결정」·부록 D에 남는다(§5.5-2).

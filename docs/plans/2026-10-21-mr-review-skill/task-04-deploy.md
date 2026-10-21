@@ -172,6 +172,24 @@ test('본문에만 있는 삭제 경로: 기대 삭제 목록이 비어 있어�
   assert.ok(readJson(join(w3, 'deploy.json')).mismatches.some((m) => m.kind === 'deleted_list' && /Keep\.java/.test(m.detail)));   // 기대 ⊂ 본문이어도 불일치
 });
 
+test('기대 배포·삭제 목록이 모두 비어도 본문에 삭제 목록이 있으면 비해당으로 끝내지 않고 ④ 만 대조해 불일치 (R4-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const diffs = [{ old_path: 'docs/x.md', new_path: 'docs/x.md', new_file: true, renamed_file: false, deleted_file: false }];   // 문서만 — 기대 배포·삭제 0
+  const w1 = workdir(root, { checkout: null, baseSha: 'b'.repeat(40), headSha: 'a'.repeat(40), mode: 'diff-only', diffs, description: '## 배포·롤백\n- 배포본: 비해당\n  - 삭제: src/main/java/app/Keep.java\n' });
+  const r1 = runCli(['deploy', '--adapter', adapter, '--work', w1], fakeGlab(root, []).env);
+  assert.equal(r1.first, 'DEPLOY 불일치');
+  const d1 = readJson(join(w1, 'deploy.json'));
+  assert.equal(d1.applicable, true);
+  assert.deepEqual(d1.expected, { deploy: [], deleted: [] });
+  assert.ok(d1.mismatches.some((m) => m.kind === 'deleted_list' && /Keep\.java/.test(m.detail)), JSON.stringify(d1.mismatches));
+  assert.equal(d1.zip.attachment, null);                                                     // zip 단계는 돌지 않는다(기대 배포 없음)
+  assert.match(d1.reason, /본문 삭제 목록만/);
+  const w2 = workdir(root, { checkout: null, baseSha: 'b'.repeat(40), headSha: 'a'.repeat(40), mode: 'diff-only', diffs, description: '## 배포·롤백\n- 배포본: 비해당\n' });
+  assert.equal(runCli(['deploy', '--adapter', adapter, '--work', w2], fakeGlab(root, []).env).first, 'DEPLOY 해당 없음');   // 둘 다 비어 있으면 그대로 비해당
+  assert.equal(readJson(join(w2, 'deploy.json')).applicable, false);
+});
+
 test('CRC 손상 zip: 목록·주석·내용 길이는 맞아도 read() 가 CRC 불일치를 던져 corrupt → 대조 불가 (R2-7)', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
@@ -391,7 +409,11 @@ export function deploy({ adapter, work }) {
   const exempt = check.deployExempt === true || mr.project?.deployExempt === true;
   if (exempt) { out.reason = '어댑터 배포 제외 프로젝트'; return finish(work, out); }
   out.expected = expectedLists({ adapter, mr, snap });
-  if (out.expected.deploy.length + out.expected.deleted.length === 0) { out.reason = '운영 배포 대상 변경 없음'; return finish(work, out); }
+  if (out.expected.deploy.length + out.expected.deleted.length === 0) {
+    // 기대 변경이 없어도 본문에 삭제 목록이 있으면 비해당으로 끝내지 않는다(R4-2) — zip 단계는 건너뛰고 ④ 만 돌려 「기대에 없는 삭제 지시」를 불일치로 판정에 전달한다(배포자가 본문대로 정상 파일을 지우는 경로 차단)
+    if (out.bodyDeletedList.length === 0) { out.reason = '운영 배포 대상 변경 없음'; return finish(work, out); }
+    out.reason = '운영 배포 대상 변경 없음 — 본문 삭제 목록만 대조(④)';
+  }
   out.applicable = true;
   const mm = out.mismatches;
 
@@ -491,15 +513,17 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/deploy.test.mjs` → 10/10.
+- `node --test tests/mr-review/deploy.test.mjs` → 11/11.
 - `git archive`로 만든 zip의 주석 SHA·목록·바이트를 외부 `unzip` 없이 읽는다(P3).
 - 삭제만 있는 변경은 zip 없이 ④ 삭제 목록만으로 판정(R3-F2) · 기대 목록은 4.7 규칙으로 거른 것(R3-F4) · 결과가 무엇이든 exit 0(판정은 verdict 몫).
+- 기대 배포·삭제 목록이 모두 비어도 본문에 삭제 목록이 있으면 `applicable:true`로 ④ 만 대조해 `deleted_list` 불일치(plan R4-2) — 둘 다 비면 그대로 「해당 없음」.
 
 ## Cautions
 
 - **기대 목록을 전체 diff 로 비교하지 마라 — 4.7 규칙으로 거른 뒤에만. 이유:** spec·문서를 함께 고친 정상 MR이 불일치로 떨어진다(R3-F4).
 - **삭제 목록은 zip 유무와 무관하게 대조한다. 「배포본: 삭제만」 표기만으로 통과시키지 마라. 이유:** OTA 단말의 이전 파일 제거 누락(R3-F2).
 - **삭제 목록 대조는 기대 목록이 비어 있어도 항상 집합 비교다. `expected.deleted.length > 0`일 때만 대조하지 마라. 이유:** R1-4 — 본문에만 적힌 삭제 경로(변경하지 않은 파일)가 통과하면 배포자가 정상 파일을 지운다. 문자열 join 비교도 금지(순서 차이가 거짓 불일치).
+- **기대 배포·삭제 목록이 모두 비었다는 이유로 ④ 전에 「해당 없음」으로 반환하지 마라 — 본문 삭제 목록이 비어 있을 때만. 이유:** plan R4-2 — R1-4 와 같은 영역의 다른 경로: 문서만 고친 비면제 MR 본문에 변경하지 않은 운영 파일 삭제를 적어도 `applicable:false`·불일치 0 으로 끝나 모델 발견 없이 APPROVE 까지 간다. 기대 변경이 없으면 zip 단계는 건너뛰고 ④ 만 돈다.
 - **`git diff`는 `-z`로 읽어라. 이유:** 한글·공백 경로가 `core.quotePath`로 인용돼 목록이 어긋난다(정책 §6.1과 같은 이유).
 - **zip 리더에 zip64·암호화를 넣지 마라. 이유:** git archive 산출물 범위 밖 — YAGNI. 판독 실패는 `corrupt` → 「대조 불가」로 fail-closed.
 - **`read()`는 CRC-32·비압축 크기를 central directory 값과 대조한다 — inflate 성공만으로 정상으로 보지 마라. 이유:** R2-7 — 내용·목록·주석이 맞고 CRC만 깨진 zip은 표준 압축 해제가 거부하는 배포본인데 「일치」로 보증된다.

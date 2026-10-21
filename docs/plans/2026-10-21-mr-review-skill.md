@@ -115,15 +115,15 @@
 | `snapshot.json` | collect | check·deploy·pack·verdict·render·cleanup | 세 SHA·모드·워크트리·미복원 목록 |
 | `check.json` | check | deploy·pack·verdict·render | §5.2 검사표 + 댓글 신뢰 + 기준선 원문 |
 | `baseline/<n>.md` | check | pack | 기준선·이슈 원문(출처 헤더 포함) |
-| `deploy.json` | deploy | verdict·render | §5.2b 결과 |
+| `deploy.json` | deploy | verdict·render | §5.2b 결과 — zip 파일명·주석·API 오류 문자열에 MR 원문이 섞이므로 cleanup이 마스킹 사본으로 바꿔 남긴다 |
 | `pack.json` · `pack-a.md` · `pack-b.md` | pack | SKILL(검토자 프롬프트)·render(`pack.json`) | 출처 목록·마스킹 보고·팩 본문 — **`pack-a.md`·`pack-b.md`는 원문이라 cleanup이 지운다**(`pack.json`은 남는다) |
 | `review-claude.json` · `review-codex.json` | SKILL(검토자) | SKILL(병합) · `review-validate` · render(부록 C) | SC-4 — cleanup이 문자열 값을 마스킹한 사본으로 바꿔 남긴다 |
 | `findings.json` | SKILL(메인 병합) · verdict(`--resolve` 결정 영속화) | verdict·render | SC-5 — `head_sha` = `snapshot.head_sha` — cleanup이 마스킹 사본으로 바꿔 남긴다 |
-| `verdict.json` | verdict | render | 판정 결과 — render는 `head_sha` ≠ `snapshot.head_sha`이거나 부재(비-early)면 리뷰 실패로 렌더 |
+| `verdict.json` | verdict | render | 판정 결과 — render는 `head_sha` ≠ `snapshot.head_sha`이거나 부재(비-early)면 리뷰 실패로 렌더 — `machineEvidence`에 미확보 링크 `raw`·`reason`이 복사되므로 cleanup이 마스킹 사본으로 바꿔 남긴다 |
 | `codex.prompt` · `codex.out` · `codex.sh` · `codex.pid` | SKILL | cleanup | Codex 실행 파일(원시 — 보존 금지) |
 | `zip/<파일명>` · `worktree/` · `blobs/` · `baseline/` | deploy·collect·check | cleanup | 임시 산출물(F7) — `baseline/`은 원문이라 cleanup이 지운다(pack이 이미 소비) |
 
-**산출물 수명주기(cleanup — F5·F7)**: 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`review-*.json`·`findings.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `snapshot.json`·`deploy.json`·`pack.json`·`verdict.json`·리포트는 그대로(개인정보·원문 없음, 리포트는 저장 시 마스킹). 파싱 불가 JSON은 마스킹할 수 없으므로 지운다.
+**산출물 수명주기(cleanup — F5·F7)**: 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`deploy.json`·`review-*.json`·`findings.json`·`verdict.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `deploy.json`(zip 파일명·주석·API 오류 문자열)·`verdict.json`(`machineEvidence`에 복사된 미확보 링크 `raw`·`reason`)도 MR 원문이 흘러드는 파일이라 「원문 없음」으로 가정하지 않는다(plan R4-1). `snapshot.json`·`pack.json`·리포트는 그대로(경로·SHA·카운트·패턴 이름만, 리포트는 저장 시 마스킹). 파싱 불가 JSON은 마스킹할 수 없으므로 지운다.
 
 **`mr.json`**:
 ```json
@@ -172,7 +172,8 @@
   "priorVerdicts": [{ "note_id": 0, "author": "", "policy": "", "sha": "", "kind": "", "verdict": "", "trusted": true, "reason": "" }],
   "authorTokens": [{ "note_id": 0, "token": "FIXED", "arg": "<sha|null>", "created_at": "" }],
   "ignoredComments": [{ "note_id": 0, "author": "", "reason": "" }],
-  "rereview": { "active": false, "prior_head": null, "prior_verdict": null, "prior_note_id": null },
+  "rereview": { "active": false, "prior_head": null, "prior_verdict": null, "prior_note_id": null,
+                "priorReport": "<이전 리포트 경로|null>", "priorBlocking": [{ "id": "F3|M-deploy|null", "type": "DEFECT|MISSING_EVIDENCE|DESIGN_DRIFT|null", "title": "<제목|null>", "source": "comment|report|missing" }], "priorBlockingComplete": "<true|false|null>" },
   "earlyExit": { "would": false, "reason": "", "draftVerdict": "RETURN_TO_DESIGN|HOLD_EVIDENCE|null" } }
 ```
 - `contract.lines[*].status`: 값이 비어 있거나 꺾쇠 `<…>`·`#`만이면 `자리표시자`, 줄 자체가 없으면 `없음`, `Policy` 값이 `acceptedIds`에 있으나 `judgeId`와 다르면 `채움(구버전)`, 그 밖 `채움`. `complete` = 10줄 모두 `채움`/`채움(구버전)`. `Policy` 값이 `acceptedIds`에 없으면 `자리표시자`(알 수 없는 ID = 미완).
@@ -180,6 +181,8 @@
 - `baselineConfirm`: 경량일 때만 평가. 댓글 작성자가 `reviewers` 또는 `trustedReviewers`이고 본문 첫 줄이 `baselineConfirm` 정규식에 맞으면 후보. 최신 후보의 `created_at` < `description_changed_at`이면 `낡음`. 정식·핫픽스 = `해당 없음`.
 - `baselineLinks` 수집 범위 = Baseline 줄의 링크·`#n` + `closes_issues` + **MR 본문 「배경」 절의 `#n`·이슈 URL**(프로젝트·IID로 중복 제거). `closes_issues`의 `project_id`가 어댑터에 없으면 `project:null`·`미확보`(현재 프로젝트로 대체하지 않는다). 저장소 링크의 `ref`/`path` 경계는 URL 첫 세그먼트가 아니라 **그 저장소의 branch/tag API로 긴 후보부터 해소**한다(`feature/topic` 브랜치 지원 — SHA permalink만 첫 세그먼트 확정). **URL 링크(저장소·이슈)는 `project_url`을 보존하고 해소 때 등록 프로젝트의 `web_url`과 대조해 다르면 `미확보`**(SC-2 — basename만 같은 범위 밖 링크를 확보로 기록하지 않는다; `#n`·`closes_issues`는 `project_id`가 정체성이라 대조 없음). 이슈의 댓글 조회 실패는 「댓글 없음」이 아니라 `미확보`.
 - `priorVerdicts[*].trusted` = 작성자가 `reviewers`∪`trustedReviewers`에 있고 **MR 작성자가 아님**. `rereview.active` = 신뢰 이전 판정 중 최신의 `sha`가 `snapshot.head_sha`와 다름(7자 이상 접두 비교).
+- `rereview.priorBlocking`(재리뷰일 때만 — 아니면 `[]`·`priorBlockingComplete:null`) = 그 판정 댓글 「4. 차단 발견」의 **전체** 항목: 댓글 줄(`- <id> <type> — <제목>`, `source:comment`) + 40줄 축약 줄 `- … 외 n건(차단 — 전부 부록 D 에 있음): F9, F10`의 id 들을 이전 리포트 `<reportDir>/<프로젝트>-<iid>-<prior_head 7자>.md` 부록 D 에서 복원(`source:report`). 리포트가 없거나 부록 D 에 없으면 `title:null`·`source:missing`. `priorBlockingComplete` = 모든 항목에 `title`이 있음 — `false`면 verdict `M-rereview`(§5.6 「이전 차단 발견마다」 확인을 완료한 것으로 취급하지 않는다, plan R4-3).
+- `reason.source` = 본문 「배경」에 **실내용**(①·② 표지와 꺾쇠 자리표시자 `<…>`를 뺀 글)이 있을 때만 `body`, 없으면 연결 이슈 원문이 있을 때 `issue`, 그 밖 `none`. 양식 문구만 남은 본문은 「없음」(§5.2, plan R4-4).
 - `earlyExit.would` = `(incompleteLines 중 Baseline 외 줄 있음) || (baselineType ∈ {빈칸·자리표시자, 칸 없음} && baselineCandidateFiles.length === 0)` — **Baseline 줄만 미완이고 후보 문서가 있으면 `false`**(§5.2 후보 관련성 검토 경로 보장 — Baseline 미완은 `incompleteLines`로 verdict의 기계 증거 부족에 남는다). `draftVerdict` = 기준선 없음이면 `RETURN_TO_DESIGN`, 아니면 `HOLD_EVIDENCE`.
 
 **`deploy.json`**:
@@ -191,15 +194,17 @@
   "result": "일치|불일치|대조 불가|zip 누락|해당 없음",
   "mismatches": [{ "kind": "comment_sha|missing_in_zip|extra_in_zip|bytes|deleted_list|download|corrupt", "path": "<path|null>", "detail": "" }] }
 ```
-- `applicable` = `!deployExempt && (expected.deploy.length + expected.deleted.length > 0)`. `expected`는 `--no-renames` 기준 `git diff --name-only --diff-filter=ACMR|D base..head`를 `deploy.targets`로 걸러 `deploy.excludes`를 뺀 것. diff-only 모드는 `mr.json.diffs`로 같은 목록을 계산하되 `bytes` 대조는 `대조 불가`.
+- `applicable` = `!deployExempt && (expected.deploy.length + expected.deleted.length > 0 || bodyDeletedList.length > 0)` — 기대 변경이 없어도 본문에 삭제 목록이 있으면 해당(zip 단계는 건너뛰고 ④ 삭제 목록 비교만, `reason` = 「운영 배포 대상 변경 없음 — 본문 삭제 목록만 대조(④)」) → 기대에 없는 삭제 지시는 `deleted_list` 불일치 → `M-deploy`(plan R4-2). 둘 다 비면 `applicable:false`·「해당 없음」. `expected`는 `--no-renames` 기준 `git diff --name-only --diff-filter=ACMR|D base..head`를 `deploy.targets`로 걸러 `deploy.excludes`를 뺀 것. diff-only 모드는 `mr.json.diffs`로 같은 목록을 계산하되 `bytes` 대조는 `대조 불가`.
 - 결과 순서: zip 첨부 없음 + `expected.deploy` 비어 있지 않음 → `zip 누락`; 다운로드 실패·zip 손상(central directory·local header signature·**local header ↔ central directory 파일명·압축 방식 불일치**·**CRC-32·비압축 크기 불일치** 포함) → `대조 불가`; 그 밖 mismatches 비면 `일치`, 아니면 `불일치`. `bodyDeletedList`는 본문 「배포본」 항목 아래 목록(줄 시작 `-`·`*`·숫자. 또는 코드펜스 안 한 줄 한 경로)에서 뽑는다. `expected.deleted`와 집합 비교(순서 무관).
 
 **`pack.json`**:
 ```json
 { "sources": [{ "id": "S1", "kind": "doc|wiki|baseline|issue|adapter", "ref": "<docsRoot 기준 경로@sha[#절] | repo:<경로>@<head7>[#절] | 위키 페이지명 | baseline/1.md>", "exportAllowed": true, "inPackB": true, "lines": 0, "missing": false }],
   "mask": { "applied": { "phone": 0 }, "residual": [{ "name": "", "where": "pack-b|body|note" }], "ok": true },
+  "wikiTerms": ["<diff 추가 줄에서 뽑은 테이블명·선언 식별자>"],
   "packA": "pack-a.md", "packB": "pack-b.md", "codexSkipped": false, "codexSkipReason": null }
 ```
+- `wikiTerms` = 위키 grep 검색어 중 변경 코드에서 뽑은 것(`codeTerms` — diff **추가 줄**의 SQL 테이블명(FROM/JOIN/INTO/UPDATE/TABLE 뒤·`@Table(name=)`)·선언 식별자(class/interface/enum/record/function/def·MyBatis `<select id>`), 길이 ≥ 4·SQL 예약어 제외·상한 40). 검색어 전체 = MR 제목·경로(용어집 대조 텍스트에는 추가 줄 본문도 포함) + 파일 basename + `wikiTerms`(spec §5.3-2 「변경 파일명·기능명·테이블명」, plan R4-5 — 스크립트 규칙, 어댑터 키 없음).
 - `exportAllowed`(= 팩 B 투입) 규칙: `doc`(공통 문서·`repo:` 대상 저장소 문서 모두)·`adapter`·`issue`·본문 기준선 = `true` · `wiki` = 루트의 `export` · **`baseline`(저장소 링크) = 링크의 프로젝트가 리뷰 대상 프로젝트이거나 `docsRoot`와 같은 체크아웃인 프로젝트일 때만 `true`** — 어댑터 `projects` 등록은 수집 가능 범위이지 전송 허가가 아니다(어댑터 §6). `missing` = 문서 지도 규칙 문서의 파일·절 누락(계속 진행) — **공통 문서의 필수 참조(`policy.docs`·`docsMap.always`) 누락은 `pack`이 `ERR` exit 2**(fail-closed). **`repo:` 참조는 필수 여부와 무관하게 누락 = `missing:true`로 계속**(SC-2).
 
 **`verdict.json`**:
@@ -210,10 +215,10 @@
   "defects": ["<finding id>"], "evidence": ["<finding id 또는 기계 항목 id>"], "unresolved": ["<finding id>"],
   "baselineMissing": false, "returnToDesignBy": ["<finding id>"],
   "branches": { "<unresolved id>": { "confirmed": "<판정>", "dismissed": "<판정>" } },
-  "machineEvidence": [{ "id": "M-contract-Baseline", "kind": "contract|diff|deploy|baseline|api", "detail": "" }],
+  "machineEvidence": [{ "id": "M-contract-Baseline", "kind": "contract|diff|deploy|baseline|api|rereview", "detail": "" }],
   "reasons": ["<한 줄>"] }
 ```
-- `machineEvidence` 투입원: 계약 미완 줄(`M-contract-<name>`) · 미복원 diff(`M-diff-<n>`) · diff-only 목록 불완전(`M-diff-list`) · 배포본 비일치(`M-deploy`) · 기준선·이슈 원문 미확보(`M-baseline-<n>`) · **보조 API 조회 실패 `M-api-<name>`**(`snapshot.api_failures` — `closes_issues`는 모든 모드, `changes`·`versions`는 diff-only만, `approvals`는 판정 입력 아님). 하나라도 있으면 `HOLD_EVIDENCE` 이상.
+- `machineEvidence` 투입원: 계약 미완 줄(`M-contract-<name>`) · 미복원 diff(`M-diff-<n>`) · diff-only 목록 불완전(`M-diff-list`) · 배포본 비일치(`M-deploy`) · 기준선·이슈 원문 미확보(`M-baseline-<n>`) · **보조 API 조회 실패 `M-api-<name>`**(`snapshot.api_failures` — `closes_issues`는 모든 모드, `changes`·`versions`는 diff-only만, `approvals`는 판정 입력 아님) · **재리뷰 이전 차단 발견 목록 불완전 `M-rereview`**(`check.rereview.active && priorBlockingComplete === false`, plan R4-3). 하나라도 있으면 `HOLD_EVIDENCE` 이상.
 
 ### SC-4. 검토자 출력 스키마 — `review-claude.json` · `review-codex.json` (P5, spec §5.4)
 

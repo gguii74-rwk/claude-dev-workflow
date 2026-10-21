@@ -263,7 +263,7 @@ test('댓글: 신뢰 이전 판정(옛 head) → 재리뷰 · 작성자의 판�
   const notes = [
     { id: 10, system: false, author: { id: 2, username: 'rev-b' }, created_at: '2026-10-19T00:00:00Z', body: '기준선 확인 — 배경 ①② 동의' },
     { id: 11, system: true, author: { id: 1, username: 'author-a' }, created_at: '2026-10-19T02:00:00Z', body: 'changed the description' },
-    { id: 12, system: false, author: { id: 2, username: 'rev-b' }, created_at: '2026-10-20T00:00:00Z', body: `리뷰 계약 TEST-POLICY-v1.0 · head ${OLD} · 사람 판정 CHANGES_REQUESTED\n\n4. 차단 발견\n- DEFECT x` },
+    { id: 12, system: false, author: { id: 2, username: 'rev-b' }, created_at: '2026-10-20T00:00:00Z', body: `리뷰 계약 TEST-POLICY-v1.0 · head ${OLD} · 사람 판정 CHANGES_REQUESTED\n\n4. 차단 발견\n- F1 DEFECT — x\n- … 외 2건(차단 — 전부 부록 D 에 있음): F2, F3\n5. 비차단 후속\n- 없음` },
     { id: 13, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T01:00:00Z', body: `리뷰 계약 TEST-POLICY-v1.0 · head ${HEAD} · 사람 판정 APPROVE` },
     { id: 14, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T02:00:00Z', body: `FIXED ${HEAD}\n설명\nREFUTED` },
     { id: 15, system: false, author: { id: 9, username: 'someone' }, created_at: '2026-10-20T03:00:00Z', body: 'FIXED abc1234' },
@@ -291,6 +291,19 @@ test('댓글: 신뢰 이전 판정(옛 head) → 재리뷰 · 작성자의 판�
   assert.equal(c.rereview.prior_head, OLD);
   assert.equal(c.rereview.prior_verdict, 'CHANGES_REQUESTED');
   assert.equal(c.rereview.prior_note_id, 12);
+  // 이전 차단 발견 전체 목록(R4-3): 댓글 축약분(F2·F3)은 이전 리포트가 없으면 title:null → 불완전
+  assert.equal(c.rereview.priorReport, null);
+  assert.deepEqual(c.rereview.priorBlocking.map((b) => [b.id, b.title, b.source]), [['F1', 'x', 'comment'], ['F2', null, 'missing'], ['F3', null, 'missing']]);
+  assert.equal(c.rereview.priorBlockingComplete, false);
+  // 이전 리포트가 있으면 부록 D 에서 제목을 복원한다 → 완전
+  const reportDir = join(root, 'reviews');
+  mkdirSync(reportDir, { recursive: true });
+  writeFileSync(join(reportDir, `alpha-7-${OLD.slice(0, 7)}.md`), '# 이전 리포트\n\n## 부록 D — 병합 발견 상세 · 리뷰어 결정\n\n- **F1** [L1] DEFECT (차단) — x (src/A.java:1) · 출처 both · 확신 high\n- **F2** [L2] DEFECT (차단) — 널 역참조 (src/B.java:9) · 출처 claude · 확신 medium\n- **F3** [L3] MISSING_EVIDENCE (차단) — 회귀 결과 없음 (-:-) · 출처 both · 확신 high\n');
+  runCli(['check', '--adapter', adapter, '--work', work], fakeGlab(root, []).env);
+  const c2 = readJson(join(work, 'check.json'));
+  assert.equal(c2.rereview.priorBlockingComplete, true);
+  assert.match(c2.rereview.priorReport, /alpha-7-ccccccc\.md$/);
+  assert.deepEqual(c2.rereview.priorBlocking.map((b) => [b.id, b.type, b.title, b.source]), [['F1', 'DEFECT', 'x', 'comment'], ['F2', 'DEFECT', '널 역참조', 'report'], ['F3', 'MISSING_EVIDENCE', '회귀 결과 없음', 'report']]);
 });
 
 test('신뢰 판정의 head 가 현재 head 면 재리뷰 아님 · 기준선 확인 있음(본문 변경 없음)', () => {
@@ -303,7 +316,34 @@ test('신뢰 판정의 head 가 현재 head 면 재리뷰 아님 · 기준선 �
   const c = readJson(join(work, 'check.json'));
   assert.equal(c.baselineConfirm.status, '있음');
   assert.equal(c.rereview.active, false);
+  assert.deepEqual(c.rereview.priorBlocking, []);
+  assert.equal(c.rereview.priorBlockingComplete, null);                                       // 재리뷰가 아니면 평가하지 않는다
   assert.equal(c.priorVerdicts[0].trusted, true);
+});
+
+test('변경 사유 양식만 남은 본문(① 왜: <…> ② 무엇을: <…>)은 「없음」 — 연결 이슈 원문이 있으면 이슈로 대체, 없으면 none (R4-4)', () => {
+  const tmpl = '- ① 왜: <관찰 가능한 현상·요청 근거>\n- ② 무엇을: <원인·위치·범위>';
+  const a = setup({ description: body({ background: tmpl }) });
+  runCli(['check', '--adapter', a.adapter, '--work', a.work], fakeGlab(a.root, []).env);
+  const c1 = readJson(join(a.work, 'check.json'));
+  assert.equal(c1.reason.source, 'none');
+  assert.equal(c1.reason.why, false);
+  assert.equal(c1.reason.what, false);
+  const b = setup({ description: body({ background: tmpl, contractOver: { Baseline: '#12' } }), closes_issues: [] });
+  const g = fakeGlab(b.root, [
+    { match: '^api projects/101/issues/12$', json: { iid: 12, title: '버그', description: '- ① 왜: 민원\n- ② 무엇을: 처리기', updated_at: '2026-10-19T00:00:00Z' } },
+    { match: '^api --paginate projects/101/issues/12/notes', json: [] },
+  ]);
+  runCli(['check', '--adapter', b.adapter, '--work', b.work], g.env);
+  const c2 = readJson(join(b.work, 'check.json'));
+  assert.equal(c2.reason.source, 'issue');                                                   // 빈 양식이 bodyReason 으로 남아 이슈 대체를 막지 않는다
+  assert.equal(c2.reason.why, true);
+  assert.equal(c2.reason.what, true);
+  assert.match(c2.reason.text, /민원/);
+  const d = setup({ description: body({ background: '- ① 왜: 민원\n- ② 무엇을: <원인·위치·범위>' }) });
+  runCli(['check', '--adapter', d.adapter, '--work', d.work], fakeGlab(d.root, []).env);
+  const c3 = readJson(join(d.work, 'check.json'));
+  assert.deepEqual([c3.reason.source, c3.reason.why, c3.reason.what], ['body', true, false]);   // 한 칸만 채운 본문은 body — ② 만 없음
 });
 
 test('첨부 분류 · 첨부 누락 · 리베이스 · reviewer 불일치 · 트랙 미기재', () => {
@@ -404,12 +444,15 @@ export function reasonText(description) {
   const kept = bg.split('\n').filter((l) => !/^\s*[-*]\s*(이슈\/spec|이슈|spec|트랙)\s*[:：]/.test(l) && l.trim() !== '');
   return kept.join('\n').trim();
 }
+// 양식 표지(①·② / 왜:·무엇을:) 뒤의 실내용만 센다 — 꺾쇠 자리표시자 `<…>`·빈 값은 내용이 아니다(§5.2 「양식 문구 그대로면 없음」, R4-4). 표지가 없으면 글자가 있는 줄 수로 본다.
+const PLACEHOLDER_RE = /<[^<>\n]*>/g;
+const hasContent = (s) => /[\p{L}\p{N}]/u.test((s || '').replace(PLACEHOLDER_RE, '').replace(/^\s*(?:왜|무엇을)\s*[:：]/, ''));
 export function judgeReason(text) {
   if (!text) return { why: false, what: false };
-  const hasWhy = /①|왜\s*[:：]/.test(text);
-  const hasWhat = /②|무엇을\s*[:：]/.test(text);
-  if (hasWhy || hasWhat) return { why: hasWhy, what: hasWhat };
-  const n = text.split('\n').filter((l) => l.trim()).length;
+  const whyM = text.match(/(?:①|왜\s*[:：])([^\n]*)/);
+  const whatM = text.match(/(?:②|무엇을\s*[:：])([^\n]*)/);
+  if (whyM || whatM) return { why: !!whyM && hasContent(whyM[1]), what: !!whatM && hasContent(whatM[1]) };
+  const n = text.split('\n').filter((l) => hasContent(l)).length;
   return { why: n >= 1, what: n >= 2 };
 }
 
@@ -552,6 +595,44 @@ export function deployNote(description) {
   return null;
 }
 
+// ── 재리뷰 — 이전 차단 발견 전체 목록(§5.6, R4-3) ──────────────────────────
+// 이전 판정 댓글의 「4. 차단 발견」은 실행 블록 40줄 축약(task-06 ④)으로 일부가 `- … 외 n건(차단 — 전부 부록 D 에 있음): F9, F10` 으로 접힐 수 있다.
+// 접힌 항목은 이전 리포트(<reportDir>/<프로젝트>-<iid>-<prior_head7>.md) 부록 D 에서 제목을 복원하고, 리포트가 없거나 부록 D 에 없으면 title:null 로 남겨
+// complete=false 가 된다 — verdict 가 M-rereview(증거 부족)로 받아 「이전 차단 발견마다 확인」을 완료한 것으로 취급하지 않는다.
+const BLOCK_ITEM_RE = /^- (?:([A-Za-z][\w-]*) )?(DEFECT|MISSING_EVIDENCE|DESIGN_DRIFT) — (.*)$/;
+const BLOCK_MORE_RE = /^- … 외 (\d+)건\(차단[^)]*\)(?::\s*(.*))?$/;
+const APPENDIX_D_RE = /^- \*\*([A-Za-z][\w-]*)\*\* \[[^\]]*\] (\S+)(?: \(차단\))? — (.*?) \([^()]*\) · 출처 /;
+export function parseAppendixD(reportText) {
+  const out = new Map();
+  if (!reportText) return out;
+  const i = reportText.indexOf('## 부록 D');
+  if (i < 0) return out;
+  for (const l of reportText.slice(i).split('\n')) { const m = l.match(APPENDIX_D_RE); if (m) out.set(m[1], { type: m[2], title: m[3] }); }
+  return out;
+}
+export function priorBlockingList(noteBody, reportText) {
+  const lines = (noteBody || '').split('\n').map((l) => l.trim());
+  const s = lines.findIndex((l) => /^4\. 차단 발견/.test(l));
+  if (s < 0) return { items: [], complete: false };                                   // 절 자체가 없으면 목록을 세울 수 없다
+  const items = [];
+  let foldedN = 0;
+  let foldedIds = [];
+  for (let i = s + 1; i < lines.length; i += 1) {
+    const l = lines[i];
+    if (/^5\. /.test(l) || l === '```') break;
+    const m = l.match(BLOCK_ITEM_RE);
+    if (m) { items.push({ id: m[1] || null, type: m[2], title: m[3], source: 'comment' }); continue; }
+    const f = l.match(BLOCK_MORE_RE);
+    if (f) { foldedN = Number(f[1]); foldedIds = (f[2] || '').split(/\s*,\s*/).filter(Boolean); }
+  }
+  if (foldedN > 0) {
+    const appendix = parseAppendixD(reportText);
+    if (foldedIds.length) for (const id of foldedIds) { const a = appendix.get(id); items.push(a ? { id, type: a.type, title: a.title, source: 'report' } : { id, type: null, title: null, source: 'missing' }); }
+    else for (let k = 0; k < foldedN; k += 1) items.push({ id: null, type: null, title: null, source: 'missing' });   // id 목록 없는 옛 형식 — 복원 불가
+  }
+  return { items, complete: items.every((b) => b.title !== null) };
+}
+
 // ── 댓글 신뢰(§5.1-4) ─────────────────────────────────────────────────────
 export function classifyNotes(mr, adapter, headSha) {
   const verdictRe = new RegExp(adapter.comments.verdictFirstLine);
@@ -592,7 +673,16 @@ export function classifyNotes(mr, adapter, headSha) {
   const trusted = priorVerdicts.filter((v) => v.trusted).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const latest = trusted[trusted.length - 1] || null;
   const sameHead = latest ? headSha.startsWith(latest.sha) : false;
-  const rereview = { active: !!latest && !sameHead, prior_head: latest ? latest.sha : null, prior_verdict: latest ? latest.verdict : null, prior_note_id: latest ? latest.note_id : null };
+  const active = !!latest && !sameHead;
+  let prior = { priorReport: null, priorBlocking: [], priorBlockingComplete: null };
+  if (active) {
+    const reportFile = path.join(adapter.resolved.reportDir, `${mr.project.name}-${mr.iid}-${latest.sha.slice(0, 7)}.md`);
+    const reportText = fs.existsSync(reportFile) ? fs.readFileSync(reportFile, 'utf8') : null;
+    const note = mr.notes.find((n) => n.id === latest.note_id);
+    const pb = priorBlockingList(note ? note.body : '', reportText);
+    prior = { priorReport: reportText === null ? null : reportFile, priorBlocking: pb.items, priorBlockingComplete: pb.complete };
+  }
+  const rereview = { active, prior_head: latest ? latest.sha : null, prior_verdict: latest ? latest.verdict : null, prior_note_id: latest ? latest.note_id : null, ...prior };
   return { priorVerdicts, authorTokens, ignoredComments: ignored, confirms, rereview };
 }
 
@@ -642,10 +732,12 @@ export function check({ adapter, work }) {
     baselineLinks.push(r);
   }
 
+  // 변경 사유 출처: 본문 「배경」에 실내용(양식 표지·자리표시자를 뺀 글)이 있을 때만 body — 양식만 남은 본문은 「없음」이라 연결 이슈 원문으로 대체한다(§5.2, R4-4)
   const bodyReason = reasonText(desc);
-  const reasonSrc = bodyReason ? 'body' : issueText ? 'issue' : 'none';
-  const reasonJ = judgeReason(reasonSrc === 'body' ? bodyReason : reasonSrc === 'issue' ? issueText : '');
-  const reason = { why: reasonJ.why, what: reasonJ.what, source: reasonSrc, text: (reasonSrc === 'body' ? bodyReason : issueText).slice(0, 2000) };
+  const bodyJ = judgeReason(bodyReason);
+  const reasonSrc = (bodyJ.why || bodyJ.what) ? 'body' : issueText ? 'issue' : 'none';
+  const reasonJ = reasonSrc === 'body' ? bodyJ : judgeReason(reasonSrc === 'issue' ? issueText : '');
+  const reason = { why: reasonJ.why, what: reasonJ.what, source: reasonSrc, text: (reasonSrc === 'body' ? bodyReason : reasonSrc === 'issue' ? issueText : '').slice(0, 2000) };
 
   const baselineCandidateFiles = mr.diffs.filter((d) => !d.deleted_file).map((d) => d.new_path).filter((p) => matchesAny(p, adapter.baselineCandidates));
   const attachments = parseAttachments(mr);
@@ -709,8 +801,9 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/check.test.mjs` → 10/10.
+- `node --test tests/mr-review/check.test.mjs` → 11/11.
 - 저장소·이슈 URL 링크는 호스트·전체 프로젝트 경로를 등록 프로젝트의 `web_url`과 대조하고 다르면 미확보(plan R3-5) · 이슈 댓글 조회 실패는 미확보(plan R3-3).
+- 변경 사유 양식만 남은 본문(①·② 표지 + 꺾쇠 자리표시자)은 「없음」 — 연결 이슈 원문으로 대체(plan R4-4) · 재리뷰면 `rereview.priorBlocking`에 이전 차단 발견 전체(댓글 + 이전 리포트 부록 D 복원), 복원 못 한 항목은 `title:null`·`priorBlockingComplete:false`(plan R4-3).
 - MR 작성자의 판정 댓글은 `trusted:false` + `ignoredComments`(R1-F5·R2-F1) · 브랜치형 Baseline 링크는 **그 프로젝트의** 브랜치 API로 SHA 해소하고 `pinned:false`(R5-F2) · 본문 변경 시각 뒤의 확인 댓글만 「있음」(R3-F3) · 기준선 후보 문서는 후보로만(R1-F6).
 - `glab mr …` 호출 0건.
 
@@ -722,6 +815,8 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 - **`closes_issues`와 본문 `#n`이 같은 이슈면 한 번만 받는다. 이유:** 팩 중복·API 호출 낭비. 본문 `#n`(Baseline 밖 — 「배경」의 이슈/spec 줄 등)도 수집 대상이다(R2-6·§5.1-5).
 - **`closes_issues`의 `project_id`가 어댑터에 없으면 현재 프로젝트로 대체하지 마라 — `project:null`·미확보. 이유:** R2-3 — 현재 프로젝트에 같은 번호의 무관한 이슈가 있으면 그 본문이 변경 사유·설계 근거가 되고 미확보 차단도 안 생긴다.
 - **blob 링크의 ref/path 경계를 URL의 첫 세그먼트로 정하지 마라 — 그 저장소의 branch/tag API로 긴 후보부터 해소. 이유:** R2-8 — `feature/topic` 브랜치 링크가 `ref=feature, path=topic/…`로 깨져 다른 문서를 확보로 기록할 수 있다. SHA(permalink)만 첫 세그먼트로 확정.
+- **`judgeReason`은 양식 표지(①·②)의 존재가 아니라 표지 뒤의 실내용으로 판정한다 — 꺾쇠 `<…>`·빈 값은 내용이 아니다. 양식만 남은 본문을 `source:body`로 두지 마라. 이유:** plan R4-4 — `① 왜: <관찰 가능한 현상·요청 근거>` 두 줄이 둘 다 true 로 판정돼 보완 요청이 빠지고 S1 분류가 오염되며, 빈 양식이 bodyReason 으로 남으면 연결 이슈의 실제 사유도 대체 입력으로 쓰이지 못한다.
+- **재리뷰의 이전 차단 발견은 댓글 「4. 차단 발견」 항목 + 「… 외 n건: F9, F10」 축약분까지 전체를 세우고, 축약분은 이전 리포트 부록 D 에서 복원하라. 복원 못 한 항목을 버리거나 완전한 목록으로 취급하지 마라. 이유:** plan R4-3 — task-06 의 40줄 축약(R3-10)이 차단 발견 일부를 부록 D(로컬 리포트)로 옮기므로 댓글만으로 대조표를 만들면 §5.6 「이전 차단 발견마다」 확인이 빠진 채 판정된다. `title:null` 항목은 `priorBlockingComplete:false` → verdict `M-rereview`.
 - **URL 링크의 호스트·namespace 를 버리고 basename 만으로 등록 프로젝트에 매칭하지 마라 — `project_url`을 보존하고 해소 때 `projects/<id>`의 `web_url`과 대조해 다르면 미확보. 이유:** plan R3-5 — `https://elsewhere.invalid/unregistered/alpha/-/blob/…`가 등록된 `alpha`의 문서로 해석돼 기본 호스트의 다른 원문을 「확보」로 기록한다(L1·L2 대조 근거가 바뀜). `#n`·`closes_issues`는 `project_id`가 정체성이라 대조 대상이 아니다.
 - **이슈 댓글 조회 실패를 빈 댓글로 바꾸지 마라 — 미확보. 이유:** plan R3-3 — 댓글 없는 원문이 「확보」로 기록돼 증거 부족이 사라진다.
 - **`earlyExit`는 판정만 계산하고 여기서 멈추지 않는다. 이유:** 멈출지(`--full`)는 SKILL.md가 결정한다(§5.2 조기 종료).

@@ -1,6 +1,6 @@
 # task-05 — 컨텍스트 팩 · 마스킹 (pack) (spec §5.3 · D4 · D14 · F4 · F5 · SC-3 `pack.json`)
 
-**목적**: 변경 파일 → 공통 문서(절 단위 발췌), 용어집·grep → 팀/개인 위키 발췌, 기준선·이슈 원문, 어댑터 문서, MR 본문·댓글을 모아 **팩 A**(Claude 전부)와 **팩 B**(Codex — 전송 허용 출처만 + 개인정보 마스킹)를 만든다. 마스킹이 실패하거나 가려지지 않은 패턴이 남으면 팩 B를 만들지 않고 `codexSkipped`로 표시한다(fail-closed).
+**목적**: 변경 파일 → 공통 문서(절 단위 발췌), 용어집·grep(검색어 = 변경 파일명 + diff 추가 줄의 테이블명·선언 식별자) → 팀/개인 위키 발췌, 기준선·이슈 원문, 어댑터 문서, MR 본문·댓글을 모아 **팩 A**(Claude 전부)와 **팩 B**(Codex — 전송 허용 출처만 + 개인정보 마스킹)를 만든다. 마스킹이 실패하거나 가려지지 않은 패턴이 남으면 팩 B를 만들지 않고 `codexSkipped`로 표시한다(fail-closed).
 
 ## Files
 
@@ -207,6 +207,20 @@ test('repo: 접두 문서 참조 — 대상 저장소 문서를 고정 head 에�
   assert.equal(p.codexSkipped, false);
 });
 
+test('위키 검색어에 diff 추가 줄의 테이블명·선언 식별자가 들어간다 — 제목·파일명에 없는 테이블명만 언급한 페이지가 선택된다 (R4-5)', () => {
+  const diff = '@@ -1,3 +1,4 @@\n <select id="findAssign" resultType="map">\n-  SELECT * FROM report_queue\n+  SELECT * FROM report_assign ra\n+  JOIN assign_rule r ON r.id = ra.rule_id\n+  -- from the old queue\n';
+  const diffs = [{ old_path: 'src/main/resources/mapper/XMapper.xml', new_path: 'src/main/resources/mapper/XMapper.xml', new_file: false, renamed_file: false, deleted_file: false, too_large: false, diff }];
+  const { home, adapter, work, env } = setup({ diffs });
+  writeFileSync(join(home, 'wiki-team', 'decisions', 'assign-table-pitfall.md'), '# 배정 테이블 함정\n\nreport_assign 은 rule_id 가 NULL 일 수 있다.\n');
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(work, 'pack.json'));
+  assert.ok(p.wikiTerms.includes('report_assign') && p.wikiTerms.includes('assign_rule'), p.wikiTerms.join(','));   // SQL 테이블명 — 추가 줄만(report_queue 는 삭제 줄)
+  assert.ok(!p.wikiTerms.includes('report_queue'));
+  assert.ok(!p.wikiTerms.some((t) => /^(the|old|queue)$/i.test(t)));                                                 // 산문 「from the」 는 식별자가 아니다
+  assert.ok(p.sources.map((s) => s.ref).includes('wiki-team/decisions/assign-table-pitfall.md'));                     // 제목·파일명엔 없는 테이블명만 언급한 페이지
+});
+
 test('위키 루트가 없어도 돈다 · 댓글의 이메일도 B 에서 가려진다', () => {
   const { adapter, work, env, home } = setup({ notes: [{ id: 1, system: false, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T00:00:00Z', body: '문의 someone@example.test 로' }] });
   const r = runCli(['pack', '--adapter', adapter, '--work', work], { MR_REVIEW_HOME: join(home, 'nowhere') });
@@ -351,7 +365,27 @@ function basenames(mr) {
   return [...out].filter((b) => b.length >= 4);
 }
 
-function wikiPages(root, mr, areaText, limits) {
+// 변경 코드에서 검색어(R4-5) — spec §5.3-2 「변경 파일명·기능명·테이블명으로 본문 grep」: diff 의 추가 줄(`+`, `+++` 제외)에서
+//  (a) SQL 테이블명 — FROM/JOIN/INTO/UPDATE/TABLE 뒤 식별자(스키마 접두가 있으면 마지막 세그먼트도) · `@Table(name="…")`
+//  (b) 선언 식별자 — class/interface/enum/record/function/def 뒤 이름 · MyBatis `<select|insert|update|delete id="…">`
+// 결정적(같은 입력 = 같은 결과)이고 어댑터 키가 없다(설계 결정 — plan R4-5). 길이 ≥ 4 · SQL 예약어 제외 · 상한 TERM_MAX. 산문의 「from the」 같은 짧은 낱말은 길이·예약어 필터로 걸린다.
+const SQL_STOP = new Set(['SELECT', 'FROM', 'WHERE', 'JOIN', 'INTO', 'UPDATE', 'TABLE', 'VALUES', 'INSERT', 'DELETE', 'SET', 'AND', 'OR', 'NOT', 'NULL', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'FULL', 'CROSS', 'ON', 'AS', 'ORDER', 'GROUP', 'BY', 'HAVING', 'LIMIT', 'EXISTS', 'CREATE', 'ALTER', 'DROP', 'IF', 'DUAL', 'WITH', 'UNION', 'DISTINCT', 'TEMPORARY']);
+const TERM_MAX = 40;
+function addedLines(mr) {
+  return (mr.diffs || []).flatMap((d) => (d.diff || '').split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).map((l) => l.slice(1)));
+}
+export function codeTerms(mr) {
+  const out = new Set();
+  const text = addedLines(mr).join('\n');
+  const push = (t) => { if (t && t.length >= 4 && !SQL_STOP.has(t.toUpperCase()) && out.size < TERM_MAX) out.add(t); };
+  for (const m of text.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+`?([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)`?/gi)) { push(m[1]); if (m[1].includes('.')) push(m[1].split('.').pop()); }
+  for (const m of text.matchAll(/@Table\s*\(\s*(?:name\s*=\s*)?["']([^"']+)["']/g)) push(m[1]);
+  for (const m of text.matchAll(/\b(?:class|interface|enum|record|function|def)\s+([A-Za-z_]\w*)/g)) push(m[1]);
+  for (const m of text.matchAll(/<(?:select|insert|update|delete)\s+id="([^"]+)"/g)) push(m[1]);
+  return [...out];
+}
+
+function wikiPages(root, mr, areaText, limits, terms = []) {
   if (!fs.existsSync(root.path)) return [];
   const pages = walkMd(root.path);
   const picked = new Map();
@@ -361,7 +395,7 @@ function wikiPages(root, mr, areaText, limits) {
     const hit = pages.find((p) => path.basename(p, '.md') === g.slug);
     if (hit) add(hit);
   }
-  const names = basenames(mr);
+  const names = [...new Set([...basenames(mr), ...terms])];   // 파일 basename + 코드 검색어(테이블명·선언 식별자, R4-5)
   for (const p of pages) {
     if (picked.size >= limits.pagesPerPack) break;
     if (root.glossaryFile && path.resolve(p) === path.resolve(root.glossaryFile)) continue;
@@ -448,10 +482,11 @@ export function pack({ adapter, work }) {
     const exportable = l.kind !== 'repo' || l.project === mr.project.name || (docsProject !== null && l.project === docsProject);
     add(l.kind === 'issue' ? 'issue' : 'baseline', l.file, fs.readFileSync(path.join(work, l.file), 'utf8'), exportable);
   }
-  // 3. 위키 — 용어집(변경 영역 텍스트에 용어가 있으면 슬러그 페이지) + 변경 파일 basename grep
-  const areaText = [mr.title, ...(mr.diffs || []).flatMap((d) => [d.new_path, d.old_path])].join(' ');
+  // 3. 위키 — 용어집(변경 영역 텍스트 = 제목·경로·diff 추가 줄에 용어가 있으면 슬러그 페이지) + 변경 파일 basename·코드 검색어(테이블명·선언 식별자) grep — spec §5.3-2 「변경 파일명·기능명·테이블명」(R4-5)
+  const terms = codeTerms(mr);
+  const areaText = [mr.title, ...(mr.diffs || []).flatMap((d) => [d.new_path, d.old_path]), ...addedLines(mr)].join(' ');
   for (const root of adapter.resolved.wikiRoots) {
-    for (const pg of wikiPages(root, mr, areaText, { linesPerPage: adapter.wiki.linesPerPage, pagesPerPack: adapter.wiki.pagesPerPack })) add('wiki', pg.rel, pg.text, pg.export);
+    for (const pg of wikiPages(root, mr, areaText, { linesPerPage: adapter.wiki.linesPerPage, pagesPerPack: adapter.wiki.pagesPerPack }, terms)) add('wiki', pg.rel, pg.text, pg.export);
   }
   // 4. 어댑터 문서(렌즈·정책 설명) — 전송 허용. 기계 블록은 뗀다(마스킹 정규식 원문이 마스킹에 걸려 오염되고, LLM 에겐 산문만 필요)
   add('adapter', path.basename(adapter.file), adapter.markdown.replace(/```json mr-review-adapter[\s\S]*?```/, '(기계 블록 생략 — 스크립트 전용)'), true);
@@ -469,7 +504,7 @@ export function pack({ adapter, work }) {
   const masked = applyMask(rawB, adapter.mask);
   const left = residual(masked.text, adapter.mask);
   const ok = left.length === 0;
-  const out = { sources, mask: { applied: masked.applied, residual: left.map((r) => ({ name: r.name, where: 'pack-b' })), ok }, packA: 'pack-a.md', packB: ok ? 'pack-b.md' : null, codexSkipped: !ok, codexSkipReason: ok ? null : `마스킹 뒤에도 패턴 잔존: ${left.map((r) => r.name).join(', ')} — Codex 를 건너뛴다(단일 모델 모드)` };
+  const out = { sources, wikiTerms: terms, mask: { applied: masked.applied, residual: left.map((r) => ({ name: r.name, where: 'pack-b' })), ok }, packA: 'pack-a.md', packB: ok ? 'pack-b.md' : null, codexSkipped: !ok, codexSkipReason: ok ? null : `마스킹 뒤에도 패턴 잔존: ${left.map((r) => r.name).join(', ')} — Codex 를 건너뛴다(단일 모델 모드)` };
   if (ok) fs.writeFileSync(path.join(work, 'pack-b.md'), masked.text);
   else if (fs.existsSync(path.join(work, 'pack-b.md'))) fs.rmSync(path.join(work, 'pack-b.md'));
   fs.writeFileSync(path.join(work, 'pack.json'), JSON.stringify(out, null, 2));
@@ -510,10 +545,11 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/pack.test.mjs` → 8/8.
+- `node --test tests/mr-review/pack.test.mjs` → 9/9.
 - `repo:<경로>[#절]` 참조는 대상 저장소의 고정 head(워크트리 또는 raw API)에서 읽고 출처 `repo:<경로>@<head7>`·팩 B 포함, 누락은 `missing:true`(plan R3-6).
 - 전송 금지 루트(`export:false`)의 텍스트가 `pack-b.md`에 한 글자도 없다(F4) · 마스킹 잔존 시 `pack-b.md`가 없고 `codexSkipped:true`(D14·F5).
 - 출처마다 `[S<n>] <kind> · <경로@sha | 페이지>`가 `pack.json`과 두 팩 헤더에 있다(G4).
+- 위키 검색어 = 제목·경로·파일 basename + diff 추가 줄의 SQL 테이블명·선언 식별자(`pack.json.wikiTerms`) — 제목·파일명에 없는 테이블명만 언급한 페이지도 선택된다(plan R4-5, spec §5.3-2).
 
 ## Cautions
 
@@ -522,6 +558,7 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 - **필수 문서(`policy.docs`·`docsMap.always`)의 파일·절 누락은 `PackError`(ERR exit 2). `missing`을 버리고 정상 출처로 등록하지 마라. 이유:** R1-8 — 정책 절 제목이 바뀌거나 공통 문서 체크아웃이 없으면 정책을 읽지 않은 `APPROVE`가 나온다. 규칙 문서(`docsMap.rules`)만 `missing:true`로 계속.
 - **마스킹은 본문·댓글·발췌 전체에 건다 — 발췌만 걸지 마라. 이유:** D4 범위(본문·댓글·발췌). 워크트리 코드는 Codex가 직접 읽으므로 여기서 가리지 않는다(D4 — 코드 안 개인정보는 L5 발견).
 - **`residual`은 `[masked:` 로 시작하는 매치를 무시한다. 이유:** 뒤보기 패턴(`token=`)이 가린 자리 자체를 다시 매치해 거짓 잔존이 된다.
+- **위키 검색어를 제목·파일명에서만 뽑지 마라 — diff 추가 줄의 테이블명(FROM/JOIN/INTO/UPDATE/TABLE 뒤·`@Table`)·선언 식별자(class/function/MyBatis id)를 `codeTerms`로 더하고 용어집 대조 텍스트에도 추가 줄을 넣어라. 추출은 스크립트 규칙(결정적)이고 어댑터 키·LLM 입력을 두지 않는다. 이유:** plan R4-5(사용자 결정) — spec §5.3-2·어댑터 §5 가 요구한 기능명·테이블명 검색이 빠지면 테이블명만 언급한 위키 교훈이 조용히 누락된다. 삭제 줄은 제외(바뀐 뒤 코드가 기준).
 - **위키 페이지는 전문이 아니라 `excerpt`. 이유:** 발췌 상한은 어댑터 값(§5.3-2) — 프롬프트 비대화 방지.
 - **공통 문서 참조는 `경로#절접두` 로 절만 뽑는다. 정책 전문을 넣지 마라. 이유:** 어댑터 4.2 「항상 읽을 절」 — 정책 전문(350줄)은 두 모델 프롬프트를 압도한다.
 - **대상 저장소 문서(`repo:` 접두)는 다른 체크아웃의 작업 트리를 상대 경로로 읽지 마라 — 워크트리(고정 head) 또는 `repository/files/…/raw?ref=<head>`. 이유:** plan R3-6 — 어댑터 §2·§4가 요구하는 `AGENTS.md`·저장소 `docs/`를 docsRoot 기준으로는 표현할 수 없고, 작업 트리를 읽으면 고정 head·출처 SHA(F6)가 깨진다. 누락은 저장소 속성이라 `missing:true`로 계속(필수 문서 ERR 규칙의 예외).
