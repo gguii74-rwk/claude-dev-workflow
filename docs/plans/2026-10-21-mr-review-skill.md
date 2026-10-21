@@ -321,6 +321,7 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 | 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
 |---|---|---|---|---|---|---|
 | R1 | 적대·자동 | `3f47b98` | 0/6/4 (신규 10) — 전부 FIXED 후보(기결정 재론 0·ESCALATE 0) | **22** | 0 → 수정 후 10 | needs-attention |
+| R2 | 적대·자동 | `b5ff996` | 0/4/4 (신규 8 · R1 잔존 0 — 적대 비재출현, 큐 유지) — 전부 FIXED 후보(기결정 재론 0·ESCALATE 0) | **16** | 10 → 수정 후 18 | needs-attention |
 
 | # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -335,7 +336,16 @@ task-09(릴리스)·10(어댑터 확정본)·11(S1·실사용)은 9단계 이후
 | R1-9 | task-06 render · 부록 C·본문이 evidence·scenario·brokenPremise 를 버림(§5.7 원본 보존 미충족) · 부록에 마스킹 후 보존 | medium | FIXED | `6bf5e1b` — 부록 C 행에 근거·시나리오·설계 내 수정·깨진 전제 · 신규 부록 D(병합 발견 상세·리뷰어 결정: 근거·실패 시나리오·전제·resolution·dismissReason) · 마스킹은 전체 텍스트에 그대로 적용 · 테스트 |
 | R1-10 | task-03 check · Baseline 자리표시자면 contract.complete=false 라 후보 문서가 있어도 earlyExit=true → §5.2 후보 관련성 검토 경로 도달 불가 · 다른 줄 완성 + Baseline 만 미완 + 후보 있음이면 검토 진행(Baseline 미완 기계 증거는 유지) | medium | FIXED | `6bf5e1b` — `would` = (Baseline 외 미완 줄 있음) ‖ (기준선 없음 ∧ 후보 0) · Baseline 미완은 incompleteLines 로 verdict 에 전달(APPROVE 불가) · SC-3·task-07 §3 문구 · 기존 테스트가 고정하던 반대 동작을 바꿈(+ 다른 줄 미완 사례). spec §5.2 문면(「계약이 미완이거나 … 후보 문서가 있으면 진행」)의 두 문장 중 후자를 따름 — spec 변경 없음 |
 
-미확인 FIXED 큐(R1 수정 후): R1-1~R1-10(10건) — 소멸 확인은 확인 라운드 임무 ①. 루프 직접 판정: R1-8 의 선택지 채택 1건(위 표시).
+| R2-1 | task-06 render · 하드코딩 비밀값 리터럴이 리포트(부록 C·D)에 그대로 남음(어댑터 mask 는 개인정보용) · 비밀값 인용의 제거 경로를 원본 발견·최종 리포트에 동일 적용 + 회귀 사례 | high | FIXED | `1e4e75b` — 엔진 내장 `SECRET_MASK`(password·secret·api_key·token·authorization 값 · Bearer · PEM 블록 — 프로젝트 무관, D10 무관)를 어댑터 mask 뒤 리포트 전체에 적용, 파일:줄은 보존(§5.7) · 테스트(evidence 의 `db.password = "…"`·`api_key:` 제거) |
+| R2-2 | task-02 collect · overflow 로 diff 목록에서 통째로 빠진 파일은 복원·판정 전달 경로 없음 · 목록 완전성 계약 + 미확보는 결정적 MISSING_EVIDENCE | high | FIXED | `1e4e75b` — `mr.json.changes_count` 보존, diff-only `snapshot.diff_list_complete` = `!overflow ‖ (changes_count 정수·"+" 없음·≤ 수신 수)`(모르면 false — fail-closed) · verdict `M-diff-list`(HOLD_EVIDENCE 이상) · SC-3 · 테스트(없음/"4"/"4+" 3경우 + verdict) |
+| R2-3 | task-03 check · 미등록 프로젝트의 closes_issues 를 현재 프로젝트 이슈로 대체 · 원래 project_id·URL 보존, 미확보로 기록 | high | FIXED | `1e4e75b` — `project:null`·`project_id` 보존·`raw=web_url`, `resolveIssue` 가 미확보(`id 999`) · 테스트(999 의 #12 를 101 에서 읽지 않음) |
+| R2-4 | task-06/07 · review-validate 가 head 형식만 검사하고 병합이 findings.head_sha 를 새로 적어 이전 head 검토 결과가 통과 · SC-4 검증에 기대 head·reviewer 전달, 불일치는 validReviewers 제외 | high | FIXED | `1e4e75b` — `review-validate --head <sha> --reviewer <name>`(`validateReview(obj, {head, reviewer})`) → 불일치 INVALID · task-07 §5 두 검토자 모두 인자 필수·실패 = 그 모델 제외(head 를 고쳐 쓰지 않음) · SC-4·SC-6 · 테스트(단위 + CLI) |
+| R2-5 | task-07 §6-4 · baselineCandidateRelevant 를 「둘 다 true」로 계산해 단일 모델 모드에서 관련 후보가 무조건 기각 · 유효 결과만 통합, 상충 시 메인 확인 | medium | FIXED | `1e4e75b` — 유효 결과(`validReviewers`)만 대상 — 전부 true/false, 단일 모델이면 그 값, 상충이면 메인이 후보 문서를 직접 읽고 `baselineCandidateReason` 기재 · SC-5 필드 추가 · Cautions |
+| R2-6 | task-03 check · MR 본문의 일반 `#n` 참조(종료 키워드 없음)는 수집 안 함(§5.1-5 위반) · 본문 이슈 참조 수집·중복 제거·미확보 보존 | medium | FIXED | `1e4e75b` — 「배경」 절의 `#n`·이슈 URL 을 수집 대상에 추가(프로젝트·IID 중복 제거, 다른 절의 `#3 항목` 오인 방지로 배경 절 한정) · SC-3 · 테스트(`이슈/spec: #88`) |
+| R2-7 | task-04 deploy · zip 리더가 CRC 를 검증하지 않아 CRC 손상 zip 이 「일치」 · CRC32·크기·헤더 정합 검증, 실패는 corrupt | medium | FIXED | `1e4e75b` — `crc32()` 내장, `read()` 가 central directory 의 CRC·비압축 크기와 대조·범위 초과 검사 → `corrupt` → 「대조 불가」 · SC-3 결과 순서 문구 · 테스트(central CRC 만 뒤집은 zip) |
+| R2-8 | task-03 check · BLOB_RE 가 blob 뒤 첫 세그먼트를 ref 로 취해 `feature/topic` 브랜치 링크 오해소 · 저장소 branch/tag 로 경계 해소·URL 디코딩 | medium | FIXED | `1e4e75b` — `refpath` 보존, `resolveRepoLink` 가 긴 후보부터 branch→tag API 로 최장 일치 해소(SHA permalink 만 첫 세그먼트 확정), 세그먼트 URL 디코딩 · SC-3 · 테스트(`feature/topic` + 최장 후보 먼저 호출 확인) |
+
+미확인 FIXED 큐(R2 수정 후): R1-1~R1-10 · R2-1~R2-8(18건) — 소멸 확인은 확인 라운드 임무 ①. 루프 직접 판정: R1-8 의 선택지 채택 1건(위 표시).
 
 ## 확인 대기 대장
 
