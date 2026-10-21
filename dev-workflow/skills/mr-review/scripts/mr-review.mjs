@@ -2,6 +2,7 @@
 // mr-review.mjs — mr-review 스킬의 결정적 단계 CLI(SC-6). 모든 오류는 stdout `ERR <메시지>` 한 줄 + exit 2.
 //   collect · check · deploy · pack · review-validate · verdict · render · cleanup — 각 lib 모듈이 구현(task-02~06).
 import { loadAdapter, parseArgs, AdapterError } from './lib/adapter.mjs';
+import { cmdCollect } from './lib/collect.mjs';
 
 export class CliError extends Error {
   constructor(message, code = 2) { super(message); this.code = code; }
@@ -9,7 +10,7 @@ export class CliError extends Error {
 
 // 서브커맨드 → async (args, ctx) => string(stdout 첫 줄). ctx = { adapter, work }
 const COMMANDS = {
-  // task-02: collect
+  collect: cmdCollect,
   // task-03: check
   // task-04: deploy
   // task-05: pack
@@ -42,6 +43,6 @@ main(process.argv.slice(2)).then((line) => {
 }).catch((e) => {
   const msg = e instanceof Error ? e.message : String(e);
   process.stdout.write(`ERR ${msg}\n`);
-  process.exitCode = e instanceof CliError ? e.code : 2;
+  process.exitCode = Number.isInteger(e?.code) && e.code > 0 && e.code < 256 ? e.code : 2;
   if (!(e instanceof CliError) && !(e instanceof AdapterError)) process.stderr.write(`${e?.stack ?? ''}\n`);
 });
