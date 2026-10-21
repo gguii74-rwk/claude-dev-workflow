@@ -297,7 +297,7 @@ git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with|claude-s
 | 03 | 작성 규칙 검사표 · 댓글 신뢰 · 기준선 원문 (check) | [x] | [task-03](2026-10-21-mr-review-skill/task-03-check.md) | 02 | `f4cc40f` — check 11/11(누적 28), plan 블록과 바이트 동일(stripFences 포함), 태스크 리뷰 승인(minor 6 이월) |
 | 04 | 배포본 zip 대조 (deploy) | [x] | [task-04](2026-10-21-mr-review-skill/task-04-deploy.md) | 02 | `a63202a` — deploy 11/11(누적 39), 전사 수정 없음, 태스크 리뷰 승인(minor 6 이월 · 자동 보안 리뷰 3건 impl 루프 이월) |
 | 05 | 컨텍스트 팩 · 마스킹 (pack) | [x] | [task-05](2026-10-21-mr-review-skill/task-05-pack.md) | 03 | `f6ef25a`·`157cb3d` — pack 13/13(누적 52), 수정 1라운드: 팩 B 헤더 미제공 출처 ref 제거(F4)·비밀값 키 `DB_PASSWORD` 류 마스킹(F5) — Cautions 1줄, 재리뷰 승인(이슈 전송 범위 보안 지적은 impl 루프 이월) |
-| 06 | 판정 계산 · 리포트 · 비밀값 제거 · 정리 (verdict/render/cleanup) | [ ] | [task-06](2026-10-21-mr-review-skill/task-06-report.md) | 03, 04, 05 | |
+| 06 | 판정 계산 · 리포트 · 비밀값 제거 · 정리 (verdict/render/cleanup) | [x] | [task-06](2026-10-21-mr-review-skill/task-06-report.md) | 03, 04, 05 | `e1b6856` — report 17/17(누적 69), plan 블록과 바이트 동일 + CLI `.catch` stderr 스택을 프로그래밍 오류로만 한정(SC-6, Cautions 1줄), 태스크 리뷰 승인(minor 6 이월) |
 | 07 | SKILL.md — 절차·두 검토자·병합·재리뷰 | [ ] | [task-07](2026-10-21-mr-review-skill/task-07-skill-md.md) | 06 | |
 | 08 | README 3종 · manifest description | [ ] | [task-08](2026-10-21-mr-review-skill/task-08-readme-manifest.md) | 07 | |
 
