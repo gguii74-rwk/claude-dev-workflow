@@ -7,6 +7,7 @@ import { cmdCheck } from './lib/check.mjs';
 import { cmdDeploy } from './lib/deploy.mjs';
 import { cmdPack } from './lib/pack.mjs';
 import { cmdReviewValidate, cmdVerdict, cmdRender, cmdCleanup } from './lib/report.mjs';
+import { setHost } from './lib/gitlab.mjs';
 
 export class CliError extends Error {
   constructor(message, code = 2) { super(message); this.code = code; }
@@ -35,6 +36,7 @@ export async function main(argv) {
   if (NEEDS_ADAPTER.has(sub)) {
     if (!args.adapter) throw new CliError('--adapter <어댑터 파일> 이 필요하다(또는 MR_REVIEW_ADAPTER)');
     ctx.adapter = loadAdapter(args.adapter);
+    setHost(ctx.adapter.gitlab.host);
     if (!args.work) throw new CliError('--work <작업 디렉터리> 가 필요하다');
     ctx.work = args.work;
   }

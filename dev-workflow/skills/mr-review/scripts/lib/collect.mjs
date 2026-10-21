@@ -189,6 +189,9 @@ export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
     const raw = fetchMr(project.id, iid);
     mr = normalize(project, projectName, iid, raw, new Date().toISOString());
     if (!mr.api_head) throw new CollectError('MR 메타에 head SHA(sha)가 없다');
+    // 받은 MR 이 어댑터 호스트의 것인지(impl R2-4) — web_url 호스트가 다르거나 없으면 다른 서버의 같은 번호 MR 일 수 있다
+    const urlHost = (mr.web_url.match(/^https?:\/\/([^/]+)/) || [])[1] || '';
+    if (urlHost.toLowerCase() !== String(adapter.gitlab.host).toLowerCase()) throw new CollectError(`MR web_url 호스트(${urlHost || '없음'})가 어댑터 gitlab.host(${adapter.gitlab.host})와 다르다 — 다른 GitLab 서버의 MR 일 수 있어 멈춘다`);
     const fetchedAt = new Date().toISOString();
     if (useWorktree) {
       const pin = pinWorktree(project.checkout, mr, work);

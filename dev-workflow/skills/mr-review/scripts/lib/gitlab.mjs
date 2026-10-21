@@ -11,8 +11,13 @@ export function glabBin() {
   return process.env.MR_REVIEW_GLAB || 'glab';
 }
 
+// 요청 호스트(impl R2-4) — 어댑터 `gitlab.host` 를 CLI 가 설정한다. 미설정이면 조회하지 않는다(glab 이 실행 디렉터리의 다른 서버를 고르지 않게, fail-closed)
+let HOST = null;
+export function setHost(host) { HOST = host; }
+
 function run(args, { binary = false } = {}) {
-  const r = spawnSync(glabBin(), ['api', ...args], { encoding: binary ? 'buffer' : 'utf8', maxBuffer: MAX_BUFFER });
+  if (!HOST) throw new GitLabError('GitLab 호스트 미설정 — 어댑터 gitlab.host 가 필요하다');
+  const r = spawnSync(glabBin(), ['api', '--hostname', HOST, ...args], { encoding: binary ? 'buffer' : 'utf8', maxBuffer: MAX_BUFFER });
   if (r.error) throw new GitLabError(`glab 실행 실패(${glabBin()}): ${r.error.message}`);
   if (r.status !== 0) {
     const body = binary ? r.stdout.toString('utf8') : r.stdout;

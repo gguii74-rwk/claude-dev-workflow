@@ -94,6 +94,9 @@ const FAKE_GLAB = `#!/usr/bin/env node
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 const scPath = process.env.FAKE_GLAB_SCENARIO;
+const hi = args.indexOf('--hostname');
+const host = hi >= 0 ? args.splice(hi, 2)[1] : null;   // --hostname 은 규칙 대조·호출 기록에서 빼고 따로 남긴다(impl R2-4)
+fs.appendFileSync(scPath + '.hosts', JSON.stringify(host) + '\\n');
 const sc = JSON.parse(fs.readFileSync(scPath, 'utf8'));
 const statePath = scPath + '.state';
 const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : { used: {} };
@@ -126,6 +129,7 @@ export function fakeGlab(root, rules) {
     bin, scenario,
     env: { MR_REVIEW_GLAB: bin, FAKE_GLAB_SCENARIO: scenario },
     calls: () => (existsSync(scenario + '.log') ? readFileSync(scenario + '.log', 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []),
+    hosts: () => (existsSync(scenario + '.hosts') ? readFileSync(scenario + '.hosts', 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []),
   };
 }
 

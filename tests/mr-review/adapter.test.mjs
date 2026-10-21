@@ -96,3 +96,9 @@ test('CLI: --adapter 는 MR_REVIEW_ADAPTER 로 대체되고 인자가 우선한�
   const q = parseArgs(['--work', '/w'], { MR_REVIEW_ADAPTER: '/env' });
   assert.equal(q.adapter, '/env');
 });
+
+test('gitlab.host 는 필수 키이고 호스트 이름 형태(스킴·경로 없음)여야 한다 (impl R2-4)', () => {
+  assert.throws(() => loadAdapter(writeAdapter(tmp(), { gitlab: undefined })), /gitlab\.host/);
+  assert.throws(() => loadAdapter(writeAdapter(tmp(), { gitlab: { host: 'https://gitlab.test/' } })), /gitlab\.host/);
+  assert.equal(loadAdapter(writeAdapter(tmp(), { gitlab: { host: 'gitlab.test:8443' } })).gitlab.host, 'gitlab.test:8443');
+});

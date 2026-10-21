@@ -66,6 +66,23 @@ export function crc32(buf) {
 // read() 는 central directory 의 CRC-32·비압축 크기와 대조한다 — 표준 리더가 Bad CRC 로 거부할 배포본을 「일치」로 보증하지 않는다.
 // 구조 교차 검증(impl SDD 이월 T04③ + R1-8, 사용자 판정) — 우리 리더와 배포 도구(unzip·Python zipfile)가 다른 목록을 읽는 zip 을 「일치」로 보증하지 않는다:
 // EOCD 는 파일 끝(주석 길이까지 정확히) · 디스크 번호 0 · 이 디스크 항목 수 = 전체 · 목차 시작 + 목차 크기 = EOCD 위치 = 파싱한 목차의 실제 끝 · 같은 이름 두 번 금지. 어긋나면 throw → corrupt.
+// 확장 필드 허용 목록(impl R2-1, 사용자 판정) — git archive 가 쓰는 시간 정보(0x5455)와 Unix 소유자(0x7875)만. Unicode 경로(0x7075)처럼 이름·내용 해석을 바꾸는 칸이나
+// 모르는 칸이 있으면 배포 도구가 다르게 읽을 수 있으므로 거부한다(zip64 0x0001 도 미지원). 칸 길이 합이 선언 길이와 맞지 않아도 거부.
+const SAFE_EXTRA = new Set([0x5455, 0x7875]);
+function checkExtra(buf, start, len, name, where) {
+  let q = start;
+  const end = start + len;
+  if (end > buf.length) throw new Error(`zip ${where} 확장 필드 범위 초과: ${name}`);
+  while (q < end) {
+    if (q + 4 > end) throw new Error(`zip ${where} 확장 필드 손상: ${name}`);
+    const id = buf.readUInt16LE(q);
+    const n = buf.readUInt16LE(q + 2);
+    if (q + 4 + n > end) throw new Error(`zip ${where} 확장 필드 길이 불일치: ${name}`);
+    if (!SAFE_EXTRA.has(id)) throw new Error(`zip ${where} 확장 필드 미지원(0x${id.toString(16).padStart(4, '0')}): ${name}`);
+    q += 4 + n;
+  }
+}
+
 export function readZip(buf) {
   const EOCD = 0x06054b50;
   let eocd = -1;
@@ -98,6 +115,7 @@ export function readZip(buf) {
     const name = buf.subarray(p + 46, p + 46 + nLen).toString('utf8');
     if (seen.has(name)) throw new Error(`zip 중복 항목 이름: ${name}`);
     seen.add(name);
+    checkExtra(buf, p + 46 + nLen, eLen, name, 'central');
     // 항목 유형(impl R1-6) — Unix(made-by 상위 바이트 3)면 외부 속성 상위 16비트가 st_mode. 링크·특수 파일을 일반 파일로 보지 않는다
     const made = buf.readUInt16LE(p + 4) >>> 8;
     const ifmt = ((buf.readUInt32LE(p + 38) >>> 16) & 0o170000);
@@ -116,6 +134,7 @@ export function readZip(buf) {
     const lMethod = buf.readUInt16LE(h + 8);
     if (lName !== e.name) throw new Error(`zip local header 파일명 불일치(${lName} ≠ ${e.name})`);
     if (lMethod !== e.method) throw new Error(`zip local header 압축 방식 불일치(${lMethod} ≠ ${e.method}): ${e.name}`);
+    checkExtra(buf, h + 30 + nLen, eLen, e.name, 'local');
     // 일반 목적 플래그도 대조(C1 R3-8 잔존) — local 0·central 1(암호화) 처럼 어긋나면 표준 리더가 거부하는 zip 이고, 암호화(bit0)·강한 암호화(bit6)는 미지원이라 읽을 수 없는 배포본이다
     const lFlags = buf.readUInt16LE(h + 6);
     if (lFlags !== e.flags) throw new Error(`zip local header 플래그 불일치(${lFlags} ≠ ${e.flags}): ${e.name}`);

@@ -50,6 +50,7 @@
 ```json mr-review-adapter
 {
   "schema": 1,
+  "gitlab": { "host": "gitlab.test" },
   "workspaceRoot": "..",
   "docsRoot": "docs",
   "projects": {

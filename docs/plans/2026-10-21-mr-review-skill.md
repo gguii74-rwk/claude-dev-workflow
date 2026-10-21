@@ -81,6 +81,7 @@
 ```json
 {
   "schema": 1,
+  "gitlab": { "host": "<GitLab 호스트[:포트] — 스킴·경로 없이>" },
   "workspaceRoot": "..",
   "docsRoot": "common-docs",
   "projects": { "<이름>": { "id": 0, "path": "<workspaceRoot 기준 체크아웃 경로>", "deployExempt": false } },
@@ -101,7 +102,7 @@
 }
 ```
 
-- 필수 키: `schema`(=1) · `workspaceRoot` · `docsRoot` · `projects`(1개 이상, 각 `id` 정수·`path` 문자열) · `policy.judgeId`·`policy.acceptedIds`(비어 있지 않음)·`policy.docs` · `contract.lines`(10개) · `baselineCandidates` · `docsMap.always`·`docsMap.rules` · `wiki.roots`(0개 가능)·`wiki.linesPerPage`·`wiki.pagesPerPack` · `mask` · `deploy.targets`·`deploy.excludes` · `comments.verdictFirstLine`(그룹 4종 포함 — 문자열에 `(?<policy>`·`(?<sha>`·`(?<kind>`·`(?<verdict>` 모두 있어야 함)·`comments.baselineConfirm`·`comments.authorToken`(`(?<token>` 포함)·`comments.trustedReviewers` · `report.dir`.
+- 필수 키: `schema`(=1) · `gitlab.host`(호스트[:포트] — 모든 `glab api` 에 `--hostname` 으로 붙고, collect 가 MR `web_url` 호스트와 대조해 다르면 ERR — impl R2-4) · `workspaceRoot` · `docsRoot` · `projects`(1개 이상, 각 `id` 정수·`path` 문자열) · `policy.judgeId`·`policy.acceptedIds`(비어 있지 않음)·`policy.docs` · `contract.lines`(10개) · `baselineCandidates` · `docsMap.always`·`docsMap.rules` · `wiki.roots`(0개 가능)·`wiki.linesPerPage`·`wiki.pagesPerPack` · `mask` · `deploy.targets`·`deploy.excludes` · `comments.verdictFirstLine`(그룹 4종 포함 — 문자열에 `(?<policy>`·`(?<sha>`·`(?<kind>`·`(?<verdict>` 모두 있어야 함)·`comments.baselineConfirm`·`comments.authorToken`(`(?<token>` 포함)·`comments.trustedReviewers` · `report.dir`.
 - `projects`의 키 = GitLab 프로젝트 경로의 **마지막 세그먼트(basename)** — 기준선 링크 URL(`…/<group>/<basename>/-/blob/<ref>/<path>`)의 프로젝트를 이 키로 찾는다(check). **찾은 뒤 링크의 호스트·전체 프로젝트 경로(`/-/` 앞)를 그 등록 ID의 `web_url`(`projects/<id>`)과 대조한다 — 다르면 미확보**(basename만 같은 다른 호스트·namespace 링크를 등록 프로젝트로 해소하지 않는다). 같은 basename이 두 그룹에 있으면 어댑터가 그 프로젝트를 다른 키로 둘 수 없으므로 범위 밖(spec §9 포크).
 - 문서 참조(`policy.docs`·`docsMap.always`·`docsMap.rules[*].docs`)의 두 형식: `"<docsRoot 기준 경로>[#절제목접두]"`(공통 문서 저장소) · **`"repo:<대상 저장소 루트 기준 경로>[#절제목접두]"`**(리뷰 대상 저장소 자신의 문서 — `AGENTS.md`·`CLAUDE.md`·저장소 `docs/`). `repo:`는 pack이 **고정 head**에서 읽는다(워크트리 모드 = `snapshot.worktree`, diff-only = `repository/files/<경로>/raw?ref=<head>`), 출처 `repo:<경로>@<head7>`, 팩 B 포함(D4 워크트리 범위), 누락은 필수 여부와 무관하게 `missing:true`로 계속(저장소마다 있을 수도 없을 수도 있는 문서 — 공통 문서의 필수 누락 ERR 규칙과 다르다). 다른 저장소의 작업 트리를 상대 경로로 가리키는 참조는 두지 않는다.
 - 경로 해소: `workspaceRoot`는 **어댑터 파일이 있는 디렉터리 기준** 상대 경로(절대 경로도 허용). `projects[*].path`·`docsRoot`·`report.dir`는 workspaceRoot 기준. `wiki.roots[*].path`의 선두 `~`는 `os.homedir()`로 바꾼다. `loadAdapter(file)`는 해소된 절대 경로를 `adapter.resolved = { workspaceRoot, docsRoot, reportDir, projects: {name: {id, checkout, deployExempt}}, wikiRoots: [{path, export, glossaryFile}] }`에 둔다.

@@ -98,13 +98,23 @@ export function residual(text, rules) {
 const MARK = '\\[masked:[^\\]\\s]*\\]';
 const WHOLE_MARK = (end) => `(?!${MARK}${end})`;
 const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)(?![A-Za-z0-9])(?:[_.-][A-Za-z0-9]+)*';
+// 여러 줄 값(impl R2-2, 사용자 판정): YAML 블록 스칼라(`key: |`·`>`·`|-` 뒤 들여쓴 줄 전부 — 사이 빈 줄 포함)를 한 덩어리로 가린다(따옴표 없는 값 규칙보다 먼저 — 그 규칙이 `|` 만 가리면 블록을 못 찾는다).
+// 따옴표 값은 줄바꿈을 포함해 닫는 따옴표까지(상한 4000자), 같은 줄에 닫는 따옴표가 없는 열린 값은 그 줄 끝까지 가린다(닫는 따옴표를 못 찾아도 값이 새지 않게).
+// 잘린 비밀키(impl R2-3, 사용자 판정): 발췌 상한이 END 줄을 잘라도 BEGIN 줄부터 키 본문 줄(base64·`Proc-Type:` 같은 머리 줄)까지 가린다 — 완결 PEM 규칙 뒤에 둔다.
+const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S]){1,4000}(?=${q})`;
+const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[masked:)(?![^${q}\\n]*${q})[^\\n]+`;
 export const SECRET_MASK = [
-  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*")${WHOLE_MARK('"')}(?:[^"\\\\\\n]|\\\\.)+(?=")`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*')${WHOLE_MARK("'")}(?:[^'\\\\\\n]|\\\\.)+(?=')`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*\`)${WHOLE_MARK('`')}(?:[^\`\\\\\\n]|\\\\.)+(?=\`)`, flags: 'i' },
+  { name: 'secret', pattern: QUOTED('"'), flags: 'i' },
+  { name: 'secret', pattern: QUOTED("'"), flags: 'i' },
+  { name: 'secret', pattern: QUOTED('`'), flags: 'i' },
+  { name: 'secret', pattern: OPEN_QUOTE('"'), flags: 'i' },
+  { name: 'secret', pattern: OPEN_QUOTE("'"), flags: 'i' },
+  { name: 'secret', pattern: OPEN_QUOTE('`'), flags: 'i' },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*[|>][1-9+-]{0,2}[ \\t]*\\n)(?:[ \\t]*\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\n)*[ \\t]+[^\\n]*)*`, flags: 'i' },
   { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?!["'\`])${WHOLE_MARK('(?:[\\s"\'\`,;)\\]]|$)')}(?:(?:Bearer|Basic|Token|Digest)\\s+)?(?:${MARK}|[^\\s"'\`,;)\\]])+`, flags: 'i' },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
+  { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n[A-Za-z0-9+/=:, -]+)*' },
 ];
 // 마스킹이 정상 SHA 를 변조하지 않게(R5-2) — 40자 16진수 토큰(글자 a-f 1개 이상)은 개인정보일 수 없다. 자리표시자로 빼고 마스킹 뒤 복원한다(팩 B 헤더 `head <sha>`·리포트 자유 텍스트·cleanup 의 JSON 문자열 값 공통).
 // 글자 조건: 숫자만 40자인 토큰은 SHA 로 보지 않는다 — 전화·주민번호 같은 숫자열을 보호 대상으로 오인하지 않게. 7자 짧은 SHA 는 어떤 어댑터 패턴 길이(≥10)에도 못 미쳐 보호가 필요 없다.

@@ -278,3 +278,23 @@ test('diff-only 복원 경로 검증: 상위 이동·절대 경로·역슬래시
   assert.equal(readFileSync(join(work, 'blobs', 'head', 'src/main/java/app/A.java'), 'utf8'), 'PAYLOAD\n');   // 정상 경로는 그대로 받는다
   assert.ok(!g.calls().some((c) => /escape/.test(decodeURIComponent(c.join(' ')))));     // 밖으로 나가는 경로는 원문 조회도 하지 않는다
 });
+
+test('모든 glab 호출에 어댑터 호스트(--hostname)를 붙이고, MR web_url 호스트가 다르면 ERR — 다른 서버의 같은 번호 MR 을 받지 않는다 (impl R2-4)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const headSha = 'a'.repeat(40);
+  const g = fakeGlab(root, [...rules(headSha), ...headRaw(headSha, ['src/main/java/app/A.java', 'src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md'])]);
+  const work = join(root, 'work');
+  const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work], g.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(g.hosts().length > 5);
+  assert.deepEqual([...new Set(g.hosts())], ['gitlab.test']);
+  const root2 = tmp();
+  const adapter2 = writeAdapter(root2, { projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const p = `projects/101/merge_requests/${IID}`;
+  const g2 = fakeGlab(root2, rules(headSha, { metaRules: [{ match: `^api ${p}$`, json: meta(headSha, { web_url: 'https://gitlab.example.com/g/alpha/-/merge_requests/7' }) }] }));
+  const r2 = runCli(['collect', '--adapter', adapter2, '--project', 'alpha', '--iid', String(IID), '--work', join(root2, 'work')], g2.env);
+  assert.equal(r2.code, 2, r2.out);
+  assert.match(r2.first, /^ERR .*호스트/);
+  assert.ok(!existsSync(join(root2, 'work', 'mr.json')));
+});

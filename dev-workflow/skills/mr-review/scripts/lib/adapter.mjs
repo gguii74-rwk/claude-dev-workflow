@@ -10,7 +10,7 @@ const CLOSE = '```';
 
 // 필수 키(점 표기). 배열은 존재만, 객체는 존재만 — 내용 규칙은 아래 validate가 따로 본다.
 const REQUIRED = [
-  'schema', 'workspaceRoot', 'docsRoot', 'projects',
+  'schema', 'gitlab.host', 'workspaceRoot', 'docsRoot', 'projects',
   'policy.judgeId', 'policy.acceptedIds', 'policy.docs',
   'contract.lines', 'baselineCandidates', 'docsMap.always', 'docsMap.rules',
   'wiki.roots', 'wiki.linesPerPage', 'wiki.pagesPerPack', 'mask',
@@ -40,6 +40,8 @@ export function extractBlock(markdown) {
 export function validate(cfg) {
   const missing = REQUIRED.filter((k) => get(cfg, k) === undefined);
   if (cfg.schema !== undefined && cfg.schema !== 1) missing.push('schema(=1)');
+  // GitLab 호스트(impl R2-4) — glab 은 미지정이면 실행 디렉터리의 저장소 호스트를 고른다. 숫자 프로젝트 ID 는 서버마다 따로라 호스트를 어댑터가 고정한다(스킴·경로 없는 호스트[:포트])
+  if (cfg.gitlab?.host !== undefined && !(typeof cfg.gitlab.host === 'string' && /^[A-Za-z0-9.-]+(?::\d+)?$/.test(cfg.gitlab.host))) missing.push('gitlab.host(호스트[:포트] — 스킴·경로 없이)');
   if (cfg.projects && (typeof cfg.projects !== 'object' || Object.keys(cfg.projects).length === 0)) missing.push('projects(1개 이상)');
   for (const [name, p] of Object.entries(cfg.projects || {})) {
     if (!p || !Number.isInteger(p.id)) missing.push(`projects.${name}.id`);

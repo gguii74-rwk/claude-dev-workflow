@@ -254,16 +254,18 @@ function mkZip(entries, comment = '') {
     const raw = Buffer.from(e.data);
     const comp = e.method === 8 ? zlib.deflateRawSync(raw) : raw;
     const name = Buffer.from(e.name, 'utf8');
+    const lx = e.localExtra || Buffer.alloc(0);
+    const cx = e.centralExtra || Buffer.alloc(0);
     const lh = Buffer.alloc(30);
     lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0, 6); lh.writeUInt16LE(e.method || 0, 8);
-    lh.writeUInt32LE(crc32(raw), 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(e.usize ?? raw.length, 22); lh.writeUInt16LE(name.length, 26);
+    lh.writeUInt32LE(crc32(raw), 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(e.usize ?? raw.length, 22); lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(lx.length, 28);
     const cd = Buffer.alloc(46);
     cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(e.made ?? 0x0314, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(0, 8); cd.writeUInt16LE(e.method || 0, 10);
-    cd.writeUInt32LE(crc32(raw), 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(e.usize ?? raw.length, 24); cd.writeUInt16LE(name.length, 28);
+    cd.writeUInt32LE(crc32(raw), 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(e.usize ?? raw.length, 24); cd.writeUInt16LE(name.length, 28); cd.writeUInt16LE(cx.length, 30);
     cd.writeUInt32LE(e.ext ?? ((0o100644 << 16) >>> 0), 38); cd.writeUInt32LE(off, 42);
-    locals.push(lh, name, comp);
-    cds.push(cd, name);
-    off += 30 + name.length + comp.length;
+    locals.push(lh, name, lx, comp);
+    cds.push(cd, name, cx);
+    off += 30 + name.length + lx.length + comp.length;
   }
   const cdBuf = Buffer.concat(cds);
   const c = Buffer.from(comment, 'utf8');
@@ -330,4 +332,17 @@ test('첨부 파일명은 디코딩 뒤 경로 성분(`/`·`..`)이 있으면 �
   const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/%EB%B0%B0%ED%8F%AC%20%EB%B3%B8.zip`, kind: 'zip', filename: '%EB%B0%B0%ED%8F%AC%20%EB%B3%B8.zip', secret: SECRET, where: 'body' }], description: desc });
   assert.equal(runCli(['deploy', '--adapter', adapter, '--work', work], g.env).first, 'DEPLOY 일치');
   assert.ok(existsSync(join(work, 'zip', '배포 본.zip')));
+});
+
+// zip 확장 필드 하나(id, 본문) — 0x7075 Unicode Path = 버전 1 + 원래 이름 CRC + 새 이름
+const xf = (id, body) => { const h = Buffer.alloc(4); h.writeUInt16LE(id, 0); h.writeUInt16LE(body.length, 2); return Buffer.concat([h, body]); };
+const upath = (orig, alt) => { const b = Buffer.alloc(5); b.writeUInt8(1, 0); b.writeUInt32LE(crc32(Buffer.from(orig, 'utf8')), 1); return xf(0x7075, Buffer.concat([b, Buffer.from(alt, 'utf8')])); };
+
+test('zip 확장 필드는 알려진 무해 칸(0x5455 시간·0x7875 Unix 소유자)만 허용 — Unicode 경로(0x7075) 등 그 밖은 거부, 깨진 확장 필드도 거부 (impl R2-1, 사용자 판정)', () => {
+  const ut = xf(0x5455, Buffer.from([1, 0, 0, 0, 0]));
+  assert.doesNotThrow(() => { const z = readZip(mkZip([{ name: 'a.txt', data: 'x', localExtra: ut, centralExtra: ut }])); z.read(z.entries[0]); });
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'x', centralExtra: upath('src/main/A.txt', 'src/main/UNREVIEWED.txt') }])), /확장 필드/);   // R2 재현
+  const zl = readZip(mkZip([{ name: 'src/main/A.txt', data: 'x', localExtra: upath('src/main/A.txt', 'src/main/UNREVIEWED.txt') }]));
+  assert.throws(() => zl.read(zl.entries[0]), /확장 필드/);                                                       // local 쪽만 있어도
+  assert.throws(() => readZip(mkZip([{ name: 'a.txt', data: 'x', centralExtra: Buffer.from([0x55, 0x54, 9, 0, 1]) }])), /확장 필드/);   // 길이가 안 맞는 확장 필드
 });

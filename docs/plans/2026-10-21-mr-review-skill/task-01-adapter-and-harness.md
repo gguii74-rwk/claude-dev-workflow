@@ -620,3 +620,4 @@ git commit -m "feat(mr-review): 어댑터 기계 블록 파서·glob·CLI 골격
 - **헬퍼의 `git()`은 `GIT_CONFIG_GLOBAL=/dev/null`로 돌린다. 이유:** 개발자 전역 설정(gpg 서명·훅)이 테스트 저장소를 오염시킨다.
 - **픽스처·테스트에 `010-1234-5678` 같은 가짜 값만 쓴다. 이유:** T6 grep 대상이자 D10 — 실제 번호·이름을 넣지 않는다.
 - **`Authorization:` 마스킹 패턴은 인증 방식(`Bearer`·`Basic` …)과 자격증명을 한 매치로 소비한다 — `[^\s]+` 하나로 끝내지 마라. 이유:** plan R3-1 — `Authorization: Bearer x`에서 `Bearer`만 가려지고 `x`가 남는데, `residual`은 `[masked:` 뒤를 다시 보지 않아 Codex 전송이 허용되고 리포트의 `SECRET_MASK`(`Bearer` 뒤 값)도 이미 `Bearer`가 지워져 못 잡는다. 어댑터 확정본(task-10)도 같은 형태여야 한다.
+- (review-loop impl R2, 2026-10-22) 어댑터 필수 키 `gitlab.host`(호스트[:포트]) — CLI 가 `setHost` 로 넘기고 모든 `glab api` 에 `--hostname` · 미설정이면 GitLab 조회 자체를 거부(impl R2-4, 추천 자동 채택(위임)). task-10 어댑터 확정본도 이 키를 둔다(SC-2).
