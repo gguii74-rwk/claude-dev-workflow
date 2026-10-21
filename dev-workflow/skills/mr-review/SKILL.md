@@ -148,7 +148,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 ```
 
 - cwd = **워크트리**(diff-only면 `W/blobs/head`) — 대상 저장소 체크아웃이어야 하며 위키·메모리·다른 저장소를 그 안에 두지 않는다.
-- 대기 = 백그라운드(`run_in_background: true`, 도구 timeout 600000): `for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$W/codex.out" && break; sleep 15; done`. `WAIT_EXPIRED`면 `kill -0 "$(cat "$W/codex.pid")"`로 생존 확인 후 재대기.
+- 대기 = 백그라운드(`run_in_background: true`, 도구 timeout 600000): `for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$W/codex.out" && break; sleep 15; done; grep -q '^COMPANION_EXIT:' "$W/codex.out" || echo WAIT_EXPIRED`. `WAIT_EXPIRED`면 `kill -0 "$(cat "$W/codex.pid")"`로 생존 확인 후 재대기.
 - **유효 판정**: 마커 `COMPANION_EXIT:0` + `[codex] Running command:` 실행 로그 ≥ 1 + 본문에서 추출한 JSON이 `<CLI> review-validate --file "$W/review-codex.json" --head "<snapshot.head_sha>" --reviewer codex` → `VALID`(**`--head`·`--reviewer`를 생략하지 않는다** — 검토자가 이전 head 의 결과나 다른 검토자 이름을 내면 여기서 INVALID 로 떨어진다, F6·D11). JSON 추출 = `codex.out`의 마지막 ```` ```json ```` 펜스 블록(없으면 마지막 `[codex]` 줄 뒤 본문을 JSON으로 파싱). 하나라도 실패하면 **자동 재실행하지 않고** 단일 모델 모드로 떨어지며 원문(어댑터 마스킹 적용 후)을 보고한다.
 - **경로 감시**(D16 ⓑ): `codex.out` 전체에서 워크트리 밖 절대 경로(`/`·`~`·드라이브 문자로 시작하고 워크트리 접두가 아닌 것)와 어댑터 위키 루트(전송 금지 루트 포함) 경로를 찾는다 → `findings.json.outsideWorktreePaths`에 적는다(리포트 헤더 「격리 위반 의심」).
 
@@ -163,7 +163,19 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 3. **상충·낮은 확신**: 한쪽은 차단, 다른 쪽은 같은 자리를 무해로 봤거나(상충), 한쪽만 잡은 `confidence: low|medium` 차단 후보는 **메인이 코드를 다시 읽어** 확인한다. 확인되면 `blocking:true`, 반박되면 `type` 유지·`blocking:false`·`dismissReason`에 근거. **확인도 반박도 못 하면 `unresolved: true`** — 판정 입력에서 빼지 않는다(`verdict`가 「판정 미확정」으로 만든다). **설계 내 수정 가능 상충도 같은 확인 대상이다**: 같은 지문을 둘 다 차단으로 봤는데 `fixableInDesign`이 `yes`/`no`로 갈리면(이 값으로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀐다) 메인이 코드·기준선 문서를 다시 읽어 **어느 전제가 실제로 깨졌는지** 판단한다 — 판단되면 그 값 + `no`면 `brokenPremise`, 못 하면 `fixableInDesign: null` · `fixableInDesignClaims: { claude: "<값>", codex: "<값>" }` · `brokenPremise` = `no` 쪽 주장 · `unresolved: true`. `verdict`는 이 항목에 `confirmed:fixable / confirmed:design / dismissed` 세 갈래를 보이고 리뷰어가 §9 에서 정한다 — 스크립트도 스킬도 엄한 쪽을 자동으로 고르지 않는다(D9).
 4. `baselineCandidateRelevant` = **유효한 검토 결과(`validReviewers`)만** 대상으로 — 전부 `true`면 `true`, 전부 `false`면 `false`(유효 결과가 1개인 단일 모델 모드면 그 값 그대로 — Codex 미설치·마스킹 실패로 후보를 기각하지 않는다). **둘이 상충하면** 메인이 후보 문서(워크트리의 그 파일)를 직접 읽어 이번 변경(제목·변경 파일·②의 범위)을 다루는지 판정하고, 그 근거 한 줄을 `baselineCandidateReason`에 적는다. 후보가 없으면 `false`.
 5. `intent` = 두 결과를 행별로 합친다(둘이 다르면 `UNKNOWN`, `basis`는 「코드로 확인」이 하나라도 있으면 그것).
-6. `W/findings.json`(엔트리포인트 SC-5 형식)을 쓴다 — `head_sha` = `snapshot.head_sha`(verdict·render가 대조한다 — 다르면 리뷰 실패) · `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함 · 상충 항목은 `fixableInDesignClaims`(없으면 `null`).
+6. `W/findings.json`을 아래 형식으로 쓴다 — `head_sha` = `snapshot.head_sha`(verdict·render가 대조한다 — 다르면 리뷰 실패) · `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함 · 상충 항목은 `fixableInDesignClaims`(없으면 `null`).
+
+```json
+{ "head_sha": "", "validReviewers": ["claude", "codex"], "crossChecked": true,
+  "baselineCandidateRelevant": true, "baselineCandidateReason": "<유효 결과 전부 일치 | 단일 모델 값 | 상충 — 메인이 후보 문서를 읽고 판정한 근거 한 줄>",
+  "findings": [{ "id": "F1", "fingerprint": "<file + 정규화 title>", "source": "both|claude|codex", "lens": "", "type": "", "blocking": true,
+                 "title": "", "file": "", "line_start": 0, "line_end": 0, "evidence": "", "scenario": "", "confidence": "", "recommendation": "",
+                 "fixableInDesign": "yes|no|null", "fixableInDesignClaims": null, "brokenPremise": "", "unresolved": false, "resolution": "confirmed|dismissed|null", "dismissReason": "" }],
+  "intent": [{ "criterion": "", "result": "", "location": "", "basis": "" }],
+  "outsideWorktreePaths": [] }
+```
+
+각 finding 의 `id` = 순서대로 `F1`, `F2`, …(`M-` 접두는 기계 증거 전용이라 쓰지 않는다 — `verdict`·`render`·`--resolve <id>=…`가 이 값으로 키잉한다) · `fingerprint` = file + 정규화 제목 · `resolution` = `null`, `unresolved`는 3 에 따라 · `fixableInDesignClaims` = 상충이 아니면 `null`.
 
 ```bash
 <CLI> verdict --adapter "$A" --work "$W"

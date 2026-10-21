@@ -275,4 +275,4 @@ git commit -m "feat(mr-review): SKILL.md — 전제·수집·검사·조기 종�
 - **`baselineCandidateRelevant`를 「둘 다 true」로 계산하지 마라 — 유효 결과만 합친다. 이유:** plan R2-5 — 단일 모델 모드(정상 경로)에서 Claude가 관련성을 확인해도 기준선 없음(RETURN_TO_DESIGN)이 돼 단일 모델에만 다른 판정 조건이 생긴다.
 - **검토자 결과의 `head_sha`를 현재 head로 고쳐 쓰지 마라 — `review-validate --head`가 떨어뜨린 결과는 실패다. 이유:** plan R2-4 — 이전 head 의 검토를 현재 head 의 APPROVE로 둔갑시킨다(F6).
 - **스킬 문서에 프로젝트 이름·내부 주소·사람 이름·위키 경로 실제 값을 쓰지 마라. 이유:** 공개 저장소(D10). 전부 어댑터가 준다.
-- (impl 2026-10-21 전사 수정, PF-2·PF-10) §0 어댑터 경로는 `--adapter` 인자 우선·없으면 `MR_REVIEW_ADAPTER`(SC-6) · 인자 절 `--resolve` 에 `confirmed:fixable|confirmed:design` 포함(§9·SC-6 과 일치)
+- (impl 2026-10-21 전사 수정, PF-2·PF-10) §0 어댑터 경로는 `--adapter` 인자 우선·없으면 `MR_REVIEW_ADAPTER`(SC-6) · 인자 절 `--resolve` 에 `confirmed:fixable|confirmed:design` 포함(§9·SC-6 과 일치) · (fix 1) §5 Codex 대기 스니펫에 `WAIT_EXPIRED` 꼬리(review-loop §2b ③ 원문) · §6-6 SC-5 골격을 SKILL 안에 인라인(배포본에 plan 없음 — `id` = `F<n>`)
