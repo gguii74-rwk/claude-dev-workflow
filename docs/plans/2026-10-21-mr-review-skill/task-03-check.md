@@ -226,7 +226,7 @@ test('이슈 댓글 조회 실패는 「댓글 없음」이 아니라 미확보(
 });
 
 test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 이슈에서 · 본문 #n 도 수집 · 미등록 프로젝트의 연결 이슈는 대체 없이 미확보', () => {
-  const desc = body({ background: '- 이슈/spec: 참고 없음', contractOver: { Baseline: '#12' }, extra: '## 참고\n- #88 의 재발 방지\n\n```\n#999 코드펜스 안 — 이슈 아님\n```\n' });   // 「배경」 밖 절의 #n 도 수집(C1 R2-6), 코드펜스 안은 제외
+  const desc = body({ background: '- 이슈/spec: 참고 없음', contractOver: { Baseline: '#12' }, extra: '## 참고\n- #88 의 재발 방지\n\n```\n#999 코드펜스 안 — 이슈 아님\n```\n' }) + '\n## 후속\n- 계약 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 보정)\n';   // 「배경」 밖 절·계약 뒤 절의 #n 도 수집(C1·C2 R2-6), 코드펜스 안은 제외
   const { root, adapter, work } = setup({ description: desc, closes_issues: [
     { iid: 12, project_id: 101, title: '버그', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: '' },
     { iid: 12, project_id: 999, title: '다른 프로젝트', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: 'http://gitlab.test/g/zeta/-/issues/12' },   // 어댑터 미등록
@@ -236,6 +236,8 @@ test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 �
     { match: '^api --paginate projects/101/issues/12/notes', json: [{ id: 5, system: false, author: { username: 'author-a' }, body: '추가 설명', created_at: '2026-10-19T01:00:00Z' }] },
     { match: '^api projects/101/issues/88$', json: { iid: 88, title: '참고 이슈', description: '배경 설명 88', updated_at: '2026-10-18T00:00:00Z' } },
     { match: '^api --paginate projects/101/issues/88/notes', json: [] },   // 댓글 0건(정상 빈 응답) — 조회 실패(404)와 구분된다(R3-3)
+    { match: '^api projects/101/issues/77$', json: { iid: 77, title: '후속 이슈', description: '계약 뒤 절', updated_at: '2026-10-18T00:00:00Z' } },
+    { match: '^api --paginate projects/101/issues/77/notes', json: [] },
   ]);
   runCli(['check', '--adapter', adapter, '--work', work], g.env);
   const c = readJson(join(work, 'check.json'));
@@ -248,6 +250,7 @@ test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 �
   assert.equal(issues.filter((x) => x.project === 'alpha' && x.ref === '12').length, 1);   // #12 와 closes_issues 12 는 하나로
   const i88 = issues.find((x) => x.ref === '88');
   assert.equal(i88.status, '확보');                                                        // 본문 다른 절(「참고」)의 #88 도 수집(R2-6 · C1 사용자 결정 = 본문 전체)
+  assert.equal(issues.find((x) => x.ref === '77')?.status, '확보');                        // Review Contract 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 — 블록 제거가 본문 끝까지 먹지 않는다)
   assert.ok(!issues.some((x) => x.ref === '999'));                                          // 코드펜스 안 #999 는 이슈 참조가 아니다
   assert.ok(!g.calls().some((x) => x.join(' ') === 'api projects/101/issues/999'));
   assert.match(readFileSync(join(work, i88.file), 'utf8'), /배경 설명 88/);
@@ -721,7 +724,8 @@ export function check({ adapter, work }) {
   }
   // 본문 #n·이슈 URL 은 **본문 전체**에서 수집한다(spec §5.1-5, 사용자 결정 C1 R2-6) — 코드펜스 안과 Review Contract 블록(계약 값·실행 블록 — Baseline 줄은 위에서 따로 파싱)은 제외.
   // 존재하지 않는 번호(「#3 항목」 오인 등)는 resolveIssue 가 미확보로 남겨 M-baseline → HOLD_EVIDENCE 로 전달된다 — 작성자가 본문을 고치게 하는 fail-closed 비용으로 수용(사용자 결정).
-  const bodyText = desc.replace(/```[\s\S]*?```/g, '').replace(/^## Review Contract[\s\S]*$/m, '');
+  // Review Contract 블록 = 그 제목 줄부터 **다음 `## ` 제목 앞까지**(C2 R2-6 잔존 보정 — `[\s\S]*$` 는 본문 끝까지 지워 계약 뒤 일반 절의 #n 이 빠졌다). 계약 뒤 절(「후속」·「참고」)도 수집 대상이다.
+  const bodyText = desc.replace(/```[\s\S]*?```/g, '').replace(/^## Review Contract\b[^\n]*(?:\n(?!## )[^\n]*)*/m, '');
   for (const m of bodyText.matchAll(ISSUE_REF_RE)) if (!hasIssue(mr.project.name, m[1])) links.push({ raw: `#${m[1]}`, kind: 'issue', project: mr.project.name, ref: m[1], path: '' });
   for (const m of bodyText.matchAll(ISSUE_URL_RE)) if (!hasIssue(m[2], m[3])) links.push({ raw: m[0], kind: 'issue', project: m[2], project_url: m[1], ref: m[3], path: '' });
   const baselineLinks = [];
@@ -806,6 +810,7 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 ## Acceptance Criteria
 
 - `node --test tests/mr-review/check.test.mjs` → 11/11.
+- 본문 `#n`·이슈 URL 수집에서 제외하는 Review Contract 블록은 **그 제목 줄부터 다음 `## ` 제목 앞까지**만 — 계약 블록 뒤 절(「후속」 등)의 `#n` 은 수집된다(plan R2-6 C2 잔존 보정, 사용자 결정 「본문 전체」).
 - 저장소·이슈 URL 링크는 호스트·전체 프로젝트 경로를 등록 프로젝트의 `web_url`과 대조하고 다르면 미확보(plan R3-5) · 이슈 댓글 조회 실패는 미확보(plan R3-3).
 - 변경 사유 양식만 남은 본문(①·② 표지 + 꺾쇠 자리표시자)은 「없음」 — 연결 이슈 원문으로 대체(plan R4-4) · 재리뷰면 `rereview.priorBlocking`에 이전 차단 발견 전체(댓글 + 이전 리포트 부록 D 복원), 복원 못 한 항목은 `title:null`·`priorBlockingComplete:false`(plan R4-3).
 - MR 작성자의 판정 댓글은 `trusted:false` + `ignoredComments`(R1-F5·R2-F1) · 브랜치형 Baseline 링크는 **그 프로젝트의** 브랜치 API로 SHA 해소하고 `pinned:false`(R5-F2) · 본문 변경 시각 뒤의 확인 댓글만 「있음」(R3-F3) · 기준선 후보 문서는 후보로만(R1-F6).

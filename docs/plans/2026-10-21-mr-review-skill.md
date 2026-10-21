@@ -204,7 +204,7 @@
   "wikiTerms": ["<diff 추가 줄에서 뽑은 테이블명·선언 식별자>"],
   "packA": "pack-a.md", "packB": "pack-b.md", "codexSkipped": false, "codexSkipReason": null }
 ```
-- 팩 B 마스킹 = 어댑터 `mask`(개인정보) + 엔진 `SECRET_MASK`(비밀값 — `pack.mjs` 정본, 리포트·cleanup 과 같은 `maskText`), 40자 SHA 보존 · `residual`(잔존 검사)도 두 규칙 모두 — 본문·댓글·발췌의 `password = "…"`·API 키가 Codex 로 가지 않는다(plan R6-1, F5). `applied.secret` = 엔진 패턴 치환 수.
+- 팩 B 마스킹 = 어댑터 `mask`(개인정보) + 엔진 `SECRET_MASK`(비밀값 — `pack.mjs` 정본, 리포트·cleanup 과 같은 `maskText`), 40자 SHA 보존 · `residual`(잔존 검사)도 두 규칙 모두 — 본문·댓글·발췌의 `password = "…"`·API 키가 Codex 로 가지 않는다(plan R6-1, F5). `applied.secret` = 엔진 패턴 치환 수. **잔존 검사는 SHA 복원 전(자리표시자 상태) 텍스트에서** — 보존된 정상 SHA 를 개인정보 패턴이 재탐지해 거짓 `codexSkipped` 가 되지 않는다(plan C2-1).
 - `wikiTerms` = 위키 grep 검색어 중 변경 코드에서 뽑은 것(`codeTerms` — diff **추가 줄**의 SQL 테이블명(FROM/JOIN/INTO/UPDATE/TABLE 뒤·`@Table(name=)`)·선언 식별자(class/interface/enum/record/function/def·MyBatis `<select id>`), 길이 ≥ 4·SQL 예약어 제외·상한 40). 검색어 전체 = MR 제목·경로(용어집 대조 텍스트에는 추가 줄 본문도 포함) + 파일 basename + `wikiTerms`(spec §5.3-2 「변경 파일명·기능명·테이블명」, plan R4-5 — 스크립트 규칙, 어댑터 키 없음).
 - `exportAllowed`(= 팩 B 투입) 규칙: `doc`(공통 문서·`repo:` 대상 저장소 문서 모두)·`adapter`·`issue`·본문 기준선 = `true` · `wiki` = 루트의 `export` · **`baseline`(저장소 링크) = 링크의 프로젝트가 리뷰 대상 프로젝트이거나 `docsRoot`와 같은 체크아웃인 프로젝트일 때만 `true`** — 어댑터 `projects` 등록은 수집 가능 범위이지 전송 허가가 아니다(어댑터 §6). `missing` = 문서 지도 규칙 문서의 파일·절 누락(계속 진행) — **공통 문서의 필수 참조(`policy.docs`·`docsMap.always`) 누락은 `pack`이 `ERR` exit 2**(fail-closed). **`repo:` 참조는 필수 여부와 무관하게 누락 = `missing:true`로 계속**(SC-2). `repo:` 문서는 **고정 head 의 git blob**(`git ls-tree`로 모드 확인 → 일반 blob 만 `git show <head>:<경로>`, diff-only 는 raw API)으로 읽는다 — 작업 트리 파일을 fs 로 읽지 않으며 심볼릭 링크(120000)·서브모듈은 `missing`(plan R5-1, F4·F6).
 

@@ -32,7 +32,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 
 import { join } from 'node:path';
 import { tmp, writeAdapter, writeDocs, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
-const { extractSection, excerpt, applyMask, residual, SECRET_MASK } = await import(join(LIB, 'pack.mjs'));
+const { extractSection, excerpt, applyMask, residual, SECRET_MASK, maskTextWithCounts } = await import(join(LIB, 'pack.mjs'));
 const HEAD = 'a'.repeat(40);
 
 function wiki(home) {
@@ -154,6 +154,26 @@ test('팩 B 는 엔진 비밀값 패턴(SECRET_MASK)도 적용·잔존 검사한
   assert.match(b, new RegExp(`head ${HEAD} · base`));                            // 팩 B 헤더의 SHA 는 변조되지 않는다
   // 잔존 검사는 SECRET_MASK 도 본다 — applyMask 가 못 가린 비밀값 형태가 있으면 fail-closed
   assert.deepEqual(residual(b, SECRET_MASK), []);
+});
+
+test('잔존 검사는 SHA 복원 전에 — rrn 패턴에 걸리는 정상 head SHA 가 거짓 잔존으로 Codex 를 생략시키지 않는다 (C2-1) · 진짜 잔존은 여전히 잡는다', () => {
+  const RRN_SHA = 'aaaaaaaaaa1234561123456bbbbbbbbbbbbbbbbb';                                  // 40자 · rrn(\d{6}-?[1-4]\d{6}) 매치
+  const { adapter, work, env } = setup({ description: `## 배경\n- ① 왜: 민원 010-1234-5678 · head ${RRN_SHA} 기준 · password = "synthetic-secret-only"\n- ② 무엇을: 자동분류 패턴` });
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ ...readJson(join(work, 'snapshot.json')), head_sha: RRN_SHA }));
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /codexSkipped=false$/);
+  const p = readJson(join(work, 'pack.json'));
+  assert.deepEqual(p.mask.residual, []);
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.match(b, new RegExp(`head ${RRN_SHA} · base`));                                        // 헤더·본문의 SHA 보존
+  assert.match(b, new RegExp(`head ${RRN_SHA} 기준`));
+  assert.doesNotMatch(b, /\[masked:rrn\]|010-1234-5678|synthetic-secret-only/);                // 진짜 개인정보·비밀값은 가려진다
+  assert.match(b, /\[masked:phone\]/);
+  // 단위: 복원 전 잔존 검사 — 보존 SHA 는 잔존이 아니고, 패턴이 못 가린 값은 잔존이다
+  const rules = JSON.parse(readFileSync(adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).mask;
+  assert.deepEqual(maskTextWithCounts(`head ${RRN_SHA} · 전화 010-1234-5678`, rules).residual, []);
+  assert.deepEqual(maskTextWithCounts('전화 010-1234-56789', [{ name: 'weird', pattern: '\\]\\d' }, { name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }]).residual, [{ name: 'weird' }]);   // 앞 규칙이 가린 자리 뒤에 남은 숫자가 뒤 규칙에 걸리는 잔존(위 CLI 사례와 같은 형태)
 });
 
 test('마스킹 잔존 → 팩 B 미생성 · codexSkipped(fail-closed, D14)', () => {
@@ -400,6 +420,7 @@ export const SECRET_MASK = [
 // 글자 조건: 숫자만 40자인 토큰은 SHA 로 보지 않는다 — 전화·주민번호 같은 숫자열을 보호 대상으로 오인하지 않게. 7자 짧은 SHA 는 어떤 어댑터 패턴 길이(≥10)에도 못 미쳐 보호가 필요 없다.
 // 경계(C1-1, 사용자 재판정): 바로 앞뒤에 `@` 가 붙거나 `.<영숫자>` 로 이어지는 토큰은 이메일 local-part·도메인 라벨이라 보호하지 않는다 — 개인정보 마스킹이 SHA 보존보다 우선. 커밋 SHA 는 그런 자리에 오지 않는다(URL 경로 `/<sha>/`·문장 끝 `<sha>.` 은 보호 유지).
 // 자리표시자가 비밀값 자리(`token=<sha>`·`Bearer <sha>`)에 있으면 비밀값 패턴이 자리표시자째 가리므로 복원되지 않는다 — SHA 보호가 비밀값 제거를 우회하지 않는다.
+// 잔존 검사(`residual`)는 **복원 전** 텍스트(자리표시자 상태)에서 한다(C2-1) — 복원된 정상 SHA 를 어댑터 패턴(rrn 등)이 다시 잡아 거짓 잔존 → Codex 생략이 되지 않게. 보호 경계는 마스킹과 같다.
 const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\.[A-Za-z0-9]|\w)/g;
 export function maskTextWithCounts(text, maskRules) {
   const keep = [];
@@ -408,7 +429,8 @@ export function maskTextWithCounts(text, maskRules) {
   const b = applyMask(a.text, SECRET_MASK);
   const applied = { ...a.applied };
   for (const [k, v] of Object.entries(b.applied)) applied[k] = (applied[k] || 0) + v;
-  return { text: b.text.replace(/\u0000sha40:(\d+)\u0000/g, (_, i) => keep[Number(i)]), applied };
+  const left = residual(b.text, [...maskRules, ...SECRET_MASK]);
+  return { text: b.text.replace(/\u0000sha40:(\d+)\u0000/g, (_, i) => keep[Number(i)]), applied, residual: left };
 }
 export function maskText(text, maskRules) { return maskTextWithCounts(text, maskRules).text; }
 
@@ -591,7 +613,7 @@ export function pack({ adapter, work }) {
   // 팩 B = 허용 출처만 + 마스킹(본문·댓글·발췌 전부에 적용 — D4) = 어댑터 개인정보 패턴 + 엔진 비밀값 패턴(SECRET_MASK — 리포트·cleanup 과 같은 maskText, R6-1). 잔존 검사도 두 규칙 모두. 잔존이면 B 없음.
   const rawB = `${header('B')}\n## MR\n\n${body}\n## 근거 자료\n${renderSources(sources, texts, { onlyB: true })}`;
   const masked = maskTextWithCounts(rawB, adapter.mask);
-  const left = residual(masked.text, [...adapter.mask, ...SECRET_MASK]);
+  const left = masked.residual;   // 복원 전 텍스트 기준(C2-1) — 보존된 SHA 를 개인정보로 재탐지하지 않는다
   const ok = left.length === 0;
   const out = { sources, wikiTerms: terms, mask: { applied: masked.applied, residual: left.map((r) => ({ name: r.name, where: 'pack-b' })), ok }, packA: 'pack-a.md', packB: ok ? 'pack-b.md' : null, codexSkipped: !ok, codexSkipReason: ok ? null : `마스킹 뒤에도 패턴 잔존: ${left.map((r) => r.name).join(', ')} — Codex 를 건너뛴다(단일 모델 모드)` };
   if (ok) fs.writeFileSync(path.join(work, 'pack-b.md'), masked.text);
@@ -625,7 +647,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 node --check dev-workflow/skills/mr-review/scripts/lib/pack.mjs && echo CHECK_OK
 ```
 
-기대: pack 11/11 · 앞선 39/39 · `CHECK_OK`.
+기대: pack 12/12 · 앞선 39/39 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/pack.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/pack.test.mjs
@@ -634,7 +656,8 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/pack.test.mjs` → 11/11.
+- `node --test tests/mr-review/pack.test.mjs` → 12/12.
+- 잔존 검사는 SHA 복원 **전** 텍스트에서(`maskTextWithCounts(...).residual`) — rrn 패턴에 걸리는 정상 head SHA 가 `residual`·`codexSkipped:true`를 만들지 않고, 패턴이 못 가린 값은 여전히 잔존(plan C2-1).
 - 팩 B 는 어댑터 `mask` + 엔진 `SECRET_MASK`(`maskTextWithCounts` — 리포트·cleanup 과 같은 함수)로 가리고 잔존 검사도 두 규칙 모두 본다 — 본문·댓글·발췌의 `password = "…"`·`api_key:` 값이 `pack-b.md`에 없고 `codexSkipped:false`, 팩 B 헤더의 40자 SHA 는 보존(plan R6-1, F5).
 - `repo:<경로>[#절]` 참조는 대상 저장소의 고정 head(워크트리 또는 raw API)에서 읽고 출처 `repo:<경로>@<head7>`·팩 B 포함, 누락은 `missing:true`(plan R3-6).
 - 전송 금지 루트(`export:false`)의 텍스트가 `pack-b.md`에 한 글자도 없다(F4) · 마스킹 잔존 시 `pack-b.md`가 없고 `codexSkipped:true`(D14·F5).
@@ -648,6 +671,7 @@ git commit -m "feat(mr-review): pack — 문서 지도 절 발췌·위키 용어
 - **필수 문서(`policy.docs`·`docsMap.always`)의 파일·절 누락은 `PackError`(ERR exit 2). `missing`을 버리고 정상 출처로 등록하지 마라. 이유:** R1-8 — 정책 절 제목이 바뀌거나 공통 문서 체크아웃이 없으면 정책을 읽지 않은 `APPROVE`가 나온다. 규칙 문서(`docsMap.rules`)만 `missing:true`로 계속.
 - **마스킹은 본문·댓글·발췌 전체에 건다 — 발췌만 걸지 마라. 이유:** D4 범위(본문·댓글·발췌). 워크트리 코드는 Codex가 직접 읽으므로 여기서 가리지 않는다(D4 — 코드 안 개인정보는 L5 발견).
 - **`residual`은 `[masked:` 로 시작하는 매치를 무시한다. 이유:** 뒤보기 패턴(`token=`)이 가린 자리 자체를 다시 매치해 거짓 잔존이 된다.
+- **잔존 검사를 SHA 복원 뒤 텍스트에 돌리지 마라 — `maskTextWithCounts`가 자리표시자 상태에서 계산한 `residual`을 쓴다. 이유:** plan C2-1(C2 회귀) — 복원된 정상 SHA(`aaaaaaaaaa1234561123456bbbb…`)를 어댑터 rrn 패턴이 다시 잡아 비밀값이 잘 가려져도 `codexSkipped:true`(단일 모델 모드)가 됐다.
 - **팩 B 를 어댑터 `mask`만으로 가리지 마라 — `maskTextWithCounts`(어댑터 mask + 엔진 `SECRET_MASK`, SHA 보존)로 가리고 잔존 검사도 `[...adapter.mask, ...SECRET_MASK]`로. `SECRET_MASK`·`maskText`는 이 모듈(pack.mjs)에 두고 report.mjs 가 import 한다(반대 방향은 순환 import). 이유:** plan R6-1 — 어댑터 패턴은 개인정보용이라 MR 본문의 `password = "synthetic-secret-only"` 가 그대로 Codex 프롬프트에 들어가고 잔존 검사도 통과했다(F5 위반). 리포트에만 걸린 `SECRET_MASK`는 전송 경로를 보호하지 못한다.
 - **위키 검색어를 제목·파일명에서만 뽑지 마라 — diff 추가 줄의 테이블명(FROM/JOIN/INTO/UPDATE/TABLE 뒤·`@Table`)·선언 식별자(class/function/MyBatis id)를 `codeTerms`로 더하고 용어집 대조 텍스트에도 추가 줄을 넣어라. 추출은 스크립트 규칙(결정적)이고 어댑터 키·LLM 입력을 두지 않는다. 이유:** plan R4-5(사용자 결정) — spec §5.3-2·어댑터 §5 가 요구한 기능명·테이블명 검색이 빠지면 테이블명만 언급한 위키 교훈이 조용히 누락된다. 삭제 줄은 제외(바뀐 뒤 코드가 기준).
 - **위키 페이지는 전문이 아니라 `excerpt`. 이유:** 발췌 상한은 어댑터 값(§5.3-2) — 프롬프트 비대화 방지.

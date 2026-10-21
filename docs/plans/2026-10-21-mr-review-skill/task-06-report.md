@@ -957,7 +957,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: report 17/17 · 전체 67/67(adapter 8·collect 9·check 11·deploy 11·pack 11·report 17) · `CHECK_DONE`만.
+기대: report 17/17 · 전체 68/68(adapter 8·collect 9·check 11·deploy 11·pack 12·report 17) · `CHECK_DONE`만.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/report.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/report.test.mjs
@@ -966,7 +966,7 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/report.test.mjs` → 17/17, 전체 67/67.
+- `node --test tests/mr-review/report.test.mjs` → 17/17, 전체 68/68.
 - `cleanup`은 `codex.pid`의 프로세스가 살아 있으면 `ERR 검토자 프로세스 생존(codex.pid <n>)` exit 2 로 멈추고 아무것도 지우지·마스킹하지 않는다(plan R6-2, fail-closed) · `fixableInDesign` 이 검토자 간 상충(`fixableInDesignClaims`)인 미해결 항목은 `branches`가 `confirmed:fixable`·`confirmed:design`·`dismissed` 세 갈래이고 접미 없는 `--resolve <id>=confirmed`는 ERR, 접미 결정은 `findings.json`의 `fixableInDesign` 확정값으로 영속(plan R6-3, D9).
 - 실행 블록은 발견·표가 많아도 5개 절 유지 + 40줄 이하(plan R3-10) · 무효 검토 결과 파일이 있어도 render 는 실패하지 않고 부록 C 에 「무효 결과」(plan R3-7) · `cleanup` 뒤 `pack-*.md`·`baseline/` 없음, 남는 JSON(`deploy.json`·`verdict.json` 포함 — plan R4-1) 의 문자열 값에 마스킹 패턴·비밀값 잔존 0(plan R3-9) · `snapshot.api_failures`는 기계 증거 `M-api-<name>`(plan R3-3) · 실행 블록 차단 줄은 id 접두, 축약 ④ 는 생략분 id 목록을 남기고, 재리뷰 이전 차단 목록 불완전은 `M-rereview`(plan R4-3).
 - 판정은 정책 4종만(D9) · 미해결 후보가 있으면 게시용 블록을 만들지 않고 헤더에 「판정 미확정」(R1-F4·R2-F4) · 발견 0건이어도 계약 미완·미복원 diff·배포본 불일치·원문 미확보면 `HOLD_EVIDENCE`(R5-F1·R1-F3·R4-F1·R4-F3) · 유효 검토 0개면 블록 없음(R4-F2) · 리포트 전체에 마스킹 패턴 잔존 0(F5) · `cleanup` 뒤 워크트리·zip·blobs·codex 원시 파일 없음(F7).
