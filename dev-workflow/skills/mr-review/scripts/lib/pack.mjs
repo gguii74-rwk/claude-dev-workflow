@@ -91,12 +91,13 @@ export function residual(text, rules) {
 // 이미 가려진 자리(`[masked:…]`)는 다시 매치하지 않는다(부정 전방탐색) — 어댑터 마스킹 뒤에 적용되므로 이중 마스킹으로 자리표시자를 깨지 않는다.
 // 비밀값 리터럴 — 따옴표 안 값은 공백을 포함해 **전체**를 가린다(C1 R2-1 잔존 보정: `"password": "two word secret"`·JSON 키 형태 `"password": "…"`). 따옴표 없는 값은 토큰 하나.
 // 어댑터 `mask`(개인정보)와 별개로 팩 B(Codex 전송)에도 적용하고 잔존 검사 대상에 넣는다(R6-1 — 리포트에만 걸면 MR 본문·댓글의 `password = "…"` 가 그대로 Codex 로 간다, F5). D4 의 코드 전송 범위(워크트리 diff)는 여기서 가리지 않는다.
-const SECRET_KEYS = '(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)';
+// 키 앞뒤에 식별자 접두·접미(`DB_PASSWORD`·`GITLAB_TOKEN`·`aws_secret_access_key`)를 허용한다(F5) — `_` 는 단어 문자라 `\b` 만으로는 안 걸린다.
+const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)(?![A-Za-z0-9])(?:[_.-][A-Za-z0-9]+)*';
 export const SECRET_MASK = [
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*")(?!\\[masked:)[^"\\n]+(?=")`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*')(?!\\[masked:)[^'\\n]+(?=')`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*\`)(?!\\[masked:)[^\`\\n]+(?=\`)`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=\\b${SECRET_KEYS}\\b["'\`]?\\s*[:=]\\s*)(?!\\[masked:)(?!["'\`])(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s"'\`,;)\\]]+`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*")(?!\\[masked:)[^"\\n]+(?=")`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*')(?!\\[masked:)[^'\\n]+(?=')`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*\`)(?!\\[masked:)[^\`\\n]+(?=\`)`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?!\\[masked:)(?!["'\`])(?:(?:Bearer|Basic|Token|Digest)\\s+)?[^\\s"'\`,;)\\]]+`, flags: 'i' },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
 ];
@@ -290,7 +291,7 @@ export function pack({ adapter, work }) {
   const notesText = (mr.notes || []).filter((x) => !x.system).map((x) => `- (${x.author?.username || '?'} · ${x.created_at} · #${x.id})\n${x.body}`).join('\n\n');
   const body = `# MR !${mr.iid} ${mr.title}\n\nhead ${snap.head_sha} · base ${snap.base_sha}\n\n## 본문\n\n${mr.description || ''}\n\n## 댓글\n\n${notesText || '(없음)'}\n`;
 
-  const header = (label) => `# 컨텍스트 팩 ${label} — MR !${mr.iid} (${mr.project.name}) head ${snap.head_sha.slice(0, 7)}\n\n출처 목록:\n${sources.map((s) => `- [${s.id}] ${s.kind} · ${s.ref}${s.inPackB ? '' : ' · (Codex 미제공)'}${s.missing ? ' · (누락 — 문서·절 없음)' : ''}`).join('\n')}\n`;
+  const header = (label) => `# 컨텍스트 팩 ${label} — MR !${mr.iid} (${mr.project.name}) head ${snap.head_sha.slice(0, 7)}\n\n출처 목록:\n${sources.map((s) => `- [${s.id}] ${s.kind} · ${label === 'B' && !s.inPackB ? '(Codex 미제공)' : `${s.ref}${s.inPackB ? '' : ' · (Codex 미제공)'}`}${label === 'B' && !s.inPackB ? '' : s.missing ? ' · (누락 — 문서·절 없음)' : ''}`).join('\n')}\n`;
   const packA = `${header('A')}\n## MR\n\n${body}\n## 근거 자료\n${renderSources(sources, texts, { onlyB: false })}`;
   fs.writeFileSync(path.join(work, 'pack-a.md'), packA);
 

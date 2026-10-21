@@ -182,7 +182,10 @@ test('전송 경계: 대상 외 등록 저장소의 기준선 원문은 팩 B �
   assert.doesNotMatch(b, /BETA-ONLY-TEXT/);
   assert.match(b, /ALPHA-OWN-TEXT/);
   assert.match(readFileSync(join(work, 'pack-a.md'), 'utf8'), /BETA-ONLY-TEXT/);
-  assert.match(b, /baseline\/2\.md · \(Codex 미제공\)/);
+  assert.match(b, /\[S\d+\] baseline · \(Codex 미제공\)/);
+  assert.doesNotMatch(b, /baseline\/2\.md/);                      // 미제공 출처의 ref 는 B 헤더에도 없다(F4)
+  assert.match(readFileSync(join(work, 'pack-a.md'), 'utf8'), /baseline\/2\.md · \(Codex 미제공\)/);
+  assert.doesNotMatch(b, /wiki-private/);                           // export:false 루트의 페이지 경로도 B 에 없다(F4)
   // 규칙 문서 누락 → missing:true 로 계속
   const s2 = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.'], rules: [{ match: ['**/mapper/**/*.xml'], docs: ['architecture/none.md'] }] } } });
   const r2 = runCli(['pack', '--adapter', s2.adapter, '--work', s2.work], s2.env);
@@ -271,4 +274,17 @@ test('위키 루트가 없어도 돈다 · 댓글의 이메일도 B 에서 가�
   assert.doesNotMatch(b, /someone@example\.test/);
   assert.match(b, /\[masked:email\]/);
   assert.ok(p.mask.applied.email >= 1);
+});
+
+test('비밀값 키 접두·접미: DB_PASSWORD · GITLAB_TOKEN · aws_secret_access_key 값도 팩 B 에서 가려진다 (F5)', () => {
+  const { adapter, work, env } = setup({ description: '## 배경\n- ① 왜: DB_PASSWORD=hunter2xyz\n- GITLAB_TOKEN: glpat-abcdef123456\n- aws_secret_access_key = AKIAabcdef1234567890\n- ② 무엇을: 자동분류 패턴 tokens=keep' });
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /codexSkipped=false$/);
+  const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
+  assert.doesNotMatch(b, /hunter2xyz|glpat-abcdef123456|AKIAabcdef1234567890/);
+  assert.match(b, /DB_PASSWORD=\[masked:secret\]/);
+  assert.match(b, /GITLAB_TOKEN: \[masked:secret\]/);
+  assert.match(b, /aws_secret_access_key = \[masked:secret\]/);
+  assert.match(b, /tokens=keep/);                                   // 키 단어의 일부일 뿐인 낱말은 그대로
 });
