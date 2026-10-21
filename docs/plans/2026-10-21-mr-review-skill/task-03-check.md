@@ -140,14 +140,18 @@ test('기준선 후보 문서가 diff 에 있고 Baseline 만 미완이면 조�
   assert.match(c2.earlyExit.reason, /^계약 미완: Base SHA$/);
 });
 
-test('문서 링크(브랜치 ref) → 그 저장소의 브랜치 API 로 SHA 해소 · raw 원문 확보 · 고정 아님', () => {
+test('문서 링크(브랜치 ref) → 그 저장소의 브랜치 API 로 SHA 해소 · raw 원문 확보 · 고정 아님 · 슬래시 브랜치(feature/topic)는 최장 일치로 경계 해소', () => {
   const link = 'http://gitlab.test/g/docs/-/blob/master/guide/policy.md';
-  const desc = body({ track: '정식', contractOver: { Baseline: '`' + link + '`' } });
+  const link2 = 'http://gitlab.test/g/docs/-/blob/feature/topic/guide/policy.md';
+  const desc = body({ track: '정식', contractOver: { Baseline: '`' + link + '` · ' + link2 } });
   const { root, adapter, work } = setup({ description: desc });
   const enc = encodeURIComponent('guide/policy.md').replace(/\./g, '%2E');
+  const TOPIC_SHA = 'e'.repeat(40);
   const g = fakeGlab(root, [
     { match: '^api projects/103/repository/branches/master$', json: { name: 'master', commit: { id: DOCS_SHA } } },
     { match: `^api projects/103/repository/files/${enc}/raw\\?ref=${DOCS_SHA}$`, text: '# 정책 원문\n' },
+    { match: '^api projects/103/repository/branches/feature%2Ftopic$', json: { name: 'feature/topic', commit: { id: TOPIC_SHA } } },
+    { match: `^api projects/103/repository/files/${enc}/raw\\?ref=${TOPIC_SHA}$`, text: '# 토픽 원문\n' },
   ]);
   const r = runCli(['check', '--adapter', adapter, '--work', work], g.env);
   assert.equal(r.code, 0, r.out + r.err);
@@ -155,7 +159,7 @@ test('문서 링크(브랜치 ref) → 그 저장소의 브랜치 API 로 SHA �
   assert.equal(c.track, '정식');
   assert.equal(c.baselineType, '문서 링크');
   assert.equal(c.baselineConfirm.status, '해당 없음');
-  const l = c.baselineLinks.find((x) => x.kind === 'repo');
+  const l = c.baselineLinks.find((x) => x.kind === 'repo' && x.raw === link);
   assert.equal(l.project, 'docs');
   assert.equal(l.ref, 'master');
   assert.equal(l.path, 'guide/policy.md');
@@ -166,6 +170,15 @@ test('문서 링크(브랜치 ref) → 그 저장소의 브랜치 API 로 SHA �
   const txt = readFileSync(join(work, l.file), 'utf8');
   assert.match(txt, /^<!-- mr-review source: docs:guide\/policy\.md@d{40} ref=master pinned=false -->/);
   assert.match(txt, /# 정책 원문/);
+  const l2 = c.baselineLinks.find((x) => x.kind === 'repo' && x.raw === link2);
+  assert.equal(l2.ref, 'feature/topic');                                                   // 첫 세그먼트 `feature` 가 아니다(R2-8)
+  assert.equal(l2.path, 'guide/policy.md');
+  assert.equal(l2.resolved_sha, TOPIC_SHA);
+  assert.equal(l2.status, '확보');
+  assert.match(readFileSync(join(work, l2.file), 'utf8'), /# 토픽 원문/);
+  const calls = g.calls().map((x) => x.join(' '));
+  assert.ok(calls.some((x) => /branches\/feature%2Ftopic%2Fguide$/.test(x)));              // 긴 후보부터 시도(최장 일치)
+  assert.ok(!calls.some((x) => /branches\/feature$/.test(x)));                             // 짧은 후보는 긴 후보가 맞으면 시도하지 않는다
 });
 
 test('permalink(40자 SHA) 는 그대로 고정 · 어댑터에 없는 프로젝트 링크는 미확보', () => {
@@ -186,21 +199,34 @@ test('permalink(40자 SHA) 는 그대로 고정 · 어댑터에 없는 프로젝
   assert.equal(g.calls().some((x) => x.join(' ').includes('branches')), false);
 });
 
-test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 이슈에서', () => {
-  const desc = body({ background: '', contractOver: { Baseline: '#12' } });
-  const { root, adapter, work } = setup({ description: desc, closes_issues: [{ iid: 12, project_id: 101, title: '버그', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: '' }] });
+test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 이슈에서 · 본문 #n 도 수집 · 미등록 프로젝트의 연결 이슈는 대체 없이 미확보', () => {
+  const desc = body({ background: '- 이슈/spec: #88 참고', contractOver: { Baseline: '#12' } });
+  const { root, adapter, work } = setup({ description: desc, closes_issues: [
+    { iid: 12, project_id: 101, title: '버그', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: '' },
+    { iid: 12, project_id: 999, title: '다른 프로젝트', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: 'http://gitlab.test/g/zeta/-/issues/12' },   // 어댑터 미등록
+  ] });
   const g = fakeGlab(root, [
     { match: '^api projects/101/issues/12$', json: { iid: 12, title: '버그', description: '- ① 왜: 민원\n- ② 무엇을: 처리기', updated_at: '2026-10-19T00:00:00Z' } },
     { match: '^api --paginate projects/101/issues/12/notes', json: [{ id: 5, system: false, author: { username: 'author-a' }, body: '추가 설명', created_at: '2026-10-19T01:00:00Z' }] },
+    { match: '^api projects/101/issues/88$', json: { iid: 88, title: '참고 이슈', description: '배경 설명 88', updated_at: '2026-10-18T00:00:00Z' } },
   ]);
   runCli(['check', '--adapter', adapter, '--work', work], g.env);
   const c = readJson(join(work, 'check.json'));
   assert.equal(c.baselineType, '이슈');
-  const i = c.baselineLinks.find((x) => x.kind === 'issue');
+  const issues = c.baselineLinks.filter((x) => x.kind === 'issue');
+  const i = issues.find((x) => x.project === 'alpha' && x.ref === '12');
   assert.equal(i.status, '확보');
   assert.equal(i.version, '2026-10-19T00:00:00Z');
   assert.match(readFileSync(join(work, i.file), 'utf8'), /추가 설명/);
-  assert.equal(c.baselineLinks.filter((x) => x.kind === 'issue').length, 1);   // #12 와 closes_issues 12 는 하나로
+  assert.equal(issues.filter((x) => x.project === 'alpha' && x.ref === '12').length, 1);   // #12 와 closes_issues 12 는 하나로
+  const i88 = issues.find((x) => x.ref === '88');
+  assert.equal(i88.status, '확보');                                                        // 본문 「이슈/spec: #88」 도 수집(R2-6)
+  assert.match(readFileSync(join(work, i88.file), 'utf8'), /배경 설명 88/);
+  const z = issues.find((x) => x.project_id === 999);
+  assert.equal(z.status, '미확보');                                                        // 미등록 프로젝트 → 현재 프로젝트로 대체하지 않는다(R2-3)
+  assert.equal(z.project, null);
+  assert.match(z.reason, /id 999/);
+  assert.equal(g.calls().filter((x) => x.join(' ') === 'api projects/101/issues/12').length, 1);   // 999 의 #12 를 101 에서 읽지 않았다
   assert.equal(c.reason.source, 'issue');
   assert.equal(c.reason.why, true);
   assert.equal(c.reason.what, true);
@@ -361,14 +387,20 @@ export function judgeReason(text) {
 }
 
 // ── 링크 분해 ─────────────────────────────────────────────────────────────
-const BLOB_RE = /https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+)\/-\/blob\/([^/\s)<>`]+)\/([^\s)<>`#]+)/g;
+// blob 링크의 ref/path 경계는 URL 만으로 정해지지 않는다(브랜치 이름에 `/` 가능) — `refpath` 로 보존하고 resolveRepoLink 가 그 저장소의 branch/tag 로 경계를 해소한다.
+const BLOB_RE = /https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+)\/-\/blob\/([^\s)<>`#]+)/g;
 const ISSUE_URL_RE = /https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+)\/-\/issues\/(\d+)/g;
 const ISSUE_REF_RE = /(?:^|[\s(`])#(\d+)\b/g;
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 
+function splitRefPath(refpath) {
+  const segs = refpath.split('/').map((s) => { try { return decodeURIComponent(s); } catch { return s; } });
+  return { segs, ref: segs[0], path: segs.slice(1).join('/') };   // 임시 경계(첫 세그먼트) — SHA·미확보 링크용. 브랜치·태그는 해소 시 재결정
+}
+
 export function parseBaselineValue(value, currentProject) {
   const links = [];
-  for (const m of value.matchAll(BLOB_RE)) links.push({ raw: m[0], kind: 'repo', project: m[1], ref: m[2], path: m[3] });
+  for (const m of value.matchAll(BLOB_RE)) { const { ref, path } = splitRefPath(m[2]); links.push({ raw: m[0], kind: 'repo', project: m[1], ref, path, refpath: m[2] }); }
   for (const m of value.matchAll(ISSUE_URL_RE)) links.push({ raw: m[0], kind: 'issue', project: m[1], ref: m[2], path: '' });
   for (const m of value.matchAll(ISSUE_REF_RE)) links.push({ raw: `#${m[1]}`, kind: 'issue', project: currentProject, ref: m[1], path: '' });
   const isBody = /배경|MR 본문/.test(value);
@@ -383,32 +415,50 @@ export function parseBaselineValue(value, currentProject) {
 }
 
 // §5.1-5 — 저장소 링크는 호스트·프로젝트·ref·경로로 분해, 그 프로젝트에서 ref→SHA 해소, raw 원문. MR head 로 대체하지 않는다.
+function refSha(projId, ref) {
+  try { return apiJson(`projects/${projId}/repository/branches/${encodeURIComponent(ref)}`).commit.id; }
+  catch { return apiJson(`projects/${projId}/repository/tags/${encodeURIComponent(ref)}`).commit.id; }
+}
+
 function resolveRepoLink(link, adapter, work, n) {
   const proj = adapter.resolved.projects[link.project];
   if (!proj) return { ...link, resolved_sha: null, pinned: false, status: '미확보', reason: `어댑터 projects 에 없는 프로젝트: ${link.project}`, file: null, version: null };
   let sha = null;
   let pinned = false;
+  let ref = link.ref;
+  let filePath = link.path;
   try {
-    if (SHA_RE.test(link.ref)) {
+    const { segs } = splitRefPath(link.refpath || `${link.ref}/${link.path}`);
+    if (SHA_RE.test(segs[0])) {
       pinned = true;
-      sha = link.ref.length === 40 ? link.ref : apiJson(`projects/${proj.id}/repository/commits/${link.ref}`).id;
+      ref = segs[0];
+      filePath = segs.slice(1).join('/');
+      sha = ref.length === 40 ? ref : apiJson(`projects/${proj.id}/repository/commits/${ref}`).id;
     } else {
-      try { sha = apiJson(`projects/${proj.id}/repository/branches/${encodeURIComponent(link.ref)}`).commit.id; }
-      catch { sha = apiJson(`projects/${proj.id}/repository/tags/${encodeURIComponent(link.ref)}`).commit.id; }
+      // 브랜치·태그 이름에 `/` 가 있을 수 있다 — 긴 후보부터(GitLab 의 blob 라우팅과 같은 최장 일치) 그 저장소의 branch/tag API 로 경계를 정한다
+      let found = null;
+      for (let k = segs.length - 1; k >= 1 && !found; k--) {
+        const cand = segs.slice(0, k).join('/');
+        try { found = { ref: cand, sha: refSha(proj.id, cand), path: segs.slice(k).join('/') }; } catch { /* 다음 후보 */ }
+      }
+      if (!found) throw new Error(`브랜치·태그를 찾지 못함: ${link.refpath || link.ref}`);
+      ref = found.ref;
+      sha = found.sha;
+      filePath = found.path;
     }
-    const raw = apiRaw(`projects/${proj.id}/repository/files/${encodePath(link.path)}/raw?ref=${sha}`).toString('utf8');
+    const raw = apiRaw(`projects/${proj.id}/repository/files/${encodePath(filePath)}/raw?ref=${sha}`).toString('utf8');
     const file = `baseline/${n}.md`;
     fs.mkdirSync(path.join(work, 'baseline'), { recursive: true });
-    fs.writeFileSync(path.join(work, file), `<!-- mr-review source: ${link.project}:${link.path}@${sha} ref=${link.ref} pinned=${pinned} -->\n${raw}`);
-    return { ...link, resolved_sha: sha, pinned, status: '확보', reason: '', file, version: sha };
+    fs.writeFileSync(path.join(work, file), `<!-- mr-review source: ${link.project}:${filePath}@${sha} ref=${ref} pinned=${pinned} -->\n${raw}`);
+    return { ...link, ref, path: filePath, resolved_sha: sha, pinned, status: '확보', reason: '', file, version: sha };
   } catch (e) {
-    return { ...link, resolved_sha: sha, pinned, status: '미확보', reason: `원문 확보 실패: ${e.message.slice(0, 160)}`, file: null, version: null };
+    return { ...link, ref, path: filePath, resolved_sha: sha, pinned, status: '미확보', reason: `원문 확보 실패: ${e.message.slice(0, 160)}`, file: null, version: null };
   }
 }
 
 function resolveIssue(link, adapter, work, n) {
-  const proj = adapter.resolved.projects[link.project];
-  if (!proj) return { ...link, resolved_sha: null, pinned: true, status: '미확보', reason: `어댑터 projects 에 없는 프로젝트: ${link.project}`, file: null, version: null, text: '' };
+  const proj = link.project ? adapter.resolved.projects[link.project] : null;
+  if (!proj) return { ...link, resolved_sha: null, pinned: true, status: '미확보', reason: `어댑터 projects 에 없는 프로젝트: ${link.project ?? `id ${link.project_id}`}`, file: null, version: null, text: '' };
   try {
     const issue = apiJson(`projects/${proj.id}/issues/${link.ref}`);
     let notes = [];
@@ -524,11 +574,16 @@ export function check({ adapter, work }) {
   else if (baselineRow.status === '자리표시자') baselineType = '빈칸·자리표시자';
   else { const p = parseBaselineValue(baselineRow.value, mr.project.name); baselineType = p.type; links = p.links; }
 
-  // 연결 이슈(closes_issues)도 원문 수집 대상 — Baseline 의 #n 과 중복이면 하나로
+  // 연결 이슈(closes_issues)와 MR 본문의 #n 참조도 원문 수집 대상(§5.1-5) — 프로젝트·IID 로 중복 제거.
+  // closes_issues 의 project_id 가 어댑터에 없으면 현재 프로젝트로 **대체하지 않는다**(같은 번호의 무관한 이슈를 근거로 삼게 된다) — 미확보로 남긴다.
+  const hasIssue = (projName, iid) => links.some((l) => l.kind === 'issue' && l.project === projName && String(l.ref) === String(iid));
   for (const ci of mr.closes_issues || []) {
-    const projName = Object.entries(adapter.resolved.projects).find(([, p]) => p.id === ci.project_id)?.[0] || mr.project.name;
-    if (!links.some((l) => l.kind === 'issue' && l.project === projName && String(l.ref) === String(ci.iid))) links.push({ raw: `closes #${ci.iid}`, kind: 'issue', project: projName, ref: String(ci.iid), path: '' });
+    const projName = Object.entries(adapter.resolved.projects).find(([, p]) => p.id === ci.project_id)?.[0] ?? null;
+    if (!hasIssue(projName, ci.iid)) links.push({ raw: ci.web_url || `closes #${ci.iid}`, kind: 'issue', project: projName, ref: String(ci.iid), path: '', project_id: ci.project_id });
   }
+  const bgText = section(desc, /^배경/) || '';   // 본문 #n 은 「배경」 절(이슈/spec 줄)에서만 — 다른 절의 `#3 항목` 같은 번호를 이슈로 오인하지 않는다
+  for (const m of bgText.matchAll(ISSUE_REF_RE)) if (!hasIssue(mr.project.name, m[1])) links.push({ raw: `#${m[1]}`, kind: 'issue', project: mr.project.name, ref: m[1], path: '' });
+  for (const m of bgText.matchAll(ISSUE_URL_RE)) if (!hasIssue(m[1], m[2])) links.push({ raw: m[0], kind: 'issue', project: m[1], ref: m[2], path: '' });
   const baselineLinks = [];
   let n = 0;
   let issueText = '';
@@ -617,6 +672,8 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 - **정규식·신뢰 리뷰어를 코드에 쓰지 마라 — 어댑터 값만. 이유:** P9·D10. 테스트 픽스처의 `TEST-POLICY-*`가 그 증거다.
 - **`baselineConfirm`의 「낡음」은 system note `changed the description` 시각만 본다. MR `updated_at`은 쓰지 마라. 이유:** `updated_at`은 댓글 하나에도 바뀌어 항상 낡음이 된다.
 - **Baseline 링크의 ref를 MR head 로 바꾸지 마라. 이유:** 다른 저장소엔 그 SHA가 없고, 같은 저장소라도 L2는 승인본과 대조해야 한다(R5-F2).
-- **`closes_issues`와 본문 `#n`이 같은 이슈면 한 번만 받는다. 이유:** 팩 중복·API 호출 낭비.
+- **`closes_issues`와 본문 `#n`이 같은 이슈면 한 번만 받는다. 이유:** 팩 중복·API 호출 낭비. 본문 `#n`(Baseline 밖 — 「배경」의 이슈/spec 줄 등)도 수집 대상이다(R2-6·§5.1-5).
+- **`closes_issues`의 `project_id`가 어댑터에 없으면 현재 프로젝트로 대체하지 마라 — `project:null`·미확보. 이유:** R2-3 — 현재 프로젝트에 같은 번호의 무관한 이슈가 있으면 그 본문이 변경 사유·설계 근거가 되고 미확보 차단도 안 생긴다.
+- **blob 링크의 ref/path 경계를 URL의 첫 세그먼트로 정하지 마라 — 그 저장소의 branch/tag API로 긴 후보부터 해소. 이유:** R2-8 — `feature/topic` 브랜치 링크가 `ref=feature, path=topic/…`로 깨져 다른 문서를 확보로 기록할 수 있다. SHA(permalink)만 첫 세그먼트로 확정.
 - **`earlyExit`는 판정만 계산하고 여기서 멈추지 않는다. 이유:** 멈출지(`--full`)는 SKILL.md가 결정한다(§5.2 조기 종료).
 - **Baseline 줄만 미완이고 후보 문서가 있으면 `would:false`. `!contract.complete`로 조기 종료하지 마라. 이유:** R1-10 — Baseline 자리표시자는 항상 계약 미완이라, 그렇게 하면 §5.2의 「후보 문서 관련성 검토」 경로가 기본 실행에서 도달 불가능해진다. Baseline 미완은 `incompleteLines`로 verdict에 남아 `APPROVE`를 막는다.

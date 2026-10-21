@@ -93,6 +93,7 @@ test('worktree 모드: fetch head = API head → 세 SHA 고정 + 워크트리',
   assert.equal(snap.target_sha, baseSha);
   assert.equal(snap.checkout, checkout);
   assert.equal(snap.worktree, join(work, 'worktree'));
+  assert.equal(snap.diff_list_complete, true);                 // 워크트리 모드는 git diff 가 정본
   assert.ok(existsSync(join(work, 'worktree', 'src', 'main', 'java', 'app', 'B.java')));
   assert.ok(!existsSync(join(work, 'worktree', 'src', 'main', 'java', 'app', 'Old.java')));
   const mr = readJson(join(work, 'mr.json'));
@@ -204,6 +205,27 @@ test('--diff-only 는 체크아웃이 있어도 diff-only 로 간다 · overflow
   assert.equal(snap.mode, 'diff-only');
   assert.deepEqual(snap.unrecovered, ['src/main/java/app/B.java']);   // new_file·잘림: head raw 규칙 없음 → 원문도 diff 도 확보 실패
   assert.equal(readJson(join(work, 'mr.json')).overflow, true);
+  assert.equal(snap.diff_list_complete, false);                        // overflow + changes_count 없음 → 목록 완전성 미확인(fail-closed, R2-2)
+  // overflow 지만 changes_count 가 수신 항목 수와 맞으면 목록은 완전
+  const g2 = fakeGlab(root, [
+    ...rules(headSha, { metaRules: [{ match: `^api ${p}$`, json: meta(headSha, { changes_count: '4' }) }] }).filter((x) => !x.match.includes('/diffs') && !x.match.includes('/changes')),
+    { match: `^api --paginate ${p}/diffs`, json: diffs },
+    { match: `^api ${p}/changes$`, json: { overflow: true } },
+    ...headRaw(headSha, ['src/main/java/app/A.java', 'docs/specs/2026-10-01-feature.md']),
+  ]);
+  const work2 = join(root, 'work2');
+  runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work2, '--diff-only'], g2.env);
+  assert.equal(readJson(join(work2, 'snapshot.json')).diff_list_complete, true);
+  assert.equal(readJson(join(work2, 'mr.json')).changes_count, '4');
+  // "4+" 또는 수신 수보다 큰 값이면 불완전
+  const g3 = fakeGlab(root, [
+    ...rules(headSha, { metaRules: [{ match: `^api ${p}$`, json: meta(headSha, { changes_count: '4+' }) }] }).filter((x) => !x.match.includes('/changes')),
+    { match: `^api ${p}/changes$`, json: { overflow: true } },
+    ...headRaw(headSha, ['src/main/java/app/A.java', 'src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md']),
+  ]);
+  const work3 = join(root, 'work3');
+  runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work3, '--diff-only'], g3.env);
+  assert.equal(readJson(join(work3, 'snapshot.json')).diff_list_complete, false);
 });
 
 test('어댑터에 없는 프로젝트 → ERR exit 2', () => {
@@ -331,7 +353,7 @@ export function normalize(project, projectName, iid, raw, collectedAt) {
     iid: Number(iid), title: m.title || '', description: m.description || '', state: m.state || '', updated_at: m.updated_at || null, web_url: m.web_url || '',
     author: { id: m.author?.id ?? null, username: m.author?.username ?? '' },
     reviewers: (m.reviewers || []).map((r) => ({ id: r.id, username: r.username })),
-    source_branch: m.source_branch || '', target_branch: m.target_branch || '', api_head: m.sha || '',
+    source_branch: m.source_branch || '', target_branch: m.target_branch || '', api_head: m.sha || '', changes_count: m.changes_count == null ? null : String(m.changes_count),
     diff_refs: m.diff_refs ? { base_sha: m.diff_refs.base_sha, head_sha: m.diff_refs.head_sha, start_sha: m.diff_refs.start_sha } : null,
     detailed_merge_status: m.detailed_merge_status || '', has_conflicts: m.has_conflicts === true,
     approved_by: (raw.approvals?.approved_by || []).map((a) => a.user?.username).filter(Boolean),
@@ -404,7 +426,12 @@ export function rebuildDiffOnly(projectId, mr, work) {
       unrecovered.push(label);
     }
   }
-  return { head, base, target: base, unrecovered, rebuilt };
+  // 변경 파일 목록 자체의 완전성 — overflow 면 API 가 파일 항목을 통째로 뺄 수 있다. 메타 changes_count("25" 또는 "25+")와 수신 항목 수를 대조해
+  // 못 맞추면(모르면) 불완전으로 둔다(fail-closed) → verdict 의 결정적 증거 부족(M-diff-list). 파일별 복원 성공과는 별개다.
+  const expected = String(mr.changes_count ?? '');
+  const n = parseInt(expected, 10);
+  const diffListComplete = !mr.overflow || (Number.isFinite(n) && !expected.endsWith('+') && n <= mr.diffs.length);
+  return { head, base, target: base, unrecovered, rebuilt, diffListComplete };
 }
 
 export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
@@ -429,10 +456,10 @@ export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
         if (attempt === MAX_ATTEMPTS) throw new CollectError(`HEAD_MOVED — ${MAX_ATTEMPTS}회 재수집에도 API head(${mr.api_head.slice(0, 7)})와 fetch head 가 다르다(push 진행 중?)`, 3);
         continue;
       }
-      snapshot = { mode: 'worktree', target_sha: pin.target, base_sha: pin.base, head_sha: pin.head, checkout: project.checkout, worktree: pin.worktree, attempts: attempt, unrecovered: [], rebuilt: [], fetched_at: fetchedAt };
+      snapshot = { mode: 'worktree', target_sha: pin.target, base_sha: pin.base, head_sha: pin.head, checkout: project.checkout, worktree: pin.worktree, attempts: attempt, unrecovered: [], rebuilt: [], diff_list_complete: true, fetched_at: fetchedAt };
     } else {
       const rb = rebuildDiffOnly(project.id, mr, work);
-      snapshot = { mode: 'diff-only', target_sha: rb.target, base_sha: rb.base, head_sha: rb.head, checkout: isGitDir(project.checkout) ? project.checkout : null, worktree: null, attempts: attempt, unrecovered: rb.unrecovered, rebuilt: rb.rebuilt, fetched_at: fetchedAt };
+      snapshot = { mode: 'diff-only', target_sha: rb.target, base_sha: rb.base, head_sha: rb.head, checkout: isGitDir(project.checkout) ? project.checkout : null, worktree: null, attempts: attempt, unrecovered: rb.unrecovered, rebuilt: rb.rebuilt, diff_list_complete: rb.diffListComplete, fetched_at: fetchedAt };
     }
     break;
   }
@@ -500,5 +527,6 @@ git commit -m "feat(mr-review): collect — MR 수집·스냅샷 SHA 고정·워
 - **API head ≠ fetch head 면 1부터 다시 — fetch head 를 믿고 진행하지 마라. 이유:** 그 사이 push가 있었으면 메타·diff·댓글은 옛 head 것이다(R1-F2).
 - **diff-only 복원은 반드시 base·head 양쪽 blob. head 만 받으면 복원이 아니다. 이유:** 삭제된 코드가 안 보인다(R2-F2). 실패는 `unrecovered`로 남겨 verdict가 MISSING_EVIDENCE로 받는다.
 - **없는 쪽(new_file·deleted_file)은 빈 파일과 비교한다(`/dev/null` 금지). 이유:** Windows Git Bash 경로 호환.
+- **`overflow`면 파일 항목 자체가 빠질 수 있다 — `changes_count`와 수신 항목 수를 대조해 `diff_list_complete`를 적고, 못 맞추면 `false`. 이유:** R2-2 — 파일별 복원이 전부 성공해도 목록이 잘렸으면 검토 범위·배포 목록이 함께 줄어 모델 발견 없이 `APPROVE`가 난다. verdict가 `M-diff-list`로 받는다.
 - **워크트리는 `work/worktree` 고정 경로, 기존 잔존물은 먼저 제거. 이유:** spec §5.1-2 「같은 이름 잔존물은 먼저 제거」 — 이전 실행의 잔재가 섞이면 F6·F7.
 - **`notes`의 `system: true`를 버리지 마라. 이유:** `changed the description` 시각이 check의 「낡음」 판정 입력이다(R3-F3).

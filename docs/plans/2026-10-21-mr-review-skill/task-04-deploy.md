@@ -35,7 +35,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
-const { readZip, parseDeletedList, expectedLists } = await import(join(LIB, 'deploy.mjs'));
+const { readZip, crc32, parseDeletedList, expectedLists } = await import(join(LIB, 'deploy.mjs'));
 const SECRET = '3'.repeat(32);
 
 function archive(checkout, sha, out, files) {
@@ -172,6 +172,29 @@ test('본문에만 있는 삭제 경로: 기대 삭제 목록이 비어 있어�
   assert.ok(readJson(join(w3, 'deploy.json')).mismatches.some((m) => m.kind === 'deleted_list' && /Keep\.java/.test(m.detail)));   // 기대 ⊂ 본문이어도 불일치
 });
 
+test('CRC 손상 zip: 목록·주석·내용 길이는 맞아도 read() 가 CRC 불일치를 던져 corrupt → 대조 불가 (R2-7)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const good = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), ['src/main/java/app/A.java', 'src/main/java/app/B.java']));
+  const z = readZip(good);
+  const e = z.entries.find((x) => x.name === 'src/main/java/app/A.java');
+  assert.equal(crc32(z.read(e)), e.crc);                                   // 정상 zip 은 central directory CRC 와 일치
+  const bad = Buffer.from(good);
+  bad.writeUInt32LE((e.crc ^ 0xffffffff) >>> 0, e.cd + 16);                // central directory 의 CRC 만 뒤집는다(데이터·목록·주석 불변)
+  const zb = readZip(bad);
+  assert.equal(zb.comment.trim(), headSha);
+  assert.throws(() => zb.read(zb.entries.find((x) => x.name === e.name)), /CRC 불일치/);
+  const badFile = join(root, 'bad-crc.zip');
+  writeFileSync(badFile, bad);
+  const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: badFile }]);
+  const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/d.zip`, kind: 'zip', filename: 'd.zip', secret: SECRET, where: 'body' }], description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: src/main/java/app/Old.java\n' });
+  const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
+  assert.equal(r.first, 'DEPLOY 대조 불가');
+  const d = readJson(join(work, 'deploy.json'));
+  assert.ok(d.mismatches.some((m) => m.kind === 'corrupt' && m.path === 'src/main/java/app/A.java' && /CRC/.test(m.detail)));
+});
+
 test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 바이트 대조', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
@@ -209,7 +232,7 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
 node --test tests/mr-review/deploy.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
 
-기대: tests 8 · pass 0 · fail 8.
+기대: tests 9 · pass 0 · fail 9.
 
 ### 2. `deploy.mjs`
 
@@ -272,7 +295,15 @@ export function parseDeletedList(description) {
   return [...new Set(out)].sort();
 }
 
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } return t; })();
+export function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
 // 자체 ZIP 리더(P3) — central directory 로 목록, stored(0)·deflate(8) 만. zip64 미지원(git archive 산출물 범위).
+// read() 는 central directory 의 CRC-32·비압축 크기와 대조한다 — 표준 리더가 Bad CRC 로 거부할 배포본을 「일치」로 보증하지 않는다.
 export function readZip(buf) {
   const EOCD = 0x06054b50;
   let eocd = -1;
@@ -289,6 +320,7 @@ export function readZip(buf) {
   for (let i = 0; i < count; i++) {
     if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) throw new Error('zip central directory 손상');
     const method = buf.readUInt16LE(p + 10);
+    const crc = buf.readUInt32LE(p + 16);
     const csize = buf.readUInt32LE(p + 20);
     const usize = buf.readUInt32LE(p + 24);
     const nLen = buf.readUInt16LE(p + 28);
@@ -296,7 +328,7 @@ export function readZip(buf) {
     const cmLen = buf.readUInt16LE(p + 32);
     const lho = buf.readUInt32LE(p + 42);
     const name = buf.subarray(p + 46, p + 46 + nLen).toString('utf8');
-    entries.push({ name, method, csize, usize, lho });
+    entries.push({ name, method, crc, csize, usize, lho, cd: p });
     p += 46 + nLen + eLen + cmLen;
   }
   const read = (e) => {
@@ -305,10 +337,16 @@ export function readZip(buf) {
     const nLen = buf.readUInt16LE(h + 26);
     const eLen = buf.readUInt16LE(h + 28);
     const start = h + 30 + nLen + eLen;
+    if (start + e.csize > buf.length) throw new Error(`zip 데이터 범위 초과: ${e.name}`);
     const data = buf.subarray(start, start + e.csize);
-    if (e.method === 0) return Buffer.from(data);
-    if (e.method === 8) return zlib.inflateRawSync(data);
-    throw new Error(`지원하지 않는 압축 방식(${e.method}): ${e.name}`);
+    let out;
+    if (e.method === 0) out = Buffer.from(data);
+    else if (e.method === 8) out = zlib.inflateRawSync(data);
+    else throw new Error(`지원하지 않는 압축 방식(${e.method}): ${e.name}`);
+    if (out.length !== e.usize) throw new Error(`zip 크기 불일치(${out.length} ≠ ${e.usize}): ${e.name}`);
+    const c = crc32(out);
+    if (c !== e.crc) throw new Error(`zip CRC 불일치(${c.toString(16)} ≠ ${e.crc.toString(16)}): ${e.name}`);
+    return out;
   };
   return { comment, entries, read };
 }
@@ -418,7 +456,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 node --check dev-workflow/skills/mr-review/scripts/lib/deploy.mjs && echo CHECK_OK
 ```
 
-기대: deploy 8/8 · 앞선 24/24 · `CHECK_OK`.
+기대: deploy 9/9 · 앞선 24/24 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/deploy.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/deploy.test.mjs
@@ -427,7 +465,7 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/deploy.test.mjs` → 8/8.
+- `node --test tests/mr-review/deploy.test.mjs` → 9/9.
 - `git archive`로 만든 zip의 주석 SHA·목록·바이트를 외부 `unzip` 없이 읽는다(P3).
 - 삭제만 있는 변경은 zip 없이 ④ 삭제 목록만으로 판정(R3-F2) · 기대 목록은 4.7 규칙으로 거른 것(R3-F4) · 결과가 무엇이든 exit 0(판정은 verdict 몫).
 
@@ -438,4 +476,5 @@ git commit -m "feat(mr-review): deploy — 4.7 규칙 배포·삭제 목록, 자
 - **삭제 목록 대조는 기대 목록이 비어 있어도 항상 집합 비교다. `expected.deleted.length > 0`일 때만 대조하지 마라. 이유:** R1-4 — 본문에만 적힌 삭제 경로(변경하지 않은 파일)가 통과하면 배포자가 정상 파일을 지운다. 문자열 join 비교도 금지(순서 차이가 거짓 불일치).
 - **`git diff`는 `-z`로 읽어라. 이유:** 한글·공백 경로가 `core.quotePath`로 인용돼 목록이 어긋난다(정책 §6.1과 같은 이유).
 - **zip 리더에 zip64·암호화를 넣지 마라. 이유:** git archive 산출물 범위 밖 — YAGNI. 판독 실패는 `corrupt` → 「대조 불가」로 fail-closed.
+- **`read()`는 CRC-32·비압축 크기를 central directory 값과 대조한다 — inflate 성공만으로 정상으로 보지 마라. 이유:** R2-7 — 내용·목록·주석이 맞고 CRC만 깨진 zip은 표준 압축 해제가 거부하는 배포본인데 「일치」로 보증된다.
 - **내려받은 zip은 `work/zip/`에만 둔다. 이유:** F7 — `cleanup`(task-06)이 지운다.

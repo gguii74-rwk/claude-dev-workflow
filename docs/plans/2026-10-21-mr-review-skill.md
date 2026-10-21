@@ -127,7 +127,7 @@
 { "project": { "name": "", "id": 0, "checkout": "<절대 경로|null>", "deployExempt": false }, "iid": 0,
   "title": "", "description": "", "state": "opened", "updated_at": "<ISO>", "web_url": "",
   "author": { "id": 0, "username": "" }, "reviewers": [{ "id": 0, "username": "" }],
-  "source_branch": "", "target_branch": "", "api_head": "<40자>", "diff_refs": { "base_sha": "", "head_sha": "", "start_sha": "" }, "detailed_merge_status": "", "has_conflicts": false,
+  "source_branch": "", "target_branch": "", "api_head": "<40자>", "changes_count": "<\"25\"|\"25+\"|null>", "diff_refs": { "base_sha": "", "head_sha": "", "start_sha": "" }, "detailed_merge_status": "", "has_conflicts": false,
   "approved_by": ["<username>"],
   "diffs": [{ "old_path": "", "new_path": "", "new_file": false, "renamed_file": false, "deleted_file": false, "too_large": false, "diff": "" }],
   "overflow": false,
@@ -142,8 +142,9 @@
 **`snapshot.json`**:
 ```json
 { "mode": "worktree|diff-only", "target_sha": "", "base_sha": "", "head_sha": "", "checkout": "<절대|null>", "worktree": "<절대|null>",
-  "attempts": 1, "unrecovered": ["<path>"], "rebuilt": ["<path>"], "fetched_at": "<ISO>" }
+  "attempts": 1, "unrecovered": ["<path>"], "rebuilt": ["<path>"], "diff_list_complete": true, "fetched_at": "<ISO>" }
 ```
+- `diff_list_complete`: 워크트리 모드는 항상 `true`(git diff 정본). diff-only는 `!overflow || (changes_count 가 정수이고 "+" 없음이고 ≤ 수신 diffs 수)` — API overflow 로 파일 항목이 통째로 빠졌을 가능성을 못 배제하면 `false`(fail-closed) → verdict 기계 증거 `M-diff-list`(HOLD_EVIDENCE 이상). `mr.json.changes_count` = 메타 `changes_count` 문자열("25"·"25+"·`null`).
 - `mode: worktree` — `head_sha` = fetch한 `refs/mr-review/<iid>/head`가 가리키는 SHA(= `mr.json.api_head`와 같아야 함 — 다르면 collect가 1부터 다시, 최대 3회, 초과 시 exit 3 `HEAD_MOVED`). `target_sha` = fetch 직후 `origin/<target>`. `base_sha` = `merge-base`.
 - `mode: diff-only` — `head_sha` = `api_head`, `base_sha`·`target_sha` = `versions[0].base_commit_sha`(없으면 `diff_refs.base_sha`). **검토 루트 `<work>/blobs/head/`는 잘림 유무와 무관하게 항상 만들고 삭제되지 않은 모든 변경 파일의 head 원문을 그 SHA로 받는다**(task-07의 검토자 cwd·파일 전문 위치). `unrecovered` = head 원문을 받지 못했거나 양쪽 blob으로 diff를 재구성하지 못한 변경 파일. `rebuilt` = 재구성에 성공해 `mr.json.diffs[*].diff`를 교체한 파일. 새 `collect`는 이전 실행의 `check.json`·`deploy.json`·`pack*`·`review-*.json`·`findings.json`·`verdict.json`·`baseline/`·`blobs/`를 먼저 지운다.
 
@@ -153,7 +154,7 @@
     "lines": [{ "name": "Policy", "status": "채움|채움(구버전)|자리표시자|없음", "value": "" }], "complete": false, "incompleteLines": ["<name>"] },
   "track": "경량|정식|핫픽스|미기재",
   "baselineType": "문서 링크|MR 본문 배경|이슈|서술만|빈칸·자리표시자|칸 없음",
-  "baselineLinks": [{ "raw": "", "kind": "repo|issue|body|other", "project": "<이름|null>", "ref": "", "path": "", "resolved_sha": "<40자|null>", "pinned": true,
+  "baselineLinks": [{ "raw": "", "kind": "repo|issue|body|other", "project": "<이름|null>", "project_id": 0, "ref": "", "path": "", "refpath": "<blob 뒤 원문 — repo 만>", "resolved_sha": "<40자|null>", "pinned": true,
                       "status": "확보|미확보", "reason": "", "file": "baseline/1.md", "version": "<sha|updated_at|null>" }],
   "reason": { "why": true, "what": true, "source": "body|issue|none", "text": "" },
   "baselineCandidateFiles": ["<path>"],
@@ -172,6 +173,7 @@
 - `contract.lines[*].status`: 값이 비어 있거나 꺾쇠 `<…>`·`#`만이면 `자리표시자`, 줄 자체가 없으면 `없음`, `Policy` 값이 `acceptedIds`에 있으나 `judgeId`와 다르면 `채움(구버전)`, 그 밖 `채움`. `complete` = 10줄 모두 `채움`/`채움(구버전)`. `Policy` 값이 `acceptedIds`에 없으면 `자리표시자`(알 수 없는 ID = 미완).
 - `baselineType` 판정: Baseline 줄 값에 저장소 blob 링크(`/-/blob/<ref>/<path>`) 있음 → `문서 링크`; `#<n>`·`/-/issues/<n>` → `이슈`; 「배경」·`MR 본문` 문구 → `MR 본문 배경`; 자리표시자 → `빈칸·자리표시자`; 줄 없음 → `칸 없음`; 그 밖 비어 있지 않은 글 → `서술만`.
 - `baselineConfirm`: 경량일 때만 평가. 댓글 작성자가 `reviewers` 또는 `trustedReviewers`이고 본문 첫 줄이 `baselineConfirm` 정규식에 맞으면 후보. 최신 후보의 `created_at` < `description_changed_at`이면 `낡음`. 정식·핫픽스 = `해당 없음`.
+- `baselineLinks` 수집 범위 = Baseline 줄의 링크·`#n` + `closes_issues` + **MR 본문 「배경」 절의 `#n`·이슈 URL**(프로젝트·IID로 중복 제거). `closes_issues`의 `project_id`가 어댑터에 없으면 `project:null`·`미확보`(현재 프로젝트로 대체하지 않는다). 저장소 링크의 `ref`/`path` 경계는 URL 첫 세그먼트가 아니라 **그 저장소의 branch/tag API로 긴 후보부터 해소**한다(`feature/topic` 브랜치 지원 — SHA permalink만 첫 세그먼트 확정).
 - `priorVerdicts[*].trusted` = 작성자가 `reviewers`∪`trustedReviewers`에 있고 **MR 작성자가 아님**. `rereview.active` = 신뢰 이전 판정 중 최신의 `sha`가 `snapshot.head_sha`와 다름(7자 이상 접두 비교).
 - `earlyExit.would` = `(incompleteLines 중 Baseline 외 줄 있음) || (baselineType ∈ {빈칸·자리표시자, 칸 없음} && baselineCandidateFiles.length === 0)` — **Baseline 줄만 미완이고 후보 문서가 있으면 `false`**(§5.2 후보 관련성 검토 경로 보장 — Baseline 미완은 `incompleteLines`로 verdict의 기계 증거 부족에 남는다). `draftVerdict` = 기준선 없음이면 `RETURN_TO_DESIGN`, 아니면 `HOLD_EVIDENCE`.
 
@@ -185,7 +187,7 @@
   "mismatches": [{ "kind": "comment_sha|missing_in_zip|extra_in_zip|bytes|deleted_list|download|corrupt", "path": "<path|null>", "detail": "" }] }
 ```
 - `applicable` = `!deployExempt && (expected.deploy.length + expected.deleted.length > 0)`. `expected`는 `--no-renames` 기준 `git diff --name-only --diff-filter=ACMR|D base..head`를 `deploy.targets`로 걸러 `deploy.excludes`를 뺀 것. diff-only 모드는 `mr.json.diffs`로 같은 목록을 계산하되 `bytes` 대조는 `대조 불가`.
-- 결과 순서: zip 첨부 없음 + `expected.deploy` 비어 있지 않음 → `zip 누락`; 다운로드 실패·zip 손상 → `대조 불가`; 그 밖 mismatches 비면 `일치`, 아니면 `불일치`. `bodyDeletedList`는 본문 「배포본」 항목 아래 목록(줄 시작 `-`·`*`·숫자. 또는 코드펜스 안 한 줄 한 경로)에서 뽑는다. `expected.deleted`와 집합 비교(순서 무관).
+- 결과 순서: zip 첨부 없음 + `expected.deploy` 비어 있지 않음 → `zip 누락`; 다운로드 실패·zip 손상(central directory·local header·**CRC-32·비압축 크기 불일치** 포함) → `대조 불가`; 그 밖 mismatches 비면 `일치`, 아니면 `불일치`. `bodyDeletedList`는 본문 「배포본」 항목 아래 목록(줄 시작 `-`·`*`·숫자. 또는 코드펜스 안 한 줄 한 경로)에서 뽑는다. `expected.deleted`와 집합 비교(순서 무관).
 
 **`pack.json`**:
 ```json
@@ -218,13 +220,13 @@
   "baselineCandidateRelevant": true,
   "outsideWorktreePaths": ["<절대 경로>"] }
 ```
-- `review-validate --file <path>`(CLI)가 검사: 최상위 키 5종(`reviewer`·`head_sha`·`findings`·`intent`·`baselineCandidateRelevant`) 존재, `findings[*].type` 4종, DEFECT·DESIGN_DRIFT면 `scenario` 비어 있지 않음, `confidence` 3종, `fixableInDesign` 2종. 통과 = stdout `VALID` exit 0, 실패 = `INVALID <이유>` exit 1. `outsideWorktreePaths`는 선택(Codex 출력 경로 감시 결과를 메인이 채운다 — D16 ⓑ).
+- `review-validate --file <path> --head <snapshot.head_sha> --reviewer <claude|codex>`(CLI)가 검사: 최상위 키 5종(`reviewer`·`head_sha`·`findings`·`intent`·`baselineCandidateRelevant`) 존재, `findings[*].type` 4종, DEFECT·DESIGN_DRIFT면 `scenario` 비어 있지 않음, `confidence` 3종, `fixableInDesign` 2종, **`head_sha` = 기대 head · `reviewer` = 기대 검토자**(이전 head 의 결과·검토자 혼동은 INVALID — 메인이 head 를 고쳐 쓰지 않는다, F6). 통과 = stdout `VALID` exit 0, 실패 = `INVALID <이유>` exit 1. `outsideWorktreePaths`는 선택(Codex 출력 경로 감시 결과를 메인이 채운다 — D16 ⓑ).
 
 ### SC-5. 병합 발견 — `findings.json` (메인이 쓴다, verdict·render가 읽는다)
 
 ```json
 { "head_sha": "", "validReviewers": ["claude", "codex"], "crossChecked": true,
-  "baselineCandidateRelevant": true,
+  "baselineCandidateRelevant": true, "baselineCandidateReason": "<유효 결과 전부 일치 | 단일 모델 값 | 상충 — 메인이 후보 문서를 읽고 판정한 근거 한 줄>",
   "findings": [{ "id": "F1", "fingerprint": "<file + 정규화 title>", "source": "both|claude|codex", "lens": "", "type": "", "blocking": true,
                  "title": "", "file": "", "line_start": 0, "line_end": 0, "evidence": "", "scenario": "", "confidence": "", "recommendation": "",
                  "fixableInDesign": "yes|no", "brokenPremise": "", "unresolved": false, "resolution": "confirmed|dismissed|null", "dismissReason": "" }],
@@ -243,7 +245,7 @@
 | `check` | `--adapter --work` | `CHECKED complete=<bool> baseline=<type> earlyExit=<bool> rereview=<bool>` exit 0 |
 | `deploy` | `--adapter --work` | `DEPLOY <result>` exit 0(결과가 무엇이든 0 — 판정은 verdict 몫) |
 | `pack` | `--adapter --work` | `PACKED sources=<n> codexSkipped=<bool>` exit 0 |
-| `review-validate` | `--file <path>` | `VALID` exit 0 · `INVALID <이유>` exit 1 |
+| `review-validate` | `--file <path> [--head <40자>] [--reviewer claude\|codex]` | `VALID` exit 0 · `INVALID <이유>` exit 1 — `--head`·`--reviewer`가 있으면 원본 결과의 `head_sha`·`reviewer`와 일치해야 VALID(SKILL은 항상 둘 다 준다) |
 | `verdict` | `--adapter --work [--resolve <id>=<confirmed\|dismissed>]...` | `VERDICT <status> <verdict\|->` exit 0 · `findings.json` 없음 → exit 2 |
 | `render` | `--adapter --work [--early] [--out <파일>]` | `REPORT <경로>` exit 0 — `--out` 생략 시 `<reportDir>/<프로젝트>-<iid>-<sha7>.md` |
 | `cleanup` | `--adapter --work` | `CLEANED worktree=<bool> zip=<n> raw=<n>` exit 0 |

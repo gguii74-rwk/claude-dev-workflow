@@ -452,7 +452,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 node --check dev-workflow/skills/mr-review/scripts/lib/pack.mjs && echo CHECK_OK
 ```
 
-기대: pack 7/7 · 앞선 32/32 · `CHECK_OK`.
+기대: pack 7/7 · 앞선 33/33 · `CHECK_OK`.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/pack.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/pack.test.mjs

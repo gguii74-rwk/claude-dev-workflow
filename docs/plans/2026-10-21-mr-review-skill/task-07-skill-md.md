@@ -161,10 +161,10 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 - cwd = **워크트리**(diff-only면 `W/blobs/head`) — 대상 저장소 체크아웃이어야 하며 위키·메모리·다른 저장소를 그 안에 두지 않는다.
 - 대기 = 백그라운드(`run_in_background: true`, 도구 timeout 600000): `for i in $(seq 38); do grep -q '^COMPANION_EXIT:' "$W/codex.out" && break; sleep 15; done`. `WAIT_EXPIRED`면 `kill -0 "$(cat "$W/codex.pid")"`로 생존 확인 후 재대기.
-- **유효 판정**: 마커 `COMPANION_EXIT:0` + `[codex] Running command:` 실행 로그 ≥ 1 + 본문에서 추출한 JSON이 `<CLI> review-validate --file "$W/review-codex.json"` → `VALID`. JSON 추출 = `codex.out`의 마지막 ```` ```json ```` 펜스 블록(없으면 마지막 `[codex]` 줄 뒤 본문을 JSON으로 파싱). 하나라도 실패하면 **자동 재실행하지 않고** 단일 모델 모드로 떨어지며 원문(어댑터 마스킹 적용 후)을 보고한다.
+- **유효 판정**: 마커 `COMPANION_EXIT:0` + `[codex] Running command:` 실행 로그 ≥ 1 + 본문에서 추출한 JSON이 `<CLI> review-validate --file "$W/review-codex.json" --head "<snapshot.head_sha>" --reviewer codex` → `VALID`(**`--head`·`--reviewer`를 생략하지 않는다** — 검토자가 이전 head 의 결과나 다른 검토자 이름을 내면 여기서 INVALID 로 떨어진다, F6·D11). JSON 추출 = `codex.out`의 마지막 ```` ```json ```` 펜스 블록(없으면 마지막 `[codex]` 줄 뒤 본문을 JSON으로 파싱). 하나라도 실패하면 **자동 재실행하지 않고** 단일 모델 모드로 떨어지며 원문(어댑터 마스킹 적용 후)을 보고한다.
 - **경로 감시**(D16 ⓑ): `codex.out` 전체에서 워크트리 밖 절대 경로(`/`·`~`·드라이브 문자로 시작하고 워크트리 접두가 아닌 것)와 어댑터 위키 루트(전송 금지 루트 포함) 경로를 찾는다 → `findings.json.outsideWorktreePaths`에 적는다(리포트 헤더 「격리 위반 의심」).
 
-두 검토자를 **같은 턴에** 띄우고 둘 다 끝날 때까지 기다린다. Claude 결과도 `<CLI> review-validate --file "$W/review-claude.json"`으로 검사한다 — 실패면 그 모델은 「실패」(돈 모델에서 뺀다).
+두 검토자를 **같은 턴에** 띄우고 둘 다 끝날 때까지 기다린다. Claude 결과도 `<CLI> review-validate --file "$W/review-claude.json" --head "<snapshot.head_sha>" --reviewer claude`로 검사한다 — 실패면 그 모델은 「실패」(돈 모델·`validReviewers`에서 뺀다 — head 불일치도 실패다, 현재 head 로 고쳐 쓰지 않는다).
 
 ## 6. 병합 · 판정 (메인 세션)
 
@@ -173,7 +173,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 1. **지문** = `file` + 정규화 제목(공백·구두점 제거, 소문자) — 같은 지문은 하나로 합치고 `source`를 `both | claude | codex`로 적는다. 유형이 다르면 더 센 쪽(DEFECT > DESIGN_DRIFT > MISSING_EVIDENCE > FOLLOW_UP), 확신은 높은 쪽.
 2. **blocking** = `DEFECT`·`MISSING_EVIDENCE`는 항상 `true`. `DESIGN_DRIFT`는 어댑터 렌즈 표의 「차단 승격」 조건(승인 범위·전제·인터페이스 이탈, 접촉 표면 추가 등)에 해당할 때만 `true` — 최소 범위 렌즈의 범위 밖 변경은 기본 `FOLLOW_UP`이다(접촉 표면을 건드릴 때만 `DESIGN_DRIFT`). `FOLLOW_UP`은 `false`.
 3. **상충·낮은 확신**: 한쪽은 차단, 다른 쪽은 같은 자리를 무해로 봤거나(상충), 한쪽만 잡은 `confidence: low|medium` 차단 후보는 **메인이 코드를 다시 읽어** 확인한다. 확인되면 `blocking:true`, 반박되면 `type` 유지·`blocking:false`·`dismissReason`에 근거. **확인도 반박도 못 하면 `unresolved: true`** — 판정 입력에서 빼지 않는다(`verdict`가 「판정 미확정」으로 만든다).
-4. `baselineCandidateRelevant` = 두 검토자 값이 **모두** `true`일 때만 `true`(하나라도 `false`·부재면 `false`). 후보가 없으면 `false`.
+4. `baselineCandidateRelevant` = **유효한 검토 결과(`validReviewers`)만** 대상으로 — 전부 `true`면 `true`, 전부 `false`면 `false`(유효 결과가 1개인 단일 모델 모드면 그 값 그대로 — Codex 미설치·마스킹 실패로 후보를 기각하지 않는다). **둘이 상충하면** 메인이 후보 문서(워크트리의 그 파일)를 직접 읽어 이번 변경(제목·변경 파일·②의 범위)을 다루는지 판정하고, 그 근거 한 줄을 `baselineCandidateReason`에 적는다. 후보가 없으면 `false`.
 5. `intent` = 두 결과를 행별로 합친다(둘이 다르면 `UNKNOWN`, `basis`는 「코드로 확인」이 하나라도 있으면 그것).
 6. `W/findings.json`(엔트리포인트 SC-5 형식)을 쓴다 — `head_sha` = `snapshot.head_sha`(verdict·render가 대조한다 — 다르면 리뷰 실패) · `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함.
 
@@ -254,4 +254,6 @@ git commit -m "feat(mr-review): SKILL.md — 전제·수집·검사·조기 종�
 - **Claude 서브에이전트에게 Codex가 돈다는 말을 하지 마라(반대도). 이유:** D11 오류 비상관화.
 - **판정 순서를 SKILL.md 산문으로 다시 쓰지 마라 — `verdict` 결과를 쓴다. 이유:** 두 곳에 있으면 어긋난다(P5).
 - **상충·낮은 확신 후보를 확인 못 했다고 빼지 마라 — `unresolved:true`. 이유:** R1-F4 — 빼면 APPROVE로 샌다.
+- **`baselineCandidateRelevant`를 「둘 다 true」로 계산하지 마라 — 유효 결과만 합친다. 이유:** plan R2-5 — 단일 모델 모드(정상 경로)에서 Claude가 관련성을 확인해도 기준선 없음(RETURN_TO_DESIGN)이 돼 단일 모델에만 다른 판정 조건이 생긴다.
+- **검토자 결과의 `head_sha`를 현재 head로 고쳐 쓰지 마라 — `review-validate --head`가 떨어뜨린 결과는 실패다. 이유:** plan R2-4 — 이전 head 의 검토를 현재 head 의 APPROVE로 둔갑시킨다(F6).
 - **스킬 문서에 프로젝트 이름·내부 주소·사람 이름·위키 경로 실제 값을 쓰지 마라. 이유:** 공개 저장소(D10). 전부 어댑터가 준다.

@@ -60,6 +60,12 @@ test('validateReview: 스키마 통과·실패 사유', () => {
   assert.ok(r.errors.some((e) => /fixableInDesign/.test(e)));
   assert.ok(r.errors.some((e) => /baselineCandidateRelevant/.test(e)));
   assert.equal(validateReview({ reviewer: 'x', head_sha: HEAD, findings: 'no', intent: [], baselineCandidateRelevant: true }).ok, false);
+  // 기대 head·reviewer 대조(R2-4) — 이전 head 의 결과는 형식이 맞아도 INVALID
+  assert.equal(validateReview(ok, { head: HEAD, reviewer: 'claude' }).ok, true);
+  const stale = validateReview({ ...ok, head_sha: 'c'.repeat(40) }, { head: HEAD, reviewer: 'claude' });
+  assert.equal(stale.ok, false);
+  assert.ok(stale.errors.some((e) => /기대 head/.test(e)));
+  assert.ok(validateReview(ok, { head: HEAD, reviewer: 'codex' }).errors.some((e) => /reviewer claude ≠ 기대 codex/.test(e)));
 });
 
 test('판정 순서: 없음→APPROVE · 증거 부족→HOLD · 결함→CHANGES · 설계 내 수정 불가→RTD · 결함+증거→CHANGES', () => {
@@ -88,6 +94,12 @@ test('기계 증거 부족: 계약 미완·미복원 diff·배포본 불일치·
   assert.equal(V(findings([]), { check: c4 }).verdict, 'HOLD_EVIDENCE');
   const c5 = baseCheck(); c5.contract.incompleteLines = ['Base SHA']; c5.contract.complete = false;
   assert.equal(V(findings([F()]), { check: c5 }).verdict, 'CHANGES_REQUESTED');   // 결함 + 증거 부족 → 앞 단계
+  const s6 = baseSnap(); s6.mode = 'diff-only'; s6.diff_list_complete = false;    // 목록 불완전(overflow) — 파일별 복원 성공과 별개(R2-2)
+  const v6 = V(findings([]), { snapshot: s6 });
+  assert.equal(v6.verdict, 'HOLD_EVIDENCE');
+  assert.ok(v6.machineEvidence.some((m) => m.id === 'M-diff-list'));
+  const s7 = baseSnap(); s7.mode = 'worktree'; s7.diff_list_complete = false;    // 워크트리 모드는 git diff 가 정본 — 해당 없음
+  assert.equal(V(findings([]), { snapshot: s7 }).verdict, 'APPROVE');
 });
 
 test('기준선 없음: 후보도 없으면 RTD · 후보가 있고 검토자가 관련 있다고 하면 통과 · 무관하면 RTD', () => {
@@ -130,7 +142,7 @@ function fullWork(root, { check = baseCheck(), snap = baseSnap(), deploy = baseD
   writeFileSync(join(work, 'deploy.json'), JSON.stringify(deploy));
   if (pack) writeFileSync(join(work, 'pack.json'), JSON.stringify({ sources: [{ id: 'S1', kind: 'doc', ref: 'guide/policy.md@abc#5.', exportAllowed: true, inPackB: true, lines: 3 }, { id: 'S2', kind: 'wiki', ref: 'wiki-private/x.md', exportAllowed: false, inPackB: false, lines: 2 }], mask: { applied: { phone: 1 }, residual: [], ok: true }, packA: 'pack-a.md', packB: 'pack-b.md', codexSkipped: false, codexSkipReason: null }));
   if (reviews) {
-    writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L5', type: 'DEFECT', title: '비밀번호 평문 로그 010-1234-5678', file: 'src/A.java', line_start: 3, line_end: 3, evidence: 'S1', scenario: '로그 유출', confidence: 'high', recommendation: '마스킹', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true }));
+    writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L5', type: 'DEFECT', title: '비밀번호 평문 로그 010-1234-5678', file: 'src/A.java', line_start: 3, line_end: 3, evidence: 'S1 · src/A.java:3 db.password = "synthetic-db-password"; api_key: SYNTH-KEY-12345', scenario: '로그 유출', confidence: 'high', recommendation: '마스킹', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true }));
     writeFileSync(join(work, 'review-codex.json'), JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [], intent: [], baselineCandidateRelevant: true }));
   }
   if (fnd) writeFileSync(join(work, 'findings.json'), JSON.stringify(fnd));
@@ -162,12 +174,15 @@ test('verdict CLI → verdict.json · render 전체 리포트(실행 블록 형�
   assert.match(block, /- 주석 정리/);
   assert.match(block, /\[판독\]/);
   assert.doesNotMatch(md, /010-1234-5678/);                       // F5 — 리포트 전체 마스킹(부록 C 포함)
+  assert.doesNotMatch(md, /synthetic-db-password|SYNTH-KEY-12345/); // 어댑터 mask 에 없는 비밀값 리터럴도 내장 패턴으로 제거(R2-1)
+  assert.match(md, /db\.password = "\[masked:secret\]"/);
+  assert.match(md, /src\/A\.java:3/);                              // 파일:줄 위치는 남는다(§5.7)
   assert.match(md, /기준선 확인 — /);                               // 경량 + 확인 댓글 없음 → 리뷰어가 먼저 게시할 문안
   assert.match(md, /기준선 미확인/);                                // 헤더 표시(F8)
   assert.match(md, /## 부록 A/);
   assert.match(md, /## 부록 B[\s\S]*wiki-private\/x\.md.*Codex 미제공/);
   assert.match(md, /## 부록 C[\s\S]*claude[\s\S]*codex/);
-  assert.match(md, /## 부록 C[\s\S]*근거: S1 · 시나리오: 로그 유출 · 설계 내 수정: yes/);        // 원본 발견의 근거·시나리오 보존(R1-9)
+  assert.match(md, /## 부록 C[\s\S]*근거: S1 · src\/A\.java:3 db\.password = "\[masked:secret\]"; api_key: \[masked:secret\] · 시나리오: 로그 유출 · 설계 내 수정: yes/);   // 원본 발견의 근거·시나리오 보존(R1-9) + 비밀값만 제거
   assert.match(md, /## 부록 D[\s\S]*\*\*F1\*\*[\s\S]*실패 시나리오: 로그에 평문[\s\S]*\*\*F3\*\*/);   // 병합 발견 상세
   assert.match(md, /정책 버전: 계약 TEST-POLICY-v1\.0 \/ 판정 기준 TEST-POLICY-v1\.1/);
   assert.match(md, /교차 검토: 있음/);
@@ -261,6 +276,11 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
   const good = join(root, 'ok.json');
   writeFileSync(good, JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [], intent: [], baselineCandidateRelevant: false }));
   assert.equal(runCli(['review-validate', '--file', good]).first, 'VALID');
+  assert.equal(runCli(['review-validate', '--file', good, '--head', HEAD, '--reviewer', 'codex']).first, 'VALID');
+  const rs = runCli(['review-validate', '--file', good, '--head', 'c'.repeat(40), '--reviewer', 'codex']);
+  assert.equal(rs.code, 1);
+  assert.match(rs.first, /^INVALID .*기대 head/);                                            // 이전 head 의 결과(R2-4)
+  assert.match(runCli(['review-validate', '--file', good, '--head', HEAD, '--reviewer', 'claude']).first, /^INVALID .*reviewer/);
   const badf = join(root, 'bad.json');
   writeFileSync(badf, '{"reviewer":"codex"}');
   const rb = runCli(['review-validate', '--file', badf]);
@@ -316,16 +336,25 @@ export const VERDICTS = ['APPROVE', 'HOLD_EVIDENCE', 'CHANGES_REQUESTED', 'RETUR
 const TYPES = ['DEFECT', 'MISSING_EVIDENCE', 'DESIGN_DRIFT', 'FOLLOW_UP'];
 const CONF = ['high', 'medium', 'low'];
 const BLOCK_MAX_LINES = 40;
+// 엔진 내장 비밀값 리터럴 패턴(프로젝트 무관 — D10 위배 아님): `password = "x"` · `api_key: x` · `secret=x` · `Bearer x` · PEM 블록. 값만 가린다.
+export const SECRET_MASK = [
+  { name: 'secret', pattern: '(?<=\\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)\\b\\s*[:=]\\s*["\'`]?)[^\\s"\'`,;)\\]]+' },
+  { name: 'secret', pattern: '(?<=\\bBearer\\s+)[A-Za-z0-9._~+/=-]{8,}' },
+  { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
+];
 
 const readJson = (work, name) => { const p = path.join(work, name); return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null; };
 const s7 = (s) => (s ? String(s).slice(0, 7) : '-');
 
 // ── SC-4 검토자 출력 검증 ─────────────────────────────────────────────────
-export function validateReview(obj) {
+export function validateReview(obj, { head = null, reviewer = null } = {}) {
   const errors = [];
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, errors: ['객체가 아니다'] };
   if (!['claude', 'codex'].includes(obj.reviewer)) errors.push('reviewer 는 claude|codex');
   if (!/^[0-9a-f]{40}$/.test(String(obj.head_sha || ''))) errors.push('head_sha 는 40자 SHA');
+  // 기대값 대조(F6·D11) — 검토자가 이전 head 의 결과나 다른 검토자 이름을 내면 병합에서 숨겨지지 않게 여기서 떨어뜨린다
+  if (head && obj.head_sha !== head) errors.push(`head_sha ${String(obj.head_sha).slice(0, 7)} ≠ 기대 head ${String(head).slice(0, 7)}(스냅샷) — 이전 head 의 검토 결과`);
+  if (reviewer && obj.reviewer !== reviewer) errors.push(`reviewer ${obj.reviewer} ≠ 기대 ${reviewer}`);
   if (!Array.isArray(obj.findings)) errors.push('findings 배열 필요');
   if (!Array.isArray(obj.intent)) errors.push('intent 배열 필요');
   if (typeof obj.baselineCandidateRelevant !== 'boolean') errors.push('baselineCandidateRelevant 는 boolean');
@@ -347,6 +376,7 @@ export function machineEvidence({ check, snapshot, deploy }) {
   const out = [];
   for (const name of check?.contract?.incompleteLines || []) out.push({ id: `M-contract-${name}`, kind: 'contract', detail: `Review Contract 「${name}」 미완(${check.contract.lines.find((l) => l.name === name)?.status || '없음'})` });
   (snapshot?.unrecovered || []).forEach((p, i) => out.push({ id: `M-diff-${i + 1}`, kind: 'diff', detail: `복원하지 못한 diff: ${p} (diff-only — 로컬 clone 권장)` }));
+  if (snapshot?.mode === 'diff-only' && snapshot.diff_list_complete === false) out.push({ id: 'M-diff-list', kind: 'diff', detail: '변경 파일 목록 불완전(API overflow — 파일 항목이 통째로 빠졌을 수 있음, 검토 범위·배포 목록 축소) — 로컬 clone 권장' });
   if (deploy?.applicable && deploy.result !== '일치') out.push({ id: 'M-deploy', kind: 'deploy', detail: `배포본 ${deploy.result}${deploy.mismatches?.length ? ' — ' + deploy.mismatches.map((m) => m.kind + (m.path ? `(${m.path})` : '')).join(', ') : ''}` });
   (check?.baselineLinks || []).forEach((l, i) => { if (l.status === '미확보') out.push({ id: `M-baseline-${i + 1}`, kind: 'baseline', detail: `기준선·이슈 원문 미확보: ${l.raw || l.kind} — ${l.reason || ''}` }); });
   return out;
@@ -574,7 +604,8 @@ export function renderReport({ adapter, work, early = false }) {
     parts.push('');
   }
   const text = parts.join('\n');
-  return applyMask(text, adapter.mask).text;   // F5 — 산출물 전체 비밀값 제거
+  // F5 — 산출물 전체 비밀값 제거: 어댑터 개인정보 패턴 + 엔진 내장 비밀값 리터럴 패턴(§5.7 「하드코딩 비밀값은 [masked:secret] <파일:줄>로만」 — 어댑터 mask 에 비밀번호·API 키 패턴이 없어도 적용)
+  return applyMask(applyMask(text, adapter.mask).text, SECRET_MASK).text;
 }
 
 // ── 정리(F7·F5) ───────────────────────────────────────────────────────────
@@ -602,7 +633,7 @@ export async function cmdReviewValidate(args) {
   if (!args.file) throw new ReportError('--file <검토자 출력 JSON> 이 필요하다');
   let obj;
   try { obj = JSON.parse(fs.readFileSync(args.file, 'utf8')); } catch (e) { const err = new Error(`INVALID JSON 파싱 실패: ${e.message}`); err.code = 1; err.plain = true; throw err; }
-  const r = validateReview(obj);
+  const r = validateReview(obj, { head: typeof args.head === 'string' ? args.head : null, reviewer: typeof args.reviewer === 'string' ? args.reviewer : null });
   if (r.ok) return 'VALID';
   const err = new Error(`INVALID ${r.errors.join('; ')}`);
   err.code = 1;
@@ -682,7 +713,7 @@ node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs te
 for f in dev-workflow/skills/mr-review/scripts/mr-review.mjs dev-workflow/skills/mr-review/scripts/lib/*.mjs; do node --check "$f" || echo "CHECK_FAIL $f"; done; echo CHECK_DONE
 ```
 
-기대: report 12/12 · 전체 51/51 · `CHECK_DONE`만.
+기대: report 12/12 · 전체 52/52 · `CHECK_DONE`만.
 
 ```bash
 git add dev-workflow/skills/mr-review/scripts/lib/report.mjs dev-workflow/skills/mr-review/scripts/mr-review.mjs tests/mr-review/report.test.mjs
@@ -691,7 +722,7 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 
 ## Acceptance Criteria
 
-- `node --test tests/mr-review/report.test.mjs` → 12/12, 전체 51/51.
+- `node --test tests/mr-review/report.test.mjs` → 12/12, 전체 52/52.
 - 판정은 정책 4종만(D9) · 미해결 후보가 있으면 게시용 블록을 만들지 않고 헤더에 「판정 미확정」(R1-F4·R2-F4) · 발견 0건이어도 계약 미완·미복원 diff·배포본 불일치·원문 미확보면 `HOLD_EVIDENCE`(R5-F1·R1-F3·R4-F1·R4-F3) · 유효 검토 0개면 블록 없음(R4-F2) · 리포트 전체에 마스킹 패턴 잔존 0(F5) · `cleanup` 뒤 워크트리·zip·blobs·codex 원시 파일 없음(F7).
 - `--resolve` 결정이 `findings.json`에 영속돼 호출을 나눠도 유지되고 리포트 「리뷰어 결정」·부록 D에 근거가 남는다(plan R1-7) · `verdict.json`·`findings.json`의 head가 `snapshot.head_sha`와 다르면 판정 블록 없이 리뷰 실패, 비-early에서 `verdict.json` 부재도 리뷰 실패(plan R1-1) · 부록 C·D에 근거·시나리오·깨진 전제 보존(plan R1-9).
 
@@ -701,6 +732,8 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 - **`MISSING_EVIDENCE`를 결함 집합에 넣지 마라. 이유:** §5.5-4 집합 분리(R4-F3) — 결함이 함께 있으면 `CHANGES_REQUESTED`, 증거 부족만이면 `HOLD_EVIDENCE`.
 - **`--full`이나 조기 종료 여부로 기계 증거 투입을 끄지 마라. 이유:** R5-F1 — `--full`은 검토 범위만 넓힌다.
 - **리포트 마스킹은 마지막에 전체 텍스트에 한 번. 절별로 빼먹지 마라. 이유:** 부록 C(모델 원문)가 비밀값 누출의 전형(R2-F3).
+- **어댑터 `mask`(개인정보)와 별도로 엔진 내장 `SECRET_MASK`(비밀번호·API 키·토큰·Bearer·PEM 값)를 리포트 전체에 적용하라. 이유:** plan R2-1 — 어댑터 패턴은 개인정보용이라 L5 발견이 인용한 `password = "…"` 리터럴이 부록 C·D에 그대로 남는다(§5.7 `[masked:secret] <파일:줄>` 계약·F5). 파일:줄은 남긴다.
+- **`review-validate`에 `--head`·`--reviewer`를 받아 원본 결과의 head·검토자 일치를 검사하라. 이유:** plan R2-4 — 형식만 보면 이전 head 의 검토 결과가 VALID 로 통과하고, 병합에서 `findings.head_sha`를 새로 적으면 후속 대조가 그것을 못 잡는다.
 - **`review-validate`는 `ERR` 접두 없이 `INVALID …` exit 1. 이유:** SC-6 — SKILL이 `VALID`/`INVALID`만 본다.
 - **`cleanup`은 JSON·리포트·`baseline/`을 지우지 않는다. 이유:** 재리뷰 입력(§5.6)·`--resolve` 재계산 입력이다.
 - **`--resolve` 결정은 `findings.json`에 써서 영속화한다 — `verdict.json`에만 두지 마라. 이유:** R1-7 — 후보를 호출을 나눠 해결하면 앞선 결정이 사라진다. 기각 근거는 리포트 「리뷰어 결정」·부록 D에 남는다(§5.5-2).
