@@ -4,6 +4,7 @@
 import { loadAdapter, parseArgs, AdapterError } from './lib/adapter.mjs';
 import { cmdCollect } from './lib/collect.mjs';
 import { cmdCheck } from './lib/check.mjs';
+import { cmdDeploy } from './lib/deploy.mjs';
 
 export class CliError extends Error {
   constructor(message, code = 2) { super(message); this.code = code; }
@@ -13,7 +14,7 @@ export class CliError extends Error {
 const COMMANDS = {
   collect: cmdCollect,
   check: cmdCheck,
-  // task-04: deploy
+  deploy: cmdDeploy,
   // task-05: pack
   // task-06: 'review-validate', verdict, render, cleanup
 };
