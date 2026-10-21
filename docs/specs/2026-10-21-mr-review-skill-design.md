@@ -242,5 +242,9 @@ base = `origin/main` bf8c5fd · 어댑터 설계(별도 저장소 `common-docs` 
 | R3-F4 | §5.2b · zip 목록을 전체 diff와 비교해 정상 산출물 거부 · 4.7 규칙 필터 | medium | FIXED | 배포 목록 = 4.7 규칙 적용·`--no-renames` — 엔진 6447da2 |
 | R3-F5 | §5.5 · 구조 결함의 RETURN_TO_DESIGN 경로 누락 · 수정 가능 여부 스키마 | medium | FIXED | 판정 순서에 「현 설계 안 수정 불가」 추가, 스키마 항목 추가 — 엔진 6447da2 |
 
-score 이력(전환용, 수정 전 스냅샷 · weight c4/h3/m1): R1 = 16 · R2 = 10 · R3 = 11. 미확인 FIXED 큐: R1-F1~F6, R2-F1~F4, R3-F2~F5(14건). 이전 FIXED는 R3에서 재출현하지 않음(적대 비재출현 — 큐 유지). 적대 소진 3 = auto-rounds → batch 적재 0건, R4부터 정밀 모드.
+| R4-F1 | §5.1 · Baseline·연결 이슈 원문 수집 단계 없음 · 출처·버전 기록, 미확보는 증거 부족 | high | FIXED | §5.1-5 신설, 어댑터 허용 목록에 이슈·Baseline 원문 — 엔진 0a8631d · 어댑터 3101e53 |
+| R4-F2 | §5.4 · 두 검토자 모두 실패해도 APPROVE 계산 가능 · 유효 결과 최소 1개 전제 | high | FIXED | 유효 결과 0개 = 리뷰 실패·블록 미생성 — 엔진 0a8631d |
+| R4-F3 | §5.5 · 미복원 diff가 CHANGES_REQUESTED·HOLD_EVIDENCE 양쪽에 해당 · 집합 분리 | medium | FIXED | 결함 집합·증거 부족 집합 분리 — 엔진 0a8631d |
+
+score 이력(전환용, 수정 전 스냅샷 · weight c4/h3/m1): R1 = 16 · R2 = 10 · R3 = 11 · R4 = 7. 미확인 FIXED 큐: R1-F1~F6, R2-F1~F4, R3-F2~F5, R4-F1~F3(17건). 이전 FIXED는 R4에서 재출현하지 않음(적대 비재출현 — 큐 유지). 적대 소진 3 = auto-rounds → batch 적재 0건, R4부터 정밀 모드.
 
