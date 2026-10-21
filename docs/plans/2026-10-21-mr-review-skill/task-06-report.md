@@ -996,3 +996,4 @@ git commit -m "feat(mr-review): verdict·render·cleanup·review-validate — �
 - **`--resolve` 결정은 `findings.json`에 써서 영속화한다 — `verdict.json`에만 두지 마라. 이유:** R1-7 — 후보를 호출을 나눠 해결하면 앞선 결정이 사라진다. 기각 근거는 리포트 「리뷰어 결정」·부록 D에 남는다(§5.5-2).
 - **`render`·`verdict`는 입력의 head 일치를 검증한다(`verdict.json`·`findings.json` ↔ `snapshot.json`). 이유:** R1-1·F6 — 같은 `W`에 남은 이전 실행의 APPROVE가 현재 head 의 판정으로 게시된다. 비-early에서 `verdict.json`이 없으면 리뷰 실패로 렌더한다.
 - **부록 C·D에 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제를 남겨라(마스킹은 전체 적용 뒤). 이유:** R1-9·§5.7 — 실행 블록 40줄은 제목만 담으므로, 사람이 차단 판단을 검증할 근거가 리포트 밖에 없다.
+- (impl 2026-10-21 전사 수정, PF-7) CLI `.catch` 의 stderr 스택 출력은 프로그래밍 오류(TypeError·ReferenceError·RangeError·SyntaxError)로만 한정 — 도메인 오류는 stdout `ERR` 한 줄만(SC-6「stderr 없이」)

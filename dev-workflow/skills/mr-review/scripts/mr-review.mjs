@@ -6,6 +6,7 @@ import { cmdCollect } from './lib/collect.mjs';
 import { cmdCheck } from './lib/check.mjs';
 import { cmdDeploy } from './lib/deploy.mjs';
 import { cmdPack } from './lib/pack.mjs';
+import { cmdReviewValidate, cmdVerdict, cmdRender, cmdCleanup } from './lib/report.mjs';
 
 export class CliError extends Error {
   constructor(message, code = 2) { super(message); this.code = code; }
@@ -17,7 +18,10 @@ const COMMANDS = {
   check: cmdCheck,
   deploy: cmdDeploy,
   pack: cmdPack,
-  // task-06: 'review-validate', verdict, render, cleanup
+  'review-validate': cmdReviewValidate,
+  verdict: cmdVerdict,
+  render: cmdRender,
+  cleanup: cmdCleanup,
 };
 
 const KNOWN = ['collect', 'check', 'deploy', 'pack', 'review-validate', 'verdict', 'render', 'cleanup'];
@@ -45,7 +49,8 @@ main(process.argv.slice(2)).then((line) => {
   process.stdout.write(`${line}\n`);
 }).catch((e) => {
   const msg = e instanceof Error ? e.message : String(e);
-  process.stdout.write(`ERR ${msg}\n`);
+  process.stdout.write(e?.plain ? `${msg}\n` : `ERR ${msg}\n`);
   process.exitCode = Number.isInteger(e?.code) && e.code > 0 && e.code < 256 ? e.code : 2;
-  if (!(e instanceof CliError) && !(e instanceof AdapterError)) process.stderr.write(`${e?.stack ?? ''}\n`);
+  // PF-7: stderr 스택은 프로그래밍 오류로만 한정 — 도메인 오류는 stdout 한 줄만(SC-6)
+  if (e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError || e instanceof SyntaxError) process.stderr.write(`${e?.stack ?? ''}\n`);
 });
