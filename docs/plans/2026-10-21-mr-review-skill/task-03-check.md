@@ -226,7 +226,8 @@ test('이슈 댓글 조회 실패는 「댓글 없음」이 아니라 미확보(
 });
 
 test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 이슈에서 · 본문 #n 도 수집 · 미등록 프로젝트의 연결 이슈는 대체 없이 미확보', () => {
-  const desc = body({ background: '- 이슈/spec: 참고 없음', contractOver: { Baseline: '#12' }, extra: '## 참고\n- #88 의 재발 방지\n\n```\n#999 코드펜스 안 — 이슈 아님\n```\n' }) + '\n## 후속\n- 계약 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 보정)\n';   // 「배경」 밖 절·계약 뒤 절의 #n 도 수집(C1·C2 R2-6), 코드펜스 안은 제외
+  const q4 = '`'.repeat(4);
+  const desc = body({ background: '- 이슈/spec: 참고 없음', contractOver: { Baseline: '#12' }, extra: '## 참고\n- #88 의 재발 방지\n\n```\n#999 코드펜스 안 — 이슈 아님\n```\n~~~text\n#998 틸드 펜스 안 — 이슈 아님\n~~~\n' + q4 + 'text\n```\n#997 4중 백틱 안의 삼중 백틱 — 이슈 아님\n```\n' + q4 + '\n' }) + '\n## 후속\n- 계약 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 보정)\n';   // 「배경」 밖 절·계약 뒤 절의 #n 도 수집(C1·C2 R2-6), 코드펜스 안은 제외(```·~~~·4중 백틱 중첩 — C3 R2-6)
   const { root, adapter, work } = setup({ description: desc, closes_issues: [
     { iid: 12, project_id: 101, title: '버그', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: '' },
     { iid: 12, project_id: 999, title: '다른 프로젝트', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: 'http://gitlab.test/g/zeta/-/issues/12' },   // 어댑터 미등록
@@ -251,8 +252,8 @@ test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 �
   const i88 = issues.find((x) => x.ref === '88');
   assert.equal(i88.status, '확보');                                                        // 본문 다른 절(「참고」)의 #88 도 수집(R2-6 · C1 사용자 결정 = 본문 전체)
   assert.equal(issues.find((x) => x.ref === '77')?.status, '확보');                        // Review Contract 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 — 블록 제거가 본문 끝까지 먹지 않는다)
-  assert.ok(!issues.some((x) => x.ref === '999'));                                          // 코드펜스 안 #999 는 이슈 참조가 아니다
-  assert.ok(!g.calls().some((x) => x.join(' ') === 'api projects/101/issues/999'));
+  assert.ok(!issues.some((x) => ['999', '998', '997'].includes(x.ref)));                    // 코드펜스 안 #999(```)·#998(~~~)·#997(4중 백틱 안 삼중 백틱)은 이슈 참조가 아니다(C3 R2-6)
+  assert.ok(!g.calls().some((x) => /^api projects\/101\/issues\/99[789]$/.test(x.join(' '))));
   assert.match(readFileSync(join(work, i88.file), 'utf8'), /배경 설명 88/);
   const z = issues.find((x) => x.project_id === 999);
   assert.equal(z.status, '미확보');                                                        // 미등록 프로젝트 → 현재 프로젝트로 대체하지 않는다(R2-3)
@@ -467,6 +468,17 @@ export function judgeReason(text) {
 const BLOB_RE = /(https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+))\/-\/blob\/([^\s)<>`#]+)/g;
 const ISSUE_URL_RE = /(https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+))\/-\/issues\/(\d+)/g;
 const ISSUE_REF_RE = /(?:^|[\s(`])#(\d+)\b/g;
+// 코드펜스 안을 줄 단위로 제거 — 여는 줄 `{3,}|~{3,}(들여쓰기 ≤3), 닫는 줄 = 같은 문자·길이 이상(CommonMark). 열린 펜스가 끝까지 안 닫히면 끝까지 제외.
+const stripFences = (text) => {
+  const out = []; let open = null;
+  for (const line of text.split('\n')) {
+    const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (open) { if (m && m[1][0] === open[0] && m[1].length >= open.length) open = null; continue; }
+    if (m) { open = m[1]; continue; }
+    out.push(line);
+  }
+  return out.join('\n');
+};
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 
 function splitRefPath(refpath) {
@@ -725,7 +737,8 @@ export function check({ adapter, work }) {
   // 본문 #n·이슈 URL 은 **본문 전체**에서 수집한다(spec §5.1-5, 사용자 결정 C1 R2-6) — 코드펜스 안과 Review Contract 블록(계약 값·실행 블록 — Baseline 줄은 위에서 따로 파싱)은 제외.
   // 존재하지 않는 번호(「#3 항목」 오인 등)는 resolveIssue 가 미확보로 남겨 M-baseline → HOLD_EVIDENCE 로 전달된다 — 작성자가 본문을 고치게 하는 fail-closed 비용으로 수용(사용자 결정).
   // Review Contract 블록 = 그 제목 줄부터 **다음 `## ` 제목 앞까지**(C2 R2-6 잔존 보정 — `[\s\S]*$` 는 본문 끝까지 지워 계약 뒤 일반 절의 #n 이 빠졌다). 계약 뒤 절(「후속」·「참고」)도 수집 대상이다.
-  const bodyText = desc.replace(/```[\s\S]*?```/g, '').replace(/^## Review Contract\b[^\n]*(?:\n(?!## )[^\n]*)*/m, '');
+  // 코드펜스 = ``` 또는 ~~~ **3자 이상**으로 여는 줄부터 같은 문자·같은 길이 이상으로 닫는 줄까지(CommonMark) — 줄 단위로 추적한다. 삼중 백틱 정규식은 `~~~` 펜스와 4중 백틱 안의 삼중 백틱을 못 가려 펜스 안 `#n` 이 미확보 → HOLD_EVIDENCE 가 됐다(C3 R2-6 잔존 보정).
+  const bodyText = stripFences(desc).replace(/^## Review Contract\b[^\n]*(?:\n(?!## )[^\n]*)*/m, '');
   for (const m of bodyText.matchAll(ISSUE_REF_RE)) if (!hasIssue(mr.project.name, m[1])) links.push({ raw: `#${m[1]}`, kind: 'issue', project: mr.project.name, ref: m[1], path: '' });
   for (const m of bodyText.matchAll(ISSUE_URL_RE)) if (!hasIssue(m[2], m[3])) links.push({ raw: m[0], kind: 'issue', project: m[2], project_url: m[1], ref: m[3], path: '' });
   const baselineLinks = [];
@@ -821,7 +834,7 @@ git commit -m "feat(mr-review): check — 작성 규칙 검사표·댓글 신뢰
 - **정규식·신뢰 리뷰어를 코드에 쓰지 마라 — 어댑터 값만. 이유:** P9·D10. 테스트 픽스처의 `TEST-POLICY-*`가 그 증거다.
 - **`baselineConfirm`의 「낡음」은 system note `changed the description` 시각만 본다. MR `updated_at`은 쓰지 마라. 이유:** `updated_at`은 댓글 하나에도 바뀌어 항상 낡음이 된다.
 - **Baseline 링크의 ref를 MR head 로 바꾸지 마라. 이유:** 다른 저장소엔 그 SHA가 없고, 같은 저장소라도 L2는 승인본과 대조해야 한다(R5-F2).
-- **`closes_issues`와 본문 `#n`이 같은 이슈면 한 번만 받는다. 이유:** 팩 중복·API 호출 낭비. 본문 `#n`·이슈 URL 은 **본문 전체**(코드펜스·Review Contract 블록 제외)가 수집 대상이다 — 「배경」 절로 좁히지 마라(C1 R2-6 잔존, 사용자 결정 · §5.1-5). 존재하지 않는 번호는 미확보 → HOLD_EVIDENCE 가 정상 동작이다(작성자가 본문을 고친다).
+- **`closes_issues`와 본문 `#n`이 같은 이슈면 한 번만 받는다. 이유:** 팩 중복·API 호출 낭비. 본문 `#n`·이슈 URL 은 **본문 전체**(코드펜스·Review Contract 블록 제외)가 수집 대상이다 — 「배경」 절로 좁히지 마라(C1 R2-6 잔존, 사용자 결정 · §5.1-5). 코드펜스 제외는 `stripFences`(``` 와 ~~~ 3자 이상, 닫는 펜스 = 같은 문자·길이 이상)로 **줄 단위**로 한다 — 삼중 백틱 정규식으로 되돌리지 마라(`~~~` 펜스·4중 백틱 안의 삼중 백틱이 새어 거짓 미확보 → HOLD_EVIDENCE, C3 R2-6 잔존). 존재하지 않는 번호는 미확보 → HOLD_EVIDENCE 가 정상 동작이다(작성자가 본문을 고친다).
 - **`closes_issues`의 `project_id`가 어댑터에 없으면 현재 프로젝트로 대체하지 마라 — `project:null`·미확보. 이유:** R2-3 — 현재 프로젝트에 같은 번호의 무관한 이슈가 있으면 그 본문이 변경 사유·설계 근거가 되고 미확보 차단도 안 생긴다.
 - **blob 링크의 ref/path 경계를 URL의 첫 세그먼트로 정하지 마라 — 그 저장소의 branch/tag API로 긴 후보부터 해소. 이유:** R2-8 — `feature/topic` 브랜치 링크가 `ref=feature, path=topic/…`로 깨져 다른 문서를 확보로 기록할 수 있다. SHA(permalink)만 첫 세그먼트로 확정.
 - **`judgeReason`은 양식 표지(①·②)의 존재가 아니라 표지 뒤의 실내용으로 판정한다 — 꺾쇠 `<…>`·빈 값은 내용이 아니다. 양식만 남은 본문을 `source:body`로 두지 마라. 이유:** plan R4-4 — `① 왜: <관찰 가능한 현상·요청 근거>` 두 줄이 둘 다 true 로 판정돼 보완 요청이 빠지고 S1 분류가 오염되며, 빈 양식이 bodyReason 으로 남으면 연결 이슈의 실제 사유도 대체 입력으로 쓰이지 못한다.
