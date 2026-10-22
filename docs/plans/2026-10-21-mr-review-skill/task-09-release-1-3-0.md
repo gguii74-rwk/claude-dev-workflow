@@ -77,3 +77,4 @@ git commit -m "release: 1.3.0 — mr-review 스킬(남의 MR 두 모델 독립 �
 - **version 외의 파일을 이 커밋에 섞지 마라. 이유:** 릴리스 커밋은 설치 사용자가 받는 경계 — 리뷰 안 받은 변경이 섞이면 안 된다.
 - **게이트 ①을 grep 한 줄로 끝내지 말고 ledger 절을 눈으로 확인하라. 이유:** 패턴은 형식만 본다.
 - (impl 2026-10-21, PF-3 이월) version bump 때 `.claude-plugin/marketplace.json` description 의 스킬 목록에도 `mr-review` 를 넣는다(`… · orchestrate · mr-review 스킬 + …`) — task-08 이 넘김
+- (8b 재리뷰 2026-10-22, 폴백① 이월 — 대장 52) **릴리스 전 리뷰의 필수 확인 항목**: FC3-1 수정 `fe64b7f`(리포트 필드 선마스킹이 `--password [masked:secret]` 의 공백을 지워 같은 줄 파일:줄 보존 — 대장 48 감사 이의 재판정)의 소멸·회귀를 확인하라. 확인 없이 릴리스하지 않는다. 같은 때 새 세션 전체 브랜치 리뷰 권고(FC2·FC3 확인 리뷰어 — 마스킹 패턴 방식이 수정마다 새 꼴로 재출현) 진행 여부를 사용자에게 묻는다.
