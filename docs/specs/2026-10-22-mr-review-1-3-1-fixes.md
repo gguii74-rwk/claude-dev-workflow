@@ -226,6 +226,7 @@ harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천�
 | R1-2 | SKILL.md §0 · 사전 점검 호스트 추출 정규식이 CRLF·들여쓴 펜스 어댑터를 거부(extractBlock 은 허용) → 정상 설정을 GLAB_HOST_FAIL 로 오안내 · 어댑터 파서와 같은 형식 | medium | FIXED | `bbd950b` — 줄마다 trim 뒤 여는/닫는 펜스 탐색(extractBlock 과 같은 규칙) · 테스트 「SKILL.md §0 사전 점검의 호스트 추출이 …」(LF·CRLF·들여쓴 펜스 3종 → `gitlab.test`) · bash 실측(CRLF 어댑터 → `--hostname gitlab.test`) — zsh 실측은 9단계 몫 |
 | R2-1 | collect.mjs pinWorktree · 얕은 clone 에서 base 객체는 있으나 head 까지의 이력이 shallow 경계로 끊기면 `!present` 조건 때문에 D28 안내 없이 「조상이 아니다」로 오진 · 객체 유무와 무관하게 shallow 확인 | medium | FIXED | `89131eb` — 조상 확인 실패 + shallow 면 D28 문구(base 가 있으면 「base 와 head 사이 이력이 로컬에 없다」, AC②-7 문구 불변) · 테스트 「얕은 clone 에서 base 객체는 있으나 …」(base 를 depth 1 태그 fetch 로 따로 받아 끊긴 이력 재현) |
 | R3-1 | report.mjs cleanup topEntries · 표지 ERR 의 W 항목 목록이 readdir 오류(EACCES 등)를 빈 목록 「(없음)」으로 보고 → SKILL §0 이 정상 종료로 읽어 원문 잔존을 숨김 · ENOENT·실제 빈 목록만 「(없음)」, 그 밖은 조회 실패 표시 | medium | FIXED | `b0e39fa` — 조회 실패는 「항목 목록 조회 실패(<코드>)」(SKILL §0 「비어 있지 않으면 사람이 지운다」 경로로 감 — 문서 변경 없음) · 테스트 「cleanup: 표지 ERR 의 항목 목록은 조회 실패(권한 등)를 …」(0o300 디렉터리 → EACCES 표시·파일 불변, 없는 W → 「(없음)」; root 면 skip) |
+| R4-1 | report.mjs cleanup · 보존 JSON 이 W 밖 파일의 하드 링크면 lstat·O_NOFOLLOW 를 통과해 O_TRUNC 쓰기가 공유 inode(외부 원본)를 마스킹·재직렬화 · 새 임시 파일에 쓰고 rename 으로 교체 | high | ESCALATE(즉시 — 보안/데이터 ② + **R1-1 과 같은 계열 2회째**) → FIXED (추천 자동 채택(위임) — 메인 대리 가능, 대장 1) | `a4a7596` — `W/.<이름>.masking` 에 `wx` 로 쓰고 `renameSync` 로 교체(기존 inode 불변 → 링크 종류와 무관하게 계열 구조적 차단, R1-1 의 `O_NOFOLLOW` 쓰기를 대체 — lstat 일반 파일 검사는 유지) · 테스트 「cleanup: 보존 JSON 이 W 밖 파일의 하드 링크여도 …」(외부 바이트 불변·W 사본 마스킹·nlink 1·임시 파일 잔존 0). **확인 임무 ③ 우선 감사 대상** |
 
 **R1(적대, 2026-10-22)**: HEAD `9ab8156` · 스레드 `01a1629c…` · 실행 로그 25건 · verdict needs-attention · high 1 · medium 1 · low 0 · 신규 2 · 기결정 재론 0. 전환용 score **4**(high 3 + medium 1 — 현행 산식, 수정 전 스냅샷) · 미확인 FIXED 큐 0 → 2. batch 적재 0(적대 소진 1 = auto-rounds 1 → flush 대상 없음, 이후 정밀 모드). 수정 게이트(SC-7, `bbd950b`): T1 **155/155** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0.
 
@@ -233,6 +234,10 @@ harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천�
 
 **R3(적대, 2026-10-22)**: HEAD `71570c1` · 스레드 `01a162a9…` · 실행 로그 28건 · verdict needs-attention · medium 1 · 신규 1 · 기결정 재론 0 · R1-1·R1-2·R2-1 적대 비재출현(R3 — 참고 신호, 큐 유지). 전환용 score **1**(4 → 1 → 1 — 보안 트랙이라 신호 1 무시) · 미확인 FIXED 큐 3 → 4 · 신호 2 미발화(신규 FIXED 1) → 적대 계속. 수정 게이트(SC-7, `b0e39fa`): T1 **157/157** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0.
 
+**R4(적대, 2026-10-22)**: HEAD `fada1dd` · 스레드 `01a162b0…` · 실행 로그 21건 · verdict needs-attention · high 1 · 신규 1(R1-1 계열 재발 — 다른 링크 종류) · 기결정 재론 0 · R1-2·R2-1·R3-1 적대 비재출현(R4 — 참고 신호, 큐 유지). 계열 반복 규칙(같은 계열 2회 → 사용자/설계 결정) + 즉시군 ② → 즉시 ESCALATE → 「구조로 막는다(FIXED)」 채택(위임 세션 — 대장 1). 전환용 score **3**(4 → 1 → 1 → 3, 미해결 ESCALATE 포함 수정 전 스냅샷 — 보안 트랙이라 신호 1 무시) · 미확인 FIXED 큐 4 → 5(R1-1 은 `a4a7596` 로 쓰기 경로가 바뀌어 확인 때 함께 본다) · 신호 2 미발화(신규 FIXED 1) → 적대 계속(소진 4 < max 5). 수정 게이트(SC-7, `a4a7596`): T1 **158/158** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0.
+
 ## 확인 대기 대장
 
-해당 없음.
+| # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
+|---|---|---|---|---|---|---|
+| 1 | 2026-10-22 17:2x | impl·R4 즉시 ESCALATE(계열 반복) | cleanup 이 결과 JSON 을 다시 쓸 때 하드 링크로 이어진 작업 폴더 밖 원본까지 바뀌는 문제를 어떻게 할까 (R4-1 — 같은 계열 R1-1) | 구조로 막는다 (FIXED) — 새 파일 + rename 교체 | 추천 자동 채택(위임) | 확인 대기 |
