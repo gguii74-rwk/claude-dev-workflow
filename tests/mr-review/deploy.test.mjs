@@ -245,7 +245,7 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
   assert.ok(d3.mismatches.some((m) => m.kind === 'bytes' && /diff-only/.test(m.detail)));
 });
 
-// 최소 zip 작성기(테스트 전용) — entries = [{ name, data, method = 0|8, usize?, made?, ext? }]
+// 최소 zip 작성기(테스트 전용) — entries = [{ name(문자열|Buffer), data, method = 0|8, usize?, made?, ext?, flags? }]
 function mkZip(entries, comment = '') {
   const locals = [];
   const cds = [];
@@ -253,14 +253,14 @@ function mkZip(entries, comment = '') {
   for (const e of entries) {
     const raw = Buffer.from(e.data);
     const comp = e.method === 8 ? zlib.deflateRawSync(raw) : raw;
-    const name = Buffer.from(e.name, 'utf8');
+    const name = Buffer.isBuffer(e.name) ? e.name : Buffer.from(e.name, 'utf8');
     const lx = e.localExtra || Buffer.alloc(0);
     const cx = e.centralExtra || Buffer.alloc(0);
     const lh = Buffer.alloc(30);
-    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0, 6); lh.writeUInt16LE(e.method || 0, 8);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(e.flags || 0, 6); lh.writeUInt16LE(e.method || 0, 8);
     lh.writeUInt32LE(crc32(raw), 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(e.usize ?? raw.length, 22); lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(lx.length, 28);
     const cd = Buffer.alloc(46);
-    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(e.made ?? 0x0314, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(0, 8); cd.writeUInt16LE(e.method || 0, 10);
+    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(e.made ?? 0x0314, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(e.flags || 0, 8); cd.writeUInt16LE(e.method || 0, 10);
     cd.writeUInt32LE(crc32(raw), 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(e.usize ?? raw.length, 24); cd.writeUInt16LE(name.length, 28); cd.writeUInt16LE(cx.length, 30);
     cd.writeUInt32LE(e.ext ?? ((0o100644 << 16) >>> 0), 38); cd.writeUInt32LE(off, 42);
     locals.push(lh, name, lx, comp);
@@ -345,4 +345,23 @@ test('zip 확장 필드는 알려진 무해 칸(0x5455 시간·0x7875 Unix 소�
   const zl = readZip(mkZip([{ name: 'src/main/A.txt', data: 'x', localExtra: upath('src/main/A.txt', 'src/main/UNREVIEWED.txt') }]));
   assert.throws(() => zl.read(zl.entries[0]), /확장 필드/);                                                       // local 쪽만 있어도
   assert.throws(() => readZip(mkZip([{ name: 'a.txt', data: 'x', centralExtra: Buffer.from([0x55, 0x54, 9, 0, 1]) }])), /확장 필드/);   // 길이가 안 맞는 확장 필드
+});
+
+test('zip 파일명: UTF-8 표시(bit 11) 없는 비ASCII 이름·깨진 UTF-8 이름은 거부 — 표준 리더와 이름이 갈리는 zip · git archive 의 한글 이름(표시 있음)은 통과 (impl R3-2, 추천 자동 채택(위임))', () => {
+  const ko = 'src/main/설정.txt';
+  assert.throws(() => readZip(mkZip([{ name: ko, data: 'x' }])), /UTF-8/);                                    // R3 재현 — 표시 없이 UTF-8 바이트
+  assert.throws(() => readZip(mkZip([{ name: Buffer.from([0x61, 0xff, 0xfe, 0x2e, 0x74]), data: 'x', flags: 0x0800 }])), /UTF-8/);   // 표시는 있는데 깨진 바이트
+  const z = readZip(mkZip([{ name: ko, data: 'x', flags: 0x0800 }]));
+  assert.equal(z.entries[0].name, ko);
+  assert.equal(z.read(z.entries[0]).toString(), 'x');
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'x' }])));                         // ASCII 는 표시 없어도 된다
+  const root = tmp();
+  const { checkout, headSha } = initRepos(root);
+  writeFileSync(join(checkout, '설정.txt'), 'k\n');
+  git(checkout, 'add', '설정.txt');
+  git(checkout, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'ko');
+  const head2 = git(checkout, 'rev-parse', 'HEAD').trim();
+  const gz = readZip(readFileSync(archive(checkout, head2, join(root, 'ko.zip'), ['설정.txt'])));
+  assert.deepEqual(gz.entries.map((e) => e.name), ['설정.txt']);
+  assert.equal(gz.read(gz.entries[0]).toString(), 'k\n');
 });

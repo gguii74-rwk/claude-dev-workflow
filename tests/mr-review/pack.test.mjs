@@ -383,3 +383,49 @@ test('END 줄 없이 잘린 비밀키(PEM)도 BEGIN 부터 키 본문 줄까지 
   assert.doesNotMatch(readFileSync(join(work, 'pack-a.md'), 'utf8'), /END PRIVATE KEY/);
   assert.doesNotMatch(readFileSync(join(work, 'pack-b.md'), 'utf8'), /TRUNCKEYBODY|BEGIN PRIVATE KEY/);
 });
+
+test('YAML 블록 머리 줄의 주석·CRLF·앵커·태그, 4000자 넘는 여러 줄 따옴표 값도 값 전체가 가려진다 — 잔존 0 (impl R3-1·R3-3, 추천 자동 채택(위임))', () => {
+  const cases = [
+    'password: | # comment\n  SECRETA1\nnext: 1',
+    'password: |\r\n  SECRETA2\r\nnext: 1',
+    'password: &anchor |\n  SECRETA3',
+    'password: !!str >-  # c\n  SECRETA4',
+    'password = "' + 'x'.repeat(4001) + '\nSECRETA5 tail"',
+  ];
+  for (const text of cases) {
+    const m = maskTextWithCounts(text, []);
+    assert.doesNotMatch(m.text, /SECRETA\d/, JSON.stringify(text.slice(0, 60)));
+    assert.deepEqual(m.residual, [], JSON.stringify(text.slice(0, 60)));
+  }
+  assert.match(maskTextWithCounts('password: | # comment\n  SECRETA1\nnext: 1', []).text, /next: 1$/);
+});
+
+test('안전장치: 비밀값 키 선언 뒤 값이 가림 표시가 아니거나 더 들여쓴 이어지는 줄이 안 가려졌으면 잔존 → Codex 생략 · 정상 형태는 잔존 0 (impl R3-1, 추천 자동 채택(위임))', () => {
+  // 패턴이 못 가리는 형태 — 가려지지 않고 남으면 반드시 잔존으로 잡힌다
+  for (const text of ['password:\n  value: SECRETB1', 'token: abc\n    SECRETB2 continued']) {
+    const m = maskTextWithCounts(text, []);
+    assert.ok(!/SECRETB\d/.test(m.text) || m.residual.some((r) => r.name === 'secret-decl'), `${JSON.stringify(text)} → ${JSON.stringify(m)}`);
+  }
+  // 오탐 통제 — 흔한 정상 형태는 잔존 0
+  const ok = [
+    'db:\n  password: hunter2\n  user: app',
+    '{"password": "", "user": "keep-me"}',
+    'password:\nnext: 1',
+    '토큰(token) 만료 시간을 늘린다',
+    'access token: 30분 뒤 만료되고 다음 문장이 이어진다',
+    'if (token == null) return;',
+    'client_secret: |\n  PRIVATE-FIRST\n\n  PRIVATE-SECOND\nnext: keep-after',
+    'password = "line-one\nline-two"\nafter = 1',
+  ];
+  for (const text of ok) assert.deepEqual(maskTextWithCounts(text, []).residual, [], JSON.stringify(text));
+});
+
+test('안전장치 CLI: MR 본문에 가리지 못한 비밀값 선언이 있으면 팩 B 미생성 · codexSkipped (impl R3-1, 추천 자동 채택(위임))', () => {
+  const { adapter, work, env } = setup({ description: '## 배경\n- 설정\n\n```yaml\ndb:\n  password:\n    value: SECRETC1\n```\n' });
+  const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(work, 'pack.json'));
+  assert.equal(p.codexSkipped, true);
+  assert.match(p.codexSkipReason, /secret-decl/);
+  assert.ok(!existsSync(join(work, 'pack-b.md')));
+});

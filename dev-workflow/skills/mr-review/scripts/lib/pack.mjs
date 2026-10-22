@@ -99,9 +99,10 @@ const MARK = '\\[masked:[^\\]\\s]*\\]';
 const WHOLE_MARK = (end) => `(?!${MARK}${end})`;
 const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)(?![A-Za-z0-9])(?:[_.-][A-Za-z0-9]+)*';
 // 여러 줄 값(impl R2-2, 사용자 판정): YAML 블록 스칼라(`key: |`·`>`·`|-` 뒤 들여쓴 줄 전부 — 사이 빈 줄 포함)를 한 덩어리로 가린다(따옴표 없는 값 규칙보다 먼저 — 그 규칙이 `|` 만 가리면 블록을 못 찾는다).
-// 따옴표 값은 줄바꿈을 포함해 닫는 따옴표까지(상한 4000자), 같은 줄에 닫는 따옴표가 없는 열린 값은 그 줄 끝까지 가린다(닫는 따옴표를 못 찾아도 값이 새지 않게).
+// 따옴표 값은 줄바꿈을 포함해 닫는 따옴표까지(길이 상한 없음 — impl R3-3), 같은 줄에 닫는 따옴표가 없는 열린 값은 그 줄 끝까지 가린다(닫는 따옴표를 못 찾아도 값이 새지 않게).
+// 블록 머리 줄(impl R3-1): 앵커(`&a`)·태그(`!!str`)·주석(` # …`)·CRLF 를 허용한다.
 // 잘린 비밀키(impl R2-3, 사용자 판정): 발췌 상한이 END 줄을 잘라도 BEGIN 줄부터 키 본문 줄(base64·`Proc-Type:` 같은 머리 줄)까지 가린다 — 완결 PEM 규칙 뒤에 둔다.
-const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S]){1,4000}(?=${q})`;
+const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S])+(?=${q})`;
 const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[masked:)(?![^${q}\\n]*${q})[^\\n]+`;
 export const SECRET_MASK = [
   { name: 'secret', pattern: QUOTED('"'), flags: 'i' },
@@ -110,7 +111,7 @@ export const SECRET_MASK = [
   { name: 'secret', pattern: OPEN_QUOTE('"'), flags: 'i' },
   { name: 'secret', pattern: OPEN_QUOTE("'"), flags: 'i' },
   { name: 'secret', pattern: OPEN_QUOTE('`'), flags: 'i' },
-  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*[|>][1-9+-]{0,2}[ \\t]*\\n)(?:[ \\t]*\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\n)*[ \\t]+[^\\n]*)*`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*(?:[&!][^\\s]*[ \\t]+)*[|>][1-9+-]{0,2}(?:[ \\t]+#[^\\r\\n]*)?[ \\t]*\\r?\\n)(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*)*`, flags: 'i' },
   { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?!["'\`])${WHOLE_MARK('(?:[\\s"\'\`,;)\\]]|$)')}(?:(?:Bearer|Basic|Token|Digest)\\s+)?(?:${MARK}|[^\\s"'\`,;)\\]])+`, flags: 'i' },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
@@ -122,6 +123,28 @@ export const SECRET_MASK = [
 // 자리표시자가 비밀값 자리(`token=<sha>`·`Bearer <sha>`)에 있으면 비밀값 패턴이 자리표시자째 가리므로 복원되지 않는다 — SHA 보호가 비밀값 제거를 우회하지 않는다.
 // 잔존 검사(`residual`)는 **복원 전** 텍스트(자리표시자 상태)에서 한다(C2-1) — 복원된 정상 SHA 를 어댑터 패턴(rrn 등)이 다시 잡아 거짓 잔존 → Codex 생략이 되지 않게. 보호 경계는 마스킹과 같다.
 const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\.[A-Za-z0-9]|\w)/g;
+// 안전장치(impl R3-1, fail-closed): 패턴 목록은 형태를 하나씩 쫓아가므로(R1-1·R1-2·R2-2·R3-1 — 같은 계열 4회), 잔존 검사가 패턴과 무관하게 비밀값 키 선언을 본다.
+// 선언(`<키>[:=]`) 뒤 같은 줄 값이 가림 표시·빈 따옴표·블록 머리(`|`·`>`·앵커·태그·주석)·빈 값이 아니거나, 값 자리가 머리·표시뿐인데 그 줄보다 더 들여쓴 다음 줄이 통째로 가림 표시가 아니면 `secret-decl` 잔존 → Codex 생략.
+// 오탐 비용 = 단일 모델 리뷰(D14 fail-closed 경로) — 값 누출보다 낫다.
+const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'gi');
+const DECL_OK = new RegExp(`^(?:$|#|${MARK}|["'\`]${MARK}|(["'\`])\\1|[|>&!])`);
+const DECL_WHOLE = new RegExp(`^[ \t]*${MARK}[ \t\r]*$`);   // 이어지는 줄은 통째로 가림 표시여야 한다(첫 토큰만 가린 `[masked:secret] 나머지` 는 통과 아님)
+const DECL_HEAD = new RegExp(`^(?:(?:${MARK}|[&!]\\S*|[|>][1-9+-]{0,2})[ \t]*)*(?:#.*)?$`);
+function unmaskedSecretDecl(text) {
+  for (const m of text.matchAll(DECL_RE)) {
+    const ls = text.lastIndexOf('\n', m.index) + 1;
+    let le = text.indexOf('\n', m.index);
+    if (le < 0) le = text.length;
+    const rest = text.slice(m.index + m[0].length, le).replace(/\r$/, '').trimStart();
+    if (!DECL_OK.test(rest)) return true;
+    if (!DECL_HEAD.test(rest)) continue;
+    const next = text.slice(le + 1).split('\n').find((l) => l.trim() !== '');
+    if (next === undefined) continue;
+    const ind = (l) => /^[ \t]*/.exec(l)[0].length;
+    if (ind(next) > ind(text.slice(ls, le)) && !DECL_WHOLE.test(next)) return true;
+  }
+  return false;
+}
 export function maskTextWithCounts(text, maskRules) {
   const keep = [];
   const held = text.replace(SHA40_RE, (m) => { keep.push(m); return `\u0000sha40:${keep.length - 1}\u0000`; });
@@ -130,6 +153,7 @@ export function maskTextWithCounts(text, maskRules) {
   const applied = { ...a.applied };
   for (const [k, v] of Object.entries(b.applied)) applied[k] = (applied[k] || 0) + v;
   const left = residual(b.text, [...maskRules, ...SECRET_MASK]);
+  if (unmaskedSecretDecl(b.text)) left.push({ name: 'secret-decl' });
   return { text: b.text.replace(/\u0000sha40:(\d+)\u0000/g, (_, i) => keep[Number(i)]), applied, residual: left };
 }
 export function maskText(text, maskRules) { return maskTextWithCounts(text, maskRules).text; }

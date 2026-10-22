@@ -69,6 +69,14 @@ export function crc32(buf) {
 // 확장 필드 허용 목록(impl R2-1, 사용자 판정) — git archive 가 쓰는 시간 정보(0x5455)와 Unix 소유자(0x7875)만. Unicode 경로(0x7075)처럼 이름·내용 해석을 바꾸는 칸이나
 // 모르는 칸이 있으면 배포 도구가 다르게 읽을 수 있으므로 거부한다(zip64 0x0001 도 미지원). 칸 길이 합이 선언 길이와 맞지 않아도 거부.
 const SAFE_EXTRA = new Set([0x5455, 0x7875]);
+// 파일명 인코딩(impl R3-2) — zip 표준은 UTF-8 표시(일반 목적 플래그 bit 11)가 없으면 CP437 로 읽는다. 표시 없는 비ASCII 이름은 표준 리더와 자체 리더가 다른 이름을 보므로 거부하고,
+// 표시가 있으면 엄격한 UTF-8 로만 읽는다(깨진 바이트 거부). git archive 는 비ASCII 이름에 표시를 켠다(2.43 실측) — 정상 배포본은 통과한다.
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+function zipName(raw, flags) {
+  if (!(flags & 0x0800) && raw.some((b) => b >= 0x80)) throw new Error(`zip 파일명이 UTF-8 표시 없이 비ASCII(표준 리더와 이름이 달라짐): ${raw.toString('latin1')}`);
+  try { return UTF8.decode(raw); } catch { throw new Error(`zip 파일명이 올바른 UTF-8 이 아님: ${raw.toString('latin1')}`); }
+}
+
 function checkExtra(buf, start, len, name, where) {
   let q = start;
   const end = start + len;
@@ -112,7 +120,8 @@ export function readZip(buf) {
     const eLen = buf.readUInt16LE(p + 30);
     const cmLen = buf.readUInt16LE(p + 32);
     const lho = buf.readUInt32LE(p + 42);
-    const name = buf.subarray(p + 46, p + 46 + nLen).toString('utf8');
+    const raw = buf.subarray(p + 46, p + 46 + nLen);
+    const name = zipName(raw, flags);
     if (seen.has(name)) throw new Error(`zip 중복 항목 이름: ${name}`);
     seen.add(name);
     checkExtra(buf, p + 46 + nLen, eLen, name, 'central');
@@ -120,7 +129,7 @@ export function readZip(buf) {
     const made = buf.readUInt16LE(p + 4) >>> 8;
     const ifmt = ((buf.readUInt32LE(p + 38) >>> 16) & 0o170000);
     const type = made !== 3 || ifmt === 0 || ifmt === 0o100000 ? 'file' : ifmt === 0o120000 ? 'symlink' : ifmt === 0o040000 ? 'dir' : 'special';
-    entries.push({ name, flags, method, crc, csize, usize, lho, cd: p, type });
+    entries.push({ name, raw, flags, method, crc, csize, usize, lho, cd: p, type });
     p += 46 + nLen + eLen + cmLen;
   }
   if (p !== eocd) throw new Error(`zip EOCD 목차 크기 불일치(파싱한 목차 끝 ${p} ≠ EOCD ${eocd})`);
@@ -130,9 +139,9 @@ export function readZip(buf) {
     const nLen = buf.readUInt16LE(h + 26);
     const eLen = buf.readUInt16LE(h + 28);
     // local header ↔ central directory 정합(R3-8) — 파일명·압축 방식이 다르면 표준 리더가 거부하는 zip 이다
-    const lName = buf.subarray(h + 30, h + 30 + nLen).toString('utf8');
+    const lRaw = buf.subarray(h + 30, h + 30 + nLen);
     const lMethod = buf.readUInt16LE(h + 8);
-    if (lName !== e.name) throw new Error(`zip local header 파일명 불일치(${lName} ≠ ${e.name})`);
+    if (!lRaw.equals(e.raw)) throw new Error(`zip local header 파일명 불일치(${lRaw.toString('utf8')} ≠ ${e.name})`);   // 원시 바이트로 대조(impl R3-2)
     if (lMethod !== e.method) throw new Error(`zip local header 압축 방식 불일치(${lMethod} ≠ ${e.method}): ${e.name}`);
     checkExtra(buf, h + 30 + nLen, eLen, e.name, 'local');
     // 일반 목적 플래그도 대조(C1 R3-8 잔존) — local 0·central 1(암호화) 처럼 어긋나면 표준 리더가 거부하는 zip 이고, 암호화(bit0)·강한 암호화(bit6)는 미지원이라 읽을 수 없는 배포본이다
