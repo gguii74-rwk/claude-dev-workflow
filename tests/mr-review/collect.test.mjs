@@ -1,9 +1,9 @@
 // collect 계약 테스트 (spec §5.1 · SC-3) — 가짜 glab + 로컬 bare origin
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson } from './helpers.mjs';
+import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git } from './helpers.mjs';
 
 const IID = 7;
 const ENC = (p) => encodeURIComponent(p).replace(/\./g, '%2E');
@@ -30,7 +30,8 @@ const NOTES = [
   { id: 2, system: false, author: { id: 2, username: 'rev-b' }, created_at: '2026-10-20T01:00:00Z', body: '기준선 확인 — 배경 ①② 동의' },
   { id: 3, system: true, author: { id: 1, username: 'author-a' }, created_at: '2026-10-20T02:00:00Z', body: 'changed the description' },
 ];
-function rules(headSha, { metaRules } = {}) {
+// base = API 가 기록한 MR diff 의 base(versions[0].base_commit_sha) — 워크트리 모드는 이 값을 base 로 쓰므로(1.3.1 ②) 워크트리 픽스처는 실제 baseSha 를 준다
+function rules(headSha, { metaRules, base = 'b'.repeat(40) } = {}) {
   const p = `projects/101/merge_requests/${IID}`;
   return [
     ...(metaRules || [{ match: `^api ${p}$`, json: meta(headSha) }]),
@@ -38,7 +39,7 @@ function rules(headSha, { metaRules } = {}) {
     { match: `^api ${p}/changes$`, json: { overflow: false } },
     { match: `^api --paginate ${p}/notes`, json: NOTES },
     { match: `^api --paginate ${p}/closes_issues`, json: [{ iid: 12, project_id: 101, title: '버그', description: '① 왜 ② 무엇을', updated_at: '2026-10-19T00:00:00Z', web_url: 'http://gitlab.test/g/alpha/-/issues/12' }] },
-    { match: `^api ${p}/versions$`, json: [{ head_commit_sha: headSha, base_commit_sha: 'b'.repeat(40), start_commit_sha: 'b'.repeat(40) }] },
+    { match: `^api ${p}/versions$`, json: [{ head_commit_sha: headSha, base_commit_sha: base, start_commit_sha: base }] },
     { match: `^api ${p}/approvals$`, json: { approved_by: [{ user: { username: 'rev-b' } }] } },
   ];
 }
@@ -48,7 +49,7 @@ test('worktree 모드: fetch head = API head → 세 SHA 고정 + 워크트리 �
   const adapter = writeAdapter(root);
   const { checkout, baseSha, headSha } = initRepos(root, { iid: IID });
   const p = `projects/101/merge_requests/${IID}`;
-  const g = fakeGlab(root, [...rules(headSha).filter((x) => !x.match.includes('/diffs')), { match: `^api --paginate ${p}/diffs`, json: DIFFS.slice(0, 3) }]);   // API 목록에는 docs/specs 문서가 빠져 있다(overflow 흉내)
+  const g = fakeGlab(root, [...rules(headSha, { base: baseSha }).filter((x) => !x.match.includes('/diffs')), { match: `^api --paginate ${p}/diffs`, json: DIFFS.slice(0, 3) }]);   // API 목록에는 docs/specs 문서가 빠져 있다(overflow 흉내)
   const work = join(root, 'work');
   mkdirSync(work, { recursive: true });
   writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'APPROVE', head_sha: DEAD }));   // 이전 실행 잔존물
@@ -82,7 +83,7 @@ test('worktree 모드: fetch head = API head → 세 SHA 고정 + 워크트리 �
   assert.equal(mr.description_changed_at, '2026-10-20T02:00:00Z');
   assert.deepEqual(mr.approved_by, ['rev-b']);
   assert.equal(mr.closes_issues[0].iid, 12);
-  assert.equal(mr.versions[0].base_commit_sha, 'b'.repeat(40));
+  assert.equal(mr.versions[0].base_commit_sha, baseSha);
   assert.deepEqual(mr.reviewers, [{ id: 2, username: 'rev-b' }]);
 });
 
@@ -100,9 +101,9 @@ test('HEAD_MOVED: API head 가 fetch head 와 계속 다르면 3회 뒤 exit 3',
 test('재수집: 첫 메타는 옛 head, 둘째는 fetch head 와 일치 → attempts=2', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
-  const { headSha } = initRepos(root, { iid: IID });
+  const { baseSha, headSha } = initRepos(root, { iid: IID });
   const p = `projects/101/merge_requests/${IID}`;
-  const g = fakeGlab(root, rules(headSha, { metaRules: [{ match: `^api ${p}$`, json: meta(DEAD), times: 1 }, { match: `^api ${p}$`, json: meta(headSha) }] }));
+  const g = fakeGlab(root, rules(headSha, { base: baseSha, metaRules: [{ match: `^api ${p}$`, json: meta(DEAD), times: 1 }, { match: `^api ${p}$`, json: meta(headSha) }] }));
   const r = runCli(['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', join(root, 'work')], g.env);
   assert.equal(r.code, 0, r.out);
   assert.match(r.first, /attempts=2 /);
@@ -297,4 +298,147 @@ test('모든 glab 호출에 어댑터 호스트(--hostname)를 붙이고, MR web
   assert.equal(r2.code, 2, r2.out);
   assert.match(r2.first, /^ERR .*호스트/);
   assert.ok(!existsSync(join(root2, 'work', 'mr.json')));
+});
+
+// ── 1.3.1 ② 머지된 MR — 워크트리 모드 base = API diff base (spec 2026-10-22 3.②) ──
+// head 를 target 에 머지하고 origin/target 을 갱신한다(ff = fast-forward, 아니면 머지 커밋). 반환 = 머지 뒤 target SHA
+function mergeIntoTarget(root, bare, { ff = false } = {}) {
+  const m = join(root, 'merger');
+  git(root, 'clone', '-q', bare, m);
+  git(m, 'merge', '-q', ff ? '--ff-only' : '--no-ff', '-m', 'merge feat', 'origin/feat');
+  git(m, 'push', '-q', 'origin', 'master');
+  const sha = git(m, 'rev-parse', 'HEAD');
+  rmSync(m, { recursive: true, force: true });
+  return sha;
+}
+const collectArgs = (adapter, work, extra = []) => ['collect', '--adapter', adapter, '--project', 'alpha', '--iid', String(IID), '--work', work, ...extra];
+const mergedMeta = (headSha, base, extra = {}) => meta(headSha, { state: 'merged', diff_refs: base ? { base_sha: base, head_sha: headSha, start_sha: base } : null, ...extra });
+
+test('머지된 MR(머지 커밋) 워크트리 모드: base = API diff base — base·변경 목록·배포 기대 목록이 머지 전과 같다 (1.3.1 AC②-1·②-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { bare, baseSha, headSha } = initRepos(root, { iid: IID });
+  const p = `projects/101/merge_requests/${IID}`;
+  const before = join(root, 'work-before');
+  const g0 = fakeGlab(root, rules(headSha, { base: baseSha }));
+  assert.equal(runCli(collectArgs(adapter, before), g0.env).code, 0);
+  const mergeSha = mergeIntoTarget(root, bare);
+  const g = fakeGlab(root, rules(headSha, { base: baseSha, metaRules: [{ match: `^api ${p}$`, json: mergedMeta(headSha, baseSha) }] }));
+  const work = join(root, 'work');
+  const r = runCli(collectArgs(adapter, work), g.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(r.first, `COLLECTED worktree head=${headSha.slice(0, 7)} base=${baseSha.slice(0, 7)} target=${mergeSha.slice(0, 7)} attempts=1 unrecovered=0`);
+  const snap = readJson(join(work, 'snapshot.json'));
+  assert.equal(snap.base_sha, baseSha);
+  assert.equal(snap.base_source, 'api');
+  assert.equal(snap.target_sha, mergeSha);
+  const paths = (w) => readJson(join(w, 'mr.json')).diffs.map((d) => d.new_path).sort();
+  assert.deepEqual(paths(work), paths(before));
+  assert.equal(paths(work).length, 4);
+  // AC②-2 — deploy 는 「운영 배포 대상 변경 없음」이 아니다
+  for (const w of [before, work]) writeFileSync(join(w, 'check.json'), JSON.stringify({ attachments: [], deployExempt: false, deployNote: null }));
+  const d0 = runCli(['deploy', '--adapter', adapter, '--work', before], g.env);
+  const d1 = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
+  assert.equal(d1.first, d0.first);
+  const dj = readJson(join(work, 'deploy.json'));
+  assert.equal(dj.applicable, true);
+  assert.deepEqual(dj.expected, readJson(join(before, 'deploy.json')).expected);
+  assert.deepEqual(dj.expected.deploy, ['src/main/java/app/A.java', 'src/main/java/app/B.java']);
+});
+
+test('API base 가 head 의 조상이 아니면(로컬에 없거나 다른 갈래) ERR BASE_MISMATCH exit 2 — mr.json·snapshot.json 을 쓰지 않는다 (1.3.1 AC②-3)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { bare, headSha } = initRepos(root, { iid: IID });
+  const mergeSha = mergeIntoTarget(root, bare);                       // 로컬에 있지만 head 의 조상이 아닌 커밋
+  const p = `projects/101/merge_requests/${IID}`;
+  for (const bad of [mergeSha, DEAD]) {
+    const g = fakeGlab(root, rules(headSha, { base: bad, metaRules: [{ match: `^api ${p}$`, json: mergedMeta(headSha, bad) }] }));
+    const work = join(root, `work-${bad.slice(0, 4)}`);
+    const r = runCli(collectArgs(adapter, work), g.env);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.first, new RegExp(`^ERR BASE_MISMATCH — API base ${bad.slice(0, 7)}가 head ${headSha.slice(0, 7)}의 조상이 아니다`));
+    assert.ok(!existsSync(join(work, 'mr.json')));
+    assert.ok(!existsSync(join(work, 'snapshot.json')));
+  }
+});
+
+test('versions·diff_refs 가 모두 없으면 merge-base 폴백 — 머지 뒤 git diff 0 ≠ API 변경 ≥1 이면 ERR DIFF_EMPTY_MISMATCH, API 도 0 이면 정상 (1.3.1 AC②-4)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { bare, headSha } = initRepos(root, { iid: IID });
+  mergeIntoTarget(root, bare);
+  const p = `projects/101/merge_requests/${IID}`;
+  const noVersions = (diffs) => [
+    ...rules(headSha, { metaRules: [{ match: `^api ${p}$`, json: mergedMeta(headSha, null) }] }).filter((x) => !x.match.includes('/versions') && !x.match.includes('/diffs')),   // versions 404 → 조회 실패
+    { match: `^api --paginate ${p}/diffs`, json: diffs },
+  ];
+  const work = join(root, 'work');
+  const r = runCli(collectArgs(adapter, work), fakeGlab(root, noVersions(DIFFS)).env);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.first, /^ERR DIFF_EMPTY_MISMATCH — git diff 0건 ≠ API 변경 4건\(base 산정 오류 의심\)/);
+  assert.ok(!existsSync(join(work, 'snapshot.json')));
+  const root2 = tmp();
+  const adapter2 = writeAdapter(root2);
+  const r2repo = initRepos(root2, { iid: IID });
+  mergeIntoTarget(root2, r2repo.bare);
+  const work2 = join(root2, 'work');
+  const r2 = runCli(collectArgs(adapter2, work2), fakeGlab(root2, noVersions([])).env);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  const snap = readJson(join(work2, 'snapshot.json'));
+  assert.equal(snap.base_source, 'merge-base');
+  assert.equal(snap.base_sha, r2repo.headSha);                       // 머지 뒤 merge-base = head
+  assert.deepEqual(snap.api_failures, ['versions']);
+});
+
+test('열린 MR 워크트리 모드는 base_source = "api" 이고 base 가 1.3.0 과 같다 (1.3.1 AC②-5)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { baseSha, headSha } = initRepos(root, { iid: IID });
+  const work = join(root, 'work');
+  const r = runCli(collectArgs(adapter, work), fakeGlab(root, rules(headSha, { base: baseSha })).env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const snap = readJson(join(work, 'snapshot.json'));
+  assert.equal(snap.base_sha, baseSha);
+  assert.equal(snap.base_source, 'api');
+});
+
+test('워크트리 모드도 diff 버전 head ≠ API head 면 재수집 — 둘째에 맞으면 attempts=2, 3회 모두 다르면 HEAD_MOVED exit 3 (1.3.1 AC②-6 · D27)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { baseSha, headSha } = initRepos(root, { iid: IID });
+  const p = `projects/101/merge_requests/${IID}`;
+  const vRule = (h, times) => ({ match: `^api ${p}/versions$`, json: [{ head_commit_sha: h, base_commit_sha: baseSha, start_commit_sha: baseSha }], ...(times ? { times } : {}) });
+  const base = rules(headSha, { base: baseSha }).filter((x) => !x.match.includes('/versions'));
+  const work = join(root, 'work');
+  const r = runCli(collectArgs(adapter, work), fakeGlab(root, [...base, vRule(DEAD, 1), vRule(headSha)]).env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, / attempts=2 /);
+  assert.equal(readJson(join(work, 'snapshot.json')).base_source, 'api');
+  const root2 = tmp();
+  const adapter2 = writeAdapter(root2);
+  const r2repo = initRepos(root2, { iid: IID });
+  const base2 = rules(r2repo.headSha, { base: r2repo.baseSha }).filter((x) => !x.match.includes('/versions'));
+  const g2 = fakeGlab(root2, [...base2, { match: `^api ${p}/versions$`, json: [{ head_commit_sha: DEAD, base_commit_sha: r2repo.baseSha, start_commit_sha: r2repo.baseSha }] }]);
+  const r2 = runCli(collectArgs(adapter2, join(root2, 'work')), g2.env);
+  assert.equal(r2.code, 3, r2.out + r2.err);
+  assert.match(r2.first, /^ERR HEAD_MOVED/);
+  assert.ok(!existsSync(join(root2, 'work', 'snapshot.json')));
+});
+
+test('얕은 clone 에서 API base 가 로컬에 없으면 ERR BASE_MISMATCH 문구로 git fetch --unshallow 를 안내한다 — 자동 unshallow 안 함 (1.3.1 AC②-7 · D28)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { bare, checkout, baseSha, headSha } = initRepos(root, { iid: IID });
+  mergeIntoTarget(root, bare, { ff: true });                          // fast-forward 머지 — target 끝 = head
+  rmSync(checkout, { recursive: true, force: true });
+  git(root, 'clone', '-q', '--depth', '1', `file://${bare}`, checkout);   // head 만 있는 얕은 clone(base 없음)
+  const p = `projects/101/merge_requests/${IID}`;
+  const g = fakeGlab(root, rules(headSha, { base: baseSha, metaRules: [{ match: `^api ${p}$`, json: mergedMeta(headSha, baseSha) }] }));
+  const work = join(root, 'work');
+  const r = runCli(collectArgs(adapter, work), g.env);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.first, new RegExp(`^ERR BASE_MISMATCH — 얕은 clone\\(shallow\\)이라 base ${baseSha.slice(0, 7)}가 로컬에 없다\\. 체크아웃에서 git fetch --unshallow 뒤 다시 실행`));
+  assert.equal(git(checkout, 'rev-parse', '--is-shallow-repository'), 'true');   // 스킬이 체크아웃을 깊게 하지 않았다
+  assert.ok(!existsSync(join(work, 'snapshot.json')));
 });

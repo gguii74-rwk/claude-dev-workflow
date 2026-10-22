@@ -71,13 +71,28 @@ export function normalize(project, projectName, iid, raw, collectedAt) {
 }
 
 // §5.1-2 — target·MR head fetch → API head 일치 확인 → 세 SHA 고정 → 임시 워크트리(기존 잔존물 제거)
+// base(1.3.1 ② — spec 2026-10-22 3.②) = GitLab 이 기록한 MR diff 의 base(versions[0] → diff_refs) — 머지된 MR 은 target 이 head 를 품어 merge-base 가 head 자신이 된다.
+// API base 가 head 의 조상이 아니면 ERR(fail-closed), 둘 다 없을 때만 merge-base 로 폴백한다. 판정·diff 는 워크트리를 만들기 전에 끝낸다(ERR 때 워크트리를 남기지 않는다).
 export function pinWorktree(checkout, mr, work) {
   git(checkout, ['fetch', '-q', 'origin', mr.target_branch]);
   git(checkout, ['fetch', '-q', 'origin', `+refs/merge-requests/${mr.iid}/head:refs/mr-review/${mr.iid}/head`]);
   const head = git(checkout, ['rev-parse', `refs/mr-review/${mr.iid}/head`]);
   if (head !== mr.api_head) return null;
   const target = git(checkout, ['rev-parse', `origin/${mr.target_branch}`]);
-  const base = git(checkout, ['merge-base', target, head]);
+  const apiBase = mr.versions[0]?.base_commit_sha || mr.diff_refs?.base_sha || null;
+  let base;
+  if (apiBase) {
+    const present = spawnSync('git', ['-C', checkout, 'cat-file', '-e', `${apiBase}^{commit}`]).status === 0;
+    if (!present || spawnSync('git', ['-C', checkout, 'merge-base', '--is-ancestor', apiBase, head]).status !== 0) {
+      if (!present && git(checkout, ['rev-parse', '--is-shallow-repository'], { allowFail: true }) === 'true') throw new CollectError(`BASE_MISMATCH — 얕은 clone(shallow)이라 base ${apiBase.slice(0, 7)}가 로컬에 없다. 체크아웃에서 git fetch --unshallow 뒤 다시 실행`);
+      throw new CollectError(`BASE_MISMATCH — API base ${apiBase.slice(0, 7)}가 head ${head.slice(0, 7)}의 조상이 아니다`);
+    }
+    base = apiBase;
+  } else {
+    base = git(checkout, ['merge-base', target, head]);
+  }
+  const diffs = gitDiffs(checkout, base, head);
+  if (diffs.length === 0 && mr.diffs.length > 0) throw new CollectError(`DIFF_EMPTY_MISMATCH — git diff 0건 ≠ API 변경 ${mr.diffs.length}건(base 산정 오류 의심)`);
   const worktree = path.join(work, 'worktree');
   if (fs.existsSync(worktree)) {
     git(checkout, ['worktree', 'remove', '--force', worktree], { allowFail: true });
@@ -85,7 +100,7 @@ export function pinWorktree(checkout, mr, work) {
   }
   git(checkout, ['worktree', 'prune'], { allowFail: true });
   git(checkout, ['worktree', 'add', '--detach', '-q', worktree, head]);
-  return { head, target, base, worktree };
+  return { head, target, base, baseSource: apiBase ? 'api' : 'merge-base', diffs, worktree };
 }
 
 // 워크트리 모드의 변경 목록 정본(R3-4) — API 목록은 overflow 로 파일 항목이 통째로 빠질 수 있다. 고정 뒤에는 check(기준선 후보 탐색)·pack(문서 지도)·deploy 가
@@ -165,7 +180,7 @@ export function rebuildDiffOnly(projectId, mr, work) {
   return { head, base, target: base, unrecovered, rebuilt, diffListComplete };
 }
 
-// diff-only 에서 메타 head 와 diff 버전(versions[0]·diff_refs)의 head 가 다르면 수집 중 push 가 있었다 — 서로 다른 head 의 자료를 한 스냅샷으로 섞지 않는다(R3-2, F6).
+// 메타 head 와 diff 버전(versions[0]·diff_refs)의 head 가 다르면 수집 중 push 가 있었다 — 서로 다른 head 의 자료를 한 스냅샷으로 섞지 않는다(R3-2, F6). 워크트리 모드도 같다(1.3.1 D27).
 export function diffHeadMismatch(mr) {
   const vHead = mr.versions[0]?.head_commit_sha || null;
   const rHead = mr.diff_refs?.head_sha || null;
@@ -194,14 +209,19 @@ export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
     if (urlHost.toLowerCase() !== String(adapter.gitlab.host).toLowerCase()) throw new CollectError(`MR web_url 호스트(${urlHost || '없음'})가 어댑터 gitlab.host(${adapter.gitlab.host})와 다르다 — 다른 GitLab 서버의 MR 일 수 있어 멈춘다`);
     const fetchedAt = new Date().toISOString();
     if (useWorktree) {
+      const moved = diffHeadMismatch(mr);
+      if (moved) {
+        if (attempt === MAX_ATTEMPTS) throw new CollectError(`HEAD_MOVED — ${MAX_ATTEMPTS}회 재수집에도 API head(${mr.api_head.slice(0, 7)})와 diff 버전 head(${moved.slice(0, 7)})가 다르다(push 진행 중?)`, 3);
+        continue;
+      }
       const pin = pinWorktree(project.checkout, mr, work);
       if (!pin) {
         if (attempt === MAX_ATTEMPTS) throw new CollectError(`HEAD_MOVED — ${MAX_ATTEMPTS}회 재수집에도 API head(${mr.api_head.slice(0, 7)})와 fetch head 가 다르다(push 진행 중?)`, 3);
         continue;
       }
-      mr.diffs = gitDiffs(project.checkout, pin.base, pin.head);   // API 목록 → git 정본으로 교체(R3-4). overflow 는 더 이상 의미 없다
+      mr.diffs = pin.diffs;   // API 목록 → git 정본으로 교체(R3-4). overflow 는 더 이상 의미 없다
       mr.overflow = false;
-      snapshot = { mode: 'worktree', target_sha: pin.target, base_sha: pin.base, head_sha: pin.head, checkout: project.checkout, worktree: pin.worktree, attempts: attempt, unrecovered: [], rebuilt: [], diff_list_complete: true, api_failures: mr.api_failures, fetched_at: fetchedAt };
+      snapshot = { mode: 'worktree', target_sha: pin.target, base_sha: pin.base, base_source: pin.baseSource, head_sha: pin.head, checkout: project.checkout, worktree: pin.worktree, attempts: attempt, unrecovered: [], rebuilt: [], diff_list_complete: true, api_failures: mr.api_failures, fetched_at: fetchedAt };
     } else {
       const moved = diffHeadMismatch(mr);
       if (moved) {
@@ -209,7 +229,7 @@ export function collect({ adapter, projectName, iid, work, diffOnly = false }) {
         continue;
       }
       const rb = rebuildDiffOnly(project.id, mr, work);
-      snapshot = { mode: 'diff-only', target_sha: rb.target, base_sha: rb.base, head_sha: rb.head, checkout: isGitDir(project.checkout) ? project.checkout : null, worktree: null, attempts: attempt, unrecovered: rb.unrecovered, rebuilt: rb.rebuilt, diff_list_complete: rb.diffListComplete, api_failures: mr.api_failures, fetched_at: fetchedAt };
+      snapshot = { mode: 'diff-only', target_sha: rb.target, base_sha: rb.base, base_source: rb.base ? 'api' : null, head_sha: rb.head, checkout: isGitDir(project.checkout) ? project.checkout : null, worktree: null, attempts: attempt, unrecovered: rb.unrecovered, rebuilt: rb.rebuilt, diff_list_complete: rb.diffListComplete, api_failures: mr.api_failures, fetched_at: fetchedAt };
     }
     break;
   }

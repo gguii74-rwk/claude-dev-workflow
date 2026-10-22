@@ -608,3 +608,22 @@ test('리포트: 발견 근거에 못 가린 비밀값 꼴(짝 없는 여러 줄
   assert.match(md, /근거: \[masked:unmaskable\]/);
   assert.match(md, /설정 평문 비밀번호/);                                                   // 다른 필드는 그대로
 });
+
+test('머지 뒤 리뷰: mr.state 가 merged·closed 면 헤더에 「머지 뒤 리뷰」 1줄, opened 면 없다 — 판정 블록은 같다 (1.3.1 AC②-8 · D29)', () => {
+  const blocks = {};
+  for (const state of ['merged', 'closed', 'opened']) {
+    const root = tmp();
+    const adapter = writeAdapter(root);
+    const work = fullWork(root, { fnd: findings([]), mr: { state } });
+    assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+    const out = join(root, 'r.md');
+    const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+    assert.equal(rr.code, 0, rr.out + rr.err);
+    const md = readFileSync(out, 'utf8');
+    const header = md.split('\n## ')[0];
+    if (state === 'opened') assert.doesNotMatch(md, /머지 뒤 리뷰/);
+    else assert.match(header, new RegExp(`^- \\*\\*머지 뒤 리뷰\\*\\* — MR state=${state}\\. 작성자 보완 요청은 이 MR이 아니라 후속 MR로$`, 'm'));
+    blocks[state] = md.match(/```text\n([\s\S]*?)\n```/)[1];
+  }
+  assert.equal(blocks.merged, blocks.opened);                         // 판정 계산·실행 블록 불변(D9 무관)
+});
