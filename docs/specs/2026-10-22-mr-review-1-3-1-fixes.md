@@ -208,7 +208,7 @@ harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천�
 | D29 | ② `mr.state` merged\|closed면 리포트 헤더 「머지 뒤 리뷰」 1줄. 판정·절 순서 불변 | 사용자 결정(갭 A3) — 머지 뒤 리뷰라는 새 케이스의 최소 표시, D9 무관 |
 | D30 | plan SC-3 snapshot 문장 · 1.3.0 spec §5.1-2 문장 정정 = impl 트랙(「1.3.1에서 변경」 표기). 이 세션은 안 고침(D25) | 사용자 결정(갭 A4) — SC-3은 구현이 읽는 계약, 어긋남 = 회귀 위험 |
 | D31 | ① SKILL §0에 `glab api --hostname <포트 없는 host> version` GET 1회 사전 점검, 실패 = 설정 안내 + 정지 | 사용자 결정(갭 B1) — 어댑터 복사만으로 리뷰어를 늘리는 공유 경계(§6) 전제 |
-| D32 | ⑧ 경로 감시 제외 = `$CODEX_HOME` 전체 + `$ROOT` + `W` 자체. 어댑터 위키 루트는 제외보다 우선 | 사용자 결정(갭 B2) — 오탐 반복은 진짜 경고를 무력화, Codex 홈은 D16 감시 대상 아님 |
+| D32 | ⑧ 경로 감시 제외 = `$CODEX_HOME` 전체 + `$ROOT` + `W` 자체. 어댑터 위키 루트는 제외보다 우선 **(1.3.2 D39로 (라) 명령 실행기·시스템 실행 파일 · (마) 존재하지 않는 경로 추가 — 제외 5종, spec `2026-10-22-mr-review-1-3-2-fixes.md` 3.⑩)** | 사용자 결정(갭 B2) — 오탐 반복은 진짜 경고를 무력화, Codex 홈은 D16 감시 대상 아님 |
 | D33 | ⑤ snapshot 전 실패 뒤의 cleanup ERR는 동작 유지, SKILL §0 보고 문구만 「목록 비면 정상」으로 정정 | 사용자 결정(갭 B3) — fail-closed 유지 |
 | D34 | 세부 4종 채택: `snapshot.base_source`·`deploy.zip.bytes_source` 진단 필드 · 이름 `bytes_unavailable`·`BASE_MISMATCH`·`DIFF_EMPTY_MISMATCH` · 배포본 결과 우선순위 「대조 불가 > 불일치」 유지 · cleanup 둘째 줄 이후 `extra:` 이름 나열 | 사용자 결정(갭 B4) |
 
