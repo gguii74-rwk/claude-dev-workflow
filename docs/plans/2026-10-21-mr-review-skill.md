@@ -315,7 +315,7 @@ git log --format=%B <base>..HEAD | grep -iE 'co-authored|generated with|claude-s
 
 | # | title | status | file | deps | outcome |
 |---|-------|--------|------|------|---------|
-| 09 | 릴리스 1.3.0 — **9단계, SDD 디스패치 대상 아님** | [ ] | [task-09](2026-10-21-mr-review-skill/task-09-release-1-3-0.md) | 01~08 + review-loop(impl) 종결 | |
+| 09 | 릴리스 1.3.0 — **9단계, SDD 디스패치 대상 아님** | [x] | [task-09](2026-10-21-mr-review-skill/task-09-release-1-3-0.md) | 01~08 + review-loop(impl) 종결 | `9098f25` — 게이트 ① impl 종결 행 1(8 impl 절 `b40687e` 눈 확인) · ② 확인 대기 0 · ③ T1 133/133 · T2 0 · T3 56/56 · T4~T7 0 · 릴리스 전 확인 PR1 verdict **fail**(FC3-1 잔존 — 값 없는 비밀값 키 제목의 위치 소실) → 수정 `2951699`(미확인 — task-11 이월, 사용자 결정) · 문서 `ecadc69`(어댑터 `mask` 제약, PR1 정확) · marketplace description `mr-review` 추가(PF-3) · **미push** |
 | 10 | 어댑터 확정본 — **프로젝트 공통 문서 저장소, SDD 디스패치 대상 아님** | [ ] | [task-10](2026-10-21-mr-review-skill/task-10-adapter-final.md) | 09 + push·설치 갱신 | |
 | 11 | S1 측정(표본 20건) · 첫 실사용 리포트 — **트랙 완료 조건** | [ ] | [task-11](2026-10-21-mr-review-skill/task-11-s1-field-run.md) | 10 | |
 
