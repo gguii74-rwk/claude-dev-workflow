@@ -541,7 +541,6 @@ test('넓은 기준: XML 요소·이스케이프·엔티티로 숨긴 키·카�
     ['{"\\u0070assword": "JSON_ESC_VAL"}', 'JSON_ESC_VAL'],
     ['pass&#119;ord: ENTITY_VAL', 'ENTITY_VAL'],
     ['?%70assword=PCT_VAL', 'PCT_VAL'],
-    ['&lt;password&gt;HTML_ESC_VAL&lt;/password&gt;', 'HTML_ESC_VAL'],
     ['dbPassword: "CAMEL_SECRET"', 'CAMEL_SECRET'],
     ['apiToken=CAMEL_TOKEN', 'CAMEL_TOKEN'],
     ['JDBCPassword=UPPER_PREFIX', 'UPPER_PREFIX'],
@@ -554,6 +553,8 @@ test('넓은 기준: XML 요소·이스케이프·엔티티로 숨긴 키·카�
     assert.deepEqual(m.residual, [], text);
   }
   assert.match(maskTextWithCounts('<password>V</password> <user>bob</user>', []).text, /<user>bob<\/user>/);   // 닫는 태그 뒤 다른 요소는 보존
+  const html = maskTextWithCounts('&lt;password&gt;HTML_ESC_VAL&lt;/password&gt;', []);                         // 구분자로 풀리는 엔티티는 풀지 않고 잔존(8b FR2-2)
+  assert.ok(html.residual.some((r) => r.name === 'secret-decl'), JSON.stringify(html));
   const cdata = maskTextWithCounts('<password><![CDATA[CDATA_VAL]]></password>', []);
   assert.ok(cdata.residual.some((r) => r.name === 'secret-decl'), JSON.stringify(cdata));                        // 못 가린 형태 = 잔존(fail-closed)
   for (const t of ['tokens=keep secretary: Kim', '<password/> 와 <password></password>']) {                     // 키 아님 · 빈 요소
@@ -616,4 +617,86 @@ test('공통 문서 참조가 심볼릭 링크로 docsRoot 밖(개인 위키)을
   assert.doesNotMatch(readFileSync(join(t.work, 'pack-b.md'), 'utf8'), /PRIVATE-DOC-TEXT/);
   assert.match(readFileSync(join(t.work, 'pack-a.md'), 'utf8'), /PRIVATE-DOC-TEXT/);
   assert.equal(readJson(join(t.work, 'pack.json')).sources.find((x) => /private\/note\.md/.test(x.ref)).inPackB, false);
+});
+
+test('이스케이프는 키 글자만 푼다 — 값 안의 `\\u0022` 가 값 경계를 바꾸지 않고, 키 뒤 구분자 이스케이프는 잔존 → Codex 생략 (8b FR2-2, 추천 자동 채택(위임))', () => {
+  const m = maskTextWithCounts('{"password":"alpha\\u0022,PRIVATE_TAIL"}', []);
+  assert.ok(!m.text.includes('PRIVATE_TAIL'), m.text);
+  assert.deepEqual(m.residual, []);
+  for (const t of ['password\\u003a ESC_SEP_VAL', 'token%3DPCT_SEP_VAL']) {
+    const r = maskTextWithCounts(t, []);
+    assert.ok(r.residual.some((x) => x.name === 'secret-decl'), `${t} → ${JSON.stringify(r)}`);
+  }
+});
+
+test('저장·전송본은 잔존을 남기지 않는다 — maskText(리포트·cleanup)는 못 가린 줄을 통째로 [masked:unmaskable] 로 · cleanup JSON 에도 평문 없음 (8b FR2-3)', () => {
+  const t = '앞 줄 유지\n<password><![CDATA[CDATA_STORE_SECRET]]></password>\n뒤 줄 유지';
+  const out = maskText(t, []);
+  assert.ok(!out.includes('CDATA_STORE_SECRET'), out);
+  assert.equal(out, '앞 줄 유지\n[masked:unmaskable]\n뒤 줄 유지');
+  assert.ok(!maskText('password\\u003a ESC_STORE_SECRET', []).includes('ESC_STORE_SECRET'));
+  const root = tmp();
+  const work = join(root, 'work');
+  mkdirSync(work, { recursive: true });
+  writeFileSync(join(work, 'snapshot.json'), '{}');
+  writeFileSync(join(work, 'mr.json'), JSON.stringify({ description: '설정\n<password><![CDATA[CLEANUP_SECRET]]></password>' }));
+  const r = runCli(['cleanup', '--adapter', setup().adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(readFileSync(join(work, 'mr.json'), 'utf8'), /CLEANUP_SECRET/);
+});
+
+test('재리뷰 이전 차단 발견은 팩 B 출처(rereview)로 들어가 같은 마스킹·잔존 관문을 거친다 — 제목의 비밀값은 가려지고, 못 가리면 팩 B 미생성 (8b FR2-3)', () => {
+  const s = setup();
+  const check = readJson(join(s.work, 'check.json'));
+  check.rereview = { active: true, prior_head: 'c'.repeat(40), prior_verdict: 'CHANGES_REQUESTED', prior_note_id: 9, priorBlocking: [{ id: 'F1', type: 'DEFECT', title: '로그에 password=PRIOR_TITLE_SECRET 출력', source: 'comment' }, { id: 'F2', type: 'DEFECT', title: null, source: 'missing' }], priorBlockingComplete: false };
+  writeFileSync(join(s.work, 'check.json'), JSON.stringify(check));
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const p = readJson(join(s.work, 'pack.json'));
+  const src = p.sources.find((x) => x.kind === 'rereview');
+  assert.ok(src && src.inPackB, JSON.stringify(p.sources));
+  const b = readFileSync(join(s.work, 'pack-b.md'), 'utf8');
+  assert.match(b, /- F1 DEFECT — 로그에 password=\[masked:secret\]/);
+  assert.match(b, /- F2 DEFECT — \(미확보 — 이전 리포트 없음\)/);
+  assert.doesNotMatch(b, /PRIOR_TITLE_SECRET/);
+  check.rereview.priorBlocking[0].title = '<password><![CDATA[PRIOR_CDATA]]></password>';
+  writeFileSync(join(s.work, 'check.json'), JSON.stringify(check));
+  const r2 = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
+  assert.match(r2.first, /codexSkipped=true$/);
+});
+
+test('XML 속성 꼴(name·key·property = 비밀값 키, value 앞뒤 순서 무관)·`<entry key>` 요소 값·properties 줄 끝 `\\` 이음 값을 가린다 — 못 가린 속성 값은 잔존 (8b FR2-4, 추천 자동 채택(위임))', () => {
+  const cases = [
+    ['<property name="password" value="ATTR1"/>', 'ATTR1'],
+    ["<add key='Password' value='ATTR2'/>", 'ATTR2'],
+    ['<add value="ATTR3" key="db.password"/>', 'ATTR3'],
+    ['<entry key="db.password">ATTR4</entry>', 'ATTR4'],
+    ['db.password=abc\\\nCONT_LINE\nnext=ok', 'CONT_LINE'],
+  ];
+  for (const [text, leak] of cases) {
+    const m = maskTextWithCounts(text, []);
+    assert.ok(!m.text.includes(leak), `${text} → ${m.text}`);
+    assert.deepEqual(m.residual, [], text);
+  }
+  assert.match(maskTextWithCounts('db.password=abc\\\nCONT\nnext=ok', []).text, /\nnext=ok$/);   // 이음이 끝난 다음 줄은 보존
+  assert.deepEqual(maskTextWithCounts('<input name="password" />', []).residual, []);              // 값 없는 필드 선언은 그대로
+  assert.equal(maskTextWithCounts('<property name="password" value="[masked:phone] tail"/>', []).text, '<property name="password" value="[masked:secret]"/>');   // 일부만 가린 값도 통째로
+});
+
+test('전송 금지 위키 루트를 가리키는 별칭(심볼릭 링크) 허용 루트도 금지가 우선 — 팩 B 에 없다 (8b FR2-5)', () => {
+  const s = setup();
+  symlinkSync(join(s.home, 'wiki-private'), join(s.home, 'wiki-alias'));
+  const fixtureRoots = JSON.parse(readFileSync(s.adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).wiki.roots;
+  writeAdapter(s.root, { wiki: { roots: [...fixtureRoots, { path: '~/wiki-alias', export: true, glossary: 'glossary.md' }] } });   // 금지 루트(wiki-private)를 가리키는 별칭을 허용 루트로
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(readFileSync(join(s.work, 'pack-b.md'), 'utf8'), /010-9999-0000|개인 메모/);
+});
+
+test('비밀값 키 인식 정규식은 대문자·식별자 연속에도 선형 시간 — 마스킹이 멈추지 않는다 (8b 훅 ReDoS)', () => {
+  for (const t of ['password' + 'A'.repeat(5000) + '!', 'a_'.repeat(20000), 'aB'.repeat(20000), 'DB_PASSWORD' + '_X'.repeat(5000) + '!']) {
+    const s0 = Date.now();
+    maskTextWithCounts(t, []);
+    assert.ok(Date.now() - s0 < 2000, `${t.slice(0, 20)}… ${Date.now() - s0}ms`);
+  }
 });

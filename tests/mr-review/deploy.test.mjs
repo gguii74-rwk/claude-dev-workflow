@@ -172,9 +172,7 @@ test('CRC 손상 zip: 목록·주석·내용 길이는 맞아도 read() 가 CRC 
   assert.equal(crc32(z.read(e)), e.crc);                                   // 정상 zip 은 central directory CRC 와 일치
   const bad = Buffer.from(good);
   bad.writeUInt32LE((e.crc ^ 0xffffffff) >>> 0, e.cd + 16);                // central directory 의 CRC 만 뒤집는다(데이터·목록·주석 불변)
-  const zb = readZip(bad);
-  assert.equal(zb.comment.trim(), headSha);
-  assert.throws(() => zb.read(zb.entries.find((x) => x.name === e.name)), /CRC 불일치/);
+  assert.throws(() => readZip(bad), /CRC·크기 불일치.*A\.java/);          // local 헤더 CRC ≠ 목차 — 목록 단계에서 거부(8b FR2-1)
   const badFile = join(root, 'bad-crc.zip');
   writeFileSync(badFile, bad);
   const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: badFile }]);
@@ -182,7 +180,7 @@ test('CRC 손상 zip: 목록·주석·내용 길이는 맞아도 read() 가 CRC 
   const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
   assert.equal(r.first, 'DEPLOY 대조 불가');
   const d = readJson(join(work, 'deploy.json'));
-  assert.ok(d.mismatches.some((m) => m.kind === 'corrupt' && m.path === 'src/main/java/app/A.java' && /CRC/.test(m.detail)));
+  assert.ok(d.mismatches.some((m) => m.kind === 'corrupt' && /CRC/.test(m.detail) && /src\/main\/java\/app\/A\.java/.test(m.detail)), JSON.stringify(d.mismatches));
 });
 
 test('local header 가 central directory 와 다른 파일을 가리키면 corrupt → 대조 불가 (R3-8)', () => {
@@ -194,13 +192,10 @@ test('local header 가 central directory 와 다른 파일을 가리키면 corru
   const e = z.entries.find((x) => x.name === 'src/main/java/app/A.java');
   const bad = Buffer.from(good);
   bad.write('src/main/java/app/Z.java', e.lho + 30, 'utf8');                 // local header 의 파일명만 같은 길이의 다른 이름으로(central·CRC·데이터 불변)
-  const zb = readZip(bad);
-  assert.equal(zb.comment.trim(), headSha);
-  assert.throws(() => zb.read(zb.entries.find((x) => x.name === e.name)), /local header 파일명 불일치/);
+  assert.throws(() => readZip(bad), /local header 파일명 불일치/);                   // 목록 단계에서 거부(8b FR2-1)
   const badFlag = Buffer.from(good);                                                   // central 플래그만 1(암호화) — 파일명·CRC·바이트는 정상(C1 R3-8 잔존)
   badFlag.writeUInt16LE(1, e.cd + 8);
-  const zf = readZip(badFlag);
-  assert.throws(() => zf.read(zf.entries.find((x) => x.name === e.name)), /플래그 불일치/);
+  assert.throws(() => readZip(badFlag), /플래그·압축 방식 불일치/);
   const badEnc = Buffer.from(good);                                                    // local·central 둘 다 1 — 정합은 맞지만 암호화라 읽을 수 없는 배포본
   badEnc.writeUInt16LE(1, e.cd + 8);
   badEnc.writeUInt16LE(1, e.lho + 6);
@@ -212,7 +207,7 @@ test('local header 가 central directory 와 다른 파일을 가리키면 corru
   const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/d.zip`, kind: 'zip', filename: 'd.zip', secret: SECRET, where: 'body' }], description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: src/main/java/app/Old.java\n' });
   const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
   assert.equal(r.first, 'DEPLOY 대조 불가');
-  assert.ok(readJson(join(work, 'deploy.json')).mismatches.some((m) => m.kind === 'corrupt' && m.path === 'src/main/java/app/A.java' && /파일명 불일치/.test(m.detail)));
+  assert.ok(readJson(join(work, 'deploy.json')).mismatches.some((m) => m.kind === 'corrupt' && /파일명 불일치/.test(m.detail) && /src\/main\/java\/app\/A\.java/.test(m.detail)));
 });
 
 test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 바이트 대조', () => {
@@ -342,8 +337,7 @@ test('zip 확장 필드는 알려진 무해 칸(0x5455 시간·0x7875 Unix 소�
   const ut = xf(0x5455, Buffer.from([1, 0, 0, 0, 0]));
   assert.doesNotThrow(() => { const z = readZip(mkZip([{ name: 'a.txt', data: 'x', localExtra: ut, centralExtra: ut }])); z.read(z.entries[0]); });
   assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'x', centralExtra: upath('src/main/A.txt', 'src/main/UNREVIEWED.txt') }])), /확장 필드/);   // R2 재현
-  const zl = readZip(mkZip([{ name: 'src/main/A.txt', data: 'x', localExtra: upath('src/main/A.txt', 'src/main/UNREVIEWED.txt') }]));
-  assert.throws(() => zl.read(zl.entries[0]), /확장 필드/);                                                       // local 쪽만 있어도
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'x', localExtra: upath('src/main/A.txt', 'src/main/UNREVIEWED.txt') }])), /확장 필드/);   // local 쪽만 있어도 — 목록 단계에서(8b FR2-1)
   assert.throws(() => readZip(mkZip([{ name: 'a.txt', data: 'x', centralExtra: Buffer.from([0x55, 0x54, 9, 0, 1]) }])), /확장 필드/);   // 길이가 안 맞는 확장 필드
 });
 
@@ -372,8 +366,7 @@ test('zip local header 의 CRC·압축 크기·원본 크기가 목차와 다르
   for (const off of [14, 18, 22]) {
     const b = Buffer.from(good);
     b.writeUInt32LE(b.readUInt32LE(off) + 1, off);
-    const z = readZip(b);
-    assert.throws(() => z.read(z.entries[0]), /local header/, `offset ${off}`);
+    assert.throws(() => readZip(b), /local header/, `offset ${off}`);              // 목록 단계에서 거부(8b FR2-1)
   }
   assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'reviewed', flags: 0x0008 }])), /data descriptor/);   // 레이아웃 검사가 목록 단계에서 거부(8b FR1-3)
 });
@@ -434,4 +427,22 @@ test('zip 허용 레이아웃: 목차에 없는 local 항목을 앞·사이·끝
   const cd2 = dup.lastIndexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
   dup.writeUInt32LE(0, cd2 + 42);
   assert.throws(() => readZip(dup), /레이아웃|local header/);
+});
+
+test('zip 폴더 항목도 local 헤더를 목차와 대조 — 목차엔 빈 폴더 · local 엔 다른 이름의 파일과 내용인 항목은 거부 (8b FR2-1 + 훅, 추천 자동 채택(위임))', () => {
+  // 목차: `padding/`(크기 0) · local: `evil.jsp`(같은 길이 이름) + 내용 — 순차 리더만 evil.jsp 를 푼다
+  const name = 'padding/';
+  const evil = 'evil.jsp';
+  assert.equal(name.length, evil.length);
+  const z = mkZip([{ name, data: '' }, { name: 'a.txt', data: 'A' }]);
+  const forged = Buffer.from(z);
+  forged.write(evil, 30, 'utf8');                                                      // 첫 항목 local 이름만 바꾼다
+  assert.throws(() => readZip(forged), /파일명 불일치/);
+  // local 헤더 크기만 키운 폴더(이름은 같게) — 순차 리더는 뒤 바이트를 그 폴더의 데이터로 소비한다
+  const grown = Buffer.from(z);
+  grown.writeUInt32LE(5, 18);
+  assert.throws(() => readZip(grown), /CRC·크기 불일치/);
+  // 목차·local 모두 크기가 있는 폴더 항목
+  assert.throws(() => readZip(mkZip([{ name: 'dir/', data: 'X' }])), /폴더 항목에/);
+  assert.doesNotThrow(() => readZip(z));                                               // 정상 폴더 + 파일은 통과
 });

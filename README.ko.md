@@ -246,6 +246,7 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 - 두 모델이 상충하거나 한쪽만 낮은 확신으로 잡은 차단 후보를 메인이 코드로 확인 못 하면 **판정 미확정** — 게시용 블록 없이 두 갈래를 보여 주고, 리뷰어가 `--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design`로 확정한다.
 - Codex 플러그인·`glab`이 없으면: `glab` 없이는 돌지 않고, Codex가 없으면 **단일 모델 모드**(리포트 헤더에 「교차 검토 없음」).
 - 테스트·빌드는 실행하지 않는다(검증 상태 전부 `[판독]`). 배포본 zip 대조만 스킬이 직접 수행한다.
+- 글(MR 본문·댓글·문서 발췌) 속 비밀값 가림은 알려진 꼴 기준의 최선 노력이다: `키: 값`·`키=값`(따옴표·YAML 블록·이어지는 줄·properties `\` 줄 이음) · XML `<키>값</키>` · XML 속성(`name`·`key`·`property` + `value`) · `Bearer` · PEM 비밀키 — 키는 password·secret·token·api key·credential 등과 `DB_PASSWORD`·`dbPassword` 꼴. 알아보지만 못 가린 꼴은 Codex 를 생략한다(저장본은 그 줄을 바꾼다). 그 밖의 꼴(`--password 값`·URL 자격증명 등)은 못 잡으며, 코드는 설계상 가리지 않고 Codex 로 간다. 프로젝트 고유 꼴은 어댑터 `mask` 에 넣는다.
 
 ## 특정 repo에서 clone 시 자동 적용
 

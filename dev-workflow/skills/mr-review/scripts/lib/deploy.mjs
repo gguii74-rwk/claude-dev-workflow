@@ -151,7 +151,16 @@ export function readZip(buf) {
     if (e.lho !== at) throw new Error(`zip 레이아웃 불일치 — 목차에 없는 데이터 또는 겹침(오프셋 ${at} ≠ 항목 시작 ${e.lho}): ${e.name}`);
     if (e.flags & 0x0008) throw new Error(`zip data descriptor(bit 3) 항목(미지원): ${e.name}`);
     if (at + 30 > cdOff || buf.readUInt32LE(at) !== 0x04034b50) throw new Error(`zip local header 손상: ${e.name}`);
-    at += 30 + buf.readUInt16LE(at + 26) + buf.readUInt16LE(at + 28) + e.csize;
+    // 모든 항목(폴더 포함)의 local 헤더를 목차와 먼저 대조한다(8b FR2-1, 추천 자동 채택(위임)) — 폴더는 read() 를 거치지 않으므로, 목차엔 빈 폴더 `padding/` · local 엔 `evil.jsp` + 내용인
+    // 항목이 순차 리더에서만 파일로 풀린다. 이름(원시 바이트)·플래그·압축 방식·CRC·두 크기가 같아야 하고, 폴더는 두 크기가 0 이어야 한다.
+    const lnLen = buf.readUInt16LE(at + 26);
+    const leLen = buf.readUInt16LE(at + 28);
+    if (!buf.subarray(at + 30, at + 30 + lnLen).equals(e.raw)) throw new Error(`zip local header 파일명 불일치: ${e.name}`);
+    if (buf.readUInt16LE(at + 6) !== e.flags || buf.readUInt16LE(at + 8) !== e.method) throw new Error(`zip local header 플래그·압축 방식 불일치: ${e.name}`);
+    if (buf.readUInt32LE(at + 14) !== e.crc || buf.readUInt32LE(at + 18) !== e.csize || buf.readUInt32LE(at + 22) !== e.usize) throw new Error(`zip local header CRC·크기 불일치(목차와 다름): ${e.name}`);
+    if (e.name.endsWith('/') && e.csize !== 0) throw new Error(`zip 폴더 항목에 데이터가 있음(${e.csize}바이트): ${e.name}`);
+    checkExtra(buf, at + 30 + lnLen, leLen, e.name, 'local');
+    at += 30 + lnLen + leLen + e.csize;
   }
   if (at !== cdOff) throw new Error(`zip 레이아웃 불일치 — 마지막 항목 끝 ${at} ≠ 목차 시작 ${cdOff}(목차에 없는 데이터)`);
   // 경로 충돌(impl C1 N2) — 파일과 같은 경로의 폴더 항목(`a.txt/`)이나 파일 아래 항목(`a.txt/b`)은 표준 리더가 충돌로 실패하거나 다르게 푼다(폴더는 대조에서 빠지므로 우리만 「일치」)

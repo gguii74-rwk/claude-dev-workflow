@@ -246,6 +246,7 @@ CLAUDE_CTX_LIMIT=200000     # コンテキストトークン上限を直接指�
 - 2 モデルが対立する、または片方だけが低確信のブロッカーを挙げ、メインがコードで確認できない場合は **判定未確定** — 投稿用ブロックなしで両分岐を示し、レビュアーが `--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design` で確定する。
 - Codex プラグイン・`glab` がない場合: `glab` なしでは動かず、Codex なしは **単一モデルモード**（レポートヘッダーに「クロスレビューなし」）。
 - テスト・ビルドは実行しない（検証状態はすべて「判読」）。デプロイ zip 照合だけはスキル自身が行う。
+- 文章（MR 本文・コメント・文書抜粋）内の秘密値マスキングは既知の形に対するベストエフォート: `キー: 値`・`キー=値`（引用符・YAML ブロック・継続行・properties の `\` 行継続）・XML `<キー>値</キー>`・XML 属性（`name`・`key`・`property` + `value`）・`Bearer`・PEM 秘密鍵 — キーは password・secret・token・api key・credential など（`DB_PASSWORD`・`dbPassword` 形も含む）。認識したが隠せない形は Codex を省略する（保存コピーはその行を置換）。それ以外の形（`--password 値`・URL 内の資格情報など）は検出しない。コードは設計上マスクせず Codex に送られる。プロジェクト固有の形はアダプタの `mask` に追加する。
 
 ## リポジトリ clone 時の自動適用
 

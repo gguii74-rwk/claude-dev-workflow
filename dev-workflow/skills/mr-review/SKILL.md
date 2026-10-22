@@ -105,6 +105,8 @@ fi
 
 첫 줄 `PACKED sources=<n> codexSkipped=<b>`. `codexSkipped=true`면 **Codex를 띄우지 않는다**(마스킹 잔존 — `pack.json.codexSkipReason`을 시작 요약에 적고 단일 모델 모드). 팩 A = `W/pack-a.md`(Claude 전부), 팩 B = `W/pack-b.md`(Codex — 허용 출처 + 마스킹).
 
+**비밀값 가림의 범위**: 엔진이 알아보는 꼴 = `키: 값`·`키=값`(따옴표·YAML 블록·이어지는 줄·properties 줄 끝 `\` 이음) · XML `<키>값</키>` · XML 속성(`name`·`key`·`property` = 키, `value` = 값) · `<entry key="키">값</entry>` · `Bearer` · PEM 비밀키. 키 = password·passwd·pwd·passphrase·secret·api key·access key·private key·client secret·token·authorization·credential(s)와 그 구분자·카멜 표기 확장(`DB_PASSWORD`·`dbPassword`). 알아보지만 가리지 못한 꼴(CDATA·구분자 이스케이프 등)은 잔존 → 팩 B 는 Codex 생략, 리포트·cleanup 은 그 줄을 `[masked:unmaskable]` 로 바꾼다. **그 밖의 꼴(구분자 없는 `--password 값`, 키 단어 없는 URL 자격증명 등)은 가리지 못한다** — 글(본문·댓글·발췌) 속 비밀값 가림은 알려진 꼴 기준의 최선 노력이고, 코드(워크트리)는 D4 대로 가리지 않고 Codex 로 간다. 프로젝트 고유 꼴은 어댑터 `mask` 에 넣는다.
+
 ## 5. 독립 병렬 검토 — 두 검토자는 서로의 존재·결과를 모른다
 
 **공통 입력**(두 프롬프트에 같은 구조로 넣는다):
@@ -190,8 +192,8 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 
 이전 신뢰 판정의 head(`rereview.prior_head`) ≠ 현재 head다. §5 프롬프트에 **추가 절**을 넣는다:
 - delta: `git -C "<worktree>" diff <prior_head> <head_sha>`(diff-only면 생략하고 「이전 head 이후 변경을 중심으로」만 적는다).
-- 이전 차단 발견 ↔ 작성자 응답 토큰 대조표: 원본은 **`check.json.rereview.priorBlocking` 전체**(댓글 「4. 차단 발견」 항목 + 40줄 축약으로 접힌 항목을 이전 리포트 부록 D 에서 복원한 것 — 댓글 절만 보지 않는다, §5.6 「이전 차단 발견마다」) 항목마다 `check.json.authorTokens`(`FIXED <sha>`·`EVIDENCE`·`BASELINE_UPDATED`·`REFUTED`·`FOLLOW_UP_REQUESTED`)와 대조해 `해소 / 미해소 / 재발` 후보를 표로 준다 — 검토자가 현재 head에서 확인해 `findings`에 반영한다(미해소·재발은 그대로 차단 발견). `title:null`(`source:missing`) 항목은 표에 「미확보 — 이전 리포트 없음」으로 적고 **확인 완료로 취급하지 않는다**(`priorBlockingComplete:false` → `verdict`가 `M-rereview` 증거 부족으로 받는다 — 스킬이 따로 판정하지 않는다). **Codex에는** 댓글 본문을 다시 붙이지 않고 팩 B 「## 댓글」 절의 해당 댓글(`#<note_id>`)을 가리키며, 표에는 항목 id·`note_id`·토큰·`해소/미해소/재발` 후보 값만 적는다(§5 「비코드 입력은 팩 B에서만」). 이전 리포트에서 복원한 항목의 제목은 아래 「이전 리포트」 절과 같은 마스킹 잔존 검사를 거친 뒤에만 Codex 표에 넣는다.
-- 이전 리포트 파일이 `<reportDir>/<프로젝트>-<iid>-<prior_head 7자>.md`에 있으면 「이전 리포트」로 함께 읽힌다(Claude에만 경로로). **Codex에는** 그 리포트의 「4. 차단 발견」 절만 본문 복사하되 — 리포트는 저장 시 마스킹됐지만(F5) 어댑터 패턴이 그 뒤 바뀌었을 수 있으므로 — 복사한 절에 어댑터 `mask` 패턴이 하나라도 매치되면(`[masked:` 제외) 넣지 않고 「이전 리포트 절 생략(마스킹 잔존)」으로 적는다.
+- 이전 차단 발견 ↔ 작성자 응답 토큰 대조표: 원본은 **`check.json.rereview.priorBlocking` 전체**(댓글 「4. 차단 발견」 항목 + 40줄 축약으로 접힌 항목을 이전 리포트 부록 D 에서 복원한 것 — 댓글 절만 보지 않는다, §5.6 「이전 차단 발견마다」) 항목마다 `check.json.authorTokens`(`FIXED <sha>`·`EVIDENCE`·`BASELINE_UPDATED`·`REFUTED`·`FOLLOW_UP_REQUESTED`)와 대조해 `해소 / 미해소 / 재발` 후보를 표로 준다 — 검토자가 현재 head에서 확인해 `findings`에 반영한다(미해소·재발은 그대로 차단 발견). `title:null`(`source:missing`) 항목은 표에 「미확보 — 이전 리포트 없음」으로 적고 **확인 완료로 취급하지 않는다**(`priorBlockingComplete:false` → `verdict`가 `M-rereview` 증거 부족으로 받는다 — 스킬이 따로 판정하지 않는다). **Codex에는** 댓글 본문을 다시 붙이지 않고 팩 B 「## 댓글」 절의 해당 댓글(`#<note_id>`)을 가리키며, 표에는 항목 id·`note_id`·토큰·`해소/미해소/재발` 후보 값만 적는다(§5 「비코드 입력은 팩 B에서만」). 이전 발견의 **제목은 Codex 표에 직접 적지 않고** 팩 B 의 `rereview` 출처(`pack` 이 `priorBlocking` 을 넣고 어댑터 마스킹 + 엔진 비밀값 제거·잔존 검사를 거친 것)를 가리킨다.
+- 이전 리포트 파일이 `<reportDir>/<프로젝트>-<iid>-<prior_head 7자>.md`에 있으면 「이전 리포트」로 함께 읽힌다(Claude에만 경로로). **Codex에는 이전 리포트 본문을 복사하지 않는다** — 이전 차단 발견은 팩 B 의 `rereview` 출처에서 읽게 한다(프롬프트에 직접 붙이면 팩 B 의 마스킹·잔존 관문을 우회한다).
 - target이 바뀌었거나(`mr.json.target_branch` ≠ 이전 리포트 헤더의 target) 충돌 해결 커밋이 있으면 「영향 범위를 넓혀라」를 명시한다. 판정은 **현재 전체 head**에 귀속한다.
 
 ## 8. 출력 · 정리
