@@ -1,6 +1,6 @@
 # mr-review 1.3.1 — 첫 실사용에서 드러난 엔진 결함 5건 수정
 
-> 상태: spec 초안(harden 전) · 작성 2026-10-22 · 버전 **1.3.1 패치**
+> 상태: **harden 완료**(harden-spec 2026-10-22 — 판단 갭 9건 전부 질문으로 해소, 유예 0건) · 작성 2026-10-22 · 버전 **1.3.1 패치** · 다음 = impl 트랙(경량 — review-loop(spec)·plan 생략, D19)
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16 승계) · plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-1~SC-8)
 > 경로: **경량**(dev-cycle 1차 판정 + 사용자 확인 2026-10-22, 수동 모드 — 접촉 표면 무신호: 스키마·권한·인증·외부 연동 신설 없음. 호스트 처리·cleanup 삭제 범위 변경은 기존 기능의 결함 수정이며 테스트로 고정한다)
 
@@ -45,6 +45,13 @@
 
 - 왜 (A)인가: diff-only 모드가 이미 같은 base를 쓴다(`collect.mjs:118`) → 두 모드가 같은 diff를 본다. 열린 MR에서는 target이 앞으로만 나가면 merge-base가 안 바뀌므로 결과가 지금과 같다. 기존 필드만 쓰므로 `mr.json` 계약(SC-3)이 늘지 않는다.
 - 기각: (B) 머지 커밋 첫 부모 — `merge_commit_sha`를 새로 담아야 하고 squash·fast-forward 머지에는 머지 커밋이 없다. (C) merged면 diff-only 강제 — 워크트리 전문 검토를 잃는다.
+- 머지 방식별 적용(사실): 머지 커밋·fast-forward 머지는 head가 target 이력에 들어가 merge-base = head가 되므로 이 수정이 필요하다. squash 머지는 target에 다른 SHA의 커밋이 생겨 head가 target 이력에 없으므로 1.3.0에서도 merge-base가 맞았고, (A)에서도 같은 base다.
+
+**harden에서 확정한 보강(2026-10-22)**
+
+- **수집 중 push(D27)**: 워크트리 모드도 diff-only와 같은 재수집 조건을 쓴다 — `versions[0].head_commit_sha` 또는 `diff_refs.head_sha`가 `api_head`와 다르면(메타 조회와 versions 조회 사이에 push) 그 base를 쓰지 않고 1부터 재수집(최대 3회, 초과 시 exit 3 `HEAD_MOVED`). 지금은 워크트리 모드가 「fetch head = API head」만 보고 diff 버전의 head는 보지 않아, rebase push가 끼면 새 base + 옛 head 조합이 `BASE_MISMATCH`로 끝났을 것이다.
+- **얕은 clone(D28)**: 조상 확인에 실패했을 때 `git rev-parse --is-shallow-repository`가 `true`면 ERR 문구를 `ERR BASE_MISMATCH — 얕은 clone(shallow)이라 base <7자>가 로컬에 없다. 체크아웃에서 git fetch --unshallow 뒤 다시 실행` 으로 구분한다. 자동 `--unshallow`는 하지 않는다(읽기 전용 스킬이 사용자 체크아웃에 큰 fetch를 임의로 하지 않는다).
+- **머지 뒤 리뷰 표시(D29)**: `mr.state`가 `merged`·`closed`면 리포트 헤더에 `- **머지 뒤 리뷰** — MR state=<state>. 작성자 보완 요청은 이 MR이 아니라 후속 MR로` 한 줄을 넣는다(render 헤더 1줄 — 판정 계산·절 순서 불변, D9 무관). 지금은 render·check·pack 어디서도 `mr.state`를 쓰지 않아 머지된 MR의 보완 요청 문안이 그대로 나간다.
 
 **AC(테스트로 검증)**
 
@@ -53,6 +60,9 @@
 - AC②-3. 가짜 glab의 `versions[0].base_commit_sha`·`diff_refs.base_sha`를 head의 조상이 아닌 40자 값으로 주면 → 첫 줄 `ERR BASE_MISMATCH …` exit 2, `W/mr.json`·`W/snapshot.json` 부재.
 - AC②-4. `versions`·`diff_refs`가 모두 없고(versions 조회 실패 + 메타 diff_refs null) 머지된 상태 → git diff 0건 vs API 변경 ≥1 → 첫 줄 `ERR DIFF_EMPTY_MISMATCH …` exit 2. 같은 조건에서 API 변경도 0건이면 merge-base 폴백으로 정상(`base_source = "merge-base"`).
 - AC②-5. 열린 MR(기존 픽스처) 결과 불변 — 기존 `collect.test.mjs` 단언(`snap.base_sha === baseSha` 등) 전부 통과.
+- AC②-6. 워크트리 모드에서 가짜 glab이 `versions[0].head_commit_sha`를 첫 호출엔 다른 SHA, 둘째 호출엔 `api_head`로 주면 → `attempts = 2`로 성공(`base_source = "api"`). 3회 모두 다르면 → 첫 줄 `ERR HEAD_MOVED …` exit 3.
+- AC②-7. 체크아웃을 얕은 clone(`git clone --depth 1`)으로 만든 픽스처에서 base가 로컬에 없으면 → 첫 줄 `ERR BASE_MISMATCH — 얕은 clone … git fetch --unshallow …` exit 2.
+- AC②-8. `mr.json.state = "merged"`인 픽스처의 render 결과 헤더에 「머지 뒤 리뷰 — MR state=merged」 줄이 있고, `state = "opened"`면 없다.
 
 ### 3.① 비표준 포트 GitLab — `glab api --hostname host:port` 거부, 포트를 떼면 web_url 대조 실패
 
@@ -64,12 +74,14 @@
 
 **수정 방향(사용자 결정 2026-10-22 15:3x)**: 어댑터 `gitlab.host` 형식 `host[:port]` 유지(SC-2 호환). `gitlab.mjs`가 `--hostname`에는 **포트를 제거한 호스트**(`host.replace(/:\d+$/, '')`)를 넘기고, `collect.mjs`의 web_url 대조는 **포트 포함 값**(지금과 같음)으로 한다. 전제 = glab 설정에 **포트 없는 호스트 키** 항목이 있고 그 항목의 `api_host`가 `host:port`, `api_protocol`이 맞아야 한다(glab이 `--hostname` 값으로 설정을 찾는다). 이 전제는 SKILL.md §0 전제 확인에 한 줄(「포트 있는 GitLab = glab `hosts.<포트 없는 호스트>.api_host`에 포트」)로 적고, 어댑터 작성 안내(README mr-review 절)에도 한 줄 붙인다.
 
+**harden에서 확정한 보강(2026-10-22) — 사전 점검(D31)**: SKILL.md §0 전제 확인에 `glab api --hostname <어댑터 host에서 포트를 뗀 값> version`(GET 1회 — F1 「GET만」 범위 안) 을 추가한다. 실패하면 「glab 설정 `hosts.<호스트>`의 `api_host`(포트 포함)·`api_protocol`·토큰을 확인」을 안내하고 **멈춘다**(어댑터·glab 없이는 돌지 않는다는 §0 규칙과 같은 등급). 지금은 설정 미비가 collect의 첫 `glab api` 호출에서 `connection refused`류의 엉뚱한 오류로 나타난다.
+
 **AC**
 
 - AC①-1. 어댑터 `gitlab.host = "gitlab.test:8443"`, 가짜 glab의 MR `web_url = https://gitlab.test:8443/g/alpha/-/merge_requests/7` → collect 성공 · 가짜 glab이 기록한 `--hostname` 값 집합 = `{"gitlab.test"}`(포트 없음, 호출 전부).
 - AC①-2. 같은 어댑터에서 `web_url = https://gitlab.test/g/alpha/-/merge_requests/7`(포트 없음) → `ERR … 호스트` exit 2(대조는 포트 포함 — 다른 서버·다른 포트의 같은 번호 MR을 받지 않는다).
 - AC①-3. 포트 없는 어댑터(기존 픽스처 `gitlab.test`) → 기존 테스트 `collect.test.mjs:282`(`--hostname` 집합 = `{"gitlab.test"}`·web_url 불일치 ERR) 불변.
-- AC①-4. SKILL.md §0에 포트 있는 GitLab의 glab 설정 전제 문구 실재(grep).
+- AC①-4. SKILL.md §0에 (가) 포트 있는 GitLab의 glab 설정 전제 문구와 (나) `glab api --hostname … version` 사전 점검 명령 + 실패 시 안내·정지 문구가 실재한다(grep `api_host`·`version` 각 1건 이상).
 
 ### 3.③ diff-only 모드에서 head 원문이 있어도 배포본 바이트 대조 「불가」
 
@@ -95,6 +107,7 @@ blob 경로는 `insideRoot(W/blobs/head, 경로)`로 해소한다(zip 이름은 
 - AC③-3. 그 파일을 `snapshot.unrecovered`에 넣으면(또는 blob 파일 삭제) → `DEPLOY 대조 불가`, `{kind:"bytes_unavailable", path:<그 파일>}`.
 - AC③-4. zip 항목 하나를 심링크 유형(Unix made-by, st_mode 0120000)으로 만들면 → `DEPLOY 불일치`, `{kind:"type", path:<그 파일>}`.
 - AC③-5. 기존 `deploy.test.mjs:212`의 diff-only 단언(`bytes && /diff-only/`)은 새 규칙으로 교체(blob 없는 workdir → `bytes_unavailable`·대조 불가). 워크트리 모드 테스트 불변.
+- AC③-6. `bytes_unavailable` 1건 + `extra_in_zip` 1건이 함께 있으면 결과 = 「대조 불가」(우선순위 유지, D34), `mismatches`에는 둘 다 남는다.
 
 ### 3.⑤ cleanup이 자기가 모르는 원문(`zipx/`·`claude.prompt`)을 남긴다
 
@@ -104,17 +117,19 @@ blob 경로는 `insideRoot(W/blobs/head, 경로)`로 해소한다(zip 이름은 
 
 **원인**: `report.mjs:396-442` `cleanup()` — 삭제가 **열거 방식**(아는 이름만). 검토자·메인이 임의 이름으로 만드는 임시 파일은 규약 밖이라 잡히지 않는다.
 
-**수정 방향(사용자 결정 2026-10-22 — 선택지 (A))**: cleanup을 **허용 목록 방식**으로 바꾼다. 선행 가드 둘 — ① `codex.pid` 생존 가드(지금과 같음) ② `W/snapshot.json`이 없으면 **아무것도 지우지 않고** `ERR snapshot.json 없음 — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: <W의 항목 목록>` exit 2(엉뚱한 디렉터리를 비우는 사고 방지; SKILL §0의 「cleanup ERR → 남은 경로 보고」 경로로 사람이 처리). 가드를 지나면 지금의 삭제·마스킹을 그대로 한 뒤, `W`의 최상위 항목 중 **허용 9종**(`snapshot.json`·`pack.json`·`mr.json`·`check.json`·`deploy.json`·`review-claude.json`·`review-codex.json`·`findings.json`·`verdict.json`) 외 파일·디렉터리를 전부 지우고 그 개수를 `extra`로 센다. 첫 줄 = `CLEANED worktree=<b> zip=<n> raw=<n> masked=<n> extra=<n>`. 리포트는 `W` 밖(어댑터 `report.dir`)이라 영향 없다. `--resolve` 재실행 입력(`findings`·`verdict`·`check`·`snapshot`·`deploy`·`mr`)은 전부 허용 목록에 있다.
+**수정 방향(사용자 결정 2026-10-22 — 선택지 (A))**: cleanup을 **허용 목록 방식**으로 바꾼다. 선행 가드 둘 — ① `codex.pid` 생존 가드(지금과 같음) ② **작업 디렉터리 표지(D26)**: `W/snapshot.json`이 존재하고 JSON으로 파싱되며 `mode`가 `worktree|diff-only`, `head_sha`가 40자 16진수, `fetched_at`이 문자열일 때만 우리 작업 디렉터리로 본다. 파일이 없거나 형식이 다르면 **아무것도 지우지 않고** `ERR snapshot.json 없음|형식 불일치 — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: <W의 최상위 항목 목록>` exit 2(엉뚱한 디렉터리를 비우는 비가역 사고 방지; SKILL §0의 「cleanup ERR → 남은 경로 보고」 경로로 사람이 처리). 가드를 지나면 지금의 삭제·마스킹을 그대로 한 뒤, `W`의 최상위 항목 중 **허용 9종**(`snapshot.json`·`pack.json`·`mr.json`·`check.json`·`deploy.json`·`review-claude.json`·`review-codex.json`·`findings.json`·`verdict.json`) 외 파일·디렉터리(숨김 파일 포함, 심볼릭 링크는 링크만 — `fs.rmSync`는 링크 대상을 따라가지 않는다)를 전부 지우고 그 개수(최상위 항목 수)를 `extra`로 센다. 첫 줄 = `CLEANED worktree=<b> zip=<n> raw=<n> masked=<n> extra=<n>`, **둘째 줄 이후**에 지운 추가 항목 이름을 `extra: zipx/, claude.prompt` 꼴로 나열한다(D34 — SKILL은 첫 줄만 판독하므로 호환 영향 없음). 리포트는 `W` 밖(어댑터 `report.dir`)이라 영향 없다. `--resolve` 재실행 입력(`findings`·`verdict`·`check`·`snapshot`·`deploy`·`mr`)은 전부 허용 목록에 있다.
 
-- 알려진 한계(기록만): collect가 `snapshot.json`을 쓰기 전에 실패하면(예: 호스트 불일치 ERR) 그 시점 `W`에는 우리 산출물이 없으므로 cleanup은 ERR로 끝난다 — SKILL §0 보고 경로가 받는다. `rebuildDiffOnly` 도중 예외로 `blobs/`만 남는 극단 케이스도 같은 경로.
+- **cleanup ERR 경로(D33)**: collect가 `snapshot.json`을 쓰기 전에 실패하면(예: 호스트 불일치 ERR) cleanup은 표지 부재로 ERR가 된다. 동작은 바꾸지 않고(fail-closed 유지 — `rebuildDiffOnly` 도중 예외로 `blobs/`만 남는 드문 경우도 같은 경로로 사람 눈에 든다) SKILL §0 「공통 종료 절차」의 cleanup ERR 보고 문구를 정정한다: 「ERR에 적힌 `W` 항목 목록이 비어 있으면 지울 것이 없는 정상 종료, 비어 있지 않으면 사람이 지운다」. 기각: cleanup이 알려진 이름만 있으면 정상 종료(분기 추가) · SKILL §0을 「`COLLECTED` 이후부터 cleanup」으로 좁힘(드문 blob 잔존을 놓친다).
 - 기각: (B) 이름 추가 — 다음 변종이 또 남는다. (C) (A) + `W/tmp/` 규약 — 허용 목록 방식이면 규약이 없어도 지워지므로 문서 변경을 늘릴 이유가 없다.
 
 **AC**
 
-- AC⑤-1. 정상 `W`(snapshot.json 있음)에 `zipx/x.js`·`claude.prompt`·`tmp/a.txt`를 만들어 두고 cleanup → 셋 다 삭제, 첫 줄 `… extra=3`, `W`에 허용 9종(존재하는 것)만 남는다.
-- AC⑤-2. `snapshot.json`이 없는 디렉터리(다른 파일 몇 개 있음)에 cleanup → 첫 줄 `ERR … snapshot.json` exit 2, 디렉터리 내용 **불변**(파일 수·내용 동일).
+- AC⑤-1. 정상 `W`(우리 형식 snapshot.json 있음)에 `zipx/x.js`·`claude.prompt`·`tmp/a.txt`·`.hidden`을 만들어 두고 cleanup → 넷 다 삭제, 첫 줄 `… extra=4`, 둘째 줄 이후에 `extra:` + 네 이름, `W`에 허용 9종(존재하는 것)만 남는다.
+- AC⑤-2. (가) `snapshot.json`이 없는 디렉터리(다른 파일 몇 개 있음)에 cleanup → 첫 줄 `ERR … snapshot.json 없음` exit 2, 디렉터리 내용 **불변**(파일 수·내용 동일). (나) `snapshot.json`이 있지만 우리 형식이 아닌 디렉터리(`{"foo":1}`) → 첫 줄 `ERR … 형식 불일치` exit 2, 내용 불변.
 - AC⑤-3. `codex.pid` 생존 가드 테스트(`report.test.mjs:379`)·마스킹 실패 테스트(`:580`)·정상 정리 테스트(`:407`) — 첫 줄 형식(`extra=` 추가) 갱신 외 통과.
 - AC⑤-4. cleanup 뒤 `--resolve` 재실행(`verdict --resolve … → render`)이 성공한다(허용 목록이 재실행 입력을 전부 보존).
+- AC⑤-5. `W/link`가 `W` 밖 디렉터리를 가리키는 심볼릭 링크일 때 cleanup → 링크만 삭제되고 대상 디렉터리 내용은 불변.
+- AC⑤-6. SKILL.md §0 「공통 종료 절차」에 cleanup ERR 목록이 비었을 때의 정상 종료 안내 문구가 실재한다(grep).
 
 ### 3.⑧ Codex가 자기 런타임 파일을 읽은 것을 「격리 위반 의심」으로 오탐
 
@@ -124,24 +139,25 @@ blob 경로는 `insideRoot(W/blobs/head, 경로)`로 해소한다(zip 이름은 
 
 **원인**: `SKILL.md:158` 경로 감시(LLM 단계 — 코드 없음)에 제외 규칙이 없다. Codex는 자기 설치본(`$CODEX_HOME`, 기본 `~/.codex/`)의 스킬·플러그인을 읽는 것이 정상 동작이다.
 
-**수정 방향**: SKILL.md §5 「경로 감시」에 **제외 2종**을 명시한다 — (가) `$CODEX_HOME`(미설정이면 `~/.codex/`) 아래 전부, (나) companion 설치 경로 `$ROOT` 아래 전부. **우선 규칙**: 어댑터 위키 루트(전송 금지 루트 포함) 아래 경로는 제외 규칙보다 앞선다(위키가 그 아래에 있어도 경고). 제외한 경로는 리포트에 적지 않고 터미널 요약에 「Codex 자체 경로 n건 제외」 한 줄만 둔다. `findings.json` 스키마·`report.mjs`는 바꾸지 않는다.
+**수정 방향(harden 확정 D32)**: SKILL.md §5 「경로 감시」에 **제외 3종**을 명시한다 — (가) `$CODEX_HOME`(미설정이면 `~/.codex/`) 아래 **전부**(플러그인·스킬뿐 아니라 설정·인증·세션 기록 포함 — Codex 자기 홈은 D16이 감시하는 「워크트리 밖 자료의 외부 전송」 대상이 아니다), (나) companion 설치 경로 `$ROOT` 아래 전부, (다) 우리 작업 디렉터리 `W` 자체(`W/codex.prompt`·`W/codex.out`·`W/blobs/…` — diff-only에서 cwd가 `W/blobs/head`라 `W`의 다른 경로가 워크트리 밖으로 보인다). **우선 규칙**: 어댑터 위키 루트(전송 금지 루트 포함) 아래 경로는 어떤 제외보다 앞선다(위키가 그 아래에 있어도 경고). 제외한 경로는 리포트에 적지 않고 터미널 요약에 「Codex 자체 경로 n건 제외」 한 줄만 둔다. `findings.json` 스키마·`report.mjs`는 바꾸지 않는다. 기각: `$CODEX_HOME/plugins`·`skills`만 제외 — 그 밖 Codex 홈 읽기(설정 등)가 다음 오탐이 되고, 오탐 반복은 리뷰어가 진짜 경고를 무시하게 만든다.
 
 - 기각: 경로 감시를 CLI 서브커맨드로 옮기는 것 — `codex.out` 판독은 이미 LLM 단계(JSON 추출과 같은 자리)이고 이번 결함은 규칙 누락이라 문구 수정으로 충분하다. 코드화는 ⑥(지문 병합) 트랙에서 `review-validate` 확장과 함께 보는 것이 자연스럽다.
 
 **AC**
 
-- AC⑧-1. SKILL.md §5 경로 감시 항목에 제외 (가)(나)와 위키 루트 우선 문장이 실재한다(grep `CODEX_HOME`·`\$ROOT`·「위키 루트」 각 1건 이상).
+- AC⑧-1. SKILL.md §5 경로 감시 항목에 제외 (가)(나)(다)와 위키 루트 우선 문장, 터미널 요약 「Codex 자체 경로 n건 제외」 문구가 실재한다(grep `CODEX_HOME`·`\$ROOT`·`\$W`·「위키 루트」·「제외」 각 1건 이상).
 - AC⑧-2. (9단계 실측) 1.3.1 설치본으로 같은 MR을 재실행한 리포트 헤더에 「격리 위반 의심」이 없고, 터미널 요약에 「Codex 자체 경로 n건 제외」가 있다.
 
 ## 4. 영향 범위
 
 | 대상 | 변경 |
 |---|---|
-| SC-3 `snapshot.json` | `base_source` 필드 추가(`"api" \| "merge-base"`). `mode: worktree`의 `base_sha` 설명 = 「API diff base(조상 확인), 없으면 merge-base」로 정정 — plan 문서 수정은 다음 트랙 몫(이 spec이 정본) |
+| SC-3 `snapshot.json` | `base_source` 필드 추가(`"api" \| "merge-base"`). `mode: worktree`의 `base_sha` 설명 = 「API diff base(조상 확인), 없으면 merge-base」, 재수집 조건 = 「fetch head ≠ API head **또는** diff 버전 head ≠ API head」로 정정 — **plan SC-3 문장 정정은 impl 트랙이 한다(D30)**, 이 spec이 정본 |
 | SC-3 `deploy.json` | `zip.bytes_source` 추가, `mismatches.kind`에 `bytes_unavailable` 추가, `bytes(path null)` 제거 |
-| cleanup 첫 줄 | `CLEANED … extra=<n>` — SKILL.md §8 문구 갱신 |
-| 1.3.0 spec §5.1-2 | 「base = merge-base」 문장은 이 spec 3.②가 대체(원문은 이력으로 둔다) |
-| SKILL.md | §0 전제(① glab 설정) · §5 경로 감시(⑧ 제외 규칙) · §8 cleanup 첫 줄(⑤) |
+| cleanup 첫 줄 | `CLEANED … extra=<n>` + 둘째 줄 이후 `extra:` 이름 나열 — SKILL.md §8 문구 갱신 |
+| render 헤더 | `mr.state`가 merged·closed면 「머지 뒤 리뷰」 1줄(D29) — 판정·절 순서 불변 |
+| 1.3.0 spec §5.1-2 | 「base = merge-base」 문장을 impl 트랙이 「1.3.1에서 변경 — API diff base, spec 2026-10-22 3.②」로 정정(D30) |
+| SKILL.md | §0 전제(① glab 설정 문구 + `version` GET 사전 점검 D31 · cleanup ERR 보고 문구 D33) · §5 경로 감시(⑧ 제외 3종 + 위키 우선 D32) · §8 cleanup 첫 줄·둘째 줄(⑤) |
 | README 3종 | 1.3.1 한 줄(결함 5건) + mr-review 절 어댑터 안내에 포트 있는 GitLab의 glab 설정 전제 1문장 |
 | plugin.json·marketplace.json | 1.3.0 → 1.3.1 |
 | 어댑터 문서(프로젝트 쪽) | 변경 없음(SC-2 형식 유지) — 포트 있는 GitLab 사용자는 glab 설정만 확인 |
@@ -152,10 +168,19 @@ blob 경로는 `insideRoot(W/blobs/head, 경로)`로 해소한다(zip 이름은 
 - 8단계 impl 적대검증(review-loop `--phase impl`)은 경량이어도 필수(dev-cycle 하한).
 - 9단계: 1.3.1 릴리스 커밋·push → 설치본 갱신 → 머지된 MR 1건을 **워크트리 모드**로 재실행해 배포본 「일치」·헤더에 격리 위반 의심 없음·cleanup 뒤 `W` 허용 9종만 남음을 확인(AC②·③·⑤·⑧의 실측).
 
-## 6. 미해결 질문
+## 6. 잔여 리스크 (DEFERRED · 실측) · 미해결 질문
 
-- 포트 있는 GitLab에서 glab 설정 전제(포트 없는 호스트 키 + `api_host`에 포트)가 **다른 리뷰어 PC**에서도 성립하는지 — 9단계 실측 때 사용자 PC 1대로 확인. `glab auth login`이 자동으로 만드는 항목 형식은 버전마다 다를 수 있어 SKILL.md에는 「설정 항목이 있어야 한다」까지만 적는다.
-- ③ 심링크 극단 케이스(알려진 한계)에 대해 (B) tree API 유형 대조가 필요해지는 시점 — 실사용에서 심링크 배포 대상이 나오면 재검토.
+**미해결 질문: 없음.** harden-spec(2026-10-22)의 판단 갭 9건은 전부 질문으로 해소됐고 사용자가 유예한 갭은 없다 — **DEFERRED 0건**.
+
+**검증 필요(실측 — repo 조회로도 사용자 결정으로도 닫히지 않는 외부 사실)**
+
+- 포트 있는 GitLab에서 glab 설정 전제(포트 없는 호스트 키 + `api_host`에 포트)가 **다른 리뷰어 PC**에서도 성립하는지 — 9단계 실측 때 사용자 PC 1대로 확인. `glab auth login`이 자동으로 만드는 항목 형식은 버전마다 다를 수 있어 SKILL.md에는 「설정 항목이 있어야 한다」 + §0 사전 점검(D31)까지만 둔다.
+- AC⑧-2(격리 위반 의심 헤더 소멸·「Codex 자체 경로 n건 제외」 표시)는 1.3.1 설치본 실사용에서만 확인된다 — 9단계.
+
+**수용된 한계(결정은 내려졌고 리스크만 기록)**
+
+- ③ 심링크 극단 케이스(D22): git 심링크 경로의 raw 응답은 링크 대상 문자열이라, zip 항목이 일반 파일이고 내용이 그 문자열과 같으면 「일치」. 실사용에서 심링크 배포 대상이 나오면 (B) tree API 유형 대조를 재검토.
+- ⑤ collect가 `snapshot.json`을 쓰기 전에 실패한 뒤의 cleanup은 ERR로 끝난다(D33) — 정상 상황이 한 줄 보고로 보이지만, 원문 잔존 가능성을 사람 눈에 두는 쪽(fail-closed)을 택했다.
 
 ## 재논의 금지(기결정)
 
@@ -172,3 +197,17 @@ blob 경로는 `insideRoot(W/blobs/head, 경로)`로 해소한다(zip 이름은 
 | D23 | ⑤ cleanup = 허용 목록 9종 외 전부 삭제, `snapshot.json` 없으면 아무것도 지우지 않고 ERR, 첫 줄 `extra=<n>`. `W/tmp/` 규약은 두지 않는다 | 사용자 결정(이 세션 Q4 — (A)) |
 | D24 | ⑧ 수정 위치 = SKILL.md 경로 감시 문구(제외 2종 + 위키 루트 우선). 코드화하지 않는다 | 설계 결정 — 경로 감시가 LLM 단계이고 결함이 규칙 누락이라 문구로 충분. 코드화는 ⑥ 트랙에서 |
 | D25 | 이 세션(spec·harden)은 코드·테스트·SKILL.md·plan·README를 수정하지 않는다 | 트랙 프롬프트 편집 범위 |
+
+harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천안 채택.
+
+| D | 결정 | 근거 |
+|---|---|---|
+| D26 | ⑤ cleanup 작업 디렉터리 표지 = `snapshot.json`이 **우리 형식으로 파싱**될 때만(`mode` worktree\|diff-only · `head_sha` 40자 16진수 · `fetched_at` 문자열). 없거나 형식이 다르면 무삭제 ERR | 사용자 결정(갭 H1) — 다른 도구의 동명 파일로 엉뚱한 디렉터리를 비우는 비가역 사고 방지 |
+| D27 | ② 워크트리 모드도 diff 버전 head(`versions[0].head_commit_sha`·`diff_refs.head_sha`) ≠ `api_head`면 재수집(최대 3회 → exit 3 `HEAD_MOVED`) | 사용자 결정(갭 A1) — 두 모드의 재수집 조건 대칭 |
+| D28 | ② 조상 확인 실패 + 얕은 clone이면 ERR 문구로 `git fetch --unshallow` 안내. 자동 unshallow 안 함 | 사용자 결정(갭 A2) — 읽기 전용 스킬이 사용자 체크아웃에 큰 fetch를 임의로 하지 않음 |
+| D29 | ② `mr.state` merged\|closed면 리포트 헤더 「머지 뒤 리뷰」 1줄. 판정·절 순서 불변 | 사용자 결정(갭 A3) — 머지 뒤 리뷰라는 새 케이스의 최소 표시, D9 무관 |
+| D30 | plan SC-3 snapshot 문장 · 1.3.0 spec §5.1-2 문장 정정 = impl 트랙(「1.3.1에서 변경」 표기). 이 세션은 안 고침(D25) | 사용자 결정(갭 A4) — SC-3은 구현이 읽는 계약, 어긋남 = 회귀 위험 |
+| D31 | ① SKILL §0에 `glab api --hostname <포트 없는 host> version` GET 1회 사전 점검, 실패 = 설정 안내 + 정지 | 사용자 결정(갭 B1) — 어댑터 복사만으로 리뷰어를 늘리는 공유 경계(§6) 전제 |
+| D32 | ⑧ 경로 감시 제외 = `$CODEX_HOME` 전체 + `$ROOT` + `W` 자체. 어댑터 위키 루트는 제외보다 우선 | 사용자 결정(갭 B2) — 오탐 반복은 진짜 경고를 무력화, Codex 홈은 D16 감시 대상 아님 |
+| D33 | ⑤ snapshot 전 실패 뒤의 cleanup ERR는 동작 유지, SKILL §0 보고 문구만 「목록 비면 정상」으로 정정 | 사용자 결정(갭 B3) — fail-closed 유지 |
+| D34 | 세부 4종 채택: `snapshot.base_source`·`deploy.zip.bytes_source` 진단 필드 · 이름 `bytes_unavailable`·`BASE_MISMATCH`·`DIFF_EMPTY_MISMATCH` · 배포본 결과 우선순위 「대조 불가 > 불일치」 유지 · cleanup 둘째 줄 이후 `extra:` 이름 나열 | 사용자 결정(갭 B4) |
