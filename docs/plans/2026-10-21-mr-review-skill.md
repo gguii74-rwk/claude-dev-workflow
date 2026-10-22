@@ -516,6 +516,21 @@ DEFER_LOW(출처 SDD 이월 — 요약 기록, 판정 영향 없음·fail-closed
 - 사전 게이트(SC-7, HEAD `d9a3a1b`): T1 107/107 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0(skills·tests 전체 0 · README 추가 줄 0) · T7 0 · 대장 확인 대기 0 · 승계 미확인 FIXED 0. 라운드 파일 접미 = `-FR<N>`·`-FC<N>`(impl 루프의 `-R<N>`·`-C<N>` 기록 덮어쓰기 방지).
 - score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷, weight c4/h3/m1). 보안 트랙이라 전환 신호 1(정체) 무시.
 
+| 라운드 | 모드 | HEAD | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 | verdict |
+|---|---|---|---|---|---|---|
+| FR1 | 적대·자동 | `c0d467b` | 0/3/1 (신규 4) — 즉시 ESCALATE 3(보안·같은 계열 반복 → 설계 선택지) · FIXED 후보 1 | **10** | 0 → 수정 후 4 | needs-attention |
+
+- FR1(적대·자동, HEAD `c0d467b`, 2026-10-22 11:2x~11:3x, 실행 로그 25건 · 응답 유효 · 구조 관점 focus): 신규 4건 — 마스킹 계열(13·14회째)·zip 해석 계열(11회째)은 **패턴 추가 대신 설계 변경 선택지로 즉시 ESCALATE**(위험군 = 보안, 위임 모드에서도 질문 → 답 = 전부 첫 선택지(추천) — 메인 TUI 대리로 보고 `추천 자동 채택(위임)`, 확인 임무 ③ **우선 감사 대상**, 대장 36~38). FR1-4 는 방향 명확 → FIXED. 재현: 루프 세션이 FR1-1·FR1-2 를 직접 재현(XML·이스케이프 키·카멜 키 `dbPassword`·`apiToken` 도 잔존 0 — 카멜 키는 같은 계열로 FR1-1 행에 병합). 수정 커밋 `73b732d`(T1 **113/113** — 신규 테스트 6, 수정 전 코드에서 6건 전부 실패 확인 · T2~T7 0 · T3 56/56). 적대 소진 1 = auto-rounds → batch flush(적재 0) → 정밀 모드. 전환 신호: 보안 트랙(신호 1 무시) · 신호 2 미발화(FIXED 후보 4) · 신호 3 미발화(1/2) → FR2 적대.
+
+| # | fingerprint (file · title · recommendation 요지) | severity | disposition | 근거 |
+|---|---|---|---|---|
+| FR1-1 | pack.mjs `SECRET_MASK`·`DECL_RE` · 마스킹과 안전장치가 같은 `키[:=]` 문법을 공유해 XML 요소(`<password>V</password>`)·유니코드 이스케이프 키(`"\u0070assword"`)·카멜 키(`dbPassword`·`apiToken`)를 함께 놓침(팩 B·리포트·cleanup) · 패턴 1개로 안 닫힘 — 정규화·넓은 키 인식 + 해석 못 한 형태는 Codex 생략 | high | FIXED `73b732d` (추천 자동 채택(위임) — 마스킹 계열 13회째 즉시 ESCALATE, 선택지 4 중 「넓은 기준으로 바꾼다」; 「자료 통째 제외」·「두 꼴만」·「한계로 문서화(ACCEPTED)」 미채택) | 입구 정규화(`\uXXXX`·`\xXX`·`&#…;`·`%XX`·`&lt;` 등 — 키·구분자·따옴표 ASCII 로 풀리는 것만) · `SECRET_KEYS` 접두·접미 = 구분자 또는 카멜 경계(규칙에서 `i` 플래그 제거, 키워드만 대소문자 집합 — `tokens`·`secretary` 는 여전히 키 아님) · 키워드에 `passphrase`·`credential(s)` 추가 · XML 요소 값 규칙 + 안전장치 `XML_OK`(CDATA 등 못 가린 형태 = 잔존). 남는 한계(구분자 없는 `--password V`·키워드 없는 URL 자격증명 `user:pass@host` 등)는 공백 구분 산문과 갈리지 않아 범위 밖 — **[확인 감사 대상]** |
+| FR1-2 | pack.mjs `maskTextWithCounts` · 모든 40자 16진을 SHA 로 보고 마스킹 전에 빼 두어, 어댑터가 명시한 비밀값 규칙(`(?<=credential=)[0-9a-f]{40}`)이 적용 0회·잔존 0 · 보호를 검증된 메타데이터 SHA 로 한정 | high | FIXED `73b732d` (추천 자동 채택(위임) — SHA 보호 계열 5회째 즉시 ESCALATE, 선택지 3 중 「아는 SHA만 보호」; 「어댑터 규칙 먼저(두 단계 매칭)」·「한계로 문서화」 미채택) | `knownShas({mr, snapshot})` = 스냅샷 head·base·target + MR `api_head`·`diff_refs`·`versions` — pack(팩 B)·render(`fieldMask`·리포트 전체)·cleanup(`deepMask`, 마스킹 전 원본 `mr.json` 에서 수집)이 넘긴다. 기존 SHA 테스트는 보호 대상 SHA 를 명시로 넘기게 갱신 — **[확인 감사 대상]** |
+| FR1-3 | deploy.mjs `readZip` · central directory 가 가리키는 항목만 검사 — 정상 zip 앞에 목차 밖 local 항목(`injected.jsp`)을 붙이고 오프셋만 보정하면 「일치」인데 순차 리더(funzip)는 숨은 항목을 풂 · 허용 레이아웃 명시(오프셋 0부터 순차·1:1·마지막 끝 = 목차 시작) | high | FIXED `73b732d` (추천 자동 채택(위임) — zip 해석 계열 11회째 즉시 ESCALATE, 선택지 3 중 「허용 구조만 통과」; 「지적 꼴만」·「한계로 문서화」 미채택) | 목차 파싱 직후 오프셋 순 정렬 → 각 항목 시작 = 직전 레코드 끝(0 부터) · 마지막 끝 = 목차 시작 · data descriptor(bit 3)는 여기서 거부(기존 R4-1 테스트는 거부 시점만 `read()`→`readZip()` 으로 갱신) — 앞·끝 끼움·겹침 회귀 — **[확인 감사 대상]** |
+| FR1-4 | pack.mjs `docText` · 어댑터 문서 참조를 docsRoot 와 `path.join` 후 그대로 읽어 `docsMap.always: ["../wiki-private/personal.md"]`·심볼릭 링크가 전송 금지 개인 위키를 팩 B 로 · 정규 상대 경로 제한 + 실제 경로 확인 + export=false 루트 우선 | medium | FIXED `73b732d` | adapter `validate` = 문서 참조(`repo:` 포함) 경로 부분 정규 상대 경로만 · pack `docText` = realpath 가 docsRoot 밖이면 `PackError`(ERR) · 실제 경로가 전송 금지 위키 루트 안이면 `exportAllowed:false` · SC-2·SC-3 1줄씩 갱신 |
+
+- **미확인 FIXED 큐(4)**: FR1-1 · FR1-2 · FR1-3 · FR1-4(`73b732d`). **확인 임무 ③ 우선 감사 대상** = FR1-1·FR1-2·FR1-3(추천 자동 채택(위임)).
+
 ## 확인 대기 대장
 
 | # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
@@ -555,3 +570,6 @@ DEFER_LOW(출처 SDD 이월 — 요약 기록, 판정 영향 없음·fail-closed
 | 33 | 2026-10-22 10:4x | impl·C3 감사 이의 재판정 | [감사 이의] SHA 자리표시가 깨졌는지 보는 검사가 경계 문자만 지운 경우를 놓치는 걸 어떻게 할까 (C2-N1 · 대장 31) | 검사 보완 (FIXED) | 추천 자동 채택(위임) — 메인 대리 | 확인 (2026-10-22) |
 | 34 | 2026-10-22 10:4x | impl·C3 확인 ESCALATE | 정리(cleanup) 중 마스킹이 실패하면 원문 JSON 이 남는 걸 어떻게 막을까 (C3-N1) | 못 가린 파일은 지우고 오류 (FIXED) | 추천 자동 채택(위임) — 메인 대리 | 확인 (2026-10-22) |
 | 35 | 2026-10-22 10:4x | impl·C3 확인 예산 소진 ESCALATE(폴백) | 확인 예산을 다 썼는데 확인 안 된 수정이 남음 — 새 세션 확인 1회 · 다음 리뷰로 이월 · 배포 smoke 중 무엇으로 마무리할까 | 고치고 새 세션 확인 1회 (폴백②) | 추천 자동 채택(위임) — 메인 대리 | 확인 (2026-10-22) |
+| 36 | 2026-10-22 11:3x | impl·재리뷰 FR1 즉시 ESCALATE | Codex 로 보내는 글의 비밀값 가림이 정해진 꼴(`password: 값`)만 알아봐 XML·이스케이프 키 꼴이 새는 걸 어떻게 막을까 (FR1-1) | 넓은 기준으로 바꾼다 (FIXED) | 추천 자동 채택(위임) — 메인 대리 | 확인 대기 |
+| 37 | 2026-10-22 11:3x | impl·재리뷰 FR1 즉시 ESCALATE | 커밋 번호처럼 생긴 40자 16진 비밀값이 SHA 보호 때문에 어댑터 규칙으로도 안 가려지는 걸 어떻게 할까 (FR1-2) | 아는 SHA만 보호한다 (FIXED) | 추천 자동 채택(위임) — 메인 대리 | 확인 대기 |
+| 38 | 2026-10-22 11:3x | impl·재리뷰 FR1 즉시 ESCALATE | zip 목차에 없는 파일을 앞에 끼워 넣으면 대조는 「일치」인데 순서대로 푸는 도구는 그 파일까지 푸는 걸 어떻게 막을까 (FR1-3) | 허용 구조만 통과시킨다 (FIXED) | 추천 자동 채택(위임) — 메인 대리 | 확인 대기 |
