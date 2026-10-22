@@ -111,7 +111,8 @@ test('팩: 문서 지도(절 발췌·@sha) · 정책 항상 읽기 · 위키(용
 });
 
 test('팩 B 는 엔진 비밀값 패턴(SECRET_MASK)도 적용·잔존 검사한다 — 본문·댓글의 password/API 키가 Codex 로 가지 않는다 (R6-1, F5) · SHA 는 보존', () => {
-  const { adapter, work, env } = setup({ description: '## 배경\n- ① 왜: 설정 password = "synthetic-secret-only" 교체\n- ② 무엇을: 자동분류 패턴', notes: [{ id: 5, system: false, author: { username: 'u' }, created_at: 't', body: '참고 api_key: SYNTH-KEY-999\n{"client_secret": "two word value"}' }] });   // 따옴표 없는 값은 줄 끝까지 가려지므로(impl R4-2) JSON 은 다음 줄에
+  // 본문의 따옴표 값은 줄 끝에 둔다 — 닫는 따옴표 뒤 낱말이 있으면 잔존(impl R5-1)이라 Codex 가 생략된다
+  const { adapter, work, env } = setup({ description: '## 배경\n- ① 왜: 설정 교체 password = "synthetic-secret-only"\n- ② 무엇을: 자동분류 패턴', notes: [{ id: 5, system: false, author: { username: 'u' }, created_at: 't', body: '참고 api_key: SYNTH-KEY-999\n{"client_secret": "two word value"}' }] });   // 따옴표 없는 값은 줄 끝까지 가려지므로(impl R4-2) JSON 은 다음 줄에
   const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.first, /codexSkipped=false$/);                                  // 비밀값은 가려졌으므로 Codex 를 건너뛰지 않는다
@@ -454,4 +455,17 @@ test('CRLF 문서도 LF 와 같게 가린다 — END 없이 잘린 PEM 의 키 �
   const m = maskTextWithCounts('앞\r\n-----BEGIN PRIVATE KEY-----\r\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\r\nabcdEFGH==\r\n(… 발췌 상한으로 생략)', []);
   assert.doesNotMatch(m.text, /MIIEvQ|abcdEFGH/, JSON.stringify(m.text));
   assert.deepEqual(m.residual, []);
+});
+
+test('따옴표 값: YAML 작은따옴표 `\'\'` 이스케이프까지 값 전체를 가린다 · 닫는 따옴표 뒤에는 공백·주석·구분자만 — 그 밖의 잔여는 잔존 → Codex 생략 (impl R5-1 + 훅, 추천 자동 채택(위임))', () => {
+  const y = maskTextWithCounts("password: 'alpha''BRAVO_SECRET'", []);
+  assert.doesNotMatch(y.text, /BRAVO_SECRET/, y.text);
+  assert.deepEqual(y.residual, []);
+  for (const text of ['password = ""LEAKY_TWO', 'password = "a" LEAKY_THREE']) {
+    const m = maskTextWithCounts(text, []);
+    assert.ok(!/LEAKY_/.test(m.text) || m.residual.some((r) => r.name === 'secret-decl'), `${JSON.stringify(text)} → ${JSON.stringify(m)}`);
+  }
+  for (const text of ['{"password":"x","user":"keep"}', 'password: "x" # 주석', '{"password": "", "user": "keep-me"}', "password: ''", 'cfg {"password": "a"}; secret = "b"', 'call(token="abc")']) {
+    assert.deepEqual(maskTextWithCounts(text, []).residual, [], JSON.stringify(text));
+  }
 });

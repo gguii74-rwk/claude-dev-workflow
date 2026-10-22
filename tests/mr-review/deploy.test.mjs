@@ -382,3 +382,9 @@ test('zip local header 의 CRC·압축 크기·원본 크기가 목차와 다르
 test('zip 파일명: 해독 결과를 다시 UTF-8 로 바꾼 바이트가 원래와 다르면(BOM 제거 등) 거부 (impl R4-4 훅, 추천 자동 채택(위임))', () => {
   assert.throws(() => readZip(mkZip([{ name: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('src/a.txt')]), data: 'x', flags: 0x0800 }])), /UTF-8/);
 });
+
+test('zip 파일명의 NUL 등 제어문자는 거부 · `/` 로 끝나도 내용이 있으면 폴더로 인정하지 않는다 — 표준 리더가 다른 일반 파일로 푸는 항목 (impl R5-2, 추천 자동 채택(위임))', () => {
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'ok' }, { name: Buffer.from('unexpected.js\u0000/'), data: 'evil()' }])), /제어문자/);
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/', data: 'payload' }])), /폴더/);
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/main/', data: '' }, { name: 'src/main/A.txt', data: 'ok' }])));
+});

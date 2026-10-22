@@ -102,7 +102,8 @@ const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pw
 // 따옴표 값은 줄바꿈을 포함해 닫는 따옴표까지(길이 상한 없음 — impl R3-3), 같은 줄에 닫는 따옴표가 없는 열린 값은 그 줄 끝까지 가린다(닫는 따옴표를 못 찾아도 값이 새지 않게).
 // 블록 머리 줄(impl R3-1): 앵커(`&a`)·태그(`!!str`)·주석(` # …`)·CRLF 를 허용한다.
 // 잘린 비밀키(impl R2-3, 사용자 판정): 발췌 상한이 END 줄을 잘라도 BEGIN 줄부터 키 본문 줄(base64·`Proc-Type:` 같은 머리 줄)까지 가린다 — 완결 PEM 규칙 뒤에 둔다.
-const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S])+(?=${q})`;
+// 작은따옴표 값은 YAML 이스케이프 `''`(따옴표 문자 하나)도 값의 일부로 소비한다(impl R5-1 — `'alpha''BRAVO'` 의 뒷부분이 남지 않게).
+const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S]${q === "'" ? "|''" : ''})+(?=${q})`;
 const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[masked:)(?![^${q}\\n]*${q})[^\\n]+`;
 export const SECRET_MASK = [
   { name: 'secret', pattern: QUOTED('"'), flags: 'i' },
@@ -128,8 +129,10 @@ const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\
 // 오탐 비용 = 단일 모델 리뷰(D14 fail-closed 경로) — 값 누출보다 낫다.
 const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'gi');
 const DECL_HEAD_ALT = `(?:(?:${MARK}|[&!]\\S*|[|>][1-9+-]{0,2})[ \t]*)*(?:#.*)?`;
-// 같은 줄 값은 **줄 전체**로 본다(impl R4-2 + 훅) — 따옴표 없는 값은 가림 표시 하나(+ 주석)만, 따옴표 값은 여는 따옴표 바로 뒤 표시 또는 빈 따옴표(닫힌 뒤는 다른 키일 수 있어 허용), 그 밖은 블록 머리뿐이어야 한다
-const DECL_OK = new RegExp(`^(?:["'\`]${MARK}.*|(["'\`])\\1.*|${DECL_HEAD_ALT})$`);
+// 같은 줄 값은 **줄 전체**로 본다(impl R4-2 + 훅) — 따옴표 없는 값은 가림 표시 하나(+ 주석)만, 따옴표 값은 여는 따옴표 바로 뒤 표시 또는 빈 따옴표, 그 밖은 블록 머리뿐이어야 한다.
+// 닫는 따옴표 뒤에는 공백·주석·구분자(`,` `;` `)` `}` `]` — JSON 한 줄의 다음 키 등)만 허용한다(impl R5-1 + 훅 — `""비밀`·`"a" 비밀` 은 잔존). 닫히지 않은 따옴표 값은 줄 끝까지 가려진 상태(표시만)여야 한다.
+const AFTER_Q = `[ \t]*(?:[,;)}\\]].*|#.*)?`;
+const DECL_OK = new RegExp(`^(?:["'\`]${MARK}["'\`]${AFTER_Q}|["'\`]${MARK}[ \t]*|(["'\`])\\1${AFTER_Q}|${DECL_HEAD_ALT})$`);
 const DECL_WHOLE = new RegExp(`^[ \t]*${MARK}[ \t\r]*$`);   // 이어지는 줄은 통째로 가림 표시여야 한다(첫 토큰만 가린 `[masked:secret] 나머지` 는 통과 아님)
 const DECL_HEAD = new RegExp(`^${DECL_HEAD_ALT}$`);
 function unmaskedSecretDecl(text) {

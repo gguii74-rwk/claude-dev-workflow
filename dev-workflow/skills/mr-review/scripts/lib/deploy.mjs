@@ -78,6 +78,8 @@ function zipName(raw, flags) {
   try { name = UTF8.decode(raw); } catch { throw new Error(`zip 파일명이 올바른 UTF-8 이 아님: ${raw.toString('latin1')}`); }
   // 왕복 대조(impl R4-4) — 해독기가 몰래 바꾼 이름(앞 BOM 제거 등)은 다른 리더와 이름이 갈린다
   if (!Buffer.from(name, 'utf8').equals(raw)) throw new Error(`zip 파일명이 UTF-8 왕복에서 바뀜(BOM 등): ${raw.toString('latin1')}`);
+  // 제어문자(impl R5-2) — NUL 에서 이름을 자르는 리더는 `x.js\0/`(우리에겐 폴더)를 일반 파일 `x.js` 로 푼다
+  if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error(`zip 파일명에 제어문자(NUL 등): ${JSON.stringify(name)}`);
   return name;
 }
 
@@ -133,6 +135,8 @@ export function readZip(buf) {
     const made = buf.readUInt16LE(p + 4) >>> 8;
     const ifmt = ((buf.readUInt32LE(p + 38) >>> 16) & 0o170000);
     const type = made !== 3 || ifmt === 0 || ifmt === 0o100000 ? 'file' : ifmt === 0o120000 ? 'symlink' : ifmt === 0o040000 ? 'dir' : 'special';
+    // `/` 로 끝나는 항목은 대조에서 빠지므로(폴더) 내용이 없을 때만 폴더로 인정한다(impl R5-2 — git archive 폴더 항목은 크기 0, 실측)
+    if (name.endsWith('/') && usize !== 0) throw new Error(`zip 폴더 항목에 내용이 있음(${usize}바이트): ${name}`);
     entries.push({ name, raw, flags, method, crc, csize, usize, lho, cd: p, type });
     p += 46 + nLen + eLen + cmLen;
   }
