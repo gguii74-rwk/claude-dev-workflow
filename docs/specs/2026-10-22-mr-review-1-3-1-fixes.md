@@ -216,7 +216,7 @@ harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천�
 
 보안 크리티컬: yes (호출자 지정 — 사용자 확인 2026-10-22 16:5x) — 접촉면 외부 전송(Codex)·개인정보 경계(마스킹)·zip 해석·경로·삭제(cleanup 허용 목록)
 
-- 루프: base `a61d71f`(a61d71f815067f35f1940f4de49dc36e590fe5f3 = main = origin/main, 1.3.0 릴리스 = 구현 착수 직전 — SC-7 `<base>`) · branch `gguii74-rwk/mr-review-1-3-1-fixes`(오르카 워크트리) · 착수 HEAD `9ab8156` · 예산 max 5 · confirm 2 · auto 1 · **위임 모드**(`DEV_WORKFLOW_MODE=delegated`) · 입도 = 통합 1회(경량 경로 D19 — plan 없음, ledger = 이 spec 말미). 1.3.0 plan 의 ledger·대장은 이력이며 이 루프가 건드리지 않는다.
+- 루프: base `a61d71f`(a61d71f815067f35f1940f4de49dc36e590fe5f3 = main = origin/main, 1.3.0 릴리스 = 구현 착수 직전 — SC-7 `<base>`) · branch = 오르카 워크트리 `mr-review-1-3-1-fixes` 의 트랙 브랜치 · 착수 HEAD `9ab8156` · 예산 max 5 · confirm 2 · auto 1 · **위임 모드**(`DEV_WORKFLOW_MODE=delegated`) · 입도 = 통합 1회(경량 경로 D19 — plan 없음, ledger = 이 spec 말미). 1.3.0 plan 의 ledger·대장은 이력이며 이 루프가 건드리지 않는다.
 - 사전 게이트(SC-7, HEAD `9ab8156`): T1 153/153 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0(skills·tests 전체 + README·spec·plan 추가 줄) · T7 0 · 대장 대기 0 · 승계 미확인 FIXED 0 · codex companion 1.0.6.
 - 가드 focus = 이 spec D17~D34 전문 + 1.3.0 spec D1~D16 전문 + 사용자 확인된 구현 판단 4건·이월(`2951699`)·릴리스 몫 항목.
 
@@ -224,8 +224,11 @@ harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천�
 |---|---|---|---|---|
 | R1-1 | report.mjs cleanup · 허용 JSON 이름이 W 밖을 가리키는 심볼릭 링크면 마스킹 루프가 따라가 외부 파일을 덮어씀 · lstat 으로 일반 파일만 마스킹, 쓰기 O_NOFOLLOW, 외부 대상 보존 회귀 테스트 | high | FIXED | `42aaf4f` — 마스킹 루프가 `lstat().isFile()` 아니면 건너뜀(허용 목록 정리가 링크만 삭제 → `extra`) · 쓰기 `O_NOFOLLOW` · 테스트 「허용 JSON 이름(mr.json)이 W 밖 파일을 가리키는 심볼릭 링크면 …」(대상 바이트 불변) |
 | R1-2 | SKILL.md §0 · 사전 점검 호스트 추출 정규식이 CRLF·들여쓴 펜스 어댑터를 거부(extractBlock 은 허용) → 정상 설정을 GLAB_HOST_FAIL 로 오안내 · 어댑터 파서와 같은 형식 | medium | FIXED | `bbd950b` — 줄마다 trim 뒤 여는/닫는 펜스 탐색(extractBlock 과 같은 규칙) · 테스트 「SKILL.md §0 사전 점검의 호스트 추출이 …」(LF·CRLF·들여쓴 펜스 3종 → `gitlab.test`) · bash 실측(CRLF 어댑터 → `--hostname gitlab.test`) — zsh 실측은 9단계 몫 |
+| R2-1 | collect.mjs pinWorktree · 얕은 clone 에서 base 객체는 있으나 head 까지의 이력이 shallow 경계로 끊기면 `!present` 조건 때문에 D28 안내 없이 「조상이 아니다」로 오진 · 객체 유무와 무관하게 shallow 확인 | medium | FIXED | `89131eb` — 조상 확인 실패 + shallow 면 D28 문구(base 가 있으면 「base 와 head 사이 이력이 로컬에 없다」, AC②-7 문구 불변) · 테스트 「얕은 clone 에서 base 객체는 있으나 …」(base 를 depth 1 태그 fetch 로 따로 받아 끊긴 이력 재현) |
 
 **R1(적대, 2026-10-22)**: HEAD `9ab8156` · 스레드 `01a1629c…` · 실행 로그 25건 · verdict needs-attention · high 1 · medium 1 · low 0 · 신규 2 · 기결정 재론 0. 전환용 score **4**(high 3 + medium 1 — 현행 산식, 수정 전 스냅샷) · 미확인 FIXED 큐 0 → 2. batch 적재 0(적대 소진 1 = auto-rounds 1 → flush 대상 없음, 이후 정밀 모드). 수정 게이트(SC-7, `bbd950b`): T1 **155/155** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0.
+
+**R2(적대, 2026-10-22)**: HEAD `16a5488` · 스레드 `01a162a2…` · 실행 로그 21건 · verdict needs-attention · medium 1 · 신규 1 · 기결정 재론 0 · R1-1·R1-2 적대 비재출현(R2 — 참고 신호, 큐 유지). 전환용 score **1**(4 → 1) · 미확인 FIXED 큐 2 → 3. 보안 트랙이라 신호 1 무시 · 신호 2 미발화(신규 FIXED 1) → 적대 계속. 수정 게이트(SC-7, `89131eb`): T1 **156/156** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0 — 수정 전 게이트에서 T6(spec 추가 줄) 1건 = 이 ledger 의 루프 줄에 적은 트랙 브랜치 이름(저장소 소유자 slug)이라 그 줄에서 브랜치 이름을 빼 0 으로 맞췄다(D10 대상 아님, 게이트 기준 준수).
 
 ## 확인 대기 대장
 
