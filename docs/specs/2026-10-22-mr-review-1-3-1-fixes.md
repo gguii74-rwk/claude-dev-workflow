@@ -1,6 +1,6 @@
 # mr-review 1.3.1 — 첫 실사용에서 드러난 엔진 결함 5건 수정
 
-> 상태: **review-loop(impl) 종결**(2026-10-22 — 적대 5 + 복귀 1 · 확인 1 + 재진입 1 · FIXED 8 · 미확인 FIXED 0 · 미판정 blocking 0 · 최종 verdict pass, ledger = 말미 `## 적대검증 ledger (impl)` · 대장 4행 확인 완료) · impl 완료(AC 26개 중 25개 테스트 GREEN · AC⑧-2 와 실측 V1 은 9단계) · harden 완료(판단 갭 9건 해소, 유예 0건) · 작성 2026-10-22 · 버전 **1.3.1 패치** · 다음 = 9 릴리스 1.3.1(경량 — review-loop(spec)·plan 생략, D19)
+> 상태: **릴리스 1.3.1 커밋 `860de0d`(미push)**(2026-10-22 — 게이트 impl 종결 행 1 · 확인 대기 0 · T1 162/162 · T2 0 · T3 56/56 · T4~T7 0 · 문서 점검 변경 없음) · review-loop(impl) 종결(적대 5 + 복귀 1 · 확인 1 + 재진입 1 · FIXED 8 · 미확인 FIXED 0 · 최종 verdict pass, ledger = 말미 `## 적대검증 ledger (impl)` · 대장 4행 확인 완료) · impl 완료(AC 26개 중 25개 테스트 GREEN · AC⑧-2 와 실측 V1 은 9단계) · harden 완료(판단 갭 9건 해소, 유예 0건) · 작성 2026-10-22 · 버전 **1.3.1 패치** · 다음 = main 머지·push(사용자 확인) → 설치 갱신 → 실측 V1·V2
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16 승계) · plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-1~SC-8)
 > 경로: **경량**(dev-cycle 1차 판정 + 사용자 확인 2026-10-22, 수동 모드 — 접촉 표면 무신호: 스키마·권한·인증·외부 연동 신설 없음. 호스트 처리·cleanup 삭제 범위 변경은 기존 기능의 결함 수정이며 테스트로 고정한다)
 
