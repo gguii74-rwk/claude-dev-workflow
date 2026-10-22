@@ -1,0 +1,251 @@
+# mr-review 1.3.3 — 3차 실사용에서 드러난 엔진 결함 3건 + 1.3.2 보안 지적 1건 수정 (+ 경로 감시 한계 문구)
+
+> 상태: **spec 확정 — harden 완료**(2026-10-23 08:2x — 3 harden-spec 트랙, 수동 모드(설계 질의 9건 + harden 판단 갭 5건 = 전부 사용자 지시 「추천안으로 대신 답해줘」(08:10)에 따라 메인이 추천안 입력 · 사실 갭 10건 코드 조회로 해소 · DEFERRED 0) · 작성 2026-10-23 · 버전 **1.3.3 패치** · 다음 = spec 커밋 → 4 review-loop(spec, D53) → 7 impl → 8 review-loop(impl, 보안 yes) → 9 릴리스
+> 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16 승계) · 1.3.1 spec `docs/specs/2026-10-22-mr-review-1-3-1-fixes.md`(D17~D34 승계 — 특히 D22 diff-only 바이트 대조·D23 cleanup 허용 목록·D32 경로 감시 제외·D34 배포본 결과 우선순위) · **1.3.2 spec `docs/specs/2026-10-22-mr-review-1-3-2-fixes.md`**(D35~D51 승계 — ⑬ 은 D37(deployLayout)·D38(`.class` 존재 대조)·3.⑨-3 ②③④ 절차·ledger(impl) R1-1·R2-1·R2-2·R3-1·R4-1·R4-2·R5-1·R5-2 위에 얹힌다. **D37 은 이 spec 의 D59 로 의미가 바뀐다**) · plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-2 어댑터 계약·SC-3 `deploy.json` 계약·SC-7 게이트)
+> 경로: **경량 — 단 4단계(spec 적대검증)는 유지, 5 plan·6 plan 적대검증 생략**(dev-cycle 1차 판정 + 사용자 지시로 메인이 추천안 입력 2026-10-23 08:1x — 접촉 표면 무신호: 스키마·마이그레이션·권한·인증·외부 연동 신설 없음, 도구는 읽기 전용이라 데이터 손상·비가역 없음. ⑬ 은 「zip 마다 배치를 정하는 규칙」이 새로 생겨 설계 폭이 크므로 spec 적대검증만 남긴다 — D53)
+
+## 1. 배경 · 목표
+
+1.3.2 설치본으로 2차 실사용과 **같은 코드 MR 을 워크트리 모드로 재실행**하고(2026-10-23 07:3x — 3차 실사용) **최근 머지된 MR 의 배포 zip 4개를 표본 조사**했다. 1.3.2 가 고친 ⑨(WAR 매핑 — 「일치 · 바이트 대조 생략 4건」)·⑩(경로 감시 제외 2건)·⑪(부록 A 단일 목록)·⑫(`row` 병합 34행)는 해소가 확인됐고, 새로 엔진 결함 후보 4건(⑬~⑯)이 드러났다. 여기에 1.3.2 push 뒤 자동 보안 리뷰가 지적한 `normBody` 결함 1건(S1)을 사용자 결정(2026-10-22 「실측 뒤 묶어서」)대로 이번에 넣는다. 번호는 실사용 기록(⑬~⑯)을 그대로 쓴다. 우선순위 = ⑬(정상 zip 이 MR 마다 「불일치」 수십 건 → `M-deploy` 차단 — 프로젝트 고정값으로는 한 프로젝트만 맞는다) > S1(살아 있는 파일 삭제 지시가 「일치」) > ⑭(리포트 1절 표 깨짐) > ⑯(마스킹 안 된 원문 잔존) > ⑮(한계 문구).
+
+**목표**
+
+- G1. 같은 프로젝트에서 소스 배치 zip·WAR 배치 zip·최상위 폴더 접두가 붙은 zip·zip 2개(소스판 + class 판)가 올라와도 정상 배포본은 **어댑터 변경 없이** 「일치」로 판정된다(⑬).
+- G2. 판별 근거(표지·시험·어댑터 힌트·기본값)와 뗀 접두·zip 별 배치가 `deploy.json`·부록 A·터미널 요약에 보인다 — 리뷰어가 「엔진이 무엇을 보고 그렇게 읽었나」를 재현할 수 있다(⑬).
+- G3. 본문 삭제 목록의 `Foo$X.class` 를 내부 클래스로 접기 전에 그 이름이 head 에 실제 파일로 살아 있는지 확인한다. 확인할 수 없으면(diff-only) 접지 않고 「대조 불가」(S1).
+- G4. 검증 표 행 원문에 `|`·줄바꿈이 있어도 리포트 「1. 의도 대조표」·부록 A 검사표가 깨지지 않는다(⑭).
+- G5. Claude 검토자가 작업 디렉터리 `W` 밖에 쓴 파일이 있으면 종료 자가 점검에서 이름이 보고된다(지우지는 않는다)(⑯).
+- G6. companion 실행 로그가 명령을 자르는 한계가 SKILL.md 와 터미널 요약에 명시된다(⑮ — 문구만).
+
+## 2. 범위 · 비목표
+
+**범위**(impl 트랙이 고친다 — 이 세션은 spec 만, D62): `dev-workflow/skills/mr-review/scripts/lib/{adapter,deploy,report}.mjs` · `dev-workflow/skills/mr-review/SKILL.md`(§5 Claude 검토자 프롬프트·경로 감시 한계 · §6-5 `criterion` 첫 칸 · §8 터미널 요약·자가 점검·리포트 구성 문구) · `tests/mr-review/{adapter,deploy,report}.test.mjs` · `dev-workflow/.claude-plugin/plugin.json`·`.claude-plugin/marketplace.json` 버전 1.3.3 · README 3종의 1.3.3 한 줄 + 어댑터 안내의 `deployLayout` 문장 정정(「고정」 → 「판별 못 할 때의 기본값」) · plan SC-2(`deployLayout` 의미)·SC-3(`deploy.json` 필드·`mismatches.kind`) 문장 정정(1.3.2 와 같은 방식 — impl 트랙이 「1.3.3에서 변경」 표기) · 1.3.2 spec D37 행 끝 부기(「1.3.3 D59 로 의미 변경」). 어댑터 계약(SC-2)의 **기존 키·값·형식은 바꾸지 않는다** — `deployLayout` 의 의미만 바뀐다(D59).
+
+**비목표(이 트랙에서 하지 않는다)** — 사용자 결정 2026-10-23(D52)
+
+- **실행 간 재현율 편차**(같은 입력인데 어제 찾은 실결함 2건을 이번엔 두 모델 모두 놓침) — 운영 한계. §6 잔여 리스크 1줄.
+- **⑮ 의 엔진 보완**(Codex 세션 원본 로그를 읽어 명령 전문을 감시) — D32(Codex 홈은 감시 대상 아님)·cleanup 범위와 얽혀 별도 트랙 후보(§6). 이번엔 문구만(D54).
+- 1.3.2 D38 재론(내부 클래스 `Foo$<무엇이든>.class` 를 존재 대조로 인정) — 자동 보안 리뷰 지적 ①은 설계 결정이라 재론하지 않는다. ⑬ 설계는 이 판단에 닿지 않는다(내부 클래스 인정 규칙은 zip 별 배치가 WAR 일 때 그대로 적용).
+- cleanup 범위를 scratchpad 루트까지 넓히는 것 — 루트에 사용자 파일(어댑터 사본 등)이 있어 기각(D55).
+- Maven WAR 외 배치 프리셋(Gradle·fat jar)·다중 모듈·`.java` 외 소스·리소스 필터링 — 1.3.2 비목표 승계. ⑬ 의 자동 판별은 **`source`·`maven-war` 두 배치 사이**에서만 고른다.
+- `expected.deleted` 와 head 의 **같은 이름 리소스**(`src/main/resources/p/Foo.class` 같은 극단 케이스)의 충돌 — 배포 도구 몫, 기록만(§6).
+- master 어댑터(프로젝트 문서)에 무엇을 적을지 — 프로젝트 몫. 1.3.3 뒤에는 WAR 프로젝트도 키 없이 동작한다(힌트는 삭제 전용 MR 에만 영향).
+- 1.3.0·1.3.1·1.3.2 설계 결정 D1~D51 의 재론(D37 만 D59 로 변경 — 명시).
+
+## 3. 결함별 명세
+
+예시는 전부 가상 값이다(프로젝트 `alpha` = WAR 관행 + 소스 zip 혼용 · `gamma` = zip 2개 관행 · MR `!61`·`!62`·`!63` · head `d4d4d4d` · 패키지 `com/example/acct` · 접두 `app/`). 재현 근거의 사실은 3차 실사용 산출물(`deploy.json`·`findings.json`·리포트)·표본 zip 4개의 배치 서술(사용자 세션 보고 — zip 실물은 남아 있지 않다)·companion 1.0.6 원문을 **읽기 전용**으로 확인한 것이며, 리뷰 대상 프로젝트 식별자는 전부 치환했다(D10·SC-7 T6).
+
+### 3.⑬ 배포 zip 의 배치가 프로젝트가 아니라 MR 마다 달라 프로젝트 고정값(`deployLayout`)으로는 정상 zip 이 「불일치」
+
+**현상**: 1.3.2 는 어댑터 `projects.<이름>.deployLayout` 을 프로젝트별로 고정한다(D37). 표본 4개 — (가) `alpha` MR `!61` zip = 최상위 폴더 `app/` 아래 WAR 배치(`app/WEB-INF/classes/com/example/acct/Foo.class`·`app/WEB-INF/classes/com/example/acct/Foo$1.class`·`app/html/a.html` — 내부 클래스 포함) (나) 같은 `alpha` 의 MR `!62` zip = 소스 경로 그대로(`src/main/java/com/example/acct/Foo.java`) (다) `gamma` MR `!63` = 첨부 zip **2개**(소스판 `src/main/…` + class 판 `WEB-INF/classes/…`) (라) 2차 실사용 프로젝트 = WAR 배치, 접두 없음. `alpha` 를 `"maven-war"` 로 고정하면 (나)가, `"source"` 로 두면 (가)가 수십 건 `missing_in_zip`+`extra_in_zip` 으로 「불일치」 → `M-deploy` 차단 증거. (가)는 접두 `app/` 때문에 어느 고정값으로도 안 맞고, (다)는 `deploy.mjs:300-301` 이 **마지막 본문 zip 하나만** 보므로 다른 한쪽이 통째로 누락으로 보인다.
+
+**재현 근거**: 3차 실사용 `deploy.json`(2차 실사용 프로젝트, 임시 어댑터 사본에 `"maven-war"`) = `zip.layout = "maven-war"` · `result = "일치"` · `bytes_skipped` 4건 · `mismatches = []` · `check.json.attachments` = zip 1건(`where: body`) — 1.3.2 매핑 자체는 맞다. 표본 (가)(나)(다)의 배치는 사용자 세션이 zip 을 받아 본 서술이며 실물 파일은 남아 있지 않다(실측은 9단계). 코드: `deploy.mjs:286` `layout = adapter.resolved.projects[<이름>].deployLayout || 'source'`(프로젝트 고정) · `:300-301` `zips.filter(where==='body').pop() || zips.pop()`(zip 1개) · `:330-345` 사상·조회가 `layout` 하나를 전제.
+
+**원인**: 1.3.2 설계가 「zip 배치 = 프로젝트의 관행」을 전제했다(D37 근거 「프로젝트마다 zip 배치가 다르다(실측 2건)」). 표본 4개로 그 전제가 깨졌다 — 배치는 **작성자·MR 마다** 다르고, 접두 폴더와 zip 개수도 변한다. 어댑터 키를 「힌트」로 낮추고 zip 마다 판별하는 수밖에 없다.
+
+**수정 방향(사용자 결정 2026-10-23 — D57·D58·D59·D60)**
+
+1. **단위 = zip 하나.** 본문(`where: body`) 첨부 zip **전부**가 대상이다(D60). 본문에 zip 이 없으면 댓글 zip 중 마지막 1개(현행). 같은 링크(`secret` 동일)가 본문에 두 번 나오면 한 개로 센다(`check.json.attachments` 는 그대로 — `deploy` 가 중복을 뺀다). 저장 = `W/zip/<순번>-<파일명>`(순번 = 본문 등장 순 1부터 — 같은 파일명 zip 둘을 덮어쓰지 않게. `uploadName` 검사는 그대로). `mismatches.detail`·부록 A 의 zip 식별 표기 = `zip#<순번> <파일명>`(zip 1개면 지금처럼 파일명만). 각 zip 을 받아 `readZip`(기존 구조 검증 전부 그대로) → 아래 2·3 을 zip 마다 독립 수행 → 4 에서 합산.
+2. **공통 최상위 폴더 접두 제거(D57)**: zip 의 파일 항목(폴더 제외) 전부가 같은 첫 조각 `P/` 를 공유하고, `P` 가 `src`·`WEB-INF`·`META-INF` 가 아니고, 기대 배포 목록의 어느 경로도(소스 경로 그대로·`maven-war` 로 사상한 경로 둘 다) `P/` 로 시작하지 않으면 `P/` 를 전 항목에서 떼고 `zips[i].prefix` 에 이어 붙인다(`app/` · 반복해서 `app/build/`). 조건이 깨지면 멈춘다. 뗀 뒤 이름은 그대로 정규형(`notCanonical` 재검사 불필요 — 앞 조각만 뗀다). 접두 제거는 **판별(3)보다 먼저**다. 파일 항목이 0개면 접두 없음.
+3. **배치 판별(D57 — 표지 우선, 시험은 보조)**: 접두를 뗀 **파일 항목**(폴더 항목 제외 — 접두 제거와 같은 집합)의 첫 조각으로 두 표지를 본다 — WAR 표지 = `WEB-INF` **또는 `META-INF`**(D64 — WAR 의 `META-INF/context.xml` 류만 든 zip 도 표지로 잡힌다. 소스 루트에 `META-INF/` 를 두는 프로젝트는 §6 한계) 가 첫 조각인 항목 존재 · 소스 표지 = `src` 가 첫 조각인 항목 존재.
+   - 한쪽만 → 그 배치, `layout_source = "signature"`.
+   - **둘 다** → 혼합: `{kind:"layout_ambiguous", path:null, detail:"zip <이름>: WAR 표지(WEB-INF/·META-INF/)와 소스 표지(src/)가 함께 있음 — 배치를 정할 수 없음"}` → 그 zip 은 ②③ 대조를 하지 않고(항목은 `entries` 에 남긴다) 결과 **「대조 불가」**(D58 — D34 우선순위 「대조 불가 > 불일치 > 일치」 유지).
+   - **둘 다 없음**(웹 자원만 든 zip `html/a.html`·`sql/x.sql` 만 든 zip 등) → **기대 목록 시험**: `source`·`maven-war` 각각으로 1.3.2 ② 목록 대조(`missing_in_zip`+`extra_in_zip`, 내부 클래스 2단계 조회 포함)를 계산해 **불일치 0 인 배치가 정확히 하나면 그것**(`"probe"`). 둘 다 0 이면(두 배치에서 사상이 같은 경로만 — `sql/**` 등) `source`(`"probe"`, 결과 동일). 둘 다 0 이 아니면 **어댑터 힌트** `deployLayout`(`"adapter"`), 키가 없으면 `source`(`"default"`) — 그 배치로 ②③ 을 대조해 `missing`/`extra` 목록을 내고 「불일치」로 끝낸다(D58 — 빠진 경로가 작성자에게 보이도록, 「대조 불가」가 아니다).
+   - 시험은 **표지가 없을 때만** 돈다 — 표지가 있는 zip 은 기대 목록과 무관하게 배치가 정해진다(1.3.2 가 기각한 (C) 「둘 중 하나 맞으면 통과」와 다르다: 섞인 zip 은 혼합으로 거부되고, 표지 있는 zip 은 한 배치로만 대조된다).
+4. **합산(D60)**: zip 별 ②③ 결과를 다음 규칙으로 합친다.
+   - 기대 배포 경로 `x` 는 **어느 zip 에서든** 사상 경로가 있으면 충족. `missing_in_zip` = 모든 zip 에서 없는 `x`(`path` = 소스 경로, `detail` 에 zip 별 기대 경로 — 배치가 다르면 둘 다). `extra_in_zip` = 각 zip 에서 그 zip 의 배치로 조회(이름 그대로 → 내부 클래스 2단계)가 안 되는 항목(`path` = zip 경로(접두 뗀 뒤), zip 이 둘 이상이면 `detail` 에 zip 이름).
+   - 바이트 대조(`compare: "bytes"`)는 zip 마다 head 원문과 한다(워크트리 `git show` / diff-only `W/blobs/head/`) — 어느 zip 에서든 다르면 `bytes`(`detail` 에 zip 이름). **같은 zip 경로**(접두 뗀 뒤)가 두 zip 에 있고 **바이트가 다르면** `{kind:"zip_conflict", path:<zip 경로>, detail:"zip#1 a.zip 와 zip#2 b.zip 의 같은 경로 내용이 다름 — 어느 쪽이 배포될지 정할 수 없음"}` → **「대조 불가」**. 같으면 한 번만 대조한다. **이 규칙은 존재 대조 항목(`.class`)에도 적용한다**(D66 — 한 MR 의 두 zip 이 같은 클래스를 다르게 담았으면 빌드가 어긋난 신호. head 와의 바이트 대조 생략(D38)은 그대로이고 zip 끼리만 비교한다). **서로 다른 배치**로 같은 원본을 담은 항목(소스판 `src/main/webapp/html/a.html` ↔ WAR 판 `html/a.html`)은 zip 경로가 달라 이 규칙에 걸리지 않고 **head 비교에 맡긴다**(D65) — 틀린 쪽만 `bytes` 불일치(둘 다 틀리면 2건), 둘 다 head 와 같으면 충돌이 아니다.
+   - `bytes_skipped` = 존재 대조(`compare: "exists"`)한 zip 항목 중 **그 소스 경로가 어느 zip 에서도 바이트 대조되지 않은 것**(D60 — 소스판에서 `Foo.java` 를 바이트 대조했으면 class 판의 `Foo.class`·`Foo$1.class` 는 생략 목록에 남기지 않는다. 바이트 대조가 존재 대조보다 센 증거). 존재 대조 항목의 판독(CRC)·유형 검사(AC⑨-9)는 그대로.
+   - `download`·`corrupt` 는 **zip 마다**(`detail` 에 zip 이름). **주석 SHA(①)는 「최소 한 zip」 규칙(D63)**: zip 이 둘 이상이면 주석이 head 와 일치하는 zip 이 **하나라도** 있으면 통과하고, 주석이 **있는데 다른** zip 은 지금처럼 `comment_sha` 불일치(낡은 zip — `detail` 에 zip 이름·그 주석), 주석이 **없는** zip 은 불일치가 아니라 `zips[i].comment_sha = null` + 부록 A zip 줄 「주석 없음」 표시만(class 판은 손으로 묶어 주석이 없는 관행). 모든 zip 에 주석이 없거나 일치하는 zip 이 하나도 없으면 `comment_sha` 불일치 1건(`detail` 에 zip 별 주석 상태). **zip 이 1개면 현행 그대로**(주석 없음 = 불일치).
+   - ④ 삭제 목록의 정규화 배치 `L4` = 합산 zip 의 배치 중 **하나라도 `maven-war` 면 `maven-war`**(WAR 꼴·소스 꼴 표기를 모두 수용 — `zipPathFor('maven-war')` 는 소스 접두가 없는 경로를 그대로 두므로 둘 다 같은 꼴이 된다) · 전부 `source` 면 `source`(현행) · **zip 이 없으면(삭제 전용 MR·zip 누락·혼합뿐) 어댑터 힌트, 없으면 `source`**(D59). R3-1 「삭제 경로가 zip 에도 있음」 검사는 합산 `entries` 로.
+5. **어댑터 키(D59 — D37 변경)**: `projects.<이름>.deployLayout: "source"|"maven-war"` 는 **값·형식·검증(`AdapterError`) 그대로**, 의미만 「판별 못 할 때의 기본값(힌트)」 — 3 의 시험 폴백과 4 의 ④ zip 없음 폴백에만 쓴다. 키가 있어도 zip 에 표지가 있으면 **표지가 이긴다**. 기존 어댑터는 무변경·무영향(키 있는 프로젝트는 폴백 때 그 값, 없는 프로젝트는 `source`).
+6. **`deploy.json`(SC-3)**: `zip` 은 **합산 요약**으로 유지(기존 소비자 불변 — `report.mjs:365`·`:93`): `attachment` = zip 이름을 `, ` 로 이은 문자열(1개면 지금과 같다) · `downloaded` = 전부 받았을 때 `true` · `comment_sha` = head 와 일치하는 주석이 있으면 그 값, 없으면(전부 없음·전부 다름) `null`(zip 1개면 현행 — 그 zip 의 주석 원문) · `entries` = 접두 뗀 항목의 합집합(정렬·중복 제거) · `bytes_source` 그대로 · `layout` = 모든 zip 이 같으면 그 값, 다르면 `"mixed"`, **zip 이 없으면 힌트값**(`해당 없음`·제외·삭제 전용·zip 누락에도 항상 기록 — AC⑨-12 의 「항상」 유지, 값의 뜻만 「힌트」로) · **`layout_source`** `"signature"|"probe"|"adapter"|"default"|"mixed"`(zip 없음 = `adapter`|`default`) · **`prefix`** = 1개면 그 값(`""` 가능), 여럿이면 `null`, zip 없으면 `null` · `bytes_skipped` 합집합. 새 배열 **`zips: [{ attachment, downloaded, comment_sha, entries, layout, layout_source, prefix, bytes_skipped }]`**(zip 별 상세, zip 없으면 `[]`). `mismatches.kind` 에 **`layout_ambiguous`**(`path:null`)·**`zip_conflict`**(`path` = zip 경로) 추가 — 둘 다 「대조 불가」군. `expected.*`·`bodyDeletedList` 불변.
+7. **표시**(`report.mjs` + SKILL §8 — D47 정신: 헤더에는 넣지 않는다): (가) 부록 A 의 zip 줄을 zip 마다 한 줄 `zip#<순번> <이름>(주석 <7자|없음> · 배치 <layout>(<layout_source>) · 접두 <prefix|없음>)` 로(1개면 지금 줄에 배치·접두만 붙는다). `zips` 가 없는 구 산출물(1.3.2 이전 `deploy.json` 으로 `--resolve` 재실행)은 지금의 한 줄 그대로(render 가 `zips` 부재를 허용한다) (나) §8 터미널 요약 「배포본 대조 결과」 항목에 「배치 <layout>(<근거>)」 + zip 이 둘 이상이면 「zip n개 합산」 (다) `mismatchSummary` 의 종류 분류: `layout_ambiguous` 는 `path:null` 군(이름만), `zip_conflict` 는 `path` 있는 군(경로 3개 + 외 n건).
+
+- 기각: 작성자가 본문에 배치를 적게 하는 작성 규칙 — 사람이 또 적어야 하고 틀리면 지금과 같은 오탐(D57). 기대 목록 시험만으로 판별(불일치 적은 쪽) — 1.3.2 (C) 기각 사유 그대로(D57). 판별 실패 전부 「대조 불가」 — 파일 1개 빠진 흔한 zip 도 이유 없는 대조 불가(D58). 키 폐기 — WAR 프로젝트의 삭제 전용 MR 이 다시 오탐(D59). 키 + `"auto"` 값 — 기존 어댑터에 적힌 `maven-war` 가 소스 zip 을 계속 틀리게 함(D59). 댓글 zip 까지 합산 — 낡은 zip 의 주석·초과 항목 오탐(D60). 마지막 zip 1개 유지 — 표본 (다) 불일치 잔존(D60).
+- 알려진 한계(§6): 표지도 없고 시험도 안 갈리는 zip 은 힌트/기본값 배치로 불일치가 난다(리뷰어가 부록 A 의 「배치 … (default)」를 보고 판단). 접두 제거 조건이 기대 경로 첫 조각과 겹치면(최상위 폴더 이름이 `html` 등) 떼지 못해 불일치 — 드물고 부록 A 에 접두 「없음」으로 보인다.
+
+**AC(테스트로 검증 — `tests/mr-review/{adapter,deploy,report}.test.mjs`)**
+
+- AC⑬-1. (접두 + WAR, 키 없음) 기대 = `src/main/webapp/html/a.html`·`src/main/resources/mapper/a.xml`·`src/main/java/com/example/acct/Foo.java` · zip = `app/html/a.html`(head 바이트)·`app/WEB-INF/classes/mapper/a.xml`(head 바이트)·`app/WEB-INF/classes/com/example/acct/Foo.class`·`app/WEB-INF/classes/com/example/acct/Foo$1.class` → `DEPLOY 일치` · `zip.layout = "maven-war"` · `zip.layout_source = "signature"` · `zip.prefix = "app/"` · `zip.entries` 는 접두 뗀 이름 · `bytes_skipped` = `Foo$1.class`·`Foo.class`(zip 경로, 접두 없이) · `zips.length = 1`.
+- AC⑬-2. (같은 프로젝트, 소스 zip, 어댑터 `deployLayout = "maven-war"`) zip = `src/main/webapp/html/a.html`·`src/main/resources/mapper/a.xml`·`src/main/java/com/example/acct/Foo.java`(전부 head 바이트) → `일치` · `layout = "source"` · `layout_source = "signature"`(힌트보다 표지 우선) · `bytes_skipped = []`.
+- AC⑬-3. (혼합) zip = `src/main/java/com/example/acct/Foo.java` + `WEB-INF/classes/mapper/a.xml` → `{kind:"layout_ambiguous", path:null}`(detail 에 zip 이름) · `대조 불가` · `missing_in_zip`·`extra_in_zip` 없음(그 zip 은 대조 안 함) · `entries` 에는 두 항목.
+- AC⑬-4. (표지 없음 → 시험) 기대 = `src/main/webapp/html/a.html`·`src/main/webapp/html/b.html` · zip = `html/a.html`·`html/b.html`(head 바이트) → `일치` · `layout = "maven-war"` · `layout_source = "probe"` · 접두 `""`(`html/` 은 기대 사상 경로의 첫 조각이라 떼지 않는다).
+- AC⑬-5. (표지 없음 → 시험 실패 → 힌트/기본값) 같은 기대에 zip = `html/a.html` 만 → 키 없음: `layout = "source"` · `layout_source = "default"` · `불일치`(`missing_in_zip` 2건(소스 경로) · `extra_in_zip` 1건 `html/a.html`) · 어댑터 `deployLayout = "maven-war"` 면 `layout_source = "adapter"` · `missing_in_zip` 1건(`src/main/webapp/html/b.html`, detail 에 `html/b.html`) · `extra_in_zip` 0.
+- AC⑬-6. (zip 2개 — 소스판 + class 판, 두 zip 주석 = head) 본문 첨부 `src.zip` = `src/main/java/com/example/acct/Foo.java`·`src/main/webapp/html/a.html`(head 바이트) · `classes.zip` = `WEB-INF/classes/com/example/acct/Foo.class`·`WEB-INF/classes/com/example/acct/Foo$1.class` → `일치` · `zip.attachment = "src.zip, classes.zip"` · `zips.length = 2` · `zips[0].layout = "source"`·`zips[1].layout = "maven-war"` · `zip.layout = "mixed"`·`layout_source = "mixed"`·`prefix = null` · `bytes_skipped = []`(`Foo.java` 가 소스판에서 바이트 대조됨) · `entries` = 네 항목.
+- AC⑬-7. (zip 2개 충돌) (가) 같은 zip 경로: WAR zip 둘(`a.zip`·`b.zip`)이 `WEB-INF/classes/com/example/acct/Foo.class` 를 **다른 바이트**로 담음 → `{kind:"zip_conflict", path:"WEB-INF/classes/com/example/acct/Foo.class"}`(detail 에 `zip#1 a.zip`·`zip#2 b.zip`) · `대조 불가`(D66 — `.class` 에도) · 같은 바이트면 `일치`(한 번만 대조) · 소스 zip 둘이 `src/main/webapp/html/a.html` 을 다르게 담아도 `zip_conflict`. (나) 교차 중복(D65): AC⑬-6 에서 `classes.zip` 에 `html/a.html` 을 **head 와 다른 바이트**로 추가 → `zip_conflict` 없음 · `{kind:"bytes", path:"src/main/webapp/html/a.html"}`(detail 에 `zip#2 classes.zip`) · `불일치` · head 와 같은 바이트면 `일치`.
+- AC⑬-8. (zip 2개, 주석 — D63) `src.zip` 주석 = head · `classes.zip` 주석 **없음** → `일치` · `zips[1].comment_sha = null` · `zip.comment_sha` = head · 부록 A 의 `zip#2` 줄에 「주석 없음」. `classes.zip` 주석이 **다른 SHA** → `comment_sha` 불일치 1건(detail 에 `zip#2 classes.zip`과 그 주석) · 둘 다 주석 없음 → `comment_sha` 불일치 1건 · `zip.comment_sha = null`. zip 1개 주석 없음 → 불일치(1.3.0 테스트 불변).
+- AC⑬-15. (중복·같은 이름) 본문에 같은 링크(같은 `secret`)가 두 번 → `zips.length = 1` · 다른 `secret` 의 같은 파일명 `deploy.zip` 둘 → `W/zip/1-deploy.zip`·`2-deploy.zip` 둘 다 받아 둘 다 대조(`zips.length = 2`, `zip.attachment = "deploy.zip, deploy.zip"`).
+- AC⑬-9. (④ 와 배치) zip 이 `maven-war`(표지) 인 MR 에서 본문 삭제 `WEB-INF/classes/com/example/acct/Old.class` ↔ 기대 삭제 `src/main/java/com/example/acct/Old.java` → `deleted_list` 불일치 없음(AC⑨-7 그대로) · zip 2개(mixed) 여도 같다(`L4 = maven-war`) · **zip 없는 삭제 전용 MR**: 어댑터 `"maven-war"` 면 통과, 키 없으면 `deleted_list` 불일치(`source` 정규화 — 현행).
+- AC⑬-10. (접두 반복·조건) zip = `app/build/WEB-INF/classes/mapper/a.xml` → `prefix = "app/build/"` · zip 항목이 `src/main/…` 로 시작하면(`src` 는 뗄 수 없는 이름) `prefix = ""` · 기대 소스 경로가 `app/x.sql`(targets 에 걸림)이면 zip `app/x.sql` 의 `app/` 은 떼지 않는다(`prefix = ""`, 일치).
+- AC⑬-11. (기존 불변) 1.3.2 AC⑨-2~⑨-12·R1-1~R5-2 테스트는 어댑터 `"maven-war"` 를 둔 채 **표지로 같은 배치가 잡히므로** 전부 통과(`layout_source = "signature"` 가 되는 것 외 단언 불변). `source` 레이아웃 기존 테스트(`deploy.test.mjs` 1.3.0·1.3.1 분)도 불변(`layout_source = "signature"`·`prefix = ""`·`zips.length = 1`).
+- AC⑬-12. (렌더·문구) `deploy.json` 픽스처 `zips` 2건(둘째 `comment_sha: null`) → 부록 A 에 zip 줄 2개(`zip#1 …`·`zip#2 …` · 각각 `배치 source(signature)`·`배치 maven-war(signature)` · `접두 없음` · 둘째 줄 `주석 없음`) · 1건 `prefix = "app/"` 픽스처 → `접두 app/` · `zips` 키가 없는 1.3.2 꼴 픽스처 → 기존 한 줄 그대로(기존 render 테스트 불변) · SKILL.md §8 터미널 요약 배포본 항목에 「배치」·「합산」 문구 실재(grep) · `mismatchSummary` 단위: `layout_ambiguous` 1건 → `배포본 대조 불가 — layout_ambiguous`(괄호 없음) · `zip_conflict` 2건 → `zip_conflict 2건(<p1>, <p2>) · 전체 목록 부록 A`.
+- AC⑬-13. (어댑터) `deployLayout` 검증·resolved 보존은 1.3.2 AC⑨-1 그대로 통과(값 집합·오류 메시지 불변).
+- AC⑬-14. (9단계 실측) 1.3.3 설치본으로 표본 (가)(나)(다) MR 을 재실행 → 셋 다 「일치」, 부록 A 에 배치·접두·zip 수가 서술과 같다.
+
+### 3.S1 `normBody` 가 본문의 `Foo$X.class` 를 내부 클래스로 접을 때 head 에 같은 이름의 실제 파일이 살아 있는지 확인하지 않는다 (1.3.2 보안 지적)
+
+**현상**: `Foo.java` 를 지우는 MR 본문에 `WEB-INF/classes/com/example/acct/Foo.class`·`…/Foo$X.class` 삭제를 적었는데, `Foo$X.class` 가 내부 클래스 산출물이 아니라 **리소스 폴더에 있던 별도 파일**(`src/main/resources/com/example/acct/Foo$X.class`, 이번 MR 이 건드리지 않음)이면 — 엔진은 `Foo$X.class` 를 `Foo.class` 로 접어 삭제 목록 「일치」. 배포자가 본문대로 지우면 살아 있는 파일이 사라진다. 1.3.2 R3-1(삭제 경로가 zip 에도 있음)은 zip 에 없는 파일이라, R4-2(본 클래스 삭제 요구)는 본문에 `Foo.class` 도 있으니 막지 못한다.
+
+**재현 근거**: 1.3.2 push 뒤 자동 보안 리뷰 지적(사용자 결정 2026-10-22 「실측 뒤 묶어서」). 실측 V2 에서 작성자가 내부 클래스를 zip 에 넣는 관행(3차 실사용 `bytes_skipped` 4건·표본 (가) `Foo$1.class`)이 확인돼 본문 삭제 목록에도 내부 클래스가 적힐 개연성이 있다. 코드: `deploy.mjs:395` `normBody` = 본문 경로가 기대 삭제에 없으면 `findOuterClass(zp, o => expClasses.has(o) && bodyZip.has(o))` 로 접는다 — head 조회 없음.
+
+**원인**: 내부 클래스 접기(D38·R1-1·R4-2)가 「`$` 든 `.class` 는 그 `.java` 의 산출물」을 가정하고, 그 이름이 **배포 트리에 실제로 존재하는 다른 파일**일 가능성을 보지 않는다. 워크트리 모드는 head 트리가 있어 확인할 수 있고, diff-only 는 트리 조회를 하지 않는다(D22).
+
+**수정 방향(사용자 결정 2026-10-23 — D61)**
+
+1. **접기 전 head 트리 조회(워크트리 모드)**: 본문 경로 `zp`(④ 정규화 뒤 zip 경로)를 접으려 할 때, `zp` 로 사상될 수 있는 **소스 경로 후보 전부**를 head 에서 찾는다 — `L4 = maven-war` 기준 역사상: `src/main/webapp/<zp>` · `zp` 가 `WEB-INF/classes/<rest>` 꼴이면 `src/main/resources/<rest>`·`src/main/java/<rest>`(Java 폴더의 리소스)·**`src/main/java/<rest 의 .class 를 .java 로>`**(그 이름의 **살아 있는 소스**가 있으면 `Foo$X.class` 는 그 산출물이라 지우면 안 된다) · 그리고 `zp` 그대로(그 밖 경로). 하나라도 `git ls-tree <head> -- <후보>` 에 항목이 있으면(모드 무관 — 파일·링크·서브모듈 전부 「있음」) **접지 않고** `{kind:"map_conflict", path:zp, detail:"삭제 지시가 head 의 실제 파일을 가리킴: <후보 경로>"}` → **「대조 불가」**. 없으면 지금처럼 접는다(AC⑨-7·R1-1·R4-2 불변).
+2. **diff-only**: 트리 조회를 하지 않는다(D22 유지). 접기가 **성립하는 경우**(본문 경로가 기대 삭제 목록에 없고, `findOuterClass` 가 바깥 클래스를 찾았으며 그 바깥 클래스가 기대 삭제·본문 양쪽에 있어 — R4-2 — 지금이라면 접혔을 경우)에는 접지 않고 `{kind:"map_conflict", path:zp, detail:"head 존재 확인 불가(diff-only) — 내부 클래스 삭제 지시를 확인할 수 없음"}` → 「대조 불가」. 접기가 필요 없는 본문(내부 클래스를 적지 않음)은 지금과 같다.
+3. 조회 결과는 `deploy.json` 에 따로 적지 않는다(`map_conflict` 의 `detail` 로 충분). 호출 수 = 접기가 성립하는 본문 경로 수 × 후보 수(≤ 5) — 내부 클래스 수만큼이라 작다.
+
+- 기각: diff-only 도 GitLab 파일 API 로 존재 조회 — D22 변경·API 호출 증가, 폴백(대조 불가)이 fail-closed 로 충분. 접기 규칙 폐기 — D38·AC⑨-7·R4-2 변경(정상 MR 이 불일치).
+- 알려진 한계(§6): 기대 삭제 `Foo.class` 자체와 같은 이름의 리소스(`src/main/resources/p/Foo.class`)는 이 검사 대상이 아니다(접기가 아니라 기대 목록 일치 — 배포 도구 몫).
+
+**AC**
+
+- AC-S1-1. (워크트리) head 에 `src/main/resources/com/example/acct/Foo$X.class`(MR 이 안 건드림)가 있고 MR 이 `src/main/java/com/example/acct/Foo.java` 를 지우며 본문 삭제 = `WEB-INF/classes/com/example/acct/Foo.class`·`…/Foo$X.class` → `{kind:"map_conflict", path:"WEB-INF/classes/com/example/acct/Foo$X.class"}`(detail 에 `src/main/resources/com/example/acct/Foo$X.class`) · `대조 불가`.
+- AC-S1-2. 같은 픽스처에서 head 에 그 파일이 없으면 `일치`(1.3.2 AC⑨-7 그대로) · 후보가 `src/main/java/com/example/acct/Foo$X.class`(Java 폴더의 리소스)·`src/main/webapp/WEB-INF/classes/com/example/acct/Foo$X.class`·**`src/main/java/com/example/acct/Foo$X.java`(살아 있는 소스 — MR 이 안 건드림)** 로 있어도 각각 `map_conflict`(detail 에 그 후보 경로).
+- AC-S1-3. (diff-only) 같은 본문(내부 클래스 포함) → `{kind:"map_conflict", path:"…/Foo$X.class"}`(detail 에 「diff-only」) · `대조 불가` · 본문이 `Foo.class` 만 적으면 `일치`.
+- AC-S1-4. 기대 삭제 목록에 **이미 있는** 이름(`expDel.has(zp)`)은 조회하지 않는다 — `Foo$Bar.java` 삭제 ↔ 본문 `Foo$Bar.class`(R1-1 테스트) 불변.
+
+### 3.⑭ 의도 대조표 셀의 `|` 를 이스케이프하지 않아 검증 표 행 원문이 들어오면 리포트 표가 깨진다
+
+**현상**: 리포트 「1. 의도 대조표」(`report.mjs:195`)는 `| ${criterion} | ${result} | ${location} (${basis}) |` 로 행을 만든다. 1.3.2 D41 은 `criterion` 을 「메인이 검증 표에서 읽은 원문 행」으로 정했는데, 원문 행에는 표 칸 구분자 `|` 가 들어 있어(`| M3 틀린 비밀번호 | 200 | 탭 숨김 |`) 셀에 넣으면 6칸으로 벌어져 GitLab 에서 깨져 보인다. 3차 실사용은 메인이 **첫 칸만** 쓰는 우회로 넘겼다(`findings.json.intent` 34행, `|` 포함 0건).
+
+**재현 근거**: 3차 실사용 `findings.json.intent` = 34행 · `criterion` 길이 5~12자(첫 칸만) · 리포트 1절 표 정상. `report.mjs` 에 `|` 이스케이프 함수 없음(grep 0건). 부록 A 검사표(`:250-261`)의 셀도 외부 입력(첨부 파일명·후보 문서 경로·`deployNote`·무시한 댓글 사유)을 그대로 넣는다.
+
+**원인**: 렌더러가 마크다운 표 셀의 특수문자를 처리하지 않고, SKILL.md §6-5 는 「원문 행」이라고만 적어 행 전체를 넣으라는 뜻으로 읽힌다.
+
+**수정 방향(사용자 결정 2026-10-23 — D56, 둘 다)**
+
+1. **렌더러**: `report.mjs` 에 셀 정규화 `cell(s)` — `String(s)` 의 줄바꿈(`\r?\n`)은 공백 하나로, 이스케이프되지 않은 `|` 는 `\|` 로(이미 `\|` 인 것은 그대로 — 이중 이스케이프 금지). 의도 대조표 행(`criterion`·`result`·`location`·`basis`)과 부록 A 검사표 행(`:250-261` 의 값 칸 전부)에 적용한다. 고정 문구 행(`(검증 표 없음)`·축약 ① 「… 외 n건 — 부록 A」·조기 종료 블록 `:333`)은 바꾸지 않는다. 재리뷰 파서(`check.mjs:242` `APPENDIX_D_RE`)는 부록 D 의 불릿 줄만 읽고 표를 읽지 않으므로(조회 사실) 영향 없다.
+2. **SKILL.md §6-5**: 「`criterion` = 메인이 검증 표에서 읽은 **수용기준·주장을 적은 첫 칸의 원문** — 첫 칸이 번호·ID 만이면(숫자·`M3` 같은 짧은 표식) **그 다음 칸**(D67 — 번호는 `row` 에 이미 있다). 행 전체가 아니다(다른 칸은 기대·실제 값이라 `result`·`location` 과 겹친다). 불릿 목록이면 항목 문구 전체. 셀의 `|`·줄바꿈은 `render` 가 처리한다」.
+
+- 기각: 렌더러만 — 행 전체가 한 셀에 들어가 읽기 불편. SKILL.md 만 — 첫 칸에도 `|`(코드 조각) 가 올 수 있어 다시 깨짐.
+
+**AC**
+
+- AC⑭-1. `findings.json` 픽스처 `intent[0].criterion = "a | b"`·`location = "x.java:10\ny"` → render 결과의 의도 대조표 행이 `| a \| b | PASS | x.java:10 y (작성자 주장) |`(이스케이프 안 된 `|` 로 나누면 칸 3개) · `\|` 실재.
+- AC⑭-2. 부록 A 검사표: `check.json` 픽스처 `attachments[0].filename = "a|b.zip"`·`ignoredComments[0].reason = "x|y"` → 그 행들이 `\|` 로 이스케이프되고 칸 수 2.
+- AC⑭-3. 기존 render 테스트(`report.test.mjs`)의 의도 대조표·검사표 단언 불변(`|` 없는 입력은 출력 동일).
+- AC⑭-4. SKILL.md §6-5 에 「첫 칸」·「수용기준」·「행 전체가 아니」·「번호·ID」(또는 「다음 칸」) 문구 실재(grep).
+
+### 3.⑯ Claude 검토자가 `W` 밖(세션 scratchpad 루트)에 임시 파일을 남기고 cleanup 이 지우지 못한다
+
+**현상**: Claude 검토자(서브에이전트)가 diff 임시 파일을 세션 scratchpad **루트**에 만들고 끝났다. cleanup(1.3.1 D23 — `W` 최상위의 허용 9종 외 삭제)은 `W` 안만 다루므로 못 지웠고, 사용자 세션이 손으로 지웠다. 마스킹되지 않은 diff 원문이 세션 끝까지 남는 F5·F7 사각지대다.
+
+**재현 근거**: 사용자 세션 보고(파일은 수동 삭제돼 남아 있지 않다 — 3차 실사용 scratchpad 루트 조회: 어댑터 사본·렌즈 메모 등 **사용자 파일만** 있음). 코드: `report.mjs:431` `cleanup({work})` 는 `work` 아래만 순회. SKILL.md §5 Claude 검토자 프롬프트(`:137`)는 팩 경로와 출력 경로만 주고 임시 파일 위치를 말하지 않는다.
+
+**원인**: 서브에이전트의 기본 작업 위치가 세션 scratchpad 루트라, 지시가 없으면 거기에 쓴다. 루트에는 사용자 파일이 섞여 있어 cleanup 범위를 넓힐 수 없다.
+
+**수정 방향(사용자 결정 2026-10-23 — D55, 검토자 지시 + 종료 자가 점검 · 코드 변경 없음)**
+
+1. **SKILL.md §5 Claude 검토자 프롬프트**에 1문장: 「임시 파일(diff 발췌·메모 등)이 필요하면 **반드시 `W/` 아래에만** 만들어라(이름은 `tmp-` 로 시작 — `snapshot.json`·`mr.json` 등 작업 파일 9종과 `review-*.json` 이름은 쓰지 마라. cleanup 이 지운다). `W` 밖(세션 scratchpad 루트·홈·`/tmp`)에는 아무것도 쓰지 마라.」 `W` 안의 임시 파일은 허용 9종 밖이라 cleanup 이 `extra` 로 지운다(D23 — `W/tmp/` 규약을 새로 두지 않는다).
+2. **종료 자가 점검(§8)**: 검토자를 띄우기 **직전**(§5)에 scratchpad 루트와 `<루트>/mr-review/` 두 단계의 항목 이름을 `W/root-before.txt` 에 적어 두고(`ls -A`), §8 자가 점검 F7 줄에서 같은 두 단계를 다시 나열해 **`root-before.txt` 에 없는 새 항목 이름**을 보고한다(어댑터 마스킹 적용) — **지우지 않는다**(사람이 확인해 지운다). `root-before.txt` 는 `W` 안이라 cleanup 이 지운다(자가 점검은 cleanup **앞**에서 한다 — 「검토자 종료 확인 → 자가 점검 비교 → cleanup」 순). 새 항목 0 이면 「W 밖 새 항목 없음」 1줄. 비교는 **검토자를 띄운 뒤의 모든 종료 경로**(§0 공통 종료 절차 — 정상·`ERR`·사용자 중단)에서 「검토자 종료 확인」 바로 다음에 한다(비교 결과는 메인이 기억해 cleanup 뒤 보고에 적는다). `root-before.txt` 가 없는 경로(§3 조기 종료 — 검토자 미기동 · §9 `--resolve` 재실행)는 비교 해당 없음(줄 생략).
+
+- 기각: cleanup 범위 확대 — 루트의 사용자 파일 오삭제 위험. 메인이 새 항목 자동 삭제 — 다른 작업의 파일을 지울 수 있음.
+
+**AC**
+
+- AC⑯-1. SKILL.md §5 Claude 검토자 프롬프트 문단에 「`W/` 아래에만」(또는 「W 아래에만」)·「쓰지 마라」 실재(grep).
+- AC⑯-2. SKILL.md 에 `root-before.txt` 가 §5(기록)·§8(비교) 두 곳에 실재하고, §8 자가 점검 F7 줄에 「W 밖 새 항목」·「지우지 않는다」 문구 실재(grep). 비교가 cleanup 보다 앞에 있다(§8 순서 문장) · §0 공통 종료 절차에 비교 단계가 들어 있고 조기 종료·`--resolve` 는 「해당 없음」 문장 실재(grep).
+- AC⑯-3. 정상 `W` 에 `root-before.txt` 를 두고 cleanup → `extra` 에 포함돼 삭제(기존 AC⑤-1 방식).
+
+### 3.⑮ companion 실행 로그가 명령을 96자에서 잘라 경로 감시가 뒤쪽 경로를 못 본다 (문구만)
+
+**현상**: codex companion(외부 플러그인 1.0.6)은 실행 로그 `[codex] Running command: …`·`Command completed: …` 를 만들 때 명령을 공백 접기(연속 공백 → 하나) 뒤 **96자에서 잘라 `...`** 를 붙인다(`scripts/lib/codex.mjs:90` `shorten` · `:247`·`:277` 호출 — 읽기 전용 확인). `Running command: /bin/bash -lc '` 접두가 ~20자라 실제 명령은 앞 ~75자만 남는다. 그 뒤에 적힌 경로(예 `cat <워크트리>/a.java <워크트리>/b.java ~/notes/x.md` 의 마지막)는 경로 감시(1.3.1 D32·1.3.2 D39·D49)가 볼 수 없다. 외부 플러그인이라 엔진이 못 고친다.
+
+**재현 근거**: companion 원문 위 줄 · 1.3.2 §6 「검증 필요」가 이미 「잘린 형식이 버전마다 같은지」를 실측 대상으로 뒀고 3차 실사용에서 확인됐다(사용자 세션 보고).
+
+**수정 방향(사용자 결정 2026-10-23 — D54, SKILL.md 문구 + 터미널 요약 1줄 · 코드 변경 없음)**
+
+1. SKILL.md §5 경로 감시 항목 끝에 **한계 문단**: 「**한계**: companion 실행 로그는 명령을 공백 접기 뒤 96자에서 잘라 `...` 를 붙인다(1.0.6 실측 — `Running command:` 접두 포함). 잘린 명령의 뒤쪽 경로는 감시하지 못한다. 끝이 `...` 인 `Running command:` 줄 수를 세어 둔다(=「잘린 명령 n건」). D49 의 「잘린 후보」 규칙은 **보이는 부분**에만 적용된다.」
+2. §8 터미널 요약에 「경로 감시 한계: 잘린 명령 n건(companion 로그 96자)」 1줄(0 이면 생략). 리포트 헤더에는 넣지 않는다(D47 정신 — 헤더는 리뷰 자체 상태만).
+
+- 기각: 리포트 헤더 표시 — 매번 뜨는 줄은 무시된다. 엔진 보완(Codex 세션 원본 로그) — 비목표(별도 트랙 후보).
+
+**AC**
+
+- AC⑮-1. SKILL.md §5 경로 감시에 「96자」·「`...`」·「한계」·「잘린 명령」 문구 실재(grep, `report.test.mjs` 의 SKILL.md 문구 테스트 방식).
+- AC⑮-2. SKILL.md §8 터미널 요약에 「경로 감시 한계: 잘린 명령 n건」 실재(grep).
+
+## 4. 영향 범위
+
+| 대상 | 변경 |
+|---|---|
+| SC-2 어댑터 계약 | `projects.<이름>.deployLayout` **의미 변경**(고정 → 판별 못 할 때의 기본값·삭제 전용 MR 의 ④ 배치). 값·형식·검증·기본값 불변. plan SC-2 문장 정정은 impl 트랙(「1.3.3에서 변경」), 이 spec 이 정본 |
+| SC-3 `deploy.json` | `zip` 요약에 `layout_source`·`prefix` 추가, `layout` 에 `"mixed"` 값 · `attachment` 가 여러 이름(`, ` 연결) 가능 · `comment_sha` = head 와 일치하는 주석(없으면 `null`) · 주석 규칙 「최소 한 zip」(D63) · 새 배열 `zips[]` · zip 저장 `W/zip/<순번>-<이름>` · `mismatches.kind` 에 `layout_ambiguous`·`zip_conflict`(둘 다 대조 불가군) · `map_conflict` 의 새 detail 2종(S1) — plan SC-3 정정도 impl 트랙 |
+| `adapter.mjs` | 변경 없음(검증·resolved 그대로). 주석의 「고정」 문구만 정정 |
+| `deploy.mjs` | zip 전부 수집·접두 제거·표지/시험 판별·zip 별 ②③·합산·`zip_conflict`·`layout_ambiguous`·④ `L4` 선택·S1 head 트리 조회(`gitType` 류 `git ls-tree` 재사용)·diff-only 폴백 |
+| `report.mjs` | `cell()` 이스케이프(의도 대조표·검사표) · 부록 A zip 줄(배치·근거·접두, zip 별) · `mismatchSummary` 종류 분류 2종 추가 |
+| SKILL.md | §5 Claude 검토자 프롬프트 「W 아래에만」 + `root-before.txt` 기록 · §5 경로 감시 「한계」 문단 · §6-5 `criterion` = 첫 칸 · §8 터미널 요약(배치·합산·경로 감시 한계)·자가 점검 F7(W 밖 새 항목)·리포트 구성 문구(부록 A zip 줄) |
+| README 3종 | 1.3.3 한 줄(결함 4건 + 보안 1건) + 어댑터 안내 `deployLayout` 문장 정정(「… 를 적는다」 → 「… 는 판별 못 할 때의 기본값」) |
+| plugin.json·marketplace.json | 1.3.2 → 1.3.3 |
+| 1.3.2 spec D37 | impl 트랙이 D37 행 끝에 「1.3.3 D59 로 의미 변경(힌트) — spec `2026-10-23-mr-review-1-3-3-fixes.md` 3.⑬」 부기(재론 아님) |
+| 어댑터 문서(프로젝트 쪽) | 변경 불요. WAR 프로젝트는 키 없이도 zip 표지로 동작하고, 삭제 전용 MR 을 위해 두고 싶으면 그대로 둔다 |
+| `tests/mr-review` | deploy(⑬ 14건·S1 4건)·report(⑭ 4건·⑬-12·⑮·⑯ 문구)·adapter(⑬-13) — 기존 전부 불변(AC⑬-11) |
+
+## 5. 검증 · 완료 조건
+
+- 각 AC 를 `tests/mr-review/*.test.mjs` 에 **먼저 RED 로** 추가한 뒤 구현으로 GREEN(TDD). 게이트 = SC-7 T1~T7(기존 테스트 전부 통과 · T6 식별자 패턴 0건 · T7 AI 서명 0건 · T5 `$N` 0건).
+- 4단계 review-loop(spec) — 이 spec 을 적대검증한다(D53). 5·6 생략.
+- 8단계 impl 적대검증(review-loop `--phase impl`) 필수(하한). 보안 크리티컬 = **yes**(호출자(메인) 지정 — 접촉면 = zip 접두 제거·배치 판별(혼합 zip 수용 여부)·다중 zip 합산(충돌)·④ 정규화 배치 선택·S1 head 조회·표 셀 이스케이프).
+- 9단계: 1.3.3 릴리스 커밋·push(사용자 확인) → 설치본 갱신 → 표본 (가)(나)(다) MR 재실행 「일치」(AC⑬-14) · 검증 표가 있는 MR 로 ⑭ 표 정상 · 터미널 요약에 「경로 감시 한계」·「배치」 줄 · 자가 점검 「W 밖 새 항목」 줄.
+
+## 6. 잔여 리스크 (DEFERRED · 실측) · 미해결 질문
+
+**미해결 질문: 없음.** 설계 선택 9건(경로·⑮ 범위·⑯·⑭·⑬ 4건·S1)과 harden-spec(2026-10-23 08:1x~08:2x, 이 세션)의 판단 갭 5건(H-A zip 주석·H-B META-INF 표지·H-C 교차 중복·H-D `.class` 충돌·H-E 첫 칸)은 전부 질문으로 해소됐고(사용자 지시로 메인이 추천안 입력) 사용자가 유예한 갭은 없다 — **DEFERRED 0건**. 사실 갭 10건은 코드 조회로 닫았다(`check.mjs:222` 첨부에 `secret` 있음 → 중복 제거 가능 · `deploy.mjs:312` 저장 경로가 파일명뿐 → 순번 접두 · `findOuterClass` 접기 성립 조건(R4-2) · `report.mjs` 표 행 조립 지점 = `:195`·`:250-261`·고정 문구 `:196`·`:219`·`:333` · 재리뷰 파서 `check.mjs:242` 는 표를 읽지 않음 · `cleanup` 범위 = `W`(`report.mjs:431`) · SKILL §9 는 §5 를 돌리지 않음 · `report.mjs:365` 가 `zip.attachment`·`comment_sha` 만 소비 · verdict 입력은 `deploy.result`·`applicable` 뿐(`report.mjs:106`) · javac 산출물 이름 규칙(내부·익명 클래스 = 바깥 이름 + `$`)).
+
+**검증 필요(실측 — repo 조회로도 사용자 결정으로도 닫히지 않는 외부 사실)**
+
+- 표본 (가)(나)(다) zip 의 실제 구조가 서술과 같은지(접두 1단계·내부 클래스·zip 2개의 배치) — 9단계 AC⑬-14. 실물이 남아 있지 않아 spec 은 서술을 사실로 썼다.
+- WAR 표지가 `WEB-INF/` 없이 `META-INF/` 만으로 오는 zip 이 실제로 있는지(있으면 WAR 로 읽힌다 — 의도).
+- 1.3.2 §6 의 Windows (마) 존재 검사(V1) — 여전히 미검증.
+- 실행 간 재현율 편차(두 모델이 어제 찾은 실결함 2건을 오늘 모두 놓침) — 운영 한계, 범위 밖. 프롬프트·온도가 아니라 모델 비결정성이라 엔진으로 닫히지 않는다.
+
+**수용된 한계(결정은 내려졌고 리스크만 기록)**
+
+- ⑬ 표지도 없고 시험도 안 갈리는 zip 은 힌트/기본값 배치로 불일치가 난다 — 부록 A 의 `(default)` 표기로 리뷰어가 안다(D58).
+- ⑬ 접두 제거는 「모든 항목 공유 + 기대 경로와 안 겹침」 조건이라 최상위 폴더 이름이 `html`·`WEB-INF` 등과 겹치면 떼지 못한다(불일치로 보임).
+- ⑬ 혼합 zip 은 대조 불가 — 작성자가 소스·WAR 를 한 zip 에 섞으면 리뷰어가 사람 판단으로 넘긴다.
+- ⑬ 표지 없음 + 시험 실패 + 힌트 없음이면 `source` 기준 목록이라, WAR 꼴로 일부만 든 zip 은 `missing`·`extra` 가 이중으로 보인다(`(default)` 표기로 안다 — D58).
+- ⑬ 소스 저장소 루트에 `META-INF/` 를 두고 그것을 배포 대상에 넣는 프로젝트는 소스 zip 이 「혼합」으로 읽힌다(D64 — 알려진 저장소에 없음, 생기면 표지 규칙 재검토).
+- ⑬ zip 둘 이상일 때 주석 없는 zip 은 head 증명을 다른 zip 에 기댄다(D63) — 주석 없는 class 판이 다른 head 의 빌드여도 기계는 모른다(D38 의 리스크와 같은 종류, 부록 A 「주석 없음」으로 리뷰어가 안다).
+- ⑬ zip 2개에서 바이트 대조된 소스의 `.class` 는 `bytes_skipped` 에 남지 않는다 — `.class` 바이트 자체는 여전히 미검증(D38 의 리스크 그대로).
+- S1 diff-only 에서 내부 클래스를 본문에 적은 삭제 MR 은 「대조 불가」 — fail-closed 비용(리뷰어가 워크트리 모드로 재실행하거나 사람 판단).
+- ⑮ 잘린 명령 뒤의 경로는 보지 못한다 — 터미널 요약의 건수로 리뷰어가 안다. 엔진 보완은 별도 트랙 후보.
+- ⑯ 검토자가 지시를 어기고 `W` 밖에 쓰면 자가 점검이 이름만 보고한다(삭제는 사람).
+
+## 재논의 금지(기결정)
+
+사용자 지시 「추천안으로 대신 답해줘」(2026-10-23 08:10)에 따라 **메인이 추천안(첫 선택지)을 입력**한 결정(이 세션 질의 9건, 08:0x~08:1x). 리뷰에서 다시 제안하지 않는다. 1.3.0 spec D1~D16 · 1.3.1 spec D17~D34 · 1.3.2 spec D35~D51 은 전부 승계한다(**D37 만 D59 로 의미 변경**).
+
+| D | 결정 | 근거 |
+|---|---|---|
+| D52 | 이 트랙 범위 = ⑬·⑭·⑯ + 1.3.2 보안 지적 S1 + ⑮(문구만). 재현율 편차·⑮ 엔진 보완·D38 재론·cleanup 범위 확대·1.3.2 비목표는 비목표 | 사용자 결정(2026-10-23 07:4x 「지금 1.3.3 트랙」) + 이 세션 Q2(⑮ 범위) |
+| D53 | 경로 = **경량, 단 4단계 spec 적대검증은 유지**. 생략 = 5 plan·6 plan 적대검증(5 생략의 자동 귀결). 근거 = 접촉 표면 무신호, 그러나 ⑬ 판별 규칙이 새 설계라 spec 에서 codex 가 한 번 두드린다. 하한(spec·harden·impl 적대검증) 유지. ledger(spec) = 이 spec 말미 `## 적대검증 ledger (spec)`, ledger(impl) = 그 아래 | 사용자 지시로 메인이 추천안 입력(Q1) — 1.3.2 D36 선례 + 설계 폭 |
+| D54 | ⑮ = SKILL.md §5 경로 감시 「한계」 문단(96자·`...`·잘린 명령 n건) + §8 터미널 요약 1줄. 리포트 헤더·엔진 보완 없음 | 사용자 지시로 메인이 추천안 입력(Q2) — 외부 플러그인, D47 정신 |
+| D55 | ⑯ = Claude 검토자 프롬프트 「임시 파일은 W 아래에만」 + §5 `W/root-before.txt` 기록 → §8 자가 점검에서 scratchpad 루트·`mr-review/` 두 단계의 새 항목 이름 보고(삭제 안 함, cleanup 앞). cleanup 범위 확대·자동 삭제 기각 | 사용자 지시로 메인이 추천안 입력(Q3) — 루트에 사용자 파일 공존 |
+| D56 | ⑭ = 둘 다 — `report.mjs` `cell()`(`|`→`\|`, 줄바꿈→공백, 의도 대조표·검사표) + SKILL.md §6-5 「`criterion` = 첫 칸(수용기준 칸) 원문」 | 사용자 지시로 메인이 추천안 입력(Q4) |
+| D57 | ⑬ 판별 = zip 마다 **표지 우선**(접두 뗀 뒤 루트 `WEB-INF/`·`META-INF/` → WAR, 루트 `src/` → 소스), 표지 없을 때만 기대 목록 시험(불일치 0 인 배치가 정확히 하나). 접두 제거 = 모든 파일 항목이 같은 첫 폴더 공유 + 그 이름이 `src`·`WEB-INF`·`META-INF` 아님 + 어느 배치의 기대 경로 첫 조각과도 안 겹침(반복), `prefix` 기록. 작성자 표기·시험만 판별은 기각 | 사용자 지시로 메인이 추천안 입력(Q5) — zip 만 보고 설명 가능, 섞인 zip 을 조용히 받지 않음(1.3.2 (C) 기각 사유 유지) |
+| D58 | ⑬ 모호 = 혼합(두 표지) → `layout_ambiguous` **대조 불가**. 표지 없음 + 시험 실패 → 어댑터 힌트 → 없으면 `source` 로 대조해 **불일치**(목록 노출). `layout_source` 기록. 전부 대조 불가·전부 source 는 기각 | 사용자 지시로 메인이 추천안 입력(Q6) — D34 우선순위 유지, 흔한 1건 누락은 작성자가 고칠 수 있게 |
+| D59 | ⑬ 어댑터 키 `deployLayout` **유지, 의미 = 판별 못 할 때의 기본값(힌트)** — 시험 폴백·zip 없는 ④ 정규화에만. 표지가 힌트보다 우선. 값·형식·검증·기본값 불변. **1.3.2 D37(프로젝트별 고정) 변경**. 폐기·`"auto"` 추가는 기각 | 사용자 지시로 메인이 추천안 입력(Q7) — 기존 어댑터 무변경, WAR 프로젝트 삭제 전용 MR 보호 |
+| D60 | ⑬ 다중 zip = **본문 zip 전부 합산**(없으면 댓글 마지막 1개). 기대 경로는 어느 zip 에서든 충족, 같은 zip 경로 다른 바이트 = `zip_conflict` 대조 불가(같으면 한 번 대조), 바이트 대조된 소스의 `.class` 는 `bytes_skipped` 제외, `comment_sha`·`download`·`corrupt` 는 zip 마다, ④ `L4` = 하나라도 WAR 면 WAR. `deploy.json.zip` 요약 유지 + `zips[]`. 마지막 1개·댓글 포함 합산은 기각 | 사용자 지시로 메인이 추천안 입력(Q8) — 표본 (다), 낡은 댓글 zip 오탐 회피 |
+| D61 | S1 = 접기 전 **head 트리 조회**(워크트리 — 역사상 후보 ≤4 를 `git ls-tree`, 하나라도 있으면 `map_conflict` 대조 불가) · **diff-only 는 접지 않고 `map_conflict` 대조 불가**(D22 유지). GitLab 파일 API 조회·접기 규칙 폐기는 기각 | 사용자 지시로 메인이 추천안 입력(Q9) — fail-closed, D38·AC⑨-7·R4-2 워크트리 불변 |
+| D62 | 이 세션(spec·harden)은 코드·테스트·SKILL.md·plan·README 를 수정하지 않는다. plan SC-2·SC-3·1.3.2 D37 부기·README 는 impl 트랙 몫 | 트랙 프롬프트 편집 범위(1.3.2 D42 방식) |
+
+harden-spec(2026-10-23 08:1x~08:2x, 이 세션)에서 확정 — 판단 갭 5건 전부 사용자 지시로 메인이 추천안 입력.
+
+| D | 결정 | 근거 |
+|---|---|---|
+| D63 | ⑬ zip 둘 이상일 때 주석 SHA(①) = **최소 한 zip** 이 head 와 일치하면 통과. 주석이 있는데 다른 zip = `comment_sha` 불일치, 주석 없는 zip = `zips[i].comment_sha = null` + 부록 A 「주석 없음」 표시만, 전부 없음·전부 다름 = 불일치 1건. zip 1개 = 현행 | 사용자 지시로 메인이 추천안 입력(갭 H-A) — class 판은 손으로 묶어 주석이 없는 관행, 소스판 주석이 head 를 증명 |
+| D64 | ⑬ WAR 표지 = 루트 `WEB-INF/` **또는 `META-INF/`**. 소스 루트 `META-INF/` 프로젝트는 혼합(대조 불가)으로 수용 | 사용자 지시로 메인이 추천안 입력(갭 H-B) — `META-INF/context.xml` 만 든 WAR zip 도 표지로 잡힘 |
+| D65 | ⑬ 서로 다른 배치로 같은 원본을 담은 두 zip 항목은 `zip_conflict` 가 아니라 **head 비교**(틀린 쪽만 `bytes`). `zip_conflict` 는 같은 zip 경로에만 | 사용자 지시로 메인이 추천안 입력(갭 H-C) — 작성자가 고칠 경로가 바로 보임 |
+| D66 | ⑬ `zip_conflict` 는 존재 대조 항목(`.class`)에도 적용 — zip 끼리 같은 경로 다른 바이트면 대조 불가(D38 의 head 대조 생략은 불변) | 사용자 지시로 메인이 추천안 입력(갭 H-D) — 빌드 어긋남 신호, 규칙 하나 |
+| D67 | ⑭ `criterion` = 수용기준·주장을 적은 첫 칸 원문, 첫 칸이 번호·ID 만이면 그 다음 칸. 행 전체 아님 | 사용자 지시로 메인이 추천안 입력(갭 H-E) — 번호는 `row` 에 있음 |
+
+## 확인 대기 대장
+
+| # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
+|---|---|---|---|---|---|---|
+| (spec·harden 단계 — 수동 모드. 질문 14건(설계 9 + harden 5)은 사용자 지시 「추천안으로 대신 답해줘」(2026-10-23 08:10)에 따라 메인이 추천안을 입력했고 그 출처는 위 D52~D67 에 적었다 — 대기 0건) | | | | | | |
