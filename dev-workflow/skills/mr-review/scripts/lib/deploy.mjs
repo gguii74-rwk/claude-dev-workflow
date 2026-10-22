@@ -159,6 +159,10 @@ export function readZip(buf) {
     if (buf.readUInt16LE(at + 6) !== e.flags || buf.readUInt16LE(at + 8) !== e.method) throw new Error(`zip local header 플래그·압축 방식 불일치: ${e.name}`);
     if (buf.readUInt32LE(at + 14) !== e.crc || buf.readUInt32LE(at + 18) !== e.csize || buf.readUInt32LE(at + 22) !== e.usize) throw new Error(`zip local header CRC·크기 불일치(목차와 다름): ${e.name}`);
     if (e.name.endsWith('/') && e.csize !== 0) throw new Error(`zip 폴더 항목에 데이터가 있음(${e.csize}바이트): ${e.name}`);
+    // 허용 검증은 모든 항목(폴더 포함)에 공통(8b FR3-4, 추천 자동 채택(위임)) — read() 를 거치지 않는 폴더도 암호화·미지원 압축 방식·CRC 있는 빈 폴더면 표준 리더가 거부하는 zip 이다
+    if (e.flags & 0x0041) throw new Error(`zip 암호화 플래그(미지원): ${e.name}`);
+    if (e.method !== 0 && e.method !== 8) throw new Error(`지원하지 않는 압축 방식(${e.method}): ${e.name}`);
+    if (e.name.endsWith('/') && e.crc !== 0) throw new Error(`zip 폴더 항목에 CRC 가 있음(${e.crc.toString(16)}): ${e.name}`);
     checkExtra(buf, at + 30 + lnLen, leLen, e.name, 'local');
     at += 30 + lnLen + leLen + e.csize;
   }
@@ -204,8 +208,12 @@ export function readZip(buf) {
     let out;
     if (e.method === 0) out = Buffer.from(data);
     else if (e.method === 8) {
-      try { out = zlib.inflateRawSync(data, { maxOutputLength: Math.max(1, e.usize) }); }
+      let r;
+      try { r = zlib.inflateRawSync(data, { maxOutputLength: Math.max(1, e.usize), info: true }); }
       catch (err) { throw new Error(`zip 압축 해제가 선언 크기(${e.usize})를 넘거나 손상: ${e.name} (${err.code || err.message})`); }
+      // 스트림 완전 소비(8b FR3-5, 추천 자동 채택(위임)) — inflate 는 스트림 끝 뒤 바이트를 무시하지만 표준 리더는 크기 불일치로 거부한다
+      if (r.engine.bytesWritten !== e.csize) throw new Error(`zip 압축 데이터 손상 — 스트림 뒤 미소비 바이트(소비 ${r.engine.bytesWritten} ≠ 압축 크기 ${e.csize}): ${e.name}`);
+      out = r.buffer;
     }
     else throw new Error(`지원하지 않는 압축 방식(${e.method}): ${e.name}`);
     if (out.length !== e.usize) throw new Error(`zip 크기 불일치(${out.length} ≠ ${e.usize}): ${e.name}`);

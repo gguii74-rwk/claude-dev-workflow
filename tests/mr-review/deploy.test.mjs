@@ -199,8 +199,7 @@ test('local header 가 central directory 와 다른 파일을 가리키면 corru
   const badEnc = Buffer.from(good);                                                    // local·central 둘 다 1 — 정합은 맞지만 암호화라 읽을 수 없는 배포본
   badEnc.writeUInt16LE(1, e.cd + 8);
   badEnc.writeUInt16LE(1, e.lho + 6);
-  const ze = readZip(badEnc);
-  assert.throws(() => ze.read(ze.entries.find((x) => x.name === e.name)), /암호화 플래그/);
+  assert.throws(() => readZip(badEnc), /암호화 플래그/);                               // 목록 단계에서 거부(8b FR3-4 — 폴더 포함 모든 항목 공통 허용 검증)
   const badFile = join(root, 'bad-local.zip');
   writeFileSync(badFile, bad);
   const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: badFile }]);
@@ -240,14 +239,14 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
   assert.ok(d3.mismatches.some((m) => m.kind === 'bytes' && /diff-only/.test(m.detail)));
 });
 
-// 최소 zip 작성기(테스트 전용) — entries = [{ name(문자열|Buffer), data, method = 0|8, usize?, made?, ext?, flags? }]
+// 최소 zip 작성기(테스트 전용) — entries = [{ name(문자열|Buffer), data, method = 0|8, usize?, made?, ext?, flags?, tail? }]
 function mkZip(entries, comment = '') {
   const locals = [];
   const cds = [];
   let off = 0;
   for (const e of entries) {
     const raw = Buffer.from(e.data);
-    const comp = e.method === 8 ? zlib.deflateRawSync(raw) : raw;
+    const comp = Buffer.concat([e.method === 8 ? zlib.deflateRawSync(raw) : raw, Buffer.from(e.tail || '')]);   // tail = 압축 스트림 뒤 덧붙인 바이트(크기 칸에 포함)
     const name = Buffer.isBuffer(e.name) ? e.name : Buffer.from(e.name, 'utf8');
     const lx = e.localExtra || Buffer.alloc(0);
     const cx = e.centralExtra || Buffer.alloc(0);
@@ -445,4 +444,23 @@ test('zip 폴더 항목도 local 헤더를 목차와 대조 — 목차엔 빈 �
   // 목차·local 모두 크기가 있는 폴더 항목
   assert.throws(() => readZip(mkZip([{ name: 'dir/', data: 'X' }])), /폴더 항목에/);
   assert.doesNotThrow(() => readZip(z));                                               // 정상 폴더 + 파일은 통과
+});
+
+test('zip 모든 항목(폴더 포함)에 허용 검증 선적용 — 암호화 플래그·미지원 압축 방식·CRC 있는 빈 폴더는 헤더끼리 같아도 거부 (8b FR3-4, 추천 자동 채택(위임))', () => {
+  for (const flags of [0x0001, 0x0040]) assert.throws(() => readZip(mkZip([{ name: 'padding/', data: '', flags }, { name: 'a.txt', data: 'A' }])), /암호화/, `flags ${flags}`);
+  assert.throws(() => readZip(mkZip([{ name: 'padding/', data: '', method: 99 }, { name: 'a.txt', data: 'A' }])), /압축 방식/);
+  const crcDir = mkZip([{ name: 'padding/', data: '' }, { name: 'a.txt', data: 'A' }]);
+  const cd = crcDir.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  crcDir.writeUInt32LE(0x1234, 14); crcDir.writeUInt32LE(0x1234, cd + 16);            // local·목차 CRC 를 같게 0 아닌 값으로
+  assert.throws(() => readZip(crcDir), /폴더 항목/);
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'padding/', data: '' }, { name: 'a.txt', data: 'A', method: 8 }])));
+});
+
+test('Deflate 스트림 뒤 미소비 바이트는 손상으로 거부 — 실제 소비한 입력 = 선언 압축 크기 (8b FR3-5, 추천 자동 채택(위임))', () => {
+  const z = readZip(mkZip([{ name: 'a.txt', data: 'hello', method: 8, tail: 'JUNK_AFTER_DEFLATE' }]));
+  assert.throws(() => z.read(z.entries[0]), /미소비|손상/);
+  for (const data of ['hello', '', 'x'.repeat(100000)]) {
+    const ok = readZip(mkZip([{ name: 'a.txt', data, method: 8 }]));
+    assert.equal(ok.read(ok.entries[0]).toString(), data);
+  }
 });

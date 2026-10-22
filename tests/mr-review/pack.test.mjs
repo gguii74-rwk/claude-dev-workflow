@@ -739,3 +739,63 @@ test('XML 태그 해석기: 비밀값 키 요소·속성 태그의 value(대소�
     assert.ok(Date.now() - s0 < 2000, `${t.slice(0, 24)}… ${Date.now() - s0}ms`);
   }
 });
+
+// 8b FR3(추천 자동 채택(위임) — 「허용 꼴만 통과」): 가림은 해석할 수 있는 꼴을 끝까지 가리고, 잔존 검사는 가림과 따로 「가린 뒤 모양이 허용 꼴과 같은가」만 본다.
+// masked = 값 전체가 가려지고 잔존 0 · blocked = 잔존(팩 B Codex 생략) + 저장본(maskText)은 통째로 [masked:unmaskable]
+function expectMaskOrBlock(cases) {
+  for (const [kind, text, leak] of cases) {
+    const m = maskTextWithCounts(text, []);
+    if (kind === 'masked') {
+      assert.ok(!m.text.includes(leak), `${text} → ${m.text}`);
+      assert.deepEqual(m.residual, [], text);
+    } else assert.ok(m.residual.length > 0, `${text} → 잔존 없음: ${m.text}`);
+    assert.ok(!maskText(text, []).includes(leak), `저장본 ${text}`);
+  }
+}
+
+test('XML: CDATA·주석 안의 닫는 태그·같은 이름 중첩·따옴표 안 `>` 도 값 범위를 끝까지 가린다 · 해석 못 하는 꼴과 짝 없는 키 태그는 잔존 (8b FR3-1 + 훅-A·B, 추천 자동 채택(위임))', () => {
+  expectMaskOrBlock([
+    ['masked', '<password><![CDATA[alpha</password>TAIL_SECRET]]></password>', 'TAIL_SECRET'],
+    ['masked', '<property name="password"><property>x</property>H2X</property>', 'H2X'],
+    ['masked', '<property name="password" value="alpha>TAIL_SECRET"/>', 'TAIL_SECRET'],
+    ['masked', '<property desc="a>b" name="password" value="H1X"/>', 'H1X'],
+    ['masked', '<password><!-- </password> -->COMMENT_SECRET</password>', 'COMMENT_SECRET'],
+    ['masked', '<property name=password value=UNQ_KEY_SECRET />', 'UNQ_KEY_SECRET'],
+    ['blocked', '<property name="password" value="a<b>LT_SECRET"/>', 'LT_SECRET'],
+    ['blocked', '<password>A</password>STRAY_SECRET</password>', 'STRAY_SECRET'],
+    ['blocked', '<password><![CDATA[UNCLOSED_CDATA_SECRET', 'UNCLOSED_CDATA_SECRET'],
+  ]);
+  assert.equal(maskTextWithCounts('<a><password><![CDATA[x</password>y]]></password><b>keep</b></a>', []).text, '<a><password>[masked:secret]</password><b>keep</b></a>');
+  for (const t of ['<input type="password" name="password"> 설명', '<password/> 와 <password></password>', '<label for="password">비밀번호</label>', '<p>그냥 <b>글</b></p>']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
+  for (const t of ['<password>' + '<![CDATA['.repeat(20000), '<password>' + '<password>'.repeat(20000), '<a desc="' + '>'.repeat(50000), '<password>' + '<!--'.repeat(20000)]) {
+    const s0 = Date.now();
+    maskTextWithCounts(t, []);
+    assert.ok(Date.now() - s0 < 2000, `${t.slice(0, 24)}… ${Date.now() - s0}ms`);
+  }
+});
+
+test('명령줄 옵션: 이스케이프 따옴표까지 값 전체를 가린다 · 가림 표시 바로 뒤가 경계(공백·줄 끝·`;|&)`)가 아니면 잔존 (8b FR3-2, 추천 자동 채택(위임))', () => {
+  expectMaskOrBlock([
+    ['masked', 'tool --password "prefix\\"TAIL_SECRET"', 'TAIL_SECRET'],
+    ['masked', 'tool --password "a"ADJ_SECRET', 'ADJ_SECRET'],
+    ['masked', "tool --token 'a'\"QQ_SECRET\"", 'QQ_SECRET'],
+    ['blocked', 'tool --password "UNCLOSED_CLI_SECRET', 'UNCLOSED_CLI_SECRET'],
+  ]);
+  assert.equal(maskTextWithCounts('tool --password "p\\"q" --user bob', []).text, 'tool --password [masked:secret] --user bob');
+  for (const t of ['run --password X --user bob', 'run --password "x y" && next', 'run --password X;', 'run --password --user bob']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
+});
+
+test('URL 자격증명: 빈 사용자명·비번 속 `@`(권한부의 마지막 `@` 까지가 사용자 정보)도 가린다 · 표준 URL 해석기와 대조해 비번이 남으면 잔존 (8b FR3-3 + 훅-C, 추천 자동 채택(위임))', () => {
+  expectMaskOrBlock([
+    ['masked', 'redis://:TAIL_SECRET@localhost:6379', 'TAIL_SECRET'],
+    ['masked', 'https://u:p@ss@host/x', 'ss@host'],
+    ['masked', 'https://a@b:AT_USER_SECRET@host/', 'AT_USER_SECRET'],
+    ['masked', '{"a":"redis://:J_SECRET@h:1","b":"me@x.com"}', 'J_SECRET'],
+  ]);
+  assert.equal(maskTextWithCounts('https://u:p@ss@host/x', []).text, 'https://u:[masked:secret]@host/x');
+  assert.equal(maskTextWithCounts('{"a":"redis://:J@h:1","b":"me@x.com"}', []).text, '{"a":"redis://:[masked:secret]@h:1","b":"me@x.com"}');
+  for (const t of ['ftp://user@host/x', 'https://host:8080/p?q=a@b', 'see https://example.com/a:b@c', 'mailto:me@x.com']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
+  const s0 = Date.now();
+  maskTextWithCounts('a'.repeat(200000) + ' ' + 'x://'.repeat(20000) + ' ' + ':@'.repeat(50000), []);
+  assert.ok(Date.now() - s0 < 2000, `${Date.now() - s0}ms`);
+});
