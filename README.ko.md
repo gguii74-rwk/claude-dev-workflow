@@ -245,6 +245,7 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 - 작성 규칙 미충족(계약 미완·기준선 없음)이면 검토 없이 **조기 종료** 리포트(초안 판정 + 작성자 보완 요청 문안). `--full`이면 끝까지 가되 미완은 증거 부족으로 남는다.
 - 두 모델이 상충하거나 한쪽만 낮은 확신으로 잡은 차단 후보를 메인이 코드로 확인 못 하면 **판정 미확정** — 게시용 블록 없이 두 갈래를 보여 주고, 리뷰어가 `--resolve <id>=confirmed|dismissed|confirmed:fixable|confirmed:design`로 확정한다.
 - Codex 플러그인·`glab`이 없으면: `glab` 없이는 돌지 않고, Codex가 없으면 **단일 모델 모드**(리포트 헤더에 「교차 검토 없음」).
+- 포트 있는 GitLab(1.3.1 이상): 어댑터 `gitlab.host`는 `host[:port]` 그대로 쓰고(`gitlab.example.com:8443`), glab 설정에 **포트 없는 호스트 키** 항목(`hosts.gitlab.example.com`)이 있어 그 `api_host`가 `gitlab.example.com:8443`, `api_protocol`이 서버와 맞아야 한다 — 엔진은 `glab api --hostname`에 포트를 뗀 값을 넘기고 MR `web_url` 대조는 포트까지 본다. 시작 때 `glab api … version` GET 1회로 확인하고 실패하면 멈춘다.
 - 테스트·빌드는 실행하지 않는다(검증 상태 전부 `[판독]`). 배포본 zip 대조만 스킬이 직접 수행한다.
 - 글(MR 본문·댓글·문서 발췌) 속 비밀값 가림은 알려진 꼴 기준의 최선 노력이다: `키: 값`·`키=값`(따옴표·YAML 블록·이어지는 줄·properties `\` 줄 이음) · `--키 값` 옵션(줄 끝까지) · URL 자격증명 `scheme://사용자:비번@호스트`(빈 사용자명·비번 속 `@` 포함) · 비밀값 키 이름의 XML 요소·속성(`value` 속성과 짝 닫는 태그까지 본문 전체, CDATA·주석·같은 이름 중첩 포함) · `Bearer` · PEM 비밀키 — 키는 password·secret·token·api key·credential 등과 `DB_PASSWORD`·`dbPassword` 꼴. 가린 뒤 모양이 허용 꼴이 아닌 것(못 가린 꼴·해석 못 한 키 태그 등)은 Codex 를 생략한다(저장본은 그 값 전체를 바꾸고, 그래도 남는 리포트는 쓰지 않는다). 그 밖의 꼴(비밀값 단어 뒤 공백만으로 이어진 값 등)은 못 잡으며, 코드는 설계상 가리지 않고 Codex 로 간다. 프로젝트 고유 꼴은 어댑터 `mask` 에 넣는다 — 앞 문맥 없이 아무 글자나 잡는 패턴(`\S+`·`.+` 류)은 SHA 보호 자리표시 문자(NUL·U+E000~E010)까지 잡아 어댑터 로드에서 거부되니 앞 문맥(`(?<=token=)`)이나 글자 범위(`\w`·`[0-9a-f]`)로 좁힌다.
 

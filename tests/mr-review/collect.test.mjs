@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git } from './helpers.mjs';
+import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git, CLI } from './helpers.mjs';
 
 const IID = 7;
 const ENC = (p) => encodeURIComponent(p).replace(/\./g, '%2E');
@@ -369,12 +369,12 @@ test('versions·diff_refs 가 모두 없으면 merge-base 폴백 — 머지 뒤 
   const { bare, headSha } = initRepos(root, { iid: IID });
   mergeIntoTarget(root, bare);
   const p = `projects/101/merge_requests/${IID}`;
-  const noVersions = (diffs) => [
-    ...rules(headSha, { metaRules: [{ match: `^api ${p}$`, json: mergedMeta(headSha, null) }] }).filter((x) => !x.match.includes('/versions') && !x.match.includes('/diffs')),   // versions 404 → 조회 실패
+  const noVersions = (h, diffs) => [
+    ...rules(h, { metaRules: [{ match: `^api ${p}$`, json: mergedMeta(h, null) }] }).filter((x) => !x.match.includes('/versions') && !x.match.includes('/diffs')),   // versions 404 → 조회 실패
     { match: `^api --paginate ${p}/diffs`, json: diffs },
   ];
   const work = join(root, 'work');
-  const r = runCli(collectArgs(adapter, work), fakeGlab(root, noVersions(DIFFS)).env);
+  const r = runCli(collectArgs(adapter, work), fakeGlab(root, noVersions(headSha, DIFFS)).env);
   assert.equal(r.code, 2, r.out + r.err);
   assert.match(r.first, /^ERR DIFF_EMPTY_MISMATCH — git diff 0건 ≠ API 변경 4건\(base 산정 오류 의심\)/);
   assert.ok(!existsSync(join(work, 'snapshot.json')));
@@ -383,7 +383,7 @@ test('versions·diff_refs 가 모두 없으면 merge-base 폴백 — 머지 뒤 
   const r2repo = initRepos(root2, { iid: IID });
   mergeIntoTarget(root2, r2repo.bare);
   const work2 = join(root2, 'work');
-  const r2 = runCli(collectArgs(adapter2, work2), fakeGlab(root2, noVersions([])).env);
+  const r2 = runCli(collectArgs(adapter2, work2), fakeGlab(root2, noVersions(r2repo.headSha, [])).env);
   assert.equal(r2.code, 0, r2.out + r2.err);
   const snap = readJson(join(work2, 'snapshot.json'));
   assert.equal(snap.base_source, 'merge-base');
@@ -441,4 +441,34 @@ test('얕은 clone 에서 API base 가 로컬에 없으면 ERR BASE_MISMATCH 문
   assert.match(r.first, new RegExp(`^ERR BASE_MISMATCH — 얕은 clone\\(shallow\\)이라 base ${baseSha.slice(0, 7)}가 로컬에 없다\\. 체크아웃에서 git fetch --unshallow 뒤 다시 실행`));
   assert.equal(git(checkout, 'rev-parse', '--is-shallow-repository'), 'true');   // 스킬이 체크아웃을 깊게 하지 않았다
   assert.ok(!existsSync(join(work, 'snapshot.json')));
+});
+
+// ── 1.3.1 ① 포트 있는 GitLab — --hostname 은 포트 제거, web_url 대조는 포트 포함 (spec 2026-10-22 3.①) ──
+test('포트 있는 어댑터 host: glab --hostname 에는 포트 없는 호스트만, web_url 은 포트까지 같아야 통과 (1.3.1 AC①-1·①-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { gitlab: { host: 'gitlab.test:8443' }, projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const headSha = 'a'.repeat(40);
+  const p = `projects/101/merge_requests/${IID}`;
+  const raws = headRaw(headSha, ['src/main/java/app/A.java', 'src/main/java/app/B.java', 'docs/specs/2026-10-01-feature.md']);
+  const g = fakeGlab(root, [...rules(headSha, { metaRules: [{ match: `^api ${p}$`, json: meta(headSha, { web_url: 'https://gitlab.test:8443/g/alpha/-/merge_requests/7' }) }] }), ...raws]);
+  const r = runCli(collectArgs(adapter, join(root, 'work')), g.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(g.hosts().length > 5);
+  assert.deepEqual([...new Set(g.hosts())], ['gitlab.test']);          // 호출 전부 포트 없음
+  const root2 = tmp();
+  const adapter2 = writeAdapter(root2, { gitlab: { host: 'gitlab.test:8443' }, projects: { alpha: { id: 101, path: 'repos/missing', deployExempt: false } } });
+  const g2 = fakeGlab(root2, [...rules(headSha), ...raws]);            // web_url = http://gitlab.test/… (포트 없음)
+  const r2 = runCli(collectArgs(adapter2, join(root2, 'work')), g2.env);
+  assert.equal(r2.code, 2, r2.out);
+  assert.match(r2.first, /^ERR .*호스트/);
+  assert.ok(!existsSync(join(root2, 'work', 'mr.json')));
+});
+
+test('SKILL.md §0 에 포트 있는 GitLab 의 glab 설정 전제와 glab api … version 사전 점검(실패 = 안내 + 정지)이 있다 (1.3.1 AC①-4 · D31)', () => {
+  const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+  const s0 = skill.slice(skill.indexOf('## 0. 전제 확인'), skill.indexOf('## 1. 작업 디렉터리'));
+  assert.match(s0, /glab api --hostname "\$H" version/);
+  assert.match(s0, /api_host/);
+  assert.match(s0, /GLAB_HOST_FAIL[^\n]*\*\*멈춘다\*\*/);
+  assert.match(s0, /포트 없는 호스트 키/);
 });

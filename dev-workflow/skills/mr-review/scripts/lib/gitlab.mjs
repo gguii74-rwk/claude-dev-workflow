@@ -17,7 +17,8 @@ export function setHost(host) { HOST = host; }
 
 function run(args, { binary = false } = {}) {
   if (!HOST) throw new GitLabError('GitLab 호스트 미설정 — 어댑터 gitlab.host 가 필요하다');
-  const r = spawnSync(glabBin(), ['api', '--hostname', HOST, ...args], { encoding: binary ? 'buffer' : 'utf8', maxBuffer: MAX_BUFFER });
+  // glab `--hostname` 은 `host:port` 를 거부한다(1.3.1 ①) — 포트를 떼고 넘기며, 포트는 glab 설정 `hosts.<호스트>.api_host` 가 갖는다. MR web_url 대조(collect)는 포트 포함 값 그대로
+  const r = spawnSync(glabBin(), ['api', '--hostname', HOST.replace(/:\d+$/, ''), ...args], { encoding: binary ? 'buffer' : 'utf8', maxBuffer: MAX_BUFFER });
   if (r.error) throw new GitLabError(`glab 실행 실패(${glabBin()}): ${r.error.message}`);
   if (r.status !== 0) {
     const body = binary ? r.stdout.toString('utf8') : r.stdout;

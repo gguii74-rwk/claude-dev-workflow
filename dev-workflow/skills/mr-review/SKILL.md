@@ -35,9 +35,11 @@ description: Use when a designated reviewer wants a read-only, policy-formatted 
 ```bash
 A="<--adapter 값, 없으면 빈 값>"; [ -n "$A" ] || A="${MR_REVIEW_ADAPTER}"; [ -f "$A" ] || echo ADAPTER_MISSING
 glab auth status 2>&1 | head -3
+H=$(node -e 'const m=require("fs").readFileSync(process.argv[1],"utf8").match(/```json mr-review-adapter\n([\s\S]*?)\n```/);console.log(JSON.parse(m[1]).gitlab.host.replace(/:\d+$/,""))' "$A") && glab api --hostname "$H" version >/dev/null 2>&1 || echo "GLAB_HOST_FAIL $H"
 ```
 
 - `ADAPTER_MISSING`이거나 `glab`이 인증돼 있지 않으면 **멈춘다**(어댑터·glab 없이는 돌지 않는다).
+- `GLAB_HOST_FAIL`(어댑터 호스트로 `glab api … version` GET 1회 실패)이면 「glab 설정 `hosts.<호스트>`의 `api_host`(포트 포함)·`api_protocol`·토큰을 확인」을 안내하고 **멈춘다**. 엔진은 `--hostname`에 어댑터 `gitlab.host`에서 포트를 뗀 값을 넘기고(glab이 `host:port`를 거부한다), MR `web_url` 대조는 포트까지 본다 — **포트 있는 GitLab**(`gitlab.example.com:8443`)이면 glab 설정에 포트 없는 호스트 키 항목 `hosts.gitlab.example.com`이 있고 그 `api_host`가 `gitlab.example.com:8443`, `api_protocol`이 서버와 맞아야 한다.
 - companion 경로·버전 해소(review-loop §2b ①과 같다 — 캐시 디렉터리 glob 금지):
 
 ```bash
