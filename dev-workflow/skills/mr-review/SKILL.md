@@ -84,7 +84,7 @@ fi
 <CLI> deploy  --adapter "$A" --work "$W"
 ```
 
-- `collect` 첫 줄 `COLLECTED <mode> head=… base=… target=… attempts=… unrecovered=<n>`: `mode=diff-only`면 시작 요약에 「로컬 체크아웃 없음 — diff-only」, `unrecovered>0`이면 「불완전 diff-only 리뷰」를 적는다(판정은 `verdict`가 증거 부족으로 받는다). `snapshot.json.api_failures`가 비어 있지 않으면 시작 요약에 「GitLab 조회 실패: <이름들>」을 적는다(판정은 `verdict`가 기계 증거 부족으로 받는다 — 빈 응답으로 취급하지 않는다). `ERR HEAD_MOVED …`(exit 3)면 작성자가 push 중이다(워크트리 모드 = fetch head ≠ API head, diff-only = diff 버전 head ≠ API head) — 멈추고 잠시 뒤 다시 돌리라고 안내한다.
+- `collect` 첫 줄 `COLLECTED <mode> head=… base=… target=… attempts=… unrecovered=<n>`: `mode=diff-only`면 시작 요약에 「로컬 체크아웃 없음 — diff-only」, `unrecovered>0`이면 「불완전 diff-only 리뷰」를 적는다(판정은 `verdict`가 증거 부족으로 받는다). `snapshot.json.api_failures`가 비어 있지 않으면 시작 요약에 「GitLab 조회 실패: <이름들>」을 적는다(판정은 `verdict`가 기계 증거 부족으로 받는다 — 빈 응답으로 취급하지 않는다). `ERR HEAD_MOVED …`(exit 3)면 작성자가 push 중이다(fetch head 또는 diff 버전 head ≠ API head — 두 모드 공통, diff-only 는 diff 버전 head 만) — 멈추고 잠시 뒤 다시 돌리라고 안내한다. 워크트리 모드의 base 는 GitLab 이 기록한 MR diff 의 base(`snapshot.base_source = api`, 없을 때만 merge-base) — 머지된 MR 도 MR 이 바꾼 것을 본다. `ERR BASE_MISMATCH …`(API base 가 head 의 조상이 아님)·`ERR DIFF_EMPTY_MISMATCH …`(git diff 0건 ≠ API 변경)는 exit 2 로 멈추고 그 줄을 보고한다 — 얕은 clone 이면 문구대로 사용자가 체크아웃에서 `git fetch --unshallow` 를 하게 안내한다(스킬이 직접 하지 않는다).
 - `check` 첫 줄 `CHECKED complete=<b> baseline=<유형> earlyExit=<b> rereview=<b>`. `check.json`을 읽어 **시작 요약(채팅 5줄 이내)**: 트랙 · 계약 미완 줄 · Baseline 유형 · 기준선 확인 댓글 상태 · 재리뷰 여부.
 - `deploy` 첫 줄 `DEPLOY <일치|불일치|대조 불가|zip 누락|해당 없음>` — 결과는 `verdict`·`render`가 쓴다.
 
