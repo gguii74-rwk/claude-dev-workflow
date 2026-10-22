@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 
 import { join } from 'node:path';
 import { tmp, writeAdapter, writeDocs, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
-const { extractSection, excerpt, applyMask, residual, SECRET_MASK, maskTextWithCounts } = await import(join(LIB, 'pack.mjs'));
+const { extractSection, excerpt, applyMask, residual, SECRET_MASK, maskTextWithCounts, maskText } = await import(join(LIB, 'pack.mjs'));
 const HEAD = 'a'.repeat(40);
 
 function wiki(home) {
@@ -361,7 +361,6 @@ test('여러 줄 비밀값(YAML `|`·`>` 블록 · 줄바꿈 든 따옴표 · �
     ['client_secret: |\n  PRIVATE-FIRST\n\n  PRIVATE-SECOND\nnext: keep-after', ['PRIVATE-FIRST', 'PRIVATE-SECOND'], 'next: keep-after'],
     ['api_key: >-\n    FOLDED-SECRET-ONE\n    FOLDED-SECRET-TWO\n', ['FOLDED-SECRET'], ''],
     ['password = "line-one-secret\nline-two-secret"\nafter = 1', ['line-one-secret', 'line-two-secret'], 'after = 1'],
-    ['password = "unterminated-secret-tail', ['unterminated-secret-tail'], ''],
     ['{"password": "", "user": "keep-me"}', [], '"user": "keep-me"'],
   ];
   for (const [text, leaks, kept] of cases) {
@@ -370,6 +369,9 @@ test('여러 줄 비밀값(YAML `|`·`>` 블록 · 줄바꿈 든 따옴표 · �
     if (kept) assert.ok(m.text.includes(kept), `${JSON.stringify(text)} → ${JSON.stringify(m.text)}`);
     assert.deepEqual(m.residual, [], text);
   }
+  const u = maskTextWithCounts('password = "unterminated-secret-tail', rules);   // 닫히지 않은 따옴표 — 가리되 잔존(impl C1 R2-2 잔존: Codex 생략)
+  assert.ok(!u.text.includes('unterminated-secret-tail'));
+  assert.deepEqual(u.residual, [{ name: 'secret-decl' }]);
 });
 
 test('END 줄 없이 잘린 비밀키(PEM)도 BEGIN 부터 키 본문 줄까지 가려진다 — 위키 발췌 상한이 키 중간에서 끊겨도 팩 B 에 키 본문 없음 (impl R2-3, 사용자 판정)', () => {
@@ -468,4 +470,18 @@ test('따옴표 값: YAML 작은따옴표 `\'\'` 이스케이프까지 값 전�
   for (const text of ['{"password":"x","user":"keep"}', 'password: "x" # 주석', '{"password": "", "user": "keep-me"}', "password: ''", 'cfg {"password": "a"}; secret = "b"', 'call(token="abc")']) {
     assert.deepEqual(maskTextWithCounts(text, []).residual, [], JSON.stringify(text));
   }
+});
+
+test('닫는 따옴표가 어디에도 없는 값은 끝까지 가리고 잔존(Codex 생략) · 닫는 따옴표 뒤 구분자 아닌 조각은 줄 끝까지 가린다 — 저장본(maskText)에도 남지 않는다 (impl C1 R2-2·R5-1 잔존, 추천 자동 채택(위임))', () => {
+  const open = maskTextWithCounts('password = "FIRST_SECRET\nSECOND_SECRET\n(… 발췌 상한으로 생략)', []);
+  assert.doesNotMatch(open.text, /FIRST_SECRET|SECOND_SECRET/, open.text);
+  assert.ok(open.residual.some((r) => r.name === 'secret-decl'));
+  for (const text of ['password = ""LEAKY_TWO', 'password = "a" LEAKY_THREE', "secret: 'x' LEAKY_FOUR"]) {
+    const m = maskTextWithCounts(text, []);
+    assert.doesNotMatch(m.text, /LEAKY_/, `${JSON.stringify(text)} → ${JSON.stringify(m.text)}`);
+    assert.doesNotMatch(maskText(text, []), /LEAKY_/);
+    assert.deepEqual(m.residual, [], JSON.stringify(text));
+  }
+  assert.equal(maskText('{"password":"x","user":"keep"}', []), '{"password":"[masked:secret]","user":"keep"}');
+  assert.equal(maskText('password: "x" # 주석', []), 'password: "[masked:secret]" # 주석');
 });

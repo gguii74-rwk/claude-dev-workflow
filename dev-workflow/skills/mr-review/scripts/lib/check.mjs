@@ -88,12 +88,12 @@ const BLOB_RE = /(https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+))\/-\/blob\/([^\s)<>`#?]+
 const TRAIL_PUNCT = /[.,;:!]+$/;
 const ISSUE_URL_RE = /(https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+))\/-\/issues\/(\d+)/g;
 const ISSUE_REF_RE = /(?:^|[\s(`])#(\d+)\b/g;
-// 코드펜스 안을 줄 단위로 제거 — 여는 줄 `{3,}|~{3,}(들여쓰기 ≤3), 닫는 줄 = 같은 문자·길이 이상(CommonMark). 열린 펜스가 끝까지 안 닫히면 끝까지 제외.
+// 코드펜스 안을 줄 단위로 제거 — 여는 줄 `{3,}|~{3,}(들여쓰기 ≤3), 닫는 줄 = 같은 문자·길이 이상 + 뒤는 공백만(CommonMark — `~~~not-close` 는 닫힘 아님, impl C1 R2-6 잔존). 열린 펜스가 끝까지 안 닫히면 끝까지 제외.
 const stripFences = (text) => {
   const out = []; let open = null;
   for (const line of text.split('\n')) {
     const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
-    if (open) { if (m && m[1][0] === open[0] && m[1].length >= open.length) open = null; continue; }
+    if (open) { if (m && m[1][0] === open[0] && m[1].length >= open.length && /^[ \t]*$/.test(line.slice(m[0].length))) open = null; continue; }
     if (m) { open = m[1]; continue; }
     out.push(line);
   }

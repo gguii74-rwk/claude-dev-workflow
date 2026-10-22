@@ -199,7 +199,7 @@ test('이슈 댓글 조회 실패는 「댓글 없음」이 아니라 미확보(
 
 test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 이슈에서 · 본문 #n 도 수집 · 미등록 프로젝트의 연결 이슈는 대체 없이 미확보', () => {
   const q4 = '`'.repeat(4);
-  const desc = body({ background: '- 이슈/spec: 참고 없음', contractOver: { Baseline: '#12' }, extra: '## 참고\n- #88 의 재발 방지\n\n```\n#999 코드펜스 안 — 이슈 아님\n```\n~~~text\n#998 틸드 펜스 안 — 이슈 아님\n~~~\n' + q4 + 'text\n```\n#997 4중 백틱 안의 삼중 백틱 — 이슈 아님\n```\n' + q4 + '\n' }) + '\n## 후속\n- 계약 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 보정)\n';   // 「배경」 밖 절·계약 뒤 절의 #n 도 수집(C1·C2 R2-6), 코드펜스 안은 제외(```·~~~·4중 백틱 중첩 — C3 R2-6)
+  const desc = body({ background: '- 이슈/spec: 참고 없음', contractOver: { Baseline: '#12' }, extra: '## 참고\n- #88 의 재발 방지\n\n```\n#999 코드펜스 안 — 이슈 아님\n```\n~~~text\n#998 틸드 펜스 안 — 이슈 아님\n~~~not-close\n#996 구분자 뒤 글자 있는 줄은 닫힘이 아님 — 아직 펜스 안\n~~~\n' + q4 + 'text\n```\n#997 4중 백틱 안의 삼중 백틱 — 이슈 아님\n```\n' + q4 + '\n' }) + '\n## 후속\n- 계약 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 보정)\n';   // 「배경」 밖 절·계약 뒤 절의 #n 도 수집(C1·C2 R2-6), 코드펜스 안은 제외(```·~~~·4중 백틱 중첩 — C3 R2-6)
   const { root, adapter, work } = setup({ description: desc, closes_issues: [
     { iid: 12, project_id: 101, title: '버그', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: '' },
     { iid: 12, project_id: 999, title: '다른 프로젝트', description: '', updated_at: '2026-10-19T00:00:00Z', web_url: 'http://gitlab.test/g/zeta/-/issues/12' },   // 어댑터 미등록
@@ -224,8 +224,9 @@ test('이슈 기준선(#n) 과 closes_issues 원문 수집 · 변경 사유는 �
   const i88 = issues.find((x) => x.ref === '88');
   assert.equal(i88.status, '확보');                                                        // 본문 다른 절(「참고」)의 #88 도 수집(R2-6 · C1 사용자 결정 = 본문 전체)
   assert.equal(issues.find((x) => x.ref === '77')?.status, '확보');                        // Review Contract 블록 **뒤** 절의 #77 도 수집(C2 R2-6 잔존 — 블록 제거가 본문 끝까지 먹지 않는다)
-  assert.ok(!issues.some((x) => ['999', '998', '997'].includes(x.ref)));                    // 코드펜스 안 #999(```)·#998(~~~)·#997(4중 백틱 안 삼중 백틱)은 이슈 참조가 아니다(C3 R2-6)
-  assert.ok(!g.calls().some((x) => /^api projects\/101\/issues\/99[789]$/.test(x.join(' '))));
+  assert.ok(!issues.some((x) => ['999', '998', '997', '996'].includes(x.ref)));   // #996 = `~~~not-close` 는 닫는 펜스가 아니다(impl C1 R2-6 잔존)
+                     // 코드펜스 안 #999(```)·#998(~~~)·#997(4중 백틱 안 삼중 백틱)은 이슈 참조가 아니다(C3 R2-6)
+  assert.ok(!g.calls().some((x) => /^api projects\/101\/issues\/99[6789]$/.test(x.join(' '))));
   assert.match(readFileSync(join(work, i88.file), 'utf8'), /배경 설명 88/);
   const z = issues.find((x) => x.project_id === 999);
   assert.equal(z.status, '미확보');                                                        // 미등록 프로젝트 → 현재 프로젝트로 대체하지 않는다(R2-3)

@@ -141,6 +141,15 @@ export function readZip(buf) {
     p += 46 + nLen + eLen + cmLen;
   }
   if (p !== eocd) throw new Error(`zip EOCD 목차 크기 불일치(파싱한 목차 끝 ${p} ≠ EOCD ${eocd})`);
+  // 경로 충돌(impl C1 N2) — 파일과 같은 경로의 폴더 항목(`a.txt/`)이나 파일 아래 항목(`a.txt/b`)은 표준 리더가 충돌로 실패하거나 다르게 푼다(폴더는 대조에서 빠지므로 우리만 「일치」)
+  const fileNames = new Set(entries.filter((e) => !e.name.endsWith('/')).map((e) => e.name));
+  for (const e of entries) {
+    const segs = e.name.replace(/\/$/, '').split('/');
+    for (let k = 1; k <= segs.length; k++) {
+      const pre = segs.slice(0, k).join('/');
+      if (fileNames.has(pre) && pre !== e.name) throw new Error(`zip 경로 충돌(파일 ${pre} 와 겹치는 항목): ${e.name}`);
+    }
+  }
   const read = (e) => {
     const h = e.lho;
     if (h + 30 > buf.length || buf.readUInt32LE(h) !== 0x04034b50) throw new Error(`zip local header 손상: ${e.name}`);

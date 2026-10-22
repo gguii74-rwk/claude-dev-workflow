@@ -201,15 +201,15 @@ test('verdict CLI → verdict.json · render 전체 리포트(실행 블록 형�
   assert.doesNotMatch(md, /010-1234-5678/);                       // F5 — 리포트 전체 마스킹(부록 C 포함)
   assert.doesNotMatch(md, /synthetic-db-password|SYNTH-KEY-12345/); // 어댑터 mask 에 없는 비밀값 리터럴도 내장 패턴으로 제거(R2-1)
   assert.doesNotMatch(md, /synthetic-json-password|two word secret|word secret/); // JSON 키 형태·공백 포함 따옴표 값도 전체(C1 R2-1 잔존)
-  assert.match(md, /\{"password": "\[masked:secret\]"\}; secret = "\[masked:secret\]"/);
-  assert.match(md, /db\.password = "\[masked:secret\]"/);
+  assert.match(md, /\{"password" "\[masked:secret\]"\}; secret "\[masked:secret\]"/);   // 리포트는 필드 선마스킹 뒤 비밀값 키의 `:`·`=` 를 지운다(impl C1 N1)
+  assert.match(md, /db\.password "\[masked:secret\]"/);
   assert.match(md, /src\/A\.java:3/);                              // 파일:줄 위치는 남는다(§5.7)
   assert.match(md, /기준선 확인 — /);                               // 경량 + 확인 댓글 없음 → 리뷰어가 먼저 게시할 문안
   assert.match(md, /기준선 미확인/);                                // 헤더 표시(F8)
   assert.match(md, /## 부록 A/);
   assert.match(md, /## 부록 B[\s\S]*wiki-private\/x\.md.*Codex 미제공/);
   assert.match(md, /## 부록 C[\s\S]*claude[\s\S]*codex/);
-  assert.match(md, /## 부록 C[\s\S]*근거: S1 · src\/A\.java:3 db\.password = "\[masked:secret\]"; cfg \{"password": "\[masked:secret\]"\}; secret = "\[masked:secret\]"; api_key: \[masked:secret\]\n  - 시나리오: 로그 유출\n  - 설계 내 수정: yes/);   // 원본 발견의 근거·시나리오 보존(R1-9) + 비밀값만 제거
+  assert.match(md, /## 부록 C[\s\S]*근거: S1 · src\/A\.java:3 db\.password "\[masked:secret\]"; cfg \{"password" "\[masked:secret\]"\}; secret "\[masked:secret\]"; api_key \[masked:secret\]\n  - 시나리오: 로그 유출\n  - 설계 내 수정: yes/);   // 원본 발견의 근거·시나리오 보존(R1-9) + 비밀값만 제거
   assert.match(md, /## 부록 D[\s\S]*\*\*F1\*\*[\s\S]*실패 시나리오: 로그에 평문[\s\S]*\*\*F3\*\*/);   // 병합 발견 상세
   assert.match(md, /정책 버전: 계약 TEST-POLICY-v1\.0 \/ 판정 기준 TEST-POLICY-v1\.1/);
   assert.match(md, /교차 검토: 있음/);
@@ -494,4 +494,23 @@ test('findings.json 검증: 문자열 blocking·모르는 type·중복 id·head 
   assert.equal(r3.code, 2);
   assert.match(r3.first, /^ERR findings\.json JSON 파싱 실패/);
   assert.equal(r3.err, '');
+});
+
+test('발견 제목에 따옴표 없는 비밀값 키가 있어도 같은 줄의 파일:줄은 남는다 — 필드를 먼저 가리고 조립 (impl C1 N1 · R4-2 감사 이의, 추천 자동 채택(위임))', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const fnd = findings([F({ title: '하드코딩 token: ABC_VALUE', file: 'src/OnlyLocation.java', line_start: 71 })]);
+  const work = fullWork(root, { fnd });
+  const rc = JSON.parse(readFileSync(join(work, 'review-claude.json'), 'utf8'));
+  Object.assign(rc.findings[0], { title: '하드코딩 token: ABC_VALUE', file: 'src/OnlyLocation.java', line_start: 71 });
+  writeFileSync(join(work, 'review-claude.json'), JSON.stringify(rc));
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'report.md');
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  const md = readFileSync(out, 'utf8');
+  assert.doesNotMatch(md, /ABC_VALUE/);
+  const lines = md.split('\n').filter((l) => /하드코딩 token/.test(l));
+  assert.ok(lines.length >= 3, md);                                                  // 실행 블록 · 부록 C · 부록 D
+  for (const l of lines) assert.match(l, /src\/OnlyLocation\.java/, l);
 });

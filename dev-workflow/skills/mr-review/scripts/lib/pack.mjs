@@ -97,14 +97,17 @@ export function residual(text, rules) {
 // 따옴표 안 값은 이스케이프(`\"`)를 값의 일부로 소비한다(impl R1-2 — `"prefix\"remaining"` 의 뒷부분이 남지 않게). 따옴표 없는 값은 줄에 가림 표시 하나만 남았을 때만 건너뛴다(`[masked:phone] 나머지` 는 다시 가린다).
 const MARK = '\\[masked:[^\\]\\s]*\\]';
 const WHOLE_MARK = (end) => `(?!${MARK}${end})`;
-const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)(?![A-Za-z0-9])(?:[_.-][A-Za-z0-9]+)*';
+export const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)(?![A-Za-z0-9])(?:[_.-][A-Za-z0-9]+)*';
 // 여러 줄 값(impl R2-2, 사용자 판정): YAML 블록 스칼라(`key: |`·`>`·`|-` 뒤 들여쓴 줄 전부 — 사이 빈 줄 포함)를 한 덩어리로 가린다(따옴표 없는 값 규칙보다 먼저 — 그 규칙이 `|` 만 가리면 블록을 못 찾는다).
 // 따옴표 값은 줄바꿈을 포함해 닫는 따옴표까지(길이 상한 없음 — impl R3-3), 같은 줄에 닫는 따옴표가 없는 열린 값은 그 줄 끝까지 가린다(닫는 따옴표를 못 찾아도 값이 새지 않게).
 // 블록 머리 줄(impl R3-1): 앵커(`&a`)·태그(`!!str`)·주석(` # …`)·CRLF 를 허용한다.
 // 잘린 비밀키(impl R2-3, 사용자 판정): 발췌 상한이 END 줄을 잘라도 BEGIN 줄부터 키 본문 줄(base64·`Proc-Type:` 같은 머리 줄)까지 가린다 — 완결 PEM 규칙 뒤에 둔다.
 // 작은따옴표 값은 YAML 이스케이프 `''`(따옴표 문자 하나)도 값의 일부로 소비한다(impl R5-1 — `'alpha''BRAVO'` 의 뒷부분이 남지 않게).
 const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S]${q === "'" ? "|''" : ''})+(?=${q})`;
-const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[masked:)(?![^${q}\\n]*${q})[^\\n]+`;
+// 닫는 따옴표가 어디에도 없는 값(발췌가 값 중간을 자른 경우 등 — QUOTED 가 먼저 돌아 닫힘이 뒤에 있으면 이미 가려졌다)은 텍스트 끝까지 가리고, 안전장치가 잔존으로 본다(impl C1 R2-2 잔존 — 팩 B 는 Codex 생략, 리포트·cleanup 은 필드·값 단위라 그 값 끝까지).
+const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[masked:)(?![^${q}\\n]*${q})[\\s\\S]+`;
+// 닫는 따옴표 뒤 조각(impl C1 R5-1 잔존): `""값`·`"a" 값` 처럼 공백·주석·구분자(`,;)}]`)가 아닌 것이 오면 줄 끝까지 가린다 — 저장본(리포트·cleanup)에도 남지 않게.
+const AFTER_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q}(?:${MARK})?${q})(?![ \\t]*(?:[,;)}\\]#]|\\n|$))(?!${MARK}[ \\t]*(?:\\n|$))[^\\n]+`;
 export const SECRET_MASK = [
   { name: 'secret', pattern: QUOTED('"'), flags: 'i' },
   { name: 'secret', pattern: QUOTED("'"), flags: 'i' },
@@ -112,6 +115,9 @@ export const SECRET_MASK = [
   { name: 'secret', pattern: OPEN_QUOTE('"'), flags: 'i' },
   { name: 'secret', pattern: OPEN_QUOTE("'"), flags: 'i' },
   { name: 'secret', pattern: OPEN_QUOTE('`'), flags: 'i' },
+  { name: 'secret', pattern: AFTER_QUOTE('"'), flags: 'i' },
+  { name: 'secret', pattern: AFTER_QUOTE("'"), flags: 'i' },
+  { name: 'secret', pattern: AFTER_QUOTE('`'), flags: 'i' },
   { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*(?:[&!][^\\s]*[ \\t]+)*[|>][1-9+-]{0,2}(?:[ \\t]+#[^\\r\\n]*)?[ \\t]*\\r?\\n)(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*)*`, flags: 'i' },
   { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?![\\s"'\`])(?!${MARK}[ \\t]*(?:\\n|$))[^\\n]+`, flags: 'i' },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
@@ -130,9 +136,9 @@ const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\
 const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'gi');
 const DECL_HEAD_ALT = `(?:(?:${MARK}|[&!]\\S*|[|>][1-9+-]{0,2})[ \t]*)*(?:#.*)?`;
 // 같은 줄 값은 **줄 전체**로 본다(impl R4-2 + 훅) — 따옴표 없는 값은 가림 표시 하나(+ 주석)만, 따옴표 값은 여는 따옴표 바로 뒤 표시 또는 빈 따옴표, 그 밖은 블록 머리뿐이어야 한다.
-// 닫는 따옴표 뒤에는 공백·주석·구분자(`,` `;` `)` `}` `]` — JSON 한 줄의 다음 키 등)만 허용한다(impl R5-1 + 훅 — `""비밀`·`"a" 비밀` 은 잔존). 닫히지 않은 따옴표 값은 줄 끝까지 가려진 상태(표시만)여야 한다.
-const AFTER_Q = `[ \t]*(?:[,;)}\\]].*|#.*)?`;
-const DECL_OK = new RegExp(`^(?:["'\`]${MARK}["'\`]${AFTER_Q}|["'\`]${MARK}[ \t]*|(["'\`])\\1${AFTER_Q}|${DECL_HEAD_ALT})$`);
+// 닫는 따옴표 뒤에는 공백·주석·구분자(`,` `;` `)` `}` `]` — JSON 한 줄의 다음 키 등)·가림 표시(뒤 조각을 가린 것, C1 R5-1)만 허용한다(impl R5-1 + 훅). 닫히지 않은 따옴표 값(`"[masked:…]` 로 끝남)은 잔존이다(C1 R2-2).
+const AFTER_Q = `[ \t]*(?:[,;)}\\]].*|#.*|${MARK}[ \t]*)?`;
+const DECL_OK = new RegExp(`^(?:["'\`]${MARK}["'\`]${AFTER_Q}|(["'\`])\\1${AFTER_Q}|${DECL_HEAD_ALT})$`);
 const DECL_WHOLE = new RegExp(`^[ \t]*${MARK}[ \t\r]*$`);   // 이어지는 줄은 통째로 가림 표시여야 한다(첫 토큰만 가린 `[masked:secret] 나머지` 는 통과 아님)
 const DECL_HEAD = new RegExp(`^${DECL_HEAD_ALT}$`);
 function unmaskedSecretDecl(text) {

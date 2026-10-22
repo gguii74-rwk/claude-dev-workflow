@@ -388,3 +388,9 @@ test('zip 파일명의 NUL 등 제어문자는 거부 · `/` 로 끝나도 내�
   assert.throws(() => readZip(mkZip([{ name: 'src/main/', data: 'payload' }])), /폴더/);
   assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/main/', data: '' }, { name: 'src/main/A.txt', data: 'ok' }])));
 });
+
+test('zip 에서 파일과 같은 경로의 폴더 항목·파일 아래 항목은 거부 — 표준 리더는 충돌로 실패하거나 다르게 푼다 (impl C1 N2, 추천 자동 채택(위임))', () => {
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'ok' }, { name: 'src/main/A.txt/', data: '' }])), /충돌/);
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'ok' }, { name: 'src/main/A.txt/B.txt', data: 'x' }])), /충돌/);
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/', data: '' }, { name: 'src/main/', data: '' }, { name: 'src/main/A.txt', data: 'ok' }])));
+});

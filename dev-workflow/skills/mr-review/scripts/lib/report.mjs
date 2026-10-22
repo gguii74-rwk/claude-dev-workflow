@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { maskText, SECRET_MASK } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
+import { maskText, SECRET_MASK, SECRET_KEYS } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
 export { maskText, SECRET_MASK };
 
 export class ReportError extends Error {}
@@ -247,6 +247,16 @@ function checkTable(check, deploy) {
   return ['| 검사 | 판정값 |', '|---|---|', ...rows].join('\n');
 }
 
+// 필드 선마스킹(impl C1 N1 · R4-2 감사 이의) — 발견·판정의 문자열을 필드마다 먼저 가리고 비밀값 키 뒤 `:`·`=` 구분자를 지운다.
+// 문서 전체 마스킹(아래 F5)은 따옴표 없는 비밀값을 줄 끝까지 가리므로(R4-2), 구분자가 남으면 같은 줄에 조립한 파일:줄·출처·확신까지 지운다(§5.7 위치 보존).
+const KEY_SEP = new RegExp(`(${SECRET_KEYS}["'\`]?)[ \t]*[:=][ \t]*(?=["'\`]?\\[masked:)`, 'gi');
+function fieldMask(v, maskRules) {
+  if (typeof v === 'string') return maskText(v, maskRules).replace(KEY_SEP, '$1 ');
+  if (Array.isArray(v)) return v.map((x) => fieldMask(x, maskRules));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fieldMask(x, maskRules)]));
+  return v;
+}
+
 export function renderReport({ adapter, work, early = false }) {
   const mr = readJson(work, 'mr.json');
   const snapshot = readJson(work, 'snapshot.json');
@@ -254,7 +264,7 @@ export function renderReport({ adapter, work, early = false }) {
   if (!mr || !snapshot || !check) throw new ReportError('mr.json·snapshot.json·check.json 이 필요하다(collect·check 먼저)');
   const deploy = readJson(work, 'deploy.json');
   const pack = readJson(work, 'pack.json');
-  const findings = early ? null : readJson(work, 'findings.json');
+  let findings = early ? null : readJson(work, 'findings.json');
   let verdict = early ? null : readJson(work, 'verdict.json');
   // 판정 입력의 head 일치 검증 — 같은 work 에 남은 이전 실행의 verdict.json·findings.json 을 현재 head 의 판정으로 쓰지 않는다(F6). 비-early 인데 verdict 가 없으면 리뷰 실패로 렌더한다(판정 블록 없음).
   const failed = (reason) => ({ status: 'review-failed', verdict: null, reasons: [reason], unresolved: [], branches: {}, defects: [], evidence: [], machineEvidence: [], contractPolicyId: check.contract?.policyId || adapter.policy.judgeId, head_sha: snapshot.head_sha });
@@ -263,6 +273,9 @@ export function renderReport({ adapter, work, early = false }) {
     else if (verdict.head_sha !== snapshot.head_sha) verdict = failed(`verdict.json 의 head ${s7(verdict.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 판정은 쓰지 않는다(verdict 를 다시 실행)`);
     else if (findings?.head_sha && findings.head_sha !== snapshot.head_sha) verdict = failed(`findings.json 의 head ${s7(findings.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 검토 결과는 쓰지 않는다`);
   }
+  findings = fieldMask(findings, adapter.mask);
+  verdict = fieldMask(verdict, adapter.mask);
+  mr.title = fieldMask(mr.title, adapter.mask);
   const adapterId = `${path.basename(adapter.file)}@${createHash('sha1').update(adapter.markdown).digest('hex').slice(0, 8)}`;
   const mode = early ? '조기 종료(결정적 검사만)' : `${check.rereview?.active ? '재리뷰' : '전체'}${snapshot.mode === 'diff-only' ? ' · diff-only' : ''}`;
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
@@ -328,6 +341,7 @@ export function renderReport({ adapter, work, early = false }) {
       // 무효 결과(JSON 오류·스키마 실패·validReviewers 밖)는 구조화하지 않는다(R3-7) — 한쪽이 깨져도 단일 모델 리포트는 끝까지 렌더된다
       let r = null;
       try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { parts.push(`(무효 결과 — JSON 파싱 실패: ${e.message.slice(0, 120)})`, ''); continue; }
+      r = fieldMask(r, adapter.mask);
       if (!(findings?.validReviewers || []).includes(name) || !Array.isArray(r?.findings)) { parts.push(`(무효 결과 — 스키마 검증 실패 또는 유효 검토자 아님: findings=${Array.isArray(r?.findings) ? `${r.findings.length}건` : typeof r?.findings})`, ''); continue; }
       // §5.7 원본 발견 보존 — 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제까지(마스킹은 아래 전체 적용). 필드마다 줄을 나눈다(impl R4-2 — 따옴표 없는 비밀값은 줄 끝까지 가려지므로 근거의 `password: …` 가 같은 줄 시나리오·권고까지 지우지 않게)
       parts.push(...(r.findings.flatMap((f) => [`- [${f?.lens}] ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'}) · 확신 ${f?.confidence}`, `  - 근거: ${f?.evidence || '-'}`, `  - 시나리오: ${f?.scenario || '-'}`, `  - 설계 내 수정: ${f?.fixableInDesign || '-'}${f?.fixableInDesign === 'no' ? ` · 깨진 전제: ${f?.brokenPremise || '-'}` : ''}`, `  - 권고: ${f?.recommendation || ''}`])), r.findings.length ? '' : '(발견 없음)', '');
