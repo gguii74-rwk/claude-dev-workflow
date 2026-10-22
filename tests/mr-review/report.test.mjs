@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB } from './helpers.mjs';
 
 const { computeVerdict, validateReview, maskText: deepMaskText } = await import(join(LIB, 'report.mjs'));
+const { cleanup } = await import(join(LIB, 'report.mjs'));
 const HEAD = 'a'.repeat(40);
 
 const baseCheck = () => ({
@@ -534,4 +535,21 @@ test('빈 따옴표 비밀값 키(`password = ""`·`""값`)가 제목에 있어�
     assert.ok(lines.length >= 3, md);                                                // 실행 블록 · 부록 C · 부록 D
     for (const l of lines) assert.match(l, /src\/OnlyLocation\.java/, l);
   }
+});
+
+test('cleanup: 마스킹이 실패한 JSON 은 원문으로 남기지 않고 지운 뒤 나머지를 끝까지 정리하고 오류로 알린다 (impl C3 신규, 추천 자동 채택(위임))', () => {
+  const root = tmp();
+  const work = join(root, 'work');
+  mkdirSync(join(work, 'zip'), { recursive: true });
+  writeFileSync(join(work, 'zip', 'd.zip'), 'x');
+  const sha = 'abcdef0123456789abcdef0123456789abcdef01';
+  writeFileSync(join(work, 'mr.json'), JSON.stringify({ api_head: sha, description: 'password: synthetic-plain-secret' }));   // SHA 가 있어 깨는 규칙에 걸린다
+  writeFileSync(join(work, 'check.json'), JSON.stringify({ reason: { text: '평문 아님' } }));                            // SHA 없음 — 정상 마스킹
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({}));
+  const breaker = { mask: [{ name: 'pua', pattern: '[\\uE000-\\uF8FF]' }] };                                         // 로드 검증을 거치지 않은 어댑터 객체 — 실행 중 실패 경로
+  assert.throws(() => cleanup({ work, adapter: breaker }), /마스킹 실패.*mr\.json/);
+  assert.ok(!existsSync(join(work, 'mr.json')), 'mr.json 원문이 남았다');
+  assert.ok(existsSync(join(work, 'check.json')));
+  assert.doesNotMatch(readFileSync(join(work, 'check.json'), 'utf8'), /synthetic-plain-secret/);
+  assert.ok(!existsSync(join(work, 'zip')));
 });

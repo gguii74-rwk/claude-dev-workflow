@@ -35,6 +35,16 @@ test('필수 키 누락은 누락 키 이름을 담아 던진다', () => {
   assert.throws(() => loadAdapter(file2), /verdictFirstLine/);
 });
 
+test('mask 패턴이 SHA 보호 자리표시 문자(NUL·U+E000~E010)를 잡으면 AdapterError (impl C3 C2-N1 잔존, 추천 자동 채택(위임))', () => {
+  const root = tmp();
+  for (const pattern of ['\\u0000', '[\\uE000-\\uF8FF]', '\\S+']) {
+    const file = writeAdapter(root, { mask: [{ name: 'bad', pattern }] });
+    assert.throws(() => loadAdapter(file), (e) => e instanceof AdapterError && /mask\[0\]\.pattern\(SHA 보호 자리표시/.test(e.message), pattern);
+  }
+  const ok = writeAdapter(root, { mask: [{ name: 'rrn', pattern: '\\d{6}-?[1-4]\\d{6}' }, { name: 'email', pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' }] });
+  assert.doesNotThrow(() => loadAdapter(ok));
+});
+
 test('wiki 루트의 ~ 는 MR_REVIEW_HOME 으로 해소한다', () => {
   const root = tmp();
   const home = join(root, 'home');

@@ -4,6 +4,8 @@ import path from 'node:path';
 import os from 'node:os';
 
 export class AdapterError extends Error {}
+// SHA 보호 자리표시(pack.mjs `maskTextWithCounts` — NUL + U+E000~E00F 인코딩 + U+E010 구분)에 쓰는 문자 전부. mask 패턴이 여기에 걸리면 자리표시가 깨진다(impl C3 C2-N1).
+const PLACEHOLDER_PROBE = `\u0000${Array.from({ length: 17 }, (_, i) => String.fromCharCode(0xE000 + i)).join('')}\uE000\u0000`;
 
 const OPEN = '```json mr-review-adapter';
 const CLOSE = '```';
@@ -55,7 +57,9 @@ export function validate(cfg) {
   if (typeof t === 'string' && !t.includes('(?<token>')) missing.push('comments.authorToken(그룹 token)');
   for (const [i, m] of (cfg.mask || []).entries()) {
     if (!m || typeof m.name !== 'string' || typeof m.pattern !== 'string') { missing.push(`mask[${i}]`); continue; }
-    try { new RegExp(m.pattern, 'g'); } catch { missing.push(`mask[${i}].pattern(정규식 오류)`); }
+    let re;
+    try { re = new RegExp(m.pattern, 'g' + (m.flags || '')); } catch { missing.push(`mask[${i}].pattern(정규식 오류)`); continue; }
+    if (re.test(PLACEHOLDER_PROBE)) missing.push(`mask[${i}].pattern(SHA 보호 자리표시 문자 NUL·U+E000~E010 을 잡는다 — 정상 SHA 가 복원되지 않는다)`);
   }
   return missing;
 }

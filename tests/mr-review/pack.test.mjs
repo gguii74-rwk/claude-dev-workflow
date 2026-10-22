@@ -522,3 +522,14 @@ test('SHA 보호 자리표시는 어댑터 개인정보 패턴에 걸리지 않�
   assert.ok(b.residual.some((r) => r.name === 'sha-guard'), JSON.stringify(b.residual));
   assert.throws(() => maskText(`head ${sha}`, breaker), /SHA 보호 자리표시/);
 });
+
+test('자리표시 무결성 — 경계 문자(NUL)만 지우는 규칙도 깨짐으로 잡고, 입력에 원래 있던 사적 영역 문자는 오탐하지 않는다 (impl C3 C2-N1 잔존 · 감사 이의, 추천 자동 채택(위임))', () => {
+  const sha = 'abcdef0123456789abcdef0123456789abcdef01';
+  const nulOnly = [{ name: 'nul', pattern: '\\u0000' }];                                      // 양끝 NUL 만 치환 — 옛 검사(NUL 존재만)는 통과시켰다
+  const a = maskTextWithCounts(`head ${sha}`, nulOnly);
+  assert.ok(a.residual.some((r) => r.name === 'sha-guard'), JSON.stringify(a));
+  assert.throws(() => maskText(`head ${sha}`, nulOnly), /SHA 보호 자리표시/);
+  const b = maskTextWithCounts(`표 \uE003\uE010 head ${sha}`, []);                              // 입력의 사적 영역 문자는 대체 문자로 — 거짓 sha-guard 없음
+  assert.deepEqual(b.residual, []);
+  assert.equal(b.text, `표 \uFFFD\uFFFD head ${sha}`);
+});

@@ -399,14 +399,18 @@ export function cleanup({ work, adapter }) {
   const bl = path.join(work, 'baseline');
   if (fs.existsSync(bl)) { raw += fs.readdirSync(bl).length; fs.rmSync(bl, { recursive: true, force: true }); }
   let masked = 0;
+  const failed = [];
   for (const f of MASKED_JSON) {
     const p = path.join(work, f);
     if (!fs.existsSync(p)) continue;
     let obj;
     try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { fs.rmSync(p); raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
-    fs.writeFileSync(p, JSON.stringify(deepMask(obj, adapter?.mask || []), null, 2));
+    let out;
+    try { out = JSON.stringify(deepMask(obj, adapter?.mask || []), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
+    fs.writeFileSync(p, out);
     masked += 1;
   }
+  if (failed.length) throw new ReportError(`마스킹 실패로 원문을 남기지 않고 지웠다: ${failed.join(', ')} — 나머지 정리는 끝냈다`);
   return { worktree, zip, raw, masked };
 }
 
