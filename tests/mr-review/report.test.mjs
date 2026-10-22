@@ -558,6 +558,25 @@ test('발견 제목에 명령줄 비밀값 옵션(`--password 값`)이 있어도
   }
 });
 
+test('발견 제목이 값 없이 비밀값 키로 끝나도(`--password`·`password =`·`DB_PASSWORD:`) 같은 줄의 파일:줄은 남는다 — 필드 끝이 뒤에 붙는 글을 먹으면 가림 표시로 봉인 (릴리스 전 확인 PR1 · FC3-1 잔존 · 대장 51 감사 이의 재판정)', () => {
+  for (const title of ['CLI 노출 option --password', 'CLI 노출 설정 password =', 'CLI 노출 DB_PASSWORD:', 'CLI 노출 dbPassword=', 'CLI 노출 --token ']) {
+    const root = tmp();
+    const adapter = writeAdapter(root);
+    const fnd = findings([F({ title, file: 'src/Unique.java', line_start: 37 })]);
+    const work = fullWork(root, { fnd });
+    const rc = JSON.parse(readFileSync(join(work, 'review-claude.json'), 'utf8'));
+    Object.assign(rc.findings[0], { title, file: 'src/Unique.java', line_start: 37 });
+    writeFileSync(join(work, 'review-claude.json'), JSON.stringify(rc));
+    assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+    const out = join(root, 'report.md');
+    const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+    assert.equal(rr.code, 0, rr.out + rr.err);
+    const lines = readFileSync(out, 'utf8').split('\n').filter((l) => /CLI 노출/.test(l));
+    assert.ok(lines.length >= 3, title);                                             // 실행 블록 · 부록 C · 부록 D
+    for (const l of lines) assert.match(l, /src\/Unique\.java/, l);
+  }
+});
+
 test('cleanup: 마스킹이 실패한 JSON 은 원문으로 남기지 않고 지운 뒤 나머지를 끝까지 정리하고 오류로 알린다 (impl C3 신규, 추천 자동 채택(위임))', () => {
   const root = tmp();
   const work = join(root, 'work');

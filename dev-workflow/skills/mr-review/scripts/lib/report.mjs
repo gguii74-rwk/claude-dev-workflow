@@ -254,8 +254,15 @@ function checkTable(check, deploy) {
 const KEY_SEP = new RegExp(`(${SECRET_KEYS}["'\`]?)[ \t]*[:=][ \t]*(?=["'\`]?(?:\\[masked:|["'\`]))`, 'gi');
 // 명령줄 옵션(`--password [masked:secret]`)도 같은 이유로 옵션과 표시 사이 공백을 지운다(8b FC3-1 · 대장 48 감사 이의 재판정) — 옵션 값 규칙은 줄 끝까지 가리므로 공백이 남으면 같은 줄의 파일:줄·출처·확신을 지운다.
 const CLI_SEP = new RegExp(`(?<![\\w-])(--?${SECRET_KEYS})[ \t]+(?=\\[masked:)`, 'gi');
+// 값 없이 비밀값 키로 끝나는 필드(`--password`·`password =` 등)는 뒤에 조립한 위치를 값으로 먹는다(릴리스 전 확인 PR1 · FC3-1 잔존 · 대장 51 감사 이의 재판정) —
+// 꼴을 따지지 않고 「뒤에 붙인 글이 남는가」를 시험해, 먹으면 필드 끝에 가림 표시를 붙여 봉인한다(대가 = 값 없는 제목에도 표시가 붙음).
+const TAIL_PROBE = ' (-:-)';
+const sepFold = (s) => s.replace(KEY_SEP, '$1 ').replace(CLI_SEP, '$1');
 function fieldMask(v, maskRules, keepShas) {
-  if (typeof v === 'string') return maskText(v, maskRules, keepShas).replace(KEY_SEP, '$1 ').replace(CLI_SEP, '$1');
+  if (typeof v === 'string') {
+    const m = sepFold(maskText(v, maskRules, keepShas));
+    return maskText(m + TAIL_PROBE, maskRules, keepShas).endsWith(TAIL_PROBE) ? m : sepFold(`${m.replace(/[ \t]+$/, '')} [masked:secret]`);
+  }
   if (Array.isArray(v)) return v.map((x) => fieldMask(x, maskRules, keepShas));
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fieldMask(x, maskRules, keepShas)]));
   return v;
