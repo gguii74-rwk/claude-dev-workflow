@@ -132,8 +132,8 @@ export const SECRET_MASK = [
   // XML·HTML 요소·속성 값은 정규식이 아니라 태그 해석기(`maskXml`, 아래)가 가린다(8b FR2-4 감사 이의 재판정 — CDATA·중첩 요소·대문자 `VALUE`·따옴표 없는 값, 선형 시간)
   // URL 자격증명 `scheme://user:비번@host` 의 비번(8b FR1-1 감사 이의 재판정) — 권한부(공백·`/` 앞) 안 **마지막 `@`** 까지가 사용자 정보, 그 첫 `:` 뒤가 비번(마지막 `@`·첫 `:` 는 WHATWG 와 같고 권한부 끝은 더 넓게 — 빈 사용자명·비번 속 `@` 포함, 8b FR3-3 + 훅-C)
   { name: 'secret', pattern: `(?<=[A-Za-z][A-Za-z0-9+.-]*://${URL_USER}*:)(?!${MARK}@)${URL_AUTH}+(?=@${URL_HOST}*(?!${URL_AUTH}))` },
-  // 명령줄 옵션 `--password 값`·`-token "값"`(같은 재판정 — `--password=값` 은 위 `=` 규칙). 따옴표 값은 이스케이프(`\\"`)를 소비하고, 붙어 이어지는 조각(`"a"b`·`'a'"b"`)도 한 인자라 공백까지 가린다(8b FR3-2)
-  { name: 'secret', pattern: `(?<=(?<![\\w-])--?${SECRET_KEYS}[ \\t]+)(?!-|${MARK}(?:[\\s;|&)]|$))(?:"(?:[^"\\\\\\n]|\\\\.)*"|'[^'\\n]*'|[^\\s"'])[^\\s]*` },
+  // 명령줄 옵션 `--password 값`·`-token "값"`(같은 재판정 — `--password=값` 은 위 `=` 규칙). 값은 **줄 끝까지**(줄 끝 `\\` 이음은 다음 줄까지) 가린다 — 셸 인자 문법(붙은 따옴표 조각·이스케이프 공백)을 해석하지 않는다(8b FC2 감사 이의 재판정 · FR3-2 잔존). 대가 = 같은 줄 뒤 옵션도 가려짐
+  { name: 'secret', pattern: `(?<=(?<![\\w-])--?${SECRET_KEYS}[ \\t]+)(?!-|${MARK}[ \\t]*(?:\\n|$))(?:[^\\n]*\\\\\\n)*[^\\n]+` },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n[A-Za-z0-9+/=:, -]+)*' },
@@ -150,8 +150,8 @@ const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\
 const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'g');
 const WHOLE_MARK_RE = new RegExp(`^${MARK}$`);
 // URL 자격증명·명령줄 옵션 안전장치(8b FR1-1 감사 이의 재판정 → FR3 허용 꼴 대조, 추천 자동 채택(위임)) — 가림 규칙과 따로, 가린 뒤 모양이 허용 꼴인지만 본다.
-// 명령줄: `--<키> ` 뒤는 다음 옵션(`-`)이거나 가림 표시 하나 + 경계(공백·줄 끝·`;|&)`)여야 한다(8b FR3-2 — 표시 뒤에 붙은 조각·닫히지 않은 따옴표는 잔존).
-const CLI_LEFT = new RegExp(`(?<![\\w-])--?${SECRET_KEYS}[ \\t]+(?!-|${MARK}(?:[\\s;|&)]|$))\\S`);
+// 명령줄: `--<키> ` 뒤는 다음 옵션(`-`)이거나 가림 표시 하나 + 줄 끝이어야 한다(8b FC2 감사 이의 재판정 — 표시 뒤 같은 줄에 무엇이든 남으면 잔존. 공백을 경계로 승인하지 않는다).
+const CLI_LEFT = new RegExp(`(?<![\\w-])--?${SECRET_KEYS}[ \\t]+(?!-|${MARK}[ \\t]*(?:\\n|$))\\S`);
 // URL: 권한부에 `@` 가 있으면 마지막 `@` 앞이 사용자 정보 — 그 첫 `:` 뒤(비번)는 가림 표시 하나여야 하고, 표준 해석기(`new URL`)가 읽은 비번도 가림 표시여야 한다(8b FR3-3 — 손으로 자른 경계와 표준 해석이 갈려도 남지 않게).
 // `://` 자리에서 출발한다(스킴 앞 글자 연속을 위치마다 다시 훑지 않게 — 선형).
 const MARK_G = new RegExp(MARK, 'g');
@@ -180,8 +180,9 @@ function urlCredLeft(text) {
 // 잔존 검사(`xmlLeft`)는 같은 해석에 기대지 않는 셈을 하나 더 한다: 글 전체의 키 표지(키 이름 여닫는 태그 · 키 속성) 수 = 허용 꼴(값·본문이 비었거나 가림 표시뿐인 키 태그와 그 닫는 태그)이 설명한 수.
 // 해석기가 놓친 태그(따옴표 안 `<` 등)·짝 잃은 닫는 태그가 하나라도 있으면 수가 어긋나 잔존이다. 모두 한 번씩만 훑는다(선형 — 짝 없음에서 멈추므로 반복 재탐색 없음).
 const ATTRS = `(?:[^<>"']|"[^"<]*"|'[^'<]*')*`;
-const TAG_RE = new RegExp(`<([A-Za-z_][\\w:.-]*)(${ATTRS})>`, 'g');
-const BODY_TOK = new RegExp(`<!\\[CDATA\\[|<!--|<\\/([A-Za-z_][\\w:.-]*)\\s*>|<([A-Za-z_][\\w:.-]*)(${ATTRS})>`, 'g');
+const NAME = '[A-Za-z_][\\w:.-]*(?![\\w:.-])';   // 이름 뒤는 이름 글자가 아님 — 이름·속성 경계를 되짚어 다시 나누지 않는다(8b FC2 감사 이의 재판정 · FC1-H2 — 닫히지 않은 긴 이름의 이차 시간)
+const TAG_RE = new RegExp(`<(${NAME})(${ATTRS})>`, 'g');
+const BODY_TOK = new RegExp(`<!\\[CDATA\\[|<!--|<\\/(${NAME})\\s*>|<(${NAME})(${ATTRS})>`, 'g');
 const KEY_NAME_RE = new RegExp(`^${SECRET_KEYS}$`);
 const KEY_ATTR_SRC = `(?<![\\w-])${ci('(?:name|key|property)')}[ \\t]*=[ \\t]*(?:["']${SECRET_KEYS}["']|${SECRET_KEYS}(?![\\w.-]))`;
 const KEY_ATTR_RE = new RegExp(KEY_ATTR_SRC);

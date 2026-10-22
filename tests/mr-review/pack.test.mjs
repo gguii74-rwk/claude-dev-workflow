@@ -712,7 +712,7 @@ test('URL 자격증명(`scheme://user:비번@host`)·명령줄 옵션(`--passwor
     assert.ok(!m.text.includes(leak), `${text} → ${m.text}`);
     assert.deepEqual(m.residual, [], text);
   }
-  assert.match(maskTextWithCounts('run --password X --user bob', []).text, /--user bob$/);                       // 다음 옵션은 보존
+  assert.equal(maskTextWithCounts('run --password X --user bob\nnext line', []).text, 'run --password [masked:secret]\nnext line');   // 옵션 뒤는 줄 끝까지(FC2 감사 이의 재판정) — 다음 줄은 보존
   for (const t of ['https://example.com/a:b@c', 'token --foo', 'see https://host/path']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
 });
 
@@ -779,9 +779,9 @@ test('명령줄 옵션: 이스케이프 따옴표까지 값 전체를 가린다 
     ['masked', 'tool --password "prefix\\"TAIL_SECRET"', 'TAIL_SECRET'],
     ['masked', 'tool --password "a"ADJ_SECRET', 'ADJ_SECRET'],
     ['masked', "tool --token 'a'\"QQ_SECRET\"", 'QQ_SECRET'],
-    ['blocked', 'tool --password "UNCLOSED_CLI_SECRET', 'UNCLOSED_CLI_SECRET'],
+    ['masked', 'tool --password "UNCLOSED_CLI_SECRET', 'UNCLOSED_CLI_SECRET'],                          // 줄 끝까지 가림(FC2 재판정) — 예전엔 잔존 차단
   ]);
-  assert.equal(maskTextWithCounts('tool --password "p\\"q" --user bob', []).text, 'tool --password [masked:secret] --user bob');
+  assert.equal(maskTextWithCounts('tool --password "p\\"q" --user bob', []).text, 'tool --password [masked:secret]');
   for (const t of ['run --password X --user bob', 'run --password "x y" && next', 'run --password X;', 'run --password --user bob']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
 });
 
@@ -802,4 +802,25 @@ test('URL 자격증명: 빈 사용자명·비번 속 `@`(권한부의 마지막 
   const s0 = Date.now();
   maskTextWithCounts('a'.repeat(200000) + ' ' + 'x://'.repeat(20000) + ' ' + ':@'.repeat(50000), []);
   assert.ok(Date.now() - s0 < 2000, `${Date.now() - s0}ms`);
+});
+
+test('명령줄 옵션 값은 줄 끝까지 가린다 — 붙어 이어진 따옴표 조각·이스케이프 공백·줄 끝 `\\` 이음도 남지 않고, 표시 뒤 같은 줄에 무엇이 남으면 잔존 (8b FC2 감사 이의 재판정 · FR3-2·FC1-A1 잔존)', () => {
+  expectMaskOrBlock([
+    ['masked', "tool --password \"a\"'prefix TAIL_SECRET'", 'TAIL_SECRET'],
+    ['masked', 'tool --password prefix\\ ESC_SPACE_SECRET', 'ESC_SPACE_SECRET'],
+    ['masked', 'tool --password a\\\nCONT_SECRET --x', 'CONT_SECRET'],
+    ['masked', 'run --token "x" && echo NEXT_SECRET', 'NEXT_SECRET'],
+  ]);
+  assert.equal(maskTextWithCounts('a --password X y z\nb', []).text, 'a --password [masked:secret]\nb');
+  for (const t of ['run --password --user bob', 'run --password\nnext', 'a --password [masked:phone]']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
+});
+
+test('XML 태그 해석기는 닫히지 않은 긴 태그 이름·속성에서도 선형 시간 (8b FC2 감사 이의 재판정 · FC1-H2 재분류)', () => {
+  for (const n of [32000, 128000]) {
+    for (const t of ['<a' + 'a'.repeat(n), '</a' + 'a'.repeat(n), '<password>' + '</p' + 'a'.repeat(n), '<a ' + 'b'.repeat(n) + '="x"']) {
+      const s0 = Date.now();
+      maskTextWithCounts(t, []);
+      assert.ok(Date.now() - s0 < 1000, `${t.slice(0, 16)}… n=${n} ${Date.now() - s0}ms`);
+    }
+  }
 });
