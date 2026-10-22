@@ -116,10 +116,10 @@ fi
 2. base..head diff — 워크트리 모드: `git -C "<snapshot.worktree>" diff <base_sha> <head_sha>` 출력(길면 파일 목록만 넣고 「워크트리에서 직접 읽어라」) / diff-only: `mr.json.diffs[*].diff`.
 3. 변경 파일 전문은 **워크트리를 직접 읽게** 한다(경로 `snapshot.worktree`). diff-only면 `W/blobs/head/`.
 4. 렌즈 = 어댑터 문서의 렌즈 절(표) **원문 그대로**(질문·근거·발견 유형·차단 승격 조건). 어댑터가 모델별 강조 순서를 적었으면 그 순서로 렌즈를 나열한다(같은 렌즈를 다른 순서·자료로 보게 해 오류를 비상관화한다). **Codex에는 렌즈 원문을 붙이지 않는다** — 팩 B 의 `adapter` 출처(마스킹된 어댑터 산문)의 렌즈 절을 가리키고, 프롬프트에는 렌즈 id 와 강조 순서만 적는다(어댑터 렌즈 문구의 예시 개인정보·비밀값이 마스킹 없이 가지 않게 — impl R1-5).
-5. 의도 대조표 입력 = MR 본문 「검증」 표의 행.
+5. 의도 대조표 입력 = MR 본문 「검증」 절의 표 행. **행 번호 = 위에서부터 1부터 센 순서**(머리글·구분선 제외, 빈 행·주석 행 포함 — 검토자가 행을 거르지 않고 그대로 센다). 「검증」 표가 둘 이상이면 **문서 순서로 이어 센다**(1~n 연속). 표가 아니라 불릿 목록이면 **목록 항목**이 행이다(들여쓴 하위 항목은 부모 행에 포함). 프롬프트에는 표(목록) 개수 k 와 **총 n행**을 적는다 — 「검증 표 k개 · 총 n행(문서 순서로 이어 센다) — `row` 1~n 전부를 출력하라, 수용기준이 아닌 행(대기·메모)은 `result: UNKNOWN`으로」. k·n 은 메인이 `mr.json.description`을 읽어 센다(스크립트에 검증 표 파서는 없다 — 1.3.2 ⑫).
 6. 출력 스키마(아래 블록 그대로) — **JSON 하나만** 출력하게 한다.
 
-**Codex 프롬프트의 비코드 입력은 전부 마스킹된 팩 B에서만 온다(D4·D14·F5)**: 위 1(계약 10줄·MR 제목·트랙)·5(검증 표 행)와 §7 재리뷰 추가 입력(이전 판정 댓글의 「4. 차단 발견」·작성자 토큰 댓글·이전 리포트 절)은 `check.json`·`mr.json`·리포트 원문에서 **다시 붙이지 않는다** — 팩 B의 「## MR」 절(본문·댓글 — Review Contract·검증 표·판정 댓글이 마스킹된 채 들어 있다)을 가리켜 「계약 10줄·검증 표는 팩 B 「## 본문」의 `## Review Contract`·「검증」 표에서 읽어라」로 준다. 팩 B 밖에서 Codex 프롬프트에 들어가는 것은 **diff(코드 — D4는 코드를 마스킹하지 않는다)·렌즈 id 와 순서·출력 스키마·고정 문구뿐**이다(렌즈 본문은 팩 B 의 `adapter` 출처에서 읽게 한다). Claude 프롬프트는 원문 그대로(팩 A + `check.json`).
+**Codex 프롬프트의 비코드 입력은 전부 마스킹된 팩 B에서만 온다(D4·D14·F5)**: 위 1(계약 10줄·MR 제목·트랙)·5(검증 표 행)와 §7 재리뷰 추가 입력(이전 판정 댓글의 「4. 차단 발견」·작성자 토큰 댓글·이전 리포트 절)은 `check.json`·`mr.json`·리포트 원문에서 **다시 붙이지 않는다** — 팩 B의 「## MR」 절(본문·댓글 — Review Contract·검증 표·판정 댓글이 마스킹된 채 들어 있다)을 가리켜 「계약 10줄·검증 표는 팩 B 「## 본문」의 `## Review Contract`·「검증」 표에서 읽어라」로 준다. 팩 B 밖에서 Codex 프롬프트에 들어가는 것은 **diff(코드 — D4는 코드를 마스킹하지 않는다)·렌즈 id 와 순서·출력 스키마·고정 문구·검증 표 개수 k 와 총 행 수 n(숫자)뿐**이다(렌즈 본문은 팩 B 의 `adapter` 출처에서 읽게 한다). Claude 프롬프트는 원문 그대로(팩 A + `check.json`).
 
 ```text
 출력은 아래 JSON 객체 하나만(코드펜스 ```json … ``` 안에). 설명 문장을 밖에 쓰지 마라.
@@ -127,7 +127,7 @@ fi
   "findings": [{ "lens": "L?", "type": "DEFECT|MISSING_EVIDENCE|DESIGN_DRIFT|FOLLOW_UP", "title": "", "file": "<저장소 상대 경로|null>", "line_start": 0, "line_end": 0,
                  "evidence": "<팩 출처 id [S?] 또는 코드 경로>", "scenario": "<실패 시나리오 — DEFECT·DESIGN_DRIFT 필수>", "confidence": "high|medium|low",
                  "recommendation": "", "fixableInDesign": "yes|no", "brokenPremise": "<no 일 때 어떤 전제가 깨졌나>" }],
-  "intent": [{ "criterion": "<검증 표 행>", "result": "PASS|FAIL|UNKNOWN", "location": "<코드 위치>", "basis": "작성자 주장|코드로 확인" }],
+  "intent": [{ "row": <검증 표 행 번호 1~n>, "criterion": "<검증 표 행>", "result": "PASS|FAIL|UNKNOWN", "location": "<코드 위치>", "basis": "작성자 주장|코드로 확인" }],
   "baselineCandidateRelevant": <true|false — diff 안의 기준선 후보 문서가 이번 변경(제목·변경 파일·②의 범위)을 실제로 다루면 true. 후보가 없으면 false> }
 규칙: 테스트·빌드를 실행하지 마라(검증 상태는 전부 판독). 변경 범위 밖 재감사·새 설계 제안은 임무가 아니다. 현재 MR과 인과관계 없는 기존 문제는 차단 사유가 아니다. 막연한 best practice·실현 경로 없는 추측 금지. DEFECT·DESIGN_DRIFT 에는 파일:줄과 실패 시나리오를 반드시 쓴다.
 ```
@@ -169,7 +169,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
 2. **blocking** = `DEFECT`·`MISSING_EVIDENCE`는 항상 `true`. `DESIGN_DRIFT`는 어댑터 렌즈 표의 「차단 승격」 조건(승인 범위·전제·인터페이스 이탈, 접촉 표면 추가 등)에 해당할 때만 `true` — 최소 범위 렌즈의 범위 밖 변경은 기본 `FOLLOW_UP`이다(접촉 표면을 건드릴 때만 `DESIGN_DRIFT`). `FOLLOW_UP`은 `false`.
 3. **상충·낮은 확신**: 한쪽은 차단, 다른 쪽은 같은 자리를 무해로 봤거나(상충), 한쪽만 잡은 `confidence: low|medium` 차단 후보는 **메인이 코드를 다시 읽어** 확인한다. 확인되면 `blocking:true`, 반박되면 `type` 유지·`blocking:false`·`dismissReason`에 근거. **확인도 반박도 못 하면 `unresolved: true`** — 판정 입력에서 빼지 않는다(`verdict`가 「판정 미확정」으로 만든다). **설계 내 수정 가능 상충도 같은 확인 대상이다**: 같은 지문을 둘 다 차단으로 봤는데 `fixableInDesign`이 `yes`/`no`로 갈리면(이 값으로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀐다) 메인이 코드·기준선 문서를 다시 읽어 **어느 전제가 실제로 깨졌는지** 판단한다 — 판단되면 그 값 + `no`면 `brokenPremise`, 못 하면 `fixableInDesign: null` · `fixableInDesignClaims: { claude: "<값>", codex: "<값>" }` · `brokenPremise` = `no` 쪽 주장 · `unresolved: true`. `verdict`는 이 항목에 `confirmed:fixable / confirmed:design / dismissed` 세 갈래를 보이고 리뷰어가 §9 에서 정한다 — 스크립트도 스킬도 엄한 쪽을 자동으로 고르지 않는다(D9).
 4. `baselineCandidateRelevant` = **유효한 검토 결과(`validReviewers`)만** 대상으로 — 전부 `true`면 `true`, 전부 `false`면 `false`(유효 결과가 1개인 단일 모델 모드면 그 값 그대로 — Codex 미설치·마스킹 실패로 후보를 기각하지 않는다). **둘이 상충하면** 메인이 후보 문서(워크트리의 그 파일)를 직접 읽어 이번 변경(제목·변경 파일·②의 범위)을 다루는지 판정하고, 그 근거 한 줄을 `baselineCandidateReason`에 적는다. 후보가 없으면 `false`.
-5. `intent` = 두 결과를 행별로 합친다(둘이 다르면 `UNKNOWN`, `basis`는 「코드로 확인」이 하나라도 있으면 그것).
+5. `intent` = 두 결과를 **`row` 번호 기준**으로 합친다(검토자의 `criterion` 문구는 모델마다 달라 병합 키로 쓰지 않는다). 각 행의 `criterion`은 메인이 `mr.json.description`의 검증 표에서 직접 읽은 원문 행(번호 순)으로 쓴다. 둘 다 있는 번호: 결과가 다르면 `UNKNOWN`, `basis`는 「코드로 확인」이 하나라도 있으면 그것. **한쪽에만 있는 번호**는 그 모델 값 그대로. `row`가 없는 결과(스키마 미준수)는 배열 순서를 번호로 쓰고 §8 터미널 요약에 「intent 행 번호 누락(<모델>)」 1줄. 1~n 범위 밖 번호·중복 번호는 그 항목을 버리고 같은 줄에 「행 번호 불일치(<모델>: <번호들>)」로 적는다. `findings.json.intent`에도 `row`를 넣는다(행 순).
 6. `W/findings.json`을 아래 형식으로 쓴다 — `head_sha` = `snapshot.head_sha`(verdict·render가 대조한다 — 다르면 리뷰 실패) · `validReviewers`·`crossChecked`(둘 다 유효할 때만 `true`)·`outsideWorktreePaths` 포함 · 상충 항목은 `fixableInDesignClaims`(없으면 `null`).
 
 ```json
@@ -178,7 +178,7 @@ const c=require("child_process").spawn("bash",[sh,...a],{detached:true,stdio:["i
   "findings": [{ "id": "F1", "fingerprint": "<file + 정규화 title>", "source": "both|claude|codex", "lens": "", "type": "", "blocking": true,
                  "title": "", "file": "", "line_start": 0, "line_end": 0, "evidence": "", "scenario": "", "confidence": "", "recommendation": "",
                  "fixableInDesign": "yes|no|null", "fixableInDesignClaims": null, "brokenPremise": "", "unresolved": false, "resolution": "confirmed|dismissed|null", "dismissReason": "" }],
-  "intent": [{ "criterion": "", "result": "", "location": "", "basis": "" }],
+  "intent": [{ "row": 1, "criterion": "", "result": "", "location": "", "basis": "" }],
   "outsideWorktreePaths": [] }
 ```
 

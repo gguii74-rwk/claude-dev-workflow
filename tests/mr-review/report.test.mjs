@@ -941,3 +941,25 @@ test('machineEvidence: M-deploy detail = 종류 등장 순 · 경로 등장 순 
   assert.equal(m.detail, '배포본 불일치 — comment_sha · bytes 2건(src/b.js, src/a.js) · 전체 목록 부록 A');
   assert.equal(mismatchSummary({ mismatches: [] }), '');
 });
+
+// ── 1.3.2 ⑫ 의도 대조표 병합 키 = intent[].row (spec 2026-10-22 3.⑫ D41·D44·D50·D51) ──
+const skillText = () => readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+test('SKILL.md §5: 공통 입력 5 에 행 번호·총 n행·이어 세기·목록 항목 · 출력 스키마 intent 에 "row" (1.3.2 AC⑫-1)', () => {
+  const skill = skillText();
+  const s5 = skill.slice(skill.indexOf('## 5. 독립 병렬 검토'), skill.indexOf('## 6. 병합'));
+  const in5 = s5.split('\n').find((l) => l.startsWith('5. 의도 대조표 입력'));
+  assert.ok(in5, '공통 입력 5');
+  for (const re of [/행 번호/, /총 n행/, /이어 센다/, /목록 항목/, /mr\.json\.description/]) assert.match(in5, re);
+  const schema = s5.slice(s5.indexOf('```text'), s5.indexOf('\n```\n', s5.indexOf('```text')));   // 스키마 첫 줄의 인라인 ```json … ``` 표기를 건너뛰고 펜스 닫는 줄까지
+  assert.match(schema.split('\n').find((l) => l.includes('"intent"')), /"row": /);
+});
+
+test('SKILL.md §6-5: row 번호 기준 병합 · criterion = 메인이 검증 표에서 읽은 원문 · 한쪽에만·누락·범위 밖·중복 처리 · §6-6 예시 intent 에 "row" (1.3.2 AC⑫-2)', () => {
+  const skill = skillText();
+  const s6 = skill.slice(skill.indexOf('## 6. 병합'), skill.indexOf('## 7. 재리뷰'));
+  const r5 = s6.split('\n').find((l) => l.startsWith('5. `intent`'));
+  assert.ok(r5, '§6-5');
+  for (const re of [/`row` 번호 기준/, /`criterion`[^\n]*메인이[^\n]*원문/, /한쪽에만/, /누락/, /배열 순서/, /범위 밖/, /중복/, /intent 행 번호 누락/]) assert.match(r5, re);
+  const ex = s6.slice(s6.indexOf('```json'), s6.indexOf('```', s6.indexOf('```json') + 7));
+  assert.match(ex.split('\n').find((l) => l.includes('"intent"')), /"row": /);
+});
