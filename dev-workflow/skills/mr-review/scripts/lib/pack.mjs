@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { matchesAny } from './adapter.mjs';
 import { apiRaw, encodePath } from './gitlab.mjs';
 
@@ -149,24 +150,51 @@ function unmaskedSecretDecl(text) {
     const rest = text.slice(m.index + m[0].length, le).trimStart();
     if (!DECL_OK.test(rest)) return true;
     if (!DECL_HEAD.test(rest)) continue;
-    const next = text.slice(le + 1).split('\n').find((l) => l.trim() !== '');
-    if (next === undefined) continue;
-    const ind = (l) => /^[ \t]*/.exec(l)[0].length;
-    if (ind(next) > ind(text.slice(ls, le)) && !DECL_WHOLE.test(next)) return true;
+    // 더 들여쓴 이어지는 줄은 **전부** 통째로 가림 표시여야 한다(impl R6-1 — 첫 줄만 보면 둘째 줄 이후가 샌다)
+    const base = indentOf(text.slice(ls, le));
+    for (const l of text.slice(le + 1).split('\n')) {
+      if (l.trim() === '') continue;
+      if (indentOf(l) <= base) break;
+      if (!DECL_WHOLE.test(l)) return true;
+    }
   }
   return false;
 }
+const indentOf = (l) => /^[ \t]*/.exec(l)[0].length;
+// 이어지는 줄 가림(impl R6-1) — 값 자리가 머리·표시뿐인 선언 뒤, 키 줄보다 더 들여쓴 줄(사이 빈 줄 포함)을 들여쓰기가 끝날 때까지 가림 표시 한 줄로 바꾼다(YAML 여러 줄 평문 값 · 중첩 키). 저장본(maskText)도 같은 함수라 남지 않는다.
+function maskContinuations(text) {
+  const lines = text.split('\n');
+  let n = 0;
+  for (let i = 0; i < lines.length; i++) {
+    for (const m of lines[i].matchAll(DECL_RE)) {
+      if (!DECL_HEAD.test(lines[i].slice(m.index + m[0].length).trimStart())) continue;
+      const base = indentOf(lines[i]);
+      let last = -1;
+      for (let j = i + 1; j < lines.length && (lines[j].trim() === '' || indentOf(lines[j]) > base); j++) if (lines[j].trim() !== '') last = j;
+      if (last < 0 || lines.slice(i + 1, last + 1).every((l) => l.trim() === '' || DECL_WHOLE.test(l))) break;
+      const first = lines.slice(i + 1).find((l) => l.trim() !== '');
+      lines.splice(i + 1, last - i, `${/^[ \t]*/.exec(first)[0]}[masked:secret]`);
+      n += 1;
+      break;
+    }
+  }
+  return { text: lines.join('\n'), n };
+}
 // 줄바꿈 통일(impl R4-3) — 모든 규칙이 LF 만 보므로 CRLF 문서(잘린 PEM·YAML 블록 등)가 규칙을 빠져나가지 않게 입구에서 LF 로 바꾼다(출력 사본의 줄바꿈도 LF).
+// 자리표시 위조 차단(impl R6-2) — 입력의 NUL 은 대체 문자(U+FFFD)로 바꾸고, 자리표시는 호출마다 무작위 값을 넣어 이 호출이 만든 것만 되돌린다(입력에 같은 모양을 넣어 가린 비밀값을 되살리지 못하게).
 export function maskTextWithCounts(text, maskRules) {
   const keep = [];
-  const held = text.replace(/\r\n/g, '\n').replace(SHA40_RE, (m) => { keep.push(m); return `\u0000sha40:${keep.length - 1}\u0000`; });
+  const nonce = randomBytes(8).toString('hex');
+  const held = text.replace(/\r\n/g, '\n').replace(/\u0000/g, '\uFFFD').replace(SHA40_RE, (m) => { keep.push(m); return `\u0000sha40:${nonce}:${keep.length - 1}\u0000`; });
   const a = applyMask(held, maskRules);
   const b = applyMask(a.text, SECRET_MASK);
+  const c = maskContinuations(b.text);
   const applied = { ...a.applied };
   for (const [k, v] of Object.entries(b.applied)) applied[k] = (applied[k] || 0) + v;
-  const left = residual(b.text, [...maskRules, ...SECRET_MASK]);
-  if (unmaskedSecretDecl(b.text)) left.push({ name: 'secret-decl' });
-  return { text: b.text.replace(/\u0000sha40:(\d+)\u0000/g, (_, i) => keep[Number(i)]), applied, residual: left };
+  if (c.n) applied.secret = (applied.secret || 0) + c.n;
+  const left = residual(c.text, [...maskRules, ...SECRET_MASK]);
+  if (unmaskedSecretDecl(c.text)) left.push({ name: 'secret-decl' });
+  return { text: c.text.replace(new RegExp(`\u0000sha40:${nonce}:(\\d+)\u0000`, 'g'), (_, i) => keep[Number(i)]), applied, residual: left };
 }
 export function maskText(text, maskRules) { return maskTextWithCounts(text, maskRules).text; }
 

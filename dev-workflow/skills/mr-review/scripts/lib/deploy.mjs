@@ -80,6 +80,8 @@ function zipName(raw, flags) {
   if (!Buffer.from(name, 'utf8').equals(raw)) throw new Error(`zip 파일명이 UTF-8 왕복에서 바뀜(BOM 등): ${raw.toString('latin1')}`);
   // 제어문자(impl R5-2) — NUL 에서 이름을 자르는 리더는 `x.js\0/`(우리에겐 폴더)를 일반 파일 `x.js` 로 푼다
   if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error(`zip 파일명에 제어문자(NUL 등): ${JSON.stringify(name)}`);
+  // 정규형만(impl R6-3 훅) — 앞 `/`·역슬래시·빈 조각·`.`·`..` 는 해제 도구가 경로를 정리하며 다른 위치·충돌을 만든다(git archive 이름은 항상 정규형)
+  if (name.startsWith('/') || name.includes('\\') || name.replace(/\/$/, '').split('/').some((s) => s === '' || s === '.' || s === '..')) throw new Error(`zip 파일명이 정규형이 아님: ${JSON.stringify(name)}`);
   return name;
 }
 
@@ -142,12 +144,17 @@ export function readZip(buf) {
   }
   if (p !== eocd) throw new Error(`zip EOCD 목차 크기 불일치(파싱한 목차 끝 ${p} ≠ EOCD ${eocd})`);
   // 경로 충돌(impl C1 N2) — 파일과 같은 경로의 폴더 항목(`a.txt/`)이나 파일 아래 항목(`a.txt/b`)은 표준 리더가 충돌로 실패하거나 다르게 푼다(폴더는 대조에서 빠지므로 우리만 「일치」)
-  const fileNames = new Set(entries.filter((e) => !e.name.endsWith('/')).map((e) => e.name));
+  // 대소문자 무시(impl R6-3 훅) — 대소문자를 구분하지 않는 파일 시스템에서 풀면 `A.txt`·`a.txt`·`A.TXT/` 가 같은 경로다
+  const fileNames = new Set(entries.filter((e) => !e.name.endsWith('/')).map((e) => e.name.toLowerCase()));
+  const seenPath = new Set();
   for (const e of entries) {
-    const segs = e.name.replace(/\/$/, '').split('/');
-    for (let k = 1; k <= segs.length; k++) {
+    const key = e.name.replace(/\/$/, '').toLowerCase();
+    if (seenPath.has(key)) throw new Error(`zip 경로 충돌(대소문자·폴더 표기만 다른 같은 경로): ${e.name}`);
+    seenPath.add(key);
+    const segs = key.split('/');
+    for (let k = 1; k < segs.length; k++) {
       const pre = segs.slice(0, k).join('/');
-      if (fileNames.has(pre) && pre !== e.name) throw new Error(`zip 경로 충돌(파일 ${pre} 와 겹치는 항목): ${e.name}`);
+      if (fileNames.has(pre)) throw new Error(`zip 경로 충돌(파일 ${pre} 아래 항목): ${e.name}`);
     }
   }
   const read = (e) => {

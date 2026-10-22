@@ -428,8 +428,8 @@ test('안전장치: 비밀값 키 선언 뒤 값이 가림 표시가 아니거�
 });
 
 test('안전장치 CLI: MR 본문에 가리지 못한 비밀값 선언이 있으면 팩 B 미생성 · codexSkipped (impl R3-1, 추천 자동 채택(위임))', () => {
-  // 어댑터 규칙이 값 첫 줄을 통째로 가려 엔진 규칙이 건너뛴 뒤, 더 들여쓴 이어지는 줄(YAML 여러 줄 평문 값)이 남는 형태
-  const { adapter, work, env } = setup({ description: '## 배경\n- 설정\n\n```yaml\ndb:\n  password: 010-1234-5678\n    SECRETC1 이어지는 값\n```\n' });
+  // 닫는 따옴표가 없는 값 — 끝까지 가리되 잔존으로 본다(impl C1 R2-2 잔존 · R6-1 뒤로 이어지는 줄 형태는 가려져 잔존이 아니다)
+  const { adapter, work, env } = setup({ description: '## 배경\n- 설정 password = "SECRETC1 닫는 따옴표 없음\n' });
   const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
   assert.equal(r.code, 0, r.out + r.err);
   const p = readJson(join(work, 'pack.json'));
@@ -484,4 +484,25 @@ test('닫는 따옴표가 어디에도 없는 값은 끝까지 가리고 잔존(
   }
   assert.equal(maskText('{"password":"x","user":"keep"}', []), '{"password":"[masked:secret]","user":"keep"}');
   assert.equal(maskText('password: "x" # 주석', []), 'password: "[masked:secret]" # 주석');
+});
+
+test('키 줄보다 더 들여쓴 이어지는 줄은 들여쓰기가 끝날 때까지 전부 가린다 — 둘째 줄 이후도 저장본에 남지 않는다 · 같은 깊이의 다음 키는 보존 (impl R6-1, 추천 자동 채택(위임))', () => {
+  const t = 'password:\n  alpha-part\n  BRAVO-SECRET-TAIL\n\n  CHARLIE-TAIL\nnext: 1';
+  const m = maskTextWithCounts(t, []);
+  assert.doesNotMatch(m.text, /alpha-part|BRAVO|CHARLIE/, m.text);
+  assert.doesNotMatch(maskText(t, []), /BRAVO|CHARLIE/);
+  assert.match(m.text, /\nnext: 1$/);
+  assert.deepEqual(m.residual, []);
+  assert.equal(maskText('db:\n  password: x\n  user: app', []), 'db:\n  password: [masked:secret]\n  user: app');
+});
+
+test('입력에 위조한 SHA 자리표시가 있어도 가린 비밀값이 되살아나지 않는다 — 자리표시는 호출마다 무작위 · 입력 NUL 은 대체 문자 (impl R6-2, 추천 자동 채택(위임))', () => {
+  const sec = 'abcdef0123456789abcdef0123456789abcdef01';
+  for (const forged of ['\u0000sha40:0\u0000', '\u0000sha40:x:0\u0000']) {
+    const m = maskTextWithCounts(`password: ${sec}\nnote ${forged}`, []);
+    assert.ok(!m.text.includes(sec), JSON.stringify(m.text));
+    assert.ok(!m.text.includes('\u0000'));
+  }
+  const keep = maskTextWithCounts(`head ${sec} 기준`, []);
+  assert.equal(keep.text, `head ${sec} 기준`);                                            // 정상 SHA 보존은 그대로(R5-2)
 });

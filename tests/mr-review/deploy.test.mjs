@@ -394,3 +394,13 @@ test('zip 에서 파일과 같은 경로의 폴더 항목·파일 아래 항목�
   assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'ok' }, { name: 'src/main/A.txt/B.txt', data: 'x' }])), /충돌/);
   assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/', data: '' }, { name: 'src/main/', data: '' }, { name: 'src/main/A.txt', data: 'ok' }])));
 });
+
+test('zip 파일명은 정규형만 — 앞 `/`·역슬래시·빈 조각·`.`·`..` 거부 · 대소문자만 다른 경로도 충돌로 거부 (impl R6-3 훅, 추천 자동 채택(위임))', () => {
+  for (const name of ['./a.txt', 'a//b.txt', 'src/../x/', '/abs.txt', 'a\\b.txt', 'src/./a/']) {
+    assert.throws(() => readZip(mkZip([{ name, data: '' }])), /정규형/, name);
+  }
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'ok' }, { name: 'SRC/main/A.txt/', data: '' }])), /충돌/);
+  assert.throws(() => readZip(mkZip([{ name: 'src/A.txt', data: '1' }, { name: 'src/a.txt', data: '2' }])), /충돌/);
+  assert.throws(() => readZip(mkZip([{ name: 'src/A.txt', data: '1' }, { name: 'SRC/a.txt/b.txt', data: '2' }])), /충돌/);
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/', data: '' }, { name: 'src/A.txt', data: '1' }, { name: 'src/B.txt', data: '2' }])));
+});
