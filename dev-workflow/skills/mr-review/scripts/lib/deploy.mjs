@@ -108,10 +108,14 @@ function zipName(raw, flags) {
   if (!Buffer.from(name, 'utf8').equals(raw)) throw new Error(`zip 파일명이 UTF-8 왕복에서 바뀜(BOM 등): ${raw.toString('latin1')}`);
   // 제어문자(impl R5-2) — NUL 에서 이름을 자르는 리더는 `x.js\0/`(우리에겐 폴더)를 일반 파일 `x.js` 로 푼다
   if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error(`zip 파일명에 제어문자(NUL 등): ${JSON.stringify(name)}`);
-  // 정규형만(impl R6-3 훅) — 앞 `/`·역슬래시·빈 조각·`.`·`..` 는 해제 도구가 경로를 정리하며 다른 위치·충돌을 만든다(git archive 이름은 항상 정규형)
-  // 드라이브 접두(`C:/…`·`C:…` — 1.3.2 R4-1)도 절대·드라이브 상대 경로라 Windows 해제 도구가 배포 루트 밖을 가리킨다(maven-war 웹 루트 매핑이 `src/main/webapp/C:/…` 를 그 이름으로 만든다)
-  if (name.startsWith('/') || /^[A-Za-z]:/.test(name) || name.includes('\\') || name.replace(/\/$/, '').split('/').some((s) => s === '' || s === '.' || s === '..')) throw new Error(`zip 파일명이 정규형이 아님: ${JSON.stringify(name)}`);
+  if (notCanonical(name)) throw new Error(`zip 파일명이 정규형이 아님: ${JSON.stringify(name)}`);
   return name;
+}
+
+// 정규형만(impl R6-3 훅) — 앞 `/`·역슬래시·빈 조각·`.`·`..` 는 해제 도구가 경로를 정리하며 다른 위치·충돌을 만든다(git archive 이름은 항상 정규형).
+// 드라이브 접두(`C:/…`·`C:…` — 1.3.2 R4-1)도 절대·드라이브 상대 경로라 Windows 해제 도구가 배포 루트 밖을 가리킨다. zip 항목 이름과 매핑한 배포·삭제 경로(R5-1)가 같이 쓴다
+function notCanonical(name) {
+  return name.startsWith('/') || /^[A-Za-z]:/.test(name) || name.includes('\\') || name.replace(/\/$/, '').split('/').some((s) => s === '' || s === '.' || s === '..');
 }
 
 function checkExtra(buf, start, len, name, where) {
@@ -397,6 +401,11 @@ export function deploy({ adapter, work }) {
     const inZipEntries = new Set(out.zip.entries);
     const delZip = new Map();
     for (const p of [...out.expected.deleted, ...out.bodyDeletedList]) { const zp = zipPathFor(layout, p).zip; if (!delZip.has(zp)) delZip.set(zp, []); if (!delZip.get(zp).includes(p)) delZip.get(zp).push(p); }
+    // 매핑한 경로(배포·기대 삭제·본문 삭제)가 정규형이 아니면 zip 유무와 무관하게 대조 불가 — 접두를 떼며 드러난 `C:/…`·`..\…` 를 정상 배포·삭제 지시로 보증하지 않는다(R5-1, 추천 자동 채택(위임))
+    for (const p of [...out.expected.deploy, ...out.expected.deleted, ...out.bodyDeletedList]) {
+      const zp = zipPathFor(layout, p).zip;
+      if (notCanonical(zp) && !mm.some((m) => m.kind === 'map_conflict' && m.path === zp)) mm.push({ kind: 'map_conflict', path: zp, detail: `사상한 배포 경로가 정규형이 아님(절대·드라이브 접두·역슬래시·빈 조각·./..): ${p}` });
+    }
     for (const [zp, srcs] of delZip) if (inZipEntries.has(zp) && !mm.some((m) => m.kind === 'map_conflict' && m.path === zp)) mm.push({ kind: 'map_conflict', path: zp, detail: `삭제 목록의 경로가 zip 에도 들어 있음 — 배포 뒤 삭제하면 방금 배포한 파일이 지워진다: ${srcs.join(', ')}` });
     const bodyDel = new Set(out.bodyDeletedList.map(normBody));
     const same = expDel.size === bodyDel.size && [...expDel].every((p) => bodyDel.has(p));

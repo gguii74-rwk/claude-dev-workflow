@@ -798,6 +798,18 @@ test('maven-war: `$` 가 아주 많은 .class 이름(작은 zip)도 내부 클�
   assert.deepEqual(kp(d), [['extra_in_zip', long]]);
 });
 
+test('maven-war: 매핑한 경로(배포·기대 삭제·본문 삭제)가 정규형이 아니면(드라이브 접두·역슬래시 상위 경로) zip 유무와 무관하게 map_conflict → 대조 불가 — 삭제 전용 MR (1.3.2 R5-1, 추천 자동 채택(위임))', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const BAD = { 'src/main/webapp/..\\..\\outside.txt': 'x\n', 'src/main/webapp/C:/outside/payload.txt': 'y\n' };
+  const repo = warRepo(root, { add: {}, baseFiles: BAD, del: Object.keys(BAD) });
+  const description = '## 배포·롤백\n- 배포본: 없음\n  - 삭제: ..\\..\\outside.txt\n  - 삭제: C:/outside/payload.txt\n';
+  const { r, d } = warDeploy(root, adapter, { repo, entries: warEntries(), description });
+  assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+  assert.deepEqual(kp(d).filter(([k]) => k === 'map_conflict').map(([, p]) => p).sort(), ['..\\..\\outside.txt', 'C:/outside/payload.txt']);
+  assert.ok(d.mismatches.every((m) => m.kind !== 'map_conflict' || /정규형/.test(m.detail)));
+});
+
 test('maven-war: `Foo$Bar.java` 의 내부 클래스 `Foo$Bar$1.class` 는 가장 긴 기대 클래스(`Foo$Bar.class`)의 산출물 — 배포 대조·삭제 목록 모두 통과 (1.3.2 R2-2)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: WAR_PROJECT });
