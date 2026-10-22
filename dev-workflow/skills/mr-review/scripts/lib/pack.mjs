@@ -118,6 +118,9 @@ const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[maske
 // 닫는 따옴표 뒤 조각(impl C1 R5-1 잔존): `""값`·`"a" 값` 처럼 공백·주석·구분자(`,;)}]`)가 아닌 것이 오면 줄 끝까지 가린다 — 저장본(리포트·cleanup)에도 남지 않게.
 const AFTER_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q}(?:${MARK})?${q})(?![ \\t]*(?:[,;)}\\]#]|\\n|$))(?!${MARK}[ \\t]*(?:\\n|$))[^\\n]+`;
 export const SECRET_MASK = [
+  // PEM 비밀키(완결·잘린) 규칙이 맨 앞(8b FC2 수정 뒤 훅) — 줄 끝까지 가리는 규칙(명령줄 옵션·따옴표 없는 값)이 먼저 BEGIN 줄을 먹으면 키 본문 줄이 남는다
+  { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
+  { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n[A-Za-z0-9+/=:, -]+)*' },
   { name: 'secret', pattern: QUOTED('"') },
   { name: 'secret', pattern: QUOTED("'") },
   { name: 'secret', pattern: QUOTED('`') },
@@ -135,8 +138,6 @@ export const SECRET_MASK = [
   // 명령줄 옵션 `--password 값`·`-token "값"`(같은 재판정 — `--password=값` 은 위 `=` 규칙). 값은 **줄 끝까지**(줄 끝 `\\` 이음은 다음 줄까지) 가린다 — 셸 인자 문법(붙은 따옴표 조각·이스케이프 공백)을 해석하지 않는다(8b FC2 감사 이의 재판정 · FR3-2 잔존). 대가 = 같은 줄 뒤 옵션도 가려짐
   { name: 'secret', pattern: `(?<=(?<![\\w-])--?${SECRET_KEYS}[ \\t]+)(?!-|${MARK}[ \\t]*(?:\\n|$))(?:[^\\n]*\\\\\\n)*[^\\n]+` },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
-  { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
-  { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n[A-Za-z0-9+/=:, -]+)*' },
 ];
 // 마스킹이 정상 SHA 를 변조하지 않게(R5-2) — 호출자가 넘긴 아는 SHA(`knownShas`, 8b FR1-2)와 같은 40자 16진수 토큰(글자 a-f 1개 이상)만 자리표시자로 빼고 마스킹 뒤 복원한다(팩 B 헤더 `head <sha>`·리포트 자유 텍스트·cleanup 의 JSON 문자열 값 공통).
 // 글자 조건: 숫자만 40자인 토큰은 SHA 로 보지 않는다 — 전화·주민번호 같은 숫자열을 보호 대상으로 오인하지 않게. 7자 짧은 SHA 는 어떤 어댑터 패턴 길이(≥10)에도 못 미쳐 보호가 필요 없다.
@@ -152,6 +153,8 @@ const WHOLE_MARK_RE = new RegExp(`^${MARK}$`);
 // URL 자격증명·명령줄 옵션 안전장치(8b FR1-1 감사 이의 재판정 → FR3 허용 꼴 대조, 추천 자동 채택(위임)) — 가림 규칙과 따로, 가린 뒤 모양이 허용 꼴인지만 본다.
 // 명령줄: `--<키> ` 뒤는 다음 옵션(`-`)이거나 가림 표시 하나 + 줄 끝이어야 한다(8b FC2 감사 이의 재판정 — 표시 뒤 같은 줄에 무엇이든 남으면 잔존. 공백을 경계로 승인하지 않는다).
 const CLI_LEFT = new RegExp(`(?<![\\w-])--?${SECRET_KEYS}[ \\t]+(?!-|${MARK}[ \\t]*(?:\\n|$))\\S`);
+// PEM: 완결 블록은 BEGIN~END 를 한 표시로 가리므로, 가린 뒤 END 줄이 남아 있으면 그 앞 본문의 시작(BEGIN)을 잃은 것 — 잔존(8b FC2 수정 뒤 훅)
+const PEM_END_LEFT = /-----END [A-Z ]*PRIVATE KEY-----/;
 // URL: 권한부에 `@` 가 있으면 마지막 `@` 앞이 사용자 정보 — 그 첫 `:` 뒤(비번)는 가림 표시 하나여야 하고, 표준 해석기(`new URL`)가 읽은 비번도 가림 표시여야 한다(8b FR3-3 — 손으로 자른 경계와 표준 해석이 갈려도 남지 않게).
 // `://` 자리에서 출발한다(스킴 앞 글자 연속을 위치마다 다시 훑지 않게 — 선형).
 const MARK_G = new RegExp(MARK, 'g');
@@ -264,7 +267,7 @@ const DECL_OK = new RegExp(`^(?:["'\`]${MARK}["'\`]${AFTER_Q}|(["'\`])\\1${AFTER
 const DECL_WHOLE = new RegExp(`^[ \t]*${MARK}[ \t\r]*$`);   // 이어지는 줄은 통째로 가림 표시여야 한다(첫 토큰만 가린 `[masked:secret] 나머지` 는 통과 아님)
 const DECL_HEAD = new RegExp(`^${DECL_HEAD_ALT}$`);
 function unmaskedSecretDecl(text) {
-  if (ESC_AFTER_KEY.test(text) || urlCredLeft(text) || CLI_LEFT.test(text) || xmlLeft(text)) return true;
+  if (ESC_AFTER_KEY.test(text) || urlCredLeft(text) || CLI_LEFT.test(text) || xmlLeft(text) || PEM_END_LEFT.test(text)) return true;
   for (const m of text.matchAll(DECL_RE)) {
     const ls = text.lastIndexOf('\n', m.index) + 1;
     let le = text.indexOf('\n', m.index);

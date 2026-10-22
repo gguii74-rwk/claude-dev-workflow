@@ -824,3 +824,12 @@ test('XML 태그 해석기는 닫히지 않은 긴 태그 이름·속성에서�
     }
   }
 });
+
+test('PEM 비밀키 규칙은 줄 끝까지 가리는 규칙보다 먼저 돈다 — 옵션·선언 값 자리의 BEGIN 줄이 먼저 먹혀 본문이 남지 않게 · BEGIN 없이 남은 END 줄은 잔존 (8b FC2 수정 뒤 훅)', () => {
+  expectMaskOrBlock([
+    ['masked', 'tool --token x --key -----BEGIN PRIVATE KEY-----\nMIIPEMBODYSECRET\n-----END PRIVATE KEY-----', 'MIIPEMBODYSECRET'],
+    ['masked', 'password: -----BEGIN RSA PRIVATE KEY-----\nMIIDECLBODYSECRET\n-----END RSA PRIVATE KEY-----', 'MIIDECLBODYSECRET'],
+    ['blocked', '앞 줄\nMIIORPHANSECRET\n-----END PRIVATE KEY-----', 'MIIORPHANSECRET'],
+  ]);
+  assert.deepEqual(maskTextWithCounts('-----BEGIN PRIVATE KEY-----\nMIIx\n-----END PRIVATE KEY-----', []).residual, []);
+});
