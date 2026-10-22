@@ -48,14 +48,16 @@ export function zipPathFor(layout, src) {
   return { zip: src, compare: 'bytes' };
 }
 
-// 내부 클래스 산출물 → 바깥 클래스 후보, 긴 것부터(`Foo$Bar$1.class` → `Foo$Bar.class`, `Foo.class` — `Foo$Bar.java` 의 산출물도 찾게, R2-2). .class 가 아니거나 `$` 가 없으면 []
-function outerClasses(name) {
+// 내부 클래스 산출물 → 바깥 클래스 후보를 긴 것부터 하나씩 ok() 로 보고 처음 맞는 것(`Foo$Bar$1.class` → `Foo$Bar.class`, `Foo.class` — `Foo$Bar.java` 의 산출물도 찾게, R2-2). 없으면 null.
+// 후보를 미리 만들지 않고, `$` 가 INNER_MAX 개를 넘는 이름은 조회하지 않는다 — zip 이름은 신뢰할 수 없는 입력이라 메모리·시간에 상한(R5-2)
+const INNER_MAX = 32;
+function findOuterClass(name, ok) {
   const m = name.match(/^(.*\/)?([^/]+)\.class$/);
-  if (!m) return [];
-  const segs = m[2].split('$');
-  const out = [];
-  for (let i = segs.length - 1; i >= 1; i--) { const base = segs.slice(0, i).join('$'); if (base) out.push(`${m[1] || ''}${base}.class`); }
-  return out;
+  if (!m) return null;
+  let base = m[2];
+  if (base.split('$').length - 1 > INNER_MAX) return null;
+  for (let k = base.lastIndexOf('$'); k > 0; k = base.lastIndexOf('$')) { base = base.slice(0, k); const c = `${m[1] || ''}${base}.class`; if (ok(c)) return c; }
+  return null;
 }
 
 // 「배포본」 줄 아래(같은 절 안) 목록 — 불릿·번호·펜스 한 줄 한 경로. `삭제:` 접두 허용. 경로 모양(구분자 또는 확장자)만 받는다.
@@ -330,7 +332,7 @@ export function deploy({ adapter, work }) {
         // zip 항목 → 기대 항목: 이름 그대로 먼저, 없으면(maven-war) 내부 클래스를 바깥 클래스의 존재 대조 항목으로
         const lookup = (name) => {
           if (expectedZip.has(name)) return { hit: true, exp: expectedZip.get(name) };
-          const outer = layout === 'maven-war' ? outerClasses(name).find((o) => expectedZip.get(o)?.compare === 'exists') : null;
+          const outer = layout === 'maven-war' ? findOuterClass(name, (o) => expectedZip.get(o)?.compare === 'exists') : null;
           if (outer) return { hit: true, exp: { ...expectedZip.get(outer), inner: true } };
           return { hit: false, exp: null };
         };
@@ -386,7 +388,7 @@ export function deploy({ adapter, work }) {
     const expClasses = new Set(expMapped.filter((t) => t.compare === 'exists').map((t) => t.zip));
     // 내부 클래스는 바깥 클래스 삭제가 본문에 따로 있을 때만 그 추가 삭제로 접는다 — 내부 클래스만 적으면 바깥 .class 가 서버에 남는다(R4-2, 추천 자동 채택(위임))
     const bodyZip = new Set(out.bodyDeletedList.map((p) => zipPathFor(layout, p).zip));
-    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? outerClasses(zp).find((o) => expClasses.has(o) && bodyZip.has(o)) : null; return outer || zp; };
+    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? findOuterClass(zp, (o) => expClasses.has(o) && bodyZip.has(o)) : null; return outer || zp; };
     // 배포 소스와 삭제 소스가 같은 zip 경로로 사상되면(소스 이동 resources → java 등) 삭제 지시가 새로 배포한 파일을 지운다 — map_conflict(대조 불가 — fail-closed, R2-1)
     const deployBy = new Map();
     for (const p of out.expected.deploy) { const zp = zipPathFor(layout, p).zip; if (!deployBy.has(zp)) deployBy.set(zp, []); deployBy.get(zp).push(p); }

@@ -591,11 +591,11 @@ function warEntries(over = {}) {
   };
   return Object.entries({ ...base, ...over }).filter(([, v]) => v !== null).map(([name, data]) => (data && data.ext ? { name, data: data.data, ext: data.ext } : { name, data }));
 }
-function warDeploy(root, adapter, { repo, entries, mode = 'worktree', description = '', blobs = {}, diffs = [], name = 'w' }) {
+function warDeploy(root, adapter, { repo, entries, mode = 'worktree', description = '', blobs = {}, diffs = [], name = 'w', env = {} }) {
   const zf = join(root, `${name}.zip`);
   writeFileSync(zf, mkZip(entries, repo.headSha));
   const work = workdir(root, { checkout: mode === 'worktree' ? repo.checkout : null, baseSha: repo.baseSha, headSha: repo.headSha, mode, attachments: ATT, description, blobs, diffs, name, project: 'gamma' });
-  const r = runCli(['deploy', '--adapter', adapter, '--work', work], fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: zf }]).env);
+  const r = runCli(['deploy', '--adapter', adapter, '--work', work], { ...fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: zf }]).env, ...env });
   return { r, d: readJson(join(work, 'deploy.json')) };
 }
 const kp = (d) => d.mismatches.map((m) => [m.kind, m.path]);
@@ -786,6 +786,16 @@ test('zip 항목 이름이 Windows 드라이브 접두(`C:/…`·`C:…`)면 정
     assert.equal(r.first, 'DEPLOY 대조 불가', `${zp} ${JSON.stringify(d.mismatches)}`);
     assert.ok(d.mismatches.some((m) => m.kind === 'corrupt' && /정규형/.test(m.detail)), zp);
   }
+});
+
+test('maven-war: `$` 가 아주 많은 .class 이름(작은 zip)도 내부 클래스 후보 조회가 메모리를 고갈시키지 않는다 — 64MiB 힙에서 완주, 그 항목은 extra_in_zip (1.3.2 R5-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const repo = warRepo(root);
+  const long = `${CLS}Foo${'$'.repeat(16000)}.class`;
+  const { r, d } = warDeploy(root, adapter, { repo, entries: warEntries({ [long]: Buffer.from('z') }), env: { NODE_OPTIONS: '--max-old-space-size=64' } });
+  assert.equal(r.first, 'DEPLOY 불일치', r.err.slice(0, 300));
+  assert.deepEqual(kp(d), [['extra_in_zip', long]]);
 });
 
 test('maven-war: `Foo$Bar.java` 의 내부 클래스 `Foo$Bar$1.class` 는 가장 긴 기대 클래스(`Foo$Bar.class`)의 산출물 — 배포 대조·삭제 목록 모두 통과 (1.3.2 R2-2)', () => {
