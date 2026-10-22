@@ -1,10 +1,10 @@
 // report 계약 테스트 (spec §5.5-4 · §5.7 · SC-3 verdict.json · SC-4 · SC-5)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB } from './helpers.mjs';
+import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB, CLI } from './helpers.mjs';
 
 const { computeVerdict, validateReview, maskText: deepMaskText } = await import(join(LIB, 'report.mjs'));
 const { cleanup } = await import(join(LIB, 'report.mjs'));
@@ -17,7 +17,7 @@ const baseCheck = () => ({
   deployRequired: false, deployExempt: false, deployNote: '비해당', rebase: { need: false, detailed_merge_status: 'mergeable' }, reviewerMismatch: false, priorVerdicts: [], authorTokens: [], ignoredComments: [],
   rereview: { active: false, prior_head: null, prior_verdict: null, prior_note_id: null }, earlyExit: { would: false, reason: '', draftVerdict: null },
 });
-const baseSnap = () => ({ mode: 'worktree', target_sha: 'b'.repeat(40), base_sha: 'b'.repeat(40), head_sha: HEAD, checkout: null, worktree: null, attempts: 1, unrecovered: [], rebuilt: [] });
+const baseSnap = () => ({ mode: 'worktree', target_sha: 'b'.repeat(40), base_sha: 'b'.repeat(40), head_sha: HEAD, checkout: null, worktree: null, attempts: 1, unrecovered: [], rebuilt: [], fetched_at: '2026-10-21T01:00:00Z' });
 const baseDeploy = () => ({ applicable: false, reason: '운영 배포 대상 변경 없음', expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [] }, bodyDeletedList: [], result: '해당 없음', mismatches: [] });
 const F = (over) => ({ id: 'F1', fingerprint: 'x', source: 'both', lens: 'L5', type: 'DEFECT', blocking: true, title: '비밀번호 평문 로그', file: 'src/A.java', line_start: 3, line_end: 3, evidence: 'S2', scenario: '로그에 평문', confidence: 'high', recommendation: '마스킹', fixableInDesign: 'yes', brokenPremise: '', unresolved: false, resolution: null, dismissReason: '', ...over });
 const findings = (list, over = {}) => ({ head_sha: HEAD, validReviewers: ['claude', 'codex'], crossChecked: true, baselineCandidateRelevant: true, findings: list, intent: [{ criterion: 'V1 빌드', result: 'UNKNOWN', location: '-', basis: '작성자 주장' }], outsideWorktreePaths: [], ...over });
@@ -384,6 +384,7 @@ test('cleanup: codex.pid 의 프로세스가 살아 있으면 ERR 로 멈추고 
   writeFileSync(join(work, 'zip', 'd.zip'), 'x');
   writeFileSync(join(work, 'pack-a.md'), '원문 팩');
   writeFileSync(join(work, 'review-codex.json'), JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [{ title: 'x', evidence: 'db.password = "synthetic-db-password"' }] }));
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify(baseSnap()));                              // 우리 작업 디렉터리 표지(1.3.1 D26)
   const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });   // 살아 있는 검토자 흉내
   writeFileSync(join(work, 'codex.pid'), String(child.pid));
   try {
@@ -399,7 +400,7 @@ test('cleanup: codex.pid 의 프로세스가 살아 있으면 ERR 로 멈추고 
   }
   const ok = runCli(['cleanup', '--adapter', adapter, '--work', work]);
   assert.equal(ok.code, 0, ok.out + ok.err);
-  assert.equal(ok.first, 'CLEANED worktree=false zip=1 raw=2 masked=1');                                 // raw = codex.pid + pack-a.md
+  assert.equal(ok.first, 'CLEANED worktree=false zip=1 raw=2 masked=1 extra=0');                                 // raw = codex.pid + pack-a.md
   assert.ok(!existsSync(join(work, 'codex.pid')));
   assert.equal(readJson(join(work, 'review-codex.json')).findings[0].evidence, 'db.password = "[masked:secret]"');
 });
@@ -435,12 +436,12 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
   writeFileSync(join(work, 'mr.json'), JSON.stringify({ project: { name: 'alpha' }, description: '연락 010-1234-5678', notes: [{ id: 1, body: 'Authorization: Bearer synthetic-credential-123' }] }));
   writeFileSync(join(work, 'check.json'), JSON.stringify({ reason: { text: '민원 010-1234-5678' }, authorTokens: [{ note_id: 1, token: 'FIXED', arg: headSha }] }));
   writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: headSha, findings: [{ title: 'x', evidence: 'db.password = "synthetic-db-password"' }] }));
-  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ mode: 'worktree', checkout, worktree: join(work, 'worktree'), head_sha: headSha }));
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ mode: 'worktree', checkout, worktree: join(work, 'worktree'), head_sha: headSha, fetched_at: '2026-10-21T01:00:00Z' }));
   writeFileSync(join(work, 'deploy.json'), JSON.stringify({ applicable: true, result: '대조 불가', zip: { attachment: 'd.zip' }, mismatches: [{ kind: 'download', path: null, detail: '다운로드 실패: 403 https://gitlab.test/u/d.zip?token=synthetic-credential-abc' }] }));
   writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'HOLD_EVIDENCE', head_sha: headSha, machineEvidence: [{ id: 'M-baseline-1', kind: 'baseline', detail: '기준선·이슈 원문 미확보: https://gitlab.test/g/x.md?token=synthetic-credential-xyz — 담당 someone@example.test' }] }));
   const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.equal(r.first, 'CLEANED worktree=true zip=1 raw=7 masked=5');            // raw = codex.* 4 + pack-a·pack-b 2 + baseline 1 · masked = mr·check·deploy·review-claude·verdict
+  assert.equal(r.first, 'CLEANED worktree=true zip=1 raw=7 masked=5 extra=0');            // raw = codex.* 4 + pack-a·pack-b 2 + baseline 1 · masked = mr·check·deploy·review-claude·verdict
   assert.ok(!existsSync(join(work, 'worktree')));
   assert.ok(!existsSync(join(work, 'zip')));
   assert.ok(!existsSync(join(work, 'blobs')));
@@ -585,7 +586,7 @@ test('cleanup: 마스킹이 실패한 JSON 은 원문으로 남기지 않고 지
   const sha = 'abcdef0123456789abcdef0123456789abcdef01';
   writeFileSync(join(work, 'mr.json'), JSON.stringify({ api_head: sha, description: 'password: synthetic-plain-secret' }));   // SHA 가 있어 깨는 규칙에 걸린다
   writeFileSync(join(work, 'check.json'), JSON.stringify({ reason: { text: '평문 아님' } }));                            // SHA 없음 — 정상 마스킹
-  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({}));
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify(baseSnap()));
   const breaker = { mask: [{ name: 'pua', pattern: '[\\uE000-\\uF8FF]' }] };                                         // 로드 검증을 거치지 않은 어댑터 객체 — 실행 중 실패 경로
   assert.throws(() => cleanup({ work, adapter: breaker }), /마스킹 실패.*mr\.json/);
   assert.ok(!existsSync(join(work, 'mr.json')), 'mr.json 원문이 남았다');
@@ -626,4 +627,101 @@ test('머지 뒤 리뷰: mr.state 가 merged·closed 면 헤더에 「머지 뒤
     blocks[state] = md.match(/```text\n([\s\S]*?)\n```/)[1];
   }
   assert.equal(blocks.merged, blocks.opened);                         // 판정 계산·실행 블록 불변(D9 무관)
+});
+
+// ── 1.3.1 ⑤ cleanup 허용 목록 (spec 2026-10-22 3.⑤) ──
+const ALLOWED9 = ['snapshot.json', 'pack.json', 'mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json'];
+
+test('cleanup: 허용 9종 밖의 항목(zipx/·claude.prompt·tmp/·숨김 파일)은 전부 지우고 extra=<n> + 둘째 줄에 이름을 적는다 (1.3.1 AC⑤-1 · D23·D34)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  mkdirSync(join(work, 'zipx'), { recursive: true });
+  writeFileSync(join(work, 'zipx', 'x.js'), '배포본 원문');
+  writeFileSync(join(work, 'claude.prompt'), '팩 A 원문');
+  mkdirSync(join(work, 'tmp'), { recursive: true });
+  writeFileSync(join(work, 'tmp', 'a.txt'), 'x');
+  writeFileSync(join(work, '.hidden'), 'x');
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, / extra=4$/);
+  assert.equal(r.out.split('\n')[1], 'extra: .hidden, claude.prompt, tmp/, zipx/');
+  const left = readdirSync(work).sort();
+  assert.ok(left.every((n) => ALLOWED9.includes(n)), JSON.stringify(left));
+  assert.ok(left.includes('snapshot.json') && left.includes('pack.json'));
+  const clean = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.match(clean.first, / extra=0$/);
+  assert.equal(clean.out.split('\n').length, 1);                     // 지운 추가 항목이 없으면 둘째 줄 없음
+});
+
+test('cleanup: snapshot.json 이 없거나 우리 형식이 아니면 아무것도 지우지 않고 ERR exit 2 (1.3.1 AC⑤-2 · D26)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const cases = [
+    ['none', null, /^ERR snapshot\.json 없음 — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: a\.txt, notes\/, worktree\/$/],
+    ['foreign', '{"foo":1}', /^ERR snapshot\.json 형식 불일치 — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: a\.txt, notes\/, snapshot\.json, worktree\/$/],
+    ['short-sha', JSON.stringify({ mode: 'worktree', head_sha: 'abc', fetched_at: 'x' }), /^ERR snapshot\.json 형식 불일치/],
+    ['bad-mode', JSON.stringify({ mode: 'other', head_sha: HEAD, fetched_at: 'x' }), /^ERR snapshot\.json 형식 불일치/],
+    ['no-fetched', JSON.stringify({ mode: 'diff-only', head_sha: HEAD }), /^ERR snapshot\.json 형식 불일치/],
+    ['broken', '{not json', /^ERR snapshot\.json 형식 불일치/],
+  ];
+  for (const [name, snap, re] of cases) {
+    const work = join(root, name);
+    mkdirSync(join(work, 'notes'), { recursive: true });
+    mkdirSync(join(work, 'worktree'), { recursive: true });
+    writeFileSync(join(work, 'a.txt'), 'keep');
+    writeFileSync(join(work, 'notes', 'n.md'), 'keep');
+    if (snap !== null) writeFileSync(join(work, 'snapshot.json'), snap);
+    const before = readdirSync(work).sort();
+    const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+    assert.equal(r.code, 2, `${name}: ${r.out}`);
+    assert.match(r.first, re, name);
+    assert.deepEqual(readdirSync(work).sort(), before, name);
+    assert.equal(readFileSync(join(work, 'notes', 'n.md'), 'utf8'), 'keep');
+    if (snap !== null) assert.equal(readFileSync(join(work, 'snapshot.json'), 'utf8'), snap);
+  }
+  const r0 = runCli(['cleanup', '--adapter', adapter, '--work', join(root, 'absent')]);   // W 자체가 없음(collect 가 snapshot 전에 실패) — 목록 (없음)
+  assert.equal(r0.code, 2);
+  assert.match(r0.first, /^ERR snapshot\.json 없음 — .*: \(없음\)$/);
+});
+
+test('cleanup 뒤 --resolve 재실행(verdict --resolve → render)이 성공한다 — 허용 목록이 재실행 입력을 전부 보존 (1.3.1 AC⑤-4)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([F({ unresolved: true, confidence: 'low', source: 'claude' })]) });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT undetermined -');
+  writeFileSync(join(work, 'claude.prompt'), '팩 A 원문');
+  assert.equal(runCli(['cleanup', '--adapter', adapter, '--work', work]).code, 0);
+  const rv = runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed']);
+  assert.equal(rv.first, 'VERDICT determined CHANGES_REQUESTED', rv.out);
+  const out = join(root, 'after.md');
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  assert.equal(rr.first, `REPORT ${out}`);
+});
+
+test('cleanup: W 밖 디렉터리를 가리키는 심볼릭 링크는 링크만 지우고 대상은 건드리지 않는다 (1.3.1 AC⑤-5)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  const outside = join(root, 'outside');
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'keep.txt'), 'keep');
+  symlinkSync(outside, join(work, 'link'));
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, / extra=1$/);
+  assert.ok(!readdirSync(work).includes('link'));
+  assert.deepEqual(readdirSync(outside), ['keep.txt']);
+  assert.equal(readFileSync(join(outside, 'keep.txt'), 'utf8'), 'keep');
+});
+
+test('SKILL.md: §0 공통 종료 절차에 cleanup ERR 목록이 비었을 때(없음)의 정상 종료 안내 · §8 cleanup 첫 줄 extra=<n> (1.3.1 AC⑤-6 · D33)', () => {
+  const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+  const s0 = skill.slice(skill.indexOf('## 0. 전제 확인'), skill.indexOf('## 1. 작업 디렉터리'));
+  assert.match(s0, /항목 목록이 `\(없음\)`이면 지울 것이 없는 정상 종료/);
+  assert.match(s0, /허용 9종/);
+  const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
+  assert.match(s8, /CLEANED worktree=<b> zip=<n> raw=<n> masked=<n> extra=<n>/);
+  assert.match(s8, /snapshot\.json/);
 });

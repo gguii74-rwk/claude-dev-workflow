@@ -392,6 +392,18 @@ export function renderReport({ adapter, work, early = false }) {
 // 문자열 값에 어댑터 마스킹 + 비밀값 제거를 적용한 사본으로 보존한다. 리포트는 저장 시 이미 마스킹됐다.
 // deploy.json(zip 파일명·주석·API 오류 문자열)·verdict.json(machineEvidence 에 복사된 미확보 링크 raw·reason 등)에도 MR 원문이 흘러든다(R4-1) — 「원문 없음」으로 가정하지 않고 같은 마스킹을 건다.
 // snapshot.json·pack.json 은 경로·SHA·카운트·패턴 이름만 담아 제외한다.
+// 허용 목록(1.3.1 ⑤ — spec 2026-10-22 3.⑤): 위 처리 뒤 `W` 최상위에는 아래 9종(일반 파일)만 남긴다 — 검토자·메인이 임의 이름으로 만든 원문(`zipx/`·`claude.prompt` 등)도 지운다.
+// 지우기 전 표지(D26): `snapshot.json` 이 우리 형식으로 파싱될 때만 우리 작업 디렉터리로 본다 — 아니면 아무것도 지우지 않는다(엉뚱한 디렉터리를 비우는 비가역 사고 방지).
+const KEEP = new Set(['snapshot.json', 'pack.json', 'mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json']);
+const topEntries = (work) => { try { return fs.readdirSync(work, { withFileTypes: true }).map((d) => d.name + (d.isDirectory() ? '/' : '')).sort(); } catch { return []; } };
+function markerProblem(work) {
+  const p = path.join(work, 'snapshot.json');
+  if (!fs.existsSync(p)) return 'snapshot.json 없음';
+  let s;
+  try { s = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return 'snapshot.json 형식 불일치'; }
+  const ok = s && typeof s === 'object' && (s.mode === 'worktree' || s.mode === 'diff-only') && /^[0-9a-f]{40}$/.test(String(s.head_sha)) && typeof s.fetched_at === 'string';
+  return ok ? null : 'snapshot.json 형식 불일치';
+}
 const MASKED_JSON = ['mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json'];
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
 export function cleanup({ work, adapter }) {
@@ -402,6 +414,8 @@ export function cleanup({ work, adapter }) {
     const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
     if (Number.isInteger(pid) && pid > 0 && alive(pid)) throw new ReportError(`검토자 프로세스 생존(codex.pid ${pid}) — 정리하지 않는다. 종료 확인(TERM → 생존 확인 → KILL) 뒤 cleanup 을 다시 실행하라(SKILL §0 공통 종료 절차)`);
   }
+  const problem = markerProblem(work);
+  if (problem) throw new ReportError(`${problem} — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: ${topEntries(work).join(', ') || '(없음)'}`);
   const snapshot = readJson(work, 'snapshot.json') || {};
   let worktree = false;
   const wt = snapshot.worktree || path.join(work, 'worktree');
@@ -434,8 +448,15 @@ export function cleanup({ work, adapter }) {
     fs.writeFileSync(p, out);
     masked += 1;
   }
+  // 허용 9종 밖은 이름을 몰라도 지운다(숨김 파일 포함). 심볼릭 링크는 링크만 — rmSync 는 링크 대상을 따라가지 않는다
+  const extra = [];
+  for (const d of fs.readdirSync(work, { withFileTypes: true })) {
+    if (KEEP.has(d.name) && d.isFile()) continue;
+    fs.rmSync(path.join(work, d.name), { recursive: true, force: true });
+    extra.push(d.name + (d.isDirectory() ? '/' : ''));
+  }
   if (failed.length) throw new ReportError(`마스킹 실패로 원문을 남기지 않고 지웠다: ${failed.join(', ')} — 나머지 정리는 끝냈다`);
-  return { worktree, zip, raw, masked };
+  return { worktree, zip, raw, masked, extra: extra.sort() };
 }
 
 // ── CLI 핸들러 ────────────────────────────────────────────────────────────
@@ -489,5 +510,6 @@ export async function cmdRender(args, ctx) {
 
 export async function cmdCleanup(args, ctx) {
   const r = cleanup({ work: ctx.work, adapter: ctx.adapter });
-  return `CLEANED worktree=${r.worktree} zip=${r.zip} raw=${r.raw} masked=${r.masked}`;
+  // 첫 줄만 판독 대상(SKILL §8) — 지운 추가 항목 이름은 둘째 줄(D34)
+  return `CLEANED worktree=${r.worktree} zip=${r.zip} raw=${r.raw} masked=${r.masked} extra=${r.extra.length}${r.extra.length ? `\nextra: ${r.extra.join(', ')}` : ''}`;
 }

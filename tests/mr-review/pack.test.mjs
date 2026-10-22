@@ -636,7 +636,7 @@ test('저장·전송본은 잔존을 남기지 않는다 — maskText(리포트 
   const root = tmp();
   const work = join(root, 'work');
   mkdirSync(work, { recursive: true });
-  writeFileSync(join(work, 'snapshot.json'), '{}');
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ mode: 'diff-only', head_sha: 'a'.repeat(40), fetched_at: '2026-10-21T01:00:00Z' }));   // cleanup 표지(1.3.1 D26)
   writeFileSync(join(work, 'mr.json'), JSON.stringify({ description: '설정\n<password><![CDATA[CLEANUP_SECRET]]></password>' }));
   const r = runCli(['cleanup', '--adapter', setup().adapter, '--work', work]);
   assert.equal(r.code, 0, r.out + r.err);
