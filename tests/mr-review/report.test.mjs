@@ -718,6 +718,42 @@ test('cleanup: 보존 JSON 이 W 밖 파일의 하드 링크여도 외부 원본
   assert.deepEqual(readdirSync(work).filter((n) => n.startsWith('.')), []);   // 임시 파일 잔존 없음
 });
 
+test('cleanup: 지운 추가 항목 이름(extra:)과 표지 ERR 의 W 항목 목록도 어댑터·비밀값 마스킹을 거쳐 출력한다 (1.3.1 R5-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  writeFileSync(join(work, 'token=SYNTHETIC_FILENAME_SECRET.prompt'), 'raw');
+  writeFileSync(join(work, '010-1234-5678.txt'), 'raw');
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, / extra=2$/);
+  assert.doesNotMatch(r.out + r.err, /SYNTHETIC_FILENAME_SECRET|010-1234-5678/);
+  assert.match(r.out, /^extra: .*\[masked:/m);
+  assert.ok(!readdirSync(work).some((n) => n.includes('SYNTHETIC') || n.includes('010-')));
+  const foreign = join(root, 'foreign');
+  mkdirSync(foreign, { recursive: true });
+  writeFileSync(join(foreign, 'token=SYNTHETIC_FILENAME_SECRET.prompt'), 'raw');
+  const e = runCli(['cleanup', '--adapter', adapter, '--work', foreign]);
+  assert.equal(e.code, 2, e.out);
+  assert.match(e.first, /^ERR snapshot\.json 없음/);
+  assert.doesNotMatch(e.out + e.err, /SYNTHETIC_FILENAME_SECRET/);
+  assert.ok(existsSync(join(foreign, 'token=SYNTHETIC_FILENAME_SECRET.prompt')));   // 무삭제
+});
+
+test('cleanup: 마스킹 임시 경로(.mr.json.masking)에 디렉터리가 있어도 정리를 끝까지 한다 (1.3.1 R5-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  mkdirSync(join(work, '.mr.json.masking', 'sub'), { recursive: true });
+  writeFileSync(join(work, '.mr.json.masking', 'sub', 'x'), 'raw');
+  writeFileSync(join(work, 'claude.prompt'), 'raw');
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^CLEANED .* masked=\d+ extra=1$/);           // claude.prompt — 임시 경로 충돌 항목은 마스킹 단계가 치웠다
+  assert.ok(existsSync(join(work, 'mr.json')));
+  assert.deepEqual(readdirSync(work).filter((n) => n.startsWith('.') || n === 'claude.prompt'), []);
+});
+
 test('cleanup: 표지 ERR 의 항목 목록은 조회 실패(권한 등)를 「(없음)」으로 보고하지 않는다 — 없는 W 만 「(없음)」 (1.3.1 R3-1 · D33)', { skip: process.getuid?.() === 0 && 'root 는 권한 오류가 나지 않는다' }, () => {
   const root = tmp();
   const adapter = writeAdapter(root);

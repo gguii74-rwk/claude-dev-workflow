@@ -396,10 +396,12 @@ export function renderReport({ adapter, work, early = false }) {
 // 지우기 전 표지(D26): `snapshot.json` 이 우리 형식으로 파싱될 때만 우리 작업 디렉터리로 본다 — 아니면 아무것도 지우지 않는다(엉뚱한 디렉터리를 비우는 비가역 사고 방지).
 const KEEP = new Set(['snapshot.json', 'pack.json', 'mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json']);
 // 표지 ERR 에 적는 W 항목 목록 — 「(없음)」은 W 가 없거나 실제로 비었을 때만(SKILL §0 이 정상 종료로 읽는다, D33). 권한 등 조회 실패는 그 사실을 적는다(R3-1)
-const topEntries = (work) => {
+// 항목 이름은 임의 문자열이라 출력 전에 가린다(어댑터 mask + 비밀값, R5-1) — 세션 로그에 남는다
+const maskNames = (names, adapter) => names.map((n) => maskText(n, adapter?.mask || []));
+const topEntries = (work, adapter) => {
   let list;
   try { list = fs.readdirSync(work, { withFileTypes: true }); } catch (e) { return e?.code === 'ENOENT' ? '(없음)' : `항목 목록 조회 실패(${e?.code || e?.message})`; }
-  return list.map((d) => d.name + (d.isDirectory() ? '/' : '')).sort().join(', ') || '(없음)';
+  return maskNames(list.map((d) => d.name + (d.isDirectory() ? '/' : '')).sort(), adapter).join(', ') || '(없음)';
 };
 function markerProblem(work) {
   const p = path.join(work, 'snapshot.json');
@@ -420,7 +422,7 @@ export function cleanup({ work, adapter }) {
     if (Number.isInteger(pid) && pid > 0 && alive(pid)) throw new ReportError(`검토자 프로세스 생존(codex.pid ${pid}) — 정리하지 않는다. 종료 확인(TERM → 생존 확인 → KILL) 뒤 cleanup 을 다시 실행하라(SKILL §0 공통 종료 절차)`);
   }
   const problem = markerProblem(work);
-  if (problem) throw new ReportError(`${problem} — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: ${topEntries(work)}`);
+  if (problem) throw new ReportError(`${problem} — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: ${topEntries(work, adapter)}`);
   const snapshot = readJson(work, 'snapshot.json') || {};
   let worktree = false;
   const wt = snapshot.worktree || path.join(work, 'worktree');
@@ -452,9 +454,11 @@ export function cleanup({ work, adapter }) {
     try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
     // 기존 파일 실체(inode)는 고치지 않는다 — 새 파일에 쓰고 이름을 바꿔 교체한다. 하드 링크로 W 밖 원본과 실체를 공유해도 원본은 그대로다(R4-1), 검사 뒤 링크로 바뀌어도 따라가지 않는다(R1-1)
     const tmpFile = path.join(work, `.${f}.masking`);
-    fs.rmSync(tmpFile, { force: true });
-    fs.writeFileSync(tmpFile, out, { flag: 'wx' });
-    fs.renameSync(tmpFile, p);
+    try {
+      fs.rmSync(tmpFile, { recursive: true, force: true });   // 같은 이름의 디렉터리·링크가 있어도 치운다(링크는 링크만) — 남은 정리가 멈추지 않게(R5-2)
+      fs.writeFileSync(tmpFile, out, { flag: 'wx' });
+      fs.renameSync(tmpFile, p);
+    } catch (e) { fs.rmSync(p, { force: true }); fs.rmSync(tmpFile, { recursive: true, force: true }); failed.push(`${f}(${e.message})`); continue; }   // 교체 실패도 원문을 남기지 않는다
     masked += 1;
   }
   // 허용 9종 밖은 이름을 몰라도 지운다(숨김 파일 포함). 심볼릭 링크는 링크만 — rmSync 는 링크 대상을 따라가지 않는다
@@ -465,7 +469,7 @@ export function cleanup({ work, adapter }) {
     extra.push(d.name + (d.isDirectory() ? '/' : ''));
   }
   if (failed.length) throw new ReportError(`마스킹 실패로 원문을 남기지 않고 지웠다: ${failed.join(', ')} — 나머지 정리는 끝냈다`);
-  return { worktree, zip, raw, masked, extra: extra.sort() };
+  return { worktree, zip, raw, masked, extra: maskNames(extra.sort(), adapter) };
 }
 
 // ── CLI 핸들러 ────────────────────────────────────────────────────────────
