@@ -514,3 +514,24 @@ test('발견 제목에 따옴표 없는 비밀값 키가 있어도 같은 줄의
   assert.ok(lines.length >= 3, md);                                                  // 실행 블록 · 부록 C · 부록 D
   for (const l of lines) assert.match(l, /src\/OnlyLocation\.java/, l);
 });
+
+test('빈 따옴표 비밀값 키(`password = ""`·`""값`)가 제목에 있어도 같은 줄의 파일:줄은 남는다 (impl C2 C1-1 잔존, 추천 자동 채택(위임))', () => {
+  for (const title of ['password = ""LEAKY_TWO', 'password = ""']) {
+    const root = tmp();
+    const adapter = writeAdapter(root);
+    const fnd = findings([F({ title, file: 'src/OnlyLocation.java', line_start: 71 })]);
+    const work = fullWork(root, { fnd });
+    const rc = JSON.parse(readFileSync(join(work, 'review-claude.json'), 'utf8'));
+    Object.assign(rc.findings[0], { title, file: 'src/OnlyLocation.java', line_start: 71 });
+    writeFileSync(join(work, 'review-claude.json'), JSON.stringify(rc));
+    assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+    const out = join(root, 'report.md');
+    const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+    assert.equal(rr.code, 0, rr.out + rr.err);
+    const md = readFileSync(out, 'utf8');
+    assert.doesNotMatch(md, /LEAKY_TWO/);
+    const lines = md.split('\n').filter((l) => /password ""/.test(l));
+    assert.ok(lines.length >= 3, md);                                                // 실행 블록 · 부록 C · 부록 D
+    for (const l of lines) assert.match(l, /src\/OnlyLocation\.java/, l);
+  }
+});

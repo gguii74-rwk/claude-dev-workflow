@@ -249,7 +249,8 @@ function checkTable(check, deploy) {
 
 // 필드 선마스킹(impl C1 N1 · R4-2 감사 이의) — 발견·판정의 문자열을 필드마다 먼저 가리고 비밀값 키 뒤 `:`·`=` 구분자를 지운다.
 // 문서 전체 마스킹(아래 F5)은 따옴표 없는 비밀값을 줄 끝까지 가리므로(R4-2), 구분자가 남으면 같은 줄에 조립한 파일:줄·출처·확신까지 지운다(§5.7 위치 보존).
-const KEY_SEP = new RegExp(`(${SECRET_KEYS}["'\`]?)[ \t]*[:=][ \t]*(?=["'\`]?\\[masked:)`, 'gi');
+// 빈 따옴표 값(`password = ""`·`""[masked:…]`)도 구분자를 지운다(impl C2 C1-1 잔존 — 따옴표 뒤 조각 규칙이 같은 줄 뒤를 가린다).
+const KEY_SEP = new RegExp(`(${SECRET_KEYS}["'\`]?)[ \t]*[:=][ \t]*(?=["'\`]?(?:\\[masked:|["'\`]))`, 'gi');
 function fieldMask(v, maskRules) {
   if (typeof v === 'string') return maskText(v, maskRules).replace(KEY_SEP, '$1 ');
   if (Array.isArray(v)) return v.map((x) => fieldMask(x, maskRules));

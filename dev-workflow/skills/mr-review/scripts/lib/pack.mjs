@@ -182,10 +182,14 @@ function maskContinuations(text) {
 }
 // 줄바꿈 통일(impl R4-3) — 모든 규칙이 LF 만 보므로 CRLF 문서(잘린 PEM·YAML 블록 등)가 규칙을 빠져나가지 않게 입구에서 LF 로 바꾼다(출력 사본의 줄바꿈도 LF).
 // 자리표시 위조 차단(impl R6-2) — 입력의 NUL 은 대체 문자(U+FFFD)로 바꾸고, 자리표시는 호출마다 무작위 값을 넣어 이 호출이 만든 것만 되돌린다(입력에 같은 모양을 넣어 가린 비밀값을 되살리지 못하게).
+// 자리표시 안의 무작위 값·번호는 사적 영역 문자(U+E000~E00F = 16진 한 자리)로 쓴다(impl C2-N1) — ASCII 16진·숫자면 어댑터 개인정보 패턴(rrn 등)이 자리표시를 깨 정상 SHA 가 돌아오지 않는다.
+// 복원 뒤 NUL 이 남으면(어댑터 패턴이 자리표시 일부를 먹음) `sha-guard` 잔존 — 팩 B 는 Codex 생략, `maskText`(리포트·cleanup)는 오류로 멈춘다(fail-closed).
+const PUA_HEX = (hex) => [...hex].map((h) => String.fromCharCode(0xE000 + parseInt(h, 16))).join('');
+const PUA_NUM = (s) => parseInt([...s].map((c) => (c.charCodeAt(0) - 0xE000).toString(16)).join(''), 16);
 export function maskTextWithCounts(text, maskRules) {
   const keep = [];
-  const nonce = randomBytes(8).toString('hex');
-  const held = text.replace(/\r\n/g, '\n').replace(/\u0000/g, '\uFFFD').replace(SHA40_RE, (m) => { keep.push(m); return `\u0000sha40:${nonce}:${keep.length - 1}\u0000`; });
+  const nonce = PUA_HEX(randomBytes(8).toString('hex'));
+  const held = text.replace(/\r\n/g, '\n').replace(/\u0000/g, '\uFFFD').replace(SHA40_RE, (m) => { keep.push(m); return `\u0000${nonce}\uE010${PUA_HEX((keep.length - 1).toString(16))}\u0000`; });
   const a = applyMask(held, maskRules);
   const b = applyMask(a.text, SECRET_MASK);
   const c = maskContinuations(b.text);
@@ -194,9 +198,15 @@ export function maskTextWithCounts(text, maskRules) {
   if (c.n) applied.secret = (applied.secret || 0) + c.n;
   const left = residual(c.text, [...maskRules, ...SECRET_MASK]);
   if (unmaskedSecretDecl(c.text)) left.push({ name: 'secret-decl' });
-  return { text: c.text.replace(new RegExp(`\u0000sha40:${nonce}:(\\d+)\u0000`, 'g'), (_, i) => keep[Number(i)]), applied, residual: left };
+  const out = c.text.replace(new RegExp(`\u0000${nonce}\uE010([\uE000-\uE00F]+)\u0000`, 'g'), (_, i) => keep[PUA_NUM(i)]);
+  if (out.includes('\u0000')) left.push({ name: 'sha-guard' });
+  return { text: out, applied, residual: left };
 }
-export function maskText(text, maskRules) { return maskTextWithCounts(text, maskRules).text; }
+export function maskText(text, maskRules) {
+  const m = maskTextWithCounts(text, maskRules);
+  if (m.residual.some((r) => r.name === 'sha-guard')) throw new PackError('마스킹이 SHA 보호 자리표시를 깨뜨렸다 — 어댑터 mask 패턴이 사적 영역 문자(U+E000~)·NUL 을 잡지 않는지 확인');
+  return m.text;
+}
 
 function walkMd(dir, acc = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

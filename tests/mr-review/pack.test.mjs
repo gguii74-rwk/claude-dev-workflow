@@ -506,3 +506,19 @@ test('입력에 위조한 SHA 자리표시가 있어도 가린 비밀값이 되�
   const keep = maskTextWithCounts(`head ${sec} 기준`, []);
   assert.equal(keep.text, `head ${sec} 기준`);                                            // 정상 SHA 보존은 그대로(R5-2)
 });
+
+test('SHA 보호 자리표시는 어댑터 개인정보 패턴에 걸리지 않는다 — 16진·숫자 패턴도 정상 SHA 를 깨지 못하고, 깨지면 fail-closed (impl C2-N1, 추천 자동 채택(위임))', () => {
+  const sha = 'abcdef0123456789abcdef0123456789abcdef01';
+  const hexRule = [{ name: 'hexrun', pattern: '[0-9a-f]{8,}' }];                              // 옛 표식(16진 nonce)은 이 규칙에 항상 깨졌다
+  const a = maskTextWithCounts(`head ${sha} 기준`, hexRule);
+  assert.equal(a.text, `head ${sha} 기준`);
+  assert.deepEqual(a.residual, []);
+  const rrn = [{ name: 'rrn', pattern: '\\d{6}-?[1-4]\\d{6}' }];                                // 픽스처 rrn — 옛 표식은 무작위 3000회 중 9회 깨졌다(C2)
+  for (let i = 0; i < 3000; i++) assert.equal(maskText(`head ${sha}`, rrn), `head ${sha}`);
+  const many = Array.from({ length: 20 }, (_, i) => sha.slice(0, 38) + String(i).padStart(2, '0').replace(/\d/g, (d) => 'abcdefghij'[d]).replace(/[g-j]/g, 'f'));
+  assert.equal(maskText(many.join(' '), [{ name: 'num', pattern: '\\d+' }]), many.join(' ')); // 번호 칸도 숫자가 아니다
+  const breaker = [{ name: 'pua', pattern: '[\\uE000-\\uF8FF]' }];                             // 자리표시를 일부러 깨는 규칙 → 깨진 표식이 남으면 fail-closed
+  const b = maskTextWithCounts(`head ${sha}`, breaker);
+  assert.ok(b.residual.some((r) => r.name === 'sha-guard'), JSON.stringify(b.residual));
+  assert.throws(() => maskText(`head ${sha}`, breaker), /SHA 보호 자리표시/);
+});
