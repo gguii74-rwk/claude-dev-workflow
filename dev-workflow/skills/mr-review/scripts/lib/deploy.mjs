@@ -48,10 +48,14 @@ export function zipPathFor(layout, src) {
   return { zip: src, compare: 'bytes' };
 }
 
-// 내부 클래스 산출물(`Foo$Bar.class`·`Foo$1.class`) → 바깥 클래스 이름(`Foo.class`). .class 가 아니거나 `$` 가 없으면 null
-function outerClass(name) {
-  const m = name.match(/^(.*\/)?([^/$]+)\$[^/]*\.class$/);
-  return m ? `${m[1] || ''}${m[2]}.class` : null;
+// 내부 클래스 산출물 → 바깥 클래스 후보, 긴 것부터(`Foo$Bar$1.class` → `Foo$Bar.class`, `Foo.class` — `Foo$Bar.java` 의 산출물도 찾게, R2-2). .class 가 아니거나 `$` 가 없으면 []
+function outerClasses(name) {
+  const m = name.match(/^(.*\/)?([^/]+)\.class$/);
+  if (!m) return [];
+  const segs = m[2].split('$');
+  const out = [];
+  for (let i = segs.length - 1; i >= 1; i--) { const base = segs.slice(0, i).join('$'); if (base) out.push(`${m[1] || ''}${base}.class`); }
+  return out;
 }
 
 // 「배포본」 줄 아래(같은 절 안) 목록 — 불릿·번호·펜스 한 줄 한 경로. `삭제:` 접두 허용. 경로 모양(구분자 또는 확장자)만 받는다.
@@ -325,8 +329,8 @@ export function deploy({ adapter, work }) {
         // zip 항목 → 기대 항목: 이름 그대로 먼저, 없으면(maven-war) 내부 클래스를 바깥 클래스의 존재 대조 항목으로
         const lookup = (name) => {
           if (expectedZip.has(name)) return { hit: true, exp: expectedZip.get(name) };
-          const outer = layout === 'maven-war' ? outerClass(name) : null;
-          if (outer && expectedZip.get(outer)?.compare === 'exists') return { hit: true, exp: { ...expectedZip.get(outer), inner: true } };
+          const outer = layout === 'maven-war' ? outerClasses(name).find((o) => expectedZip.get(o)?.compare === 'exists') : null;
+          if (outer) return { hit: true, exp: { ...expectedZip.get(outer), inner: true } };
           return { hit: false, exp: null };
         };
         const inZip = new Set(out.zip.entries);
@@ -379,7 +383,11 @@ export function deploy({ adapter, work }) {
     const expMapped = out.expected.deleted.map((p) => zipPathFor(layout, p));
     const expDel = new Set(expMapped.map((t) => t.zip));
     const expClasses = new Set(expMapped.filter((t) => t.compare === 'exists').map((t) => t.zip));
-    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? outerClass(zp) : null; return outer && expClasses.has(outer) ? outer : zp; };
+    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? outerClasses(zp).find((o) => expClasses.has(o)) : null; return outer || zp; };
+    // 배포 소스와 삭제 소스가 같은 zip 경로로 사상되면(소스 이동 resources → java 등) 삭제 지시가 새로 배포한 파일을 지운다 — map_conflict(대조 불가 — fail-closed, R2-1)
+    const deployBy = new Map();
+    for (const p of out.expected.deploy) { const zp = zipPathFor(layout, p).zip; if (!deployBy.has(zp)) deployBy.set(zp, []); deployBy.get(zp).push(p); }
+    for (const [i, t] of expMapped.entries()) if (deployBy.has(t.zip)) mm.push({ kind: 'map_conflict', path: t.zip, detail: `소스 두 경로가 같은 배포 경로로 사상됨: ${deployBy.get(t.zip).join(', ')}, ${out.expected.deleted[i]}(삭제)` });
     const bodyDel = new Set(out.bodyDeletedList.map(normBody));
     const same = expDel.size === bodyDel.size && [...expDel].every((p) => bodyDel.has(p));
     if (!same) mm.push({ kind: 'deleted_list', path: null, detail: `삭제 목록 불일치 — 기대 [${out.expected.deleted.join(', ') || '없음'}] / 본문 [${out.bodyDeletedList.join(', ') || '없음'}]` });

@@ -747,6 +747,33 @@ test('maven-war: 두 소스 경로가 같은 zip 경로로 사상되면 map_conf
   assert.deepEqual(kp(d).sort(), [['extra_in_zip', 'README.txt'], ['map_conflict', 'WEB-INF/classes/a.xml']]);
 });
 
+test('maven-war: 배포 소스와 삭제 소스가 같은 zip 경로로 사상되면(소스 이동 — resources → java) map_conflict → 대조 불가 · 삭제 지시가 새 파일을 지우는 「일치」를 막는다 (1.3.2 R2-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const repo = warRepo(root, { baseFiles: { 'src/main/resources/a.xml': '<a/>\n' }, add: { 'src/main/java/a.xml': '<a/>\n' }, del: ['src/main/resources/a.xml'] });
+  const description = '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: WEB-INF/classes/a.xml\n';
+  const { r, d } = warDeploy(root, adapter, { repo, entries: [{ name: 'WEB-INF/classes/a.xml', data: '<a/>\n' }], description });
+  assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+  const mc = d.mismatches.find((m) => m.kind === 'map_conflict');
+  assert.equal(mc.path, 'WEB-INF/classes/a.xml');
+  assert.match(mc.detail, /src\/main\/java\/a\.xml/);
+  assert.match(mc.detail, /src\/main\/resources\/a\.xml/);
+});
+
+test('maven-war: `Foo$Bar.java` 의 내부 클래스 `Foo$Bar$1.class` 는 가장 긴 기대 클래스(`Foo$Bar.class`)의 산출물 — 배포 대조·삭제 목록 모두 통과 (1.3.2 R2-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const FB = { 'src/main/java/com/example/acct/Foo$Bar.java': 'class Foo$Bar { Runnable r = new Runnable() { public void run() {} }; }\n' };
+  const r1 = warRepo(join(root, 'r1'), { add: FB });
+  const a = warDeploy(join(root, 'r1'), adapter, { repo: r1, entries: [{ name: `${CLS}Foo$Bar.class`, data: Buffer.from('a') }, { name: `${CLS}Foo$Bar$1.class`, data: Buffer.from('b') }] });
+  assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
+  assert.deepEqual(a.d.zip.bytes_skipped, [`${CLS}Foo$Bar$1.class`, `${CLS}Foo$Bar.class`]);
+  const r2 = warRepo(join(root, 'r2'), { baseFiles: FB, del: Object.keys(FB) });
+  const body = `## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: ${CLS}Foo$Bar.class\n  - 삭제: ${CLS}Foo$Bar$1.class\n`;
+  const b = warDeploy(join(root, 'r2'), adapter, { repo: r2, entries: warEntries(), description: body, name: 'w2' });
+  assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
+});
+
 test('maven-war: .class 항목이 심볼릭 링크면 zip 경로의 type 불일치(존재 대조도 일반 파일만) (1.3.2 AC⑨-9)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: WAR_PROJECT });
