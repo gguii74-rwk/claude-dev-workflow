@@ -537,6 +537,27 @@ test('빈 따옴표 비밀값 키(`password = ""`·`""값`)가 제목에 있어�
   }
 });
 
+test('발견 제목에 명령줄 비밀값 옵션(`--password 값`)이 있어도 같은 줄의 파일:줄은 남는다 — 줄 끝까지 가림이 조립 뒤 위치를 먹지 않게 (8b FC3-1 · 대장 48 감사 이의 재판정, 추천 자동 채택(위임))', () => {
+  for (const title of ['CLI 노출 tool --password LEAK_CLI_1', 'CLI 노출 tool -token "a"\'LEAK_CLI_2 x\' --verbose', 'CLI 노출 tool --password LEAK\\ CLI_3']) {
+    const root = tmp();
+    const adapter = writeAdapter(root);
+    const fnd = findings([F({ title, file: 'src/Unique.java', line_start: 37 })]);
+    const work = fullWork(root, { fnd });
+    const rc = JSON.parse(readFileSync(join(work, 'review-claude.json'), 'utf8'));
+    Object.assign(rc.findings[0], { title, file: 'src/Unique.java', line_start: 37 });
+    writeFileSync(join(work, 'review-claude.json'), JSON.stringify(rc));
+    assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+    const out = join(root, 'report.md');
+    const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+    assert.equal(rr.code, 0, rr.out + rr.err);
+    const md = readFileSync(out, 'utf8');
+    assert.doesNotMatch(md, /LEAK|CLI_3/);
+    const lines = md.split('\n').filter((l) => /CLI 노출/.test(l));
+    assert.ok(lines.length >= 3, md);                                                // 실행 블록 · 부록 C · 부록 D
+    for (const l of lines) assert.match(l, /src\/Unique\.java/, l);
+  }
+});
+
 test('cleanup: 마스킹이 실패한 JSON 은 원문으로 남기지 않고 지운 뒤 나머지를 끝까지 정리하고 오류로 알린다 (impl C3 신규, 추천 자동 채택(위임))', () => {
   const root = tmp();
   const work = join(root, 'work');

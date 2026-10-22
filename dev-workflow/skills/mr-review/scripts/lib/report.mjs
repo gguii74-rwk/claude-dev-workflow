@@ -252,8 +252,10 @@ function checkTable(check, deploy) {
 // 문서 전체 마스킹(아래 F5)은 따옴표 없는 비밀값을 줄 끝까지 가리므로(R4-2), 구분자가 남으면 같은 줄에 조립한 파일:줄·출처·확신까지 지운다(§5.7 위치 보존).
 // 빈 따옴표 값(`password = ""`·`""[masked:…]`)도 구분자를 지운다(impl C2 C1-1 잔존 — 따옴표 뒤 조각 규칙이 같은 줄 뒤를 가린다).
 const KEY_SEP = new RegExp(`(${SECRET_KEYS}["'\`]?)[ \t]*[:=][ \t]*(?=["'\`]?(?:\\[masked:|["'\`]))`, 'gi');
+// 명령줄 옵션(`--password [masked:secret]`)도 같은 이유로 옵션과 표시 사이 공백을 지운다(8b FC3-1 · 대장 48 감사 이의 재판정) — 옵션 값 규칙은 줄 끝까지 가리므로 공백이 남으면 같은 줄의 파일:줄·출처·확신을 지운다.
+const CLI_SEP = new RegExp(`(?<![\\w-])(--?${SECRET_KEYS})[ \t]+(?=\\[masked:)`, 'gi');
 function fieldMask(v, maskRules, keepShas) {
-  if (typeof v === 'string') return maskText(v, maskRules, keepShas).replace(KEY_SEP, '$1 ');
+  if (typeof v === 'string') return maskText(v, maskRules, keepShas).replace(KEY_SEP, '$1 ').replace(CLI_SEP, '$1');
   if (Array.isArray(v)) return v.map((x) => fieldMask(x, maskRules, keepShas));
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fieldMask(x, maskRules, keepShas)]));
   return v;
