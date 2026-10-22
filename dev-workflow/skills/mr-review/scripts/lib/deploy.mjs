@@ -384,7 +384,9 @@ export function deploy({ adapter, work }) {
     const expMapped = out.expected.deleted.map((p) => zipPathFor(layout, p));
     const expDel = new Set(expMapped.map((t) => t.zip));
     const expClasses = new Set(expMapped.filter((t) => t.compare === 'exists').map((t) => t.zip));
-    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? outerClasses(zp).find((o) => expClasses.has(o)) : null; return outer || zp; };
+    // 내부 클래스는 바깥 클래스 삭제가 본문에 따로 있을 때만 그 추가 삭제로 접는다 — 내부 클래스만 적으면 바깥 .class 가 서버에 남는다(R4-2, 추천 자동 채택(위임))
+    const bodyZip = new Set(out.bodyDeletedList.map((p) => zipPathFor(layout, p).zip));
+    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? outerClasses(zp).find((o) => expClasses.has(o) && bodyZip.has(o)) : null; return outer || zp; };
     // 배포 소스와 삭제 소스가 같은 zip 경로로 사상되면(소스 이동 resources → java 등) 삭제 지시가 새로 배포한 파일을 지운다 — map_conflict(대조 불가 — fail-closed, R2-1)
     const deployBy = new Map();
     for (const p of out.expected.deploy) { const zp = zipPathFor(layout, p).zip; if (!deployBy.has(zp)) deployBy.set(zp, []); deployBy.get(zp).push(p); }

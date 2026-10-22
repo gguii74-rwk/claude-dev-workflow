@@ -709,6 +709,9 @@ test('maven-war ④ 삭제 목록: 기대·본문을 zip 경로로 정규화해 
   assert.deepEqual(a.d.expected.deleted, Object.keys(OLD).sort());
   const b = warDeploy(root, adapter, { repo, entries: warEntries(), description: body([`${CLS}Old.class`, `${CLS}Old$1.class`, 'html/old.html']), name: 'w2' });
   assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
+  // 내부 클래스만 적고 바깥 클래스(Old.class) 삭제가 없으면 서버에 옛 Old.class 가 남는다 — deleted_list (1.3.2 R4-2, 추천 자동 채택(위임))
+  const d4 = warDeploy(root, adapter, { repo, entries: warEntries(), description: body([`${CLS}Old$1.class`, 'html/old.html']), name: 'w4' });
+  assert.deepEqual(kp(d4.d), [['deleted_list', null]]);
   const c = warDeploy(root, adapter, { repo, entries: warEntries(), description: body([`${CLS}Old.class`, 'html/old.html', 'html/other.html']), name: 'w3' });
   assert.deepEqual(kp(c.d), [['deleted_list', null]]);
   assert.match(c.d.mismatches[0].detail, /html\/other\.html/);
