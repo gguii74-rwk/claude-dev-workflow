@@ -395,7 +395,12 @@ export function renderReport({ adapter, work, early = false }) {
 // 허용 목록(1.3.1 ⑤ — spec 2026-10-22 3.⑤): 위 처리 뒤 `W` 최상위에는 아래 9종(일반 파일)만 남긴다 — 검토자·메인이 임의 이름으로 만든 원문(`zipx/`·`claude.prompt` 등)도 지운다.
 // 지우기 전 표지(D26): `snapshot.json` 이 우리 형식으로 파싱될 때만 우리 작업 디렉터리로 본다 — 아니면 아무것도 지우지 않는다(엉뚱한 디렉터리를 비우는 비가역 사고 방지).
 const KEEP = new Set(['snapshot.json', 'pack.json', 'mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json']);
-const topEntries = (work) => { try { return fs.readdirSync(work, { withFileTypes: true }).map((d) => d.name + (d.isDirectory() ? '/' : '')).sort(); } catch { return []; } };
+// 표지 ERR 에 적는 W 항목 목록 — 「(없음)」은 W 가 없거나 실제로 비었을 때만(SKILL §0 이 정상 종료로 읽는다, D33). 권한 등 조회 실패는 그 사실을 적는다(R3-1)
+const topEntries = (work) => {
+  let list;
+  try { list = fs.readdirSync(work, { withFileTypes: true }); } catch (e) { return e?.code === 'ENOENT' ? '(없음)' : `항목 목록 조회 실패(${e?.code || e?.message})`; }
+  return list.map((d) => d.name + (d.isDirectory() ? '/' : '')).sort().join(', ') || '(없음)';
+};
 function markerProblem(work) {
   const p = path.join(work, 'snapshot.json');
   if (!fs.existsSync(p)) return 'snapshot.json 없음';
@@ -415,7 +420,7 @@ export function cleanup({ work, adapter }) {
     if (Number.isInteger(pid) && pid > 0 && alive(pid)) throw new ReportError(`검토자 프로세스 생존(codex.pid ${pid}) — 정리하지 않는다. 종료 확인(TERM → 생존 확인 → KILL) 뒤 cleanup 을 다시 실행하라(SKILL §0 공통 종료 절차)`);
   }
   const problem = markerProblem(work);
-  if (problem) throw new ReportError(`${problem} — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: ${topEntries(work).join(', ') || '(없음)'}`);
+  if (problem) throw new ReportError(`${problem} — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: ${topEntries(work)}`);
   const snapshot = readJson(work, 'snapshot.json') || {};
   let worktree = false;
   const wt = snapshot.worktree || path.join(work, 'worktree');

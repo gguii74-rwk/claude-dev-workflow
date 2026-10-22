@@ -1,7 +1,7 @@
 // report 계약 테스트 (spec §5.5-4 · §5.7 · SC-3 verdict.json · SC-4 · SC-5)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, rmSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB, CLI } from './helpers.mjs';
@@ -698,6 +698,24 @@ test('cleanup 뒤 --resolve 재실행(verdict --resolve → render)이 성공한
   const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
   assert.equal(rr.code, 0, rr.out + rr.err);
   assert.equal(rr.first, `REPORT ${out}`);
+});
+
+test('cleanup: 표지 ERR 의 항목 목록은 조회 실패(권한 등)를 「(없음)」으로 보고하지 않는다 — 없는 W 만 「(없음)」 (1.3.1 R3-1 · D33)', { skip: process.getuid?.() === 0 && 'root 는 권한 오류가 나지 않는다' }, () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = join(root, 'locked');
+  mkdirSync(work, { recursive: true });
+  writeFileSync(join(work, 'claude.prompt'), 'raw');
+  chmodSync(work, 0o300);                                            // 목록 읽기 불가(쓰기·통과는 가능)
+  let r;
+  try { r = runCli(['cleanup', '--adapter', adapter, '--work', work]); } finally { chmodSync(work, 0o700); }
+  assert.equal(r.code, 2, r.out);
+  assert.doesNotMatch(r.first, /\(없음\)/);
+  assert.match(r.first, /항목 목록 조회 실패\(EACCES\)/);
+  assert.ok(existsSync(join(work, 'claude.prompt')));
+  const gone = runCli(['cleanup', '--adapter', adapter, '--work', join(root, 'never-made')]);
+  assert.equal(gone.code, 2, gone.out);
+  assert.match(gone.first, /^ERR snapshot\.json 없음 — .*정리하지 않는다: \(없음\)$/);
 });
 
 test('cleanup: W 밖 디렉터리를 가리키는 심볼릭 링크는 링크만 지우고 대상은 건드리지 않는다 (1.3.1 AC⑤-5)', () => {
