@@ -749,9 +749,27 @@ test('cleanup: 마스킹 임시 경로(.mr.json.masking)에 디렉터리가 있�
   writeFileSync(join(work, 'claude.prompt'), 'raw');
   const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.first, /^CLEANED .* masked=\d+ extra=1$/);           // claude.prompt — 임시 경로 충돌 항목은 마스킹 단계가 치웠다
+  assert.match(r.first, /^CLEANED .* masked=\d+ extra=2$/);           // claude.prompt + 충돌 디렉터리 — 임시 이름이 매번 새 이름이라 부딪히지 않고, 충돌 항목은 허용 목록 정리가 지운다
   assert.ok(existsSync(join(work, 'mr.json')));
   assert.deepEqual(readdirSync(work).filter((n) => n.startsWith('.') || n === 'claude.prompt'), []);
+});
+
+test('cleanup: 지울 수 없는 항목(권한)이 있어도 나머지 마스킹·정리를 끝까지 하고 남은 항목을 ERR 로 보고한다 (1.3.1 R5-2 잔존 · C1)', { skip: process.getuid?.() === 0 && 'root 는 권한 오류가 나지 않는다' }, () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  const locked = join(work, '.mr.json.masking');
+  mkdirSync(join(locked, 'sub'), { recursive: true });
+  writeFileSync(join(locked, 'sub', 'x'), 'raw');
+  writeFileSync(join(work, 'claude.prompt'), 'raw');
+  chmodSync(locked, 0o500);
+  let r;
+  try { r = runCli(['cleanup', '--adapter', adapter, '--work', work]); } finally { chmodSync(locked, 0o700); }
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.first, /^ERR .*정리하지 못한 항목: \.mr\.json\.masking\//);
+  assert.ok(!readFileSync(join(work, 'review-claude.json'), 'utf8').includes('synthetic-db-password'));   // 마스킹은 끝까지 했다
+  assert.ok(!existsSync(join(work, 'claude.prompt')));                // 나머지 정리도 했다
+  assert.deepEqual(readdirSync(work).filter((n) => n.endsWith('.masking') && n !== '.mr.json.masking'), []);
 });
 
 test('cleanup: 표지 ERR 의 항목 목록은 조회 실패(권한 등)를 「(없음)」으로 보고하지 않는다 — 없는 W 만 「(없음)」 (1.3.1 R3-1 · D33)', { skip: process.getuid?.() === 0 && 'root 는 권한 오류가 나지 않는다' }, () => {

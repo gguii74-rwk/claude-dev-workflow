@@ -1,7 +1,7 @@
 // report.mjs — spec §5.5-4 판정 계산(결정적) · §5.7 리포트 렌더 · F5 비밀값 제거 · F7 정리 · SC-4 검토자 출력 검증.
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { maskText, maskTextWithCounts, SECRET_MASK, SECRET_KEYS, knownShas } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
 export { maskText, SECRET_MASK };
@@ -411,6 +411,7 @@ function markerProblem(work) {
   const ok = s && typeof s === 'object' && (s.mode === 'worktree' || s.mode === 'diff-only') && /^[0-9a-f]{40}$/.test(String(s.head_sha)) && typeof s.fetched_at === 'string';
   return ok ? null : 'snapshot.json 형식 불일치';
 }
+const tryRm = (p) => { try { fs.rmSync(p, { recursive: true, force: true }); return true; } catch { return false; } };   // 링크는 링크만 지운다
 const MASKED_JSON = ['mr.json', 'check.json', 'deploy.json', 'review-claude.json', 'review-codex.json', 'findings.json', 'verdict.json'];
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
 export function cleanup({ work, adapter }) {
@@ -453,22 +454,26 @@ export function cleanup({ work, adapter }) {
     let out;
     try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
     // 기존 파일 실체(inode)는 고치지 않는다 — 새 파일에 쓰고 이름을 바꿔 교체한다. 하드 링크로 W 밖 원본과 실체를 공유해도 원본은 그대로다(R4-1), 검사 뒤 링크로 바뀌어도 따라가지 않는다(R1-1)
-    const tmpFile = path.join(work, `.${f}.masking`);
+    const tmpFile = path.join(work, `.${f}.${randomBytes(6).toString('hex')}.masking`);   // 매번 새 이름 — W 에 이미 있는 항목과 부딪히지 않는다(R5-2)
     try {
-      fs.rmSync(tmpFile, { recursive: true, force: true });   // 같은 이름의 디렉터리·링크가 있어도 치운다(링크는 링크만) — 남은 정리가 멈추지 않게(R5-2)
       fs.writeFileSync(tmpFile, out, { flag: 'wx' });
       fs.renameSync(tmpFile, p);
-    } catch (e) { fs.rmSync(p, { force: true }); fs.rmSync(tmpFile, { recursive: true, force: true }); failed.push(`${f}(${e.message})`); continue; }   // 교체 실패도 원문을 남기지 않는다
+    } catch (e) { tryRm(tmpFile); tryRm(p); failed.push(`${f}(${e.message})`); continue; }   // 교체 실패도 원문을 남기지 않으려 지우고, 나머지 정리를 계속한다
     masked += 1;
   }
   // 허용 9종 밖은 이름을 몰라도 지운다(숨김 파일 포함). 심볼릭 링크는 링크만 — rmSync 는 링크 대상을 따라가지 않는다
+  // 지울 수 없는 항목(권한 등)은 모아 두고 나머지를 끝까지 지운 뒤 ERR 로 남은 항목을 알린다 — 항목 하나가 정리 전체를 멈추지 않게(R5-2 잔존)
   const extra = [];
+  const stuck = [];
   for (const d of fs.readdirSync(work, { withFileTypes: true })) {
     if (KEEP.has(d.name) && d.isFile()) continue;
-    fs.rmSync(path.join(work, d.name), { recursive: true, force: true });
-    extra.push(d.name + (d.isDirectory() ? '/' : ''));
+    const name = d.name + (d.isDirectory() ? '/' : '');
+    if (tryRm(path.join(work, d.name))) extra.push(name); else stuck.push(name);
   }
-  if (failed.length) throw new ReportError(`마스킹 실패로 원문을 남기지 않고 지웠다: ${failed.join(', ')} — 나머지 정리는 끝냈다`);
+  const notes = [];
+  if (failed.length) notes.push(`마스킹 실패로 원문을 남기지 않고 지웠다: ${failed.join(', ')}`);
+  if (stuck.length) notes.push(`정리하지 못한 항목: ${maskNames(stuck.sort(), adapter).join(', ')}`);
+  if (notes.length) throw new ReportError(`${notes.join(' · ')} — 나머지 정리는 끝냈다`);
   return { worktree, zip, raw, masked, extra: maskNames(extra.sort(), adapter) };
 }
 
