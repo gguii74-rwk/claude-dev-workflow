@@ -225,10 +225,13 @@ harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천�
 | R1-1 | report.mjs cleanup · 허용 JSON 이름이 W 밖을 가리키는 심볼릭 링크면 마스킹 루프가 따라가 외부 파일을 덮어씀 · lstat 으로 일반 파일만 마스킹, 쓰기 O_NOFOLLOW, 외부 대상 보존 회귀 테스트 | high | FIXED | `42aaf4f` — 마스킹 루프가 `lstat().isFile()` 아니면 건너뜀(허용 목록 정리가 링크만 삭제 → `extra`) · 쓰기 `O_NOFOLLOW` · 테스트 「허용 JSON 이름(mr.json)이 W 밖 파일을 가리키는 심볼릭 링크면 …」(대상 바이트 불변) |
 | R1-2 | SKILL.md §0 · 사전 점검 호스트 추출 정규식이 CRLF·들여쓴 펜스 어댑터를 거부(extractBlock 은 허용) → 정상 설정을 GLAB_HOST_FAIL 로 오안내 · 어댑터 파서와 같은 형식 | medium | FIXED | `bbd950b` — 줄마다 trim 뒤 여는/닫는 펜스 탐색(extractBlock 과 같은 규칙) · 테스트 「SKILL.md §0 사전 점검의 호스트 추출이 …」(LF·CRLF·들여쓴 펜스 3종 → `gitlab.test`) · bash 실측(CRLF 어댑터 → `--hostname gitlab.test`) — zsh 실측은 9단계 몫 |
 | R2-1 | collect.mjs pinWorktree · 얕은 clone 에서 base 객체는 있으나 head 까지의 이력이 shallow 경계로 끊기면 `!present` 조건 때문에 D28 안내 없이 「조상이 아니다」로 오진 · 객체 유무와 무관하게 shallow 확인 | medium | FIXED | `89131eb` — 조상 확인 실패 + shallow 면 D28 문구(base 가 있으면 「base 와 head 사이 이력이 로컬에 없다」, AC②-7 문구 불변) · 테스트 「얕은 clone 에서 base 객체는 있으나 …」(base 를 depth 1 태그 fetch 로 따로 받아 끊긴 이력 재현) |
+| R3-1 | report.mjs cleanup topEntries · 표지 ERR 의 W 항목 목록이 readdir 오류(EACCES 등)를 빈 목록 「(없음)」으로 보고 → SKILL §0 이 정상 종료로 읽어 원문 잔존을 숨김 · ENOENT·실제 빈 목록만 「(없음)」, 그 밖은 조회 실패 표시 | medium | FIXED | `b0e39fa` — 조회 실패는 「항목 목록 조회 실패(<코드>)」(SKILL §0 「비어 있지 않으면 사람이 지운다」 경로로 감 — 문서 변경 없음) · 테스트 「cleanup: 표지 ERR 의 항목 목록은 조회 실패(권한 등)를 …」(0o300 디렉터리 → EACCES 표시·파일 불변, 없는 W → 「(없음)」; root 면 skip) |
 
 **R1(적대, 2026-10-22)**: HEAD `9ab8156` · 스레드 `01a1629c…` · 실행 로그 25건 · verdict needs-attention · high 1 · medium 1 · low 0 · 신규 2 · 기결정 재론 0. 전환용 score **4**(high 3 + medium 1 — 현행 산식, 수정 전 스냅샷) · 미확인 FIXED 큐 0 → 2. batch 적재 0(적대 소진 1 = auto-rounds 1 → flush 대상 없음, 이후 정밀 모드). 수정 게이트(SC-7, `bbd950b`): T1 **155/155** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0.
 
 **R2(적대, 2026-10-22)**: HEAD `16a5488` · 스레드 `01a162a2…` · 실행 로그 21건 · verdict needs-attention · medium 1 · 신규 1 · 기결정 재론 0 · R1-1·R1-2 적대 비재출현(R2 — 참고 신호, 큐 유지). 전환용 score **1**(4 → 1) · 미확인 FIXED 큐 2 → 3. 보안 트랙이라 신호 1 무시 · 신호 2 미발화(신규 FIXED 1) → 적대 계속. 수정 게이트(SC-7, `89131eb`): T1 **156/156** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0 — 수정 전 게이트에서 T6(spec 추가 줄) 1건 = 이 ledger 의 루프 줄에 적은 트랙 브랜치 이름(저장소 소유자 slug)이라 그 줄에서 브랜치 이름을 빼 0 으로 맞췄다(D10 대상 아님, 게이트 기준 준수).
+
+**R3(적대, 2026-10-22)**: HEAD `71570c1` · 스레드 `01a162a9…` · 실행 로그 28건 · verdict needs-attention · medium 1 · 신규 1 · 기결정 재론 0 · R1-1·R1-2·R2-1 적대 비재출현(R3 — 참고 신호, 큐 유지). 전환용 score **1**(4 → 1 → 1 — 보안 트랙이라 신호 1 무시) · 미확인 FIXED 큐 3 → 4 · 신호 2 미발화(신규 FIXED 1) → 적대 계속. 수정 게이트(SC-7, `b0e39fa`): T1 **157/157** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0.
 
 ## 확인 대기 대장
 
