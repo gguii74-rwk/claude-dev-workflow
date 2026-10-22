@@ -388,6 +388,11 @@ export function deploy({ adapter, work }) {
     const deployBy = new Map();
     for (const p of out.expected.deploy) { const zp = zipPathFor(layout, p).zip; if (!deployBy.has(zp)) deployBy.set(zp, []); deployBy.get(zp).push(p); }
     for (const [i, t] of expMapped.entries()) if (deployBy.has(t.zip)) mm.push({ kind: 'map_conflict', path: t.zip, detail: `소스 두 경로가 같은 배포 경로로 사상됨: ${deployBy.get(t.zip).join(', ')}, ${out.expected.deleted[i]}(삭제)` });
+    // 삭제 목록(기대·본문 — zip 경로로 사상, 내부 클래스 폴백 없이 이름 그대로)의 경로가 zip 항목에도 있으면 배포 뒤 삭제가 방금 배포한 파일을 지운다 — 경우별이 아니라 이 한 규칙으로 막는다(R3-1, 추천 자동 채택(위임))
+    const inZipEntries = new Set(out.zip.entries);
+    const delZip = new Map();
+    for (const p of [...out.expected.deleted, ...out.bodyDeletedList]) { const zp = zipPathFor(layout, p).zip; if (!delZip.has(zp)) delZip.set(zp, []); if (!delZip.get(zp).includes(p)) delZip.get(zp).push(p); }
+    for (const [zp, srcs] of delZip) if (inZipEntries.has(zp) && !mm.some((m) => m.kind === 'map_conflict' && m.path === zp)) mm.push({ kind: 'map_conflict', path: zp, detail: `삭제 목록의 경로가 zip 에도 들어 있음 — 배포 뒤 삭제하면 방금 배포한 파일이 지워진다: ${srcs.join(', ')}` });
     const bodyDel = new Set(out.bodyDeletedList.map(normBody));
     const same = expDel.size === bodyDel.size && [...expDel].every((p) => bodyDel.has(p));
     if (!same) mm.push({ kind: 'deleted_list', path: null, detail: `삭제 목록 불일치 — 기대 [${out.expected.deleted.join(', ') || '없음'}] / 본문 [${out.bodyDeletedList.join(', ') || '없음'}]` });

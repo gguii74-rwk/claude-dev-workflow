@@ -729,7 +729,8 @@ test('maven-war ④ 삭제 목록: 내부 클래스 정규화는 삭제한 .java
   const JB = { 'src/main/java/com/example/acct/Foo$Bar.java': 'class Foo$Bar {}\n' };
   const r2 = warRepo(join(root, 'r2'), { baseFiles: JB, del: Object.keys(JB) });
   const b = warDeploy(join(root, 'r2'), adapter, { repo: r2, entries: warEntries(), description: body([`${CLS}Foo.class`]), name: 'w2' });
-  assert.deepEqual(kp(b.d), [['deleted_list', null]]);
+  // zip 에 든 Foo.class 를 지우라는 지시라 R3-1 규칙(삭제 경로가 zip 에도 있음)의 map_conflict 도 함께 난다
+  assert.deepEqual(kp(b.d).sort(), [['deleted_list', null], ['map_conflict', `${CLS}Foo.class`]]);
   const b2 = warDeploy(join(root, 'r2'), adapter, { repo: r2, entries: warEntries(), description: body([`${CLS}Foo$Bar.class`]), name: 'w2b' });
   assert.equal(b2.r.first, 'DEPLOY 일치', JSON.stringify(b2.d.mismatches));
 });
@@ -758,6 +759,18 @@ test('maven-war: 배포 소스와 삭제 소스가 같은 zip 경로로 사상�
   assert.equal(mc.path, 'WEB-INF/classes/a.xml');
   assert.match(mc.detail, /src\/main\/java\/a\.xml/);
   assert.match(mc.detail, /src\/main\/resources\/a\.xml/);
+});
+
+test('삭제 목록(기대·본문)의 경로가 zip 항목에도 있으면 map_conflict → 대조 불가 — 내부 클래스로 받아들인 항목(`Foo$1.class`)을 지우는 지시도 잡는다 (1.3.2 R3-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const RES = { 'src/main/resources/com/example/acct/Foo$1.class': 'res\n' };
+  const repo = warRepo(root, { baseFiles: RES, del: Object.keys(RES) });
+  const description = `## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: ${CLS}Foo$1.class\n`;
+  const { r, d } = warDeploy(root, adapter, { repo, entries: warEntries(), description });
+  assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+  assert.deepEqual(kp(d), [['map_conflict', `${CLS}Foo$1.class`]]);
+  assert.match(d.mismatches[0].detail, /zip 에도 들어 있음/);
 });
 
 test('maven-war: `Foo$Bar.java` 의 내부 클래스 `Foo$Bar$1.class` 는 가장 긴 기대 클래스(`Foo$Bar.class`)의 산출물 — 배포 대조·삭제 목록 모두 통과 (1.3.2 R2-2)', () => {
