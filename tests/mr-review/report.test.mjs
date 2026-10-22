@@ -1,7 +1,7 @@
 // report 계약 테스트 (spec §5.5-4 · §5.7 · SC-3 verdict.json · SC-4 · SC-5)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB, CLI } from './helpers.mjs';
@@ -714,6 +714,22 @@ test('cleanup: W 밖 디렉터리를 가리키는 심볼릭 링크는 링크만 
   assert.ok(!readdirSync(work).includes('link'));
   assert.deepEqual(readdirSync(outside), ['keep.txt']);
   assert.equal(readFileSync(join(outside, 'keep.txt'), 'utf8'), 'keep');
+});
+
+test('cleanup: 허용 JSON 이름(mr.json)이 W 밖 파일을 가리키는 심볼릭 링크면 대상을 읽거나 덮어쓰지 않고 링크만 지운다 (1.3.1 R1-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  const outside = join(root, 'outside.json');
+  const body = '{"secret":"db.password = \\"synthetic-db-password\\"","n":1}';
+  writeFileSync(outside, body);
+  rmSync(join(work, 'mr.json'));
+  symlinkSync(outside, join(work, 'mr.json'));
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(outside, 'utf8'), body);             // 대상 바이트 불변(마스킹 사본으로 덮어쓰지 않음)
+  assert.ok(!readdirSync(work).includes('mr.json'));             // 링크는 허용 9종이 아니다 — 지운다
+  assert.match(r.out, /^extra: .*mr\.json/m);
 });
 
 test('SKILL.md: §0 공통 종료 절차에 cleanup ERR 목록이 비었을 때(없음)의 정상 종료 안내 · §8 cleanup 첫 줄 extra=<n> (1.3.1 AC⑤-6 · D33)', () => {

@@ -440,12 +440,12 @@ export function cleanup({ work, adapter }) {
   const failed = [];
   for (const f of MASKED_JSON) {
     const p = path.join(work, f);
-    if (!fs.existsSync(p)) continue;
+    if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isFile()) continue;   // 없거나 일반 파일이 아니다(심볼릭 링크·디렉터리) — 따라가 읽거나 쓰지 않는다. 아래 허용 목록 정리가 링크만 지운다(1.3.1 R1-1)
     let obj;
     try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { fs.rmSync(p); raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
     let out;
     try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
-    fs.writeFileSync(p, out);
+    fs.writeFileSync(p, out, { flag: fs.constants.O_WRONLY | fs.constants.O_TRUNC | (fs.constants.O_NOFOLLOW || 0) });   // 검사와 쓰기 사이에 링크로 바뀌어도 따라가지 않는다
     masked += 1;
   }
   // 허용 9종 밖은 이름을 몰라도 지운다(숨김 파일 포함). 심볼릭 링크는 링크만 — rmSync 는 링크 대상을 따라가지 않는다
