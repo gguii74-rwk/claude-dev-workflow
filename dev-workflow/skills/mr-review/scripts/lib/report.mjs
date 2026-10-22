@@ -450,7 +450,11 @@ export function cleanup({ work, adapter }) {
     try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { fs.rmSync(p); raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
     let out;
     try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
-    fs.writeFileSync(p, out, { flag: fs.constants.O_WRONLY | fs.constants.O_TRUNC | (fs.constants.O_NOFOLLOW || 0) });   // 검사와 쓰기 사이에 링크로 바뀌어도 따라가지 않는다
+    // 기존 파일 실체(inode)는 고치지 않는다 — 새 파일에 쓰고 이름을 바꿔 교체한다. 하드 링크로 W 밖 원본과 실체를 공유해도 원본은 그대로다(R4-1), 검사 뒤 링크로 바뀌어도 따라가지 않는다(R1-1)
+    const tmpFile = path.join(work, `.${f}.masking`);
+    fs.rmSync(tmpFile, { force: true });
+    fs.writeFileSync(tmpFile, out, { flag: 'wx' });
+    fs.renameSync(tmpFile, p);
     masked += 1;
   }
   // 허용 9종 밖은 이름을 몰라도 지운다(숨김 파일 포함). 심볼릭 링크는 링크만 — rmSync 는 링크 대상을 따라가지 않는다

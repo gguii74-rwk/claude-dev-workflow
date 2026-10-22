@@ -1,7 +1,7 @@
 // report 계약 테스트 (spec §5.5-4 · §5.7 · SC-3 verdict.json · SC-4 · SC-5)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, rmSync, chmodSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, rmSync, chmodSync, linkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB, CLI } from './helpers.mjs';
@@ -698,6 +698,24 @@ test('cleanup 뒤 --resolve 재실행(verdict --resolve → render)이 성공한
   const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
   assert.equal(rr.code, 0, rr.out + rr.err);
   assert.equal(rr.first, `REPORT ${out}`);
+});
+
+test('cleanup: 보존 JSON 이 W 밖 파일의 하드 링크여도 외부 원본은 바뀌지 않고 W 사본만 마스킹된다 — 새 파일 + rename 교체 (1.3.1 R4-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  const outside = join(root, 'outside-review.json');
+  const body = readFileSync(join(work, 'review-claude.json'), 'utf8');
+  rmSync(join(work, 'review-claude.json'));
+  writeFileSync(outside, body);
+  linkSync(outside, join(work, 'review-claude.json'));
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(outside, 'utf8'), body);               // 외부 원본 바이트 불변
+  const kept = readFileSync(join(work, 'review-claude.json'), 'utf8');
+  assert.ok(!kept.includes('synthetic-db-password'));              // W 사본은 마스킹됐다
+  assert.equal(statSync(join(work, 'review-claude.json')).nlink, 1);
+  assert.deepEqual(readdirSync(work).filter((n) => n.startsWith('.')), []);   // 임시 파일 잔존 없음
 });
 
 test('cleanup: 표지 ERR 의 항목 목록은 조회 실패(권한 등)를 「(없음)」으로 보고하지 않는다 — 없는 W 만 「(없음)」 (1.3.1 R3-1 · D33)', { skip: process.getuid?.() === 0 && 'root 는 권한 오류가 나지 않는다' }, () => {
