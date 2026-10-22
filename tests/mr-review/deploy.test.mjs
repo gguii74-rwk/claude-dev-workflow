@@ -773,6 +773,18 @@ test('삭제 목록(기대·본문)의 경로가 zip 항목에도 있으면 map_
   assert.match(d.mismatches[0].detail, /zip 에도 들어 있음/);
 });
 
+test('zip 항목 이름이 Windows 드라이브 접두(`C:/…`·`C:…`)면 정규형 아님 → corrupt(대조 불가) — maven-war 웹 루트 매핑으로 정상 항목처럼 보이는 경로 포함 (1.3.2 R4-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  for (const [i, zp] of ['C:/outside/payload.txt', 'C:payload.txt'].entries()) {
+    const sub = join(root, `r${i}`);
+    const repo = warRepo(sub, { add: { [`src/main/webapp/${zp}`]: 'x\n' } });
+    const { r, d } = warDeploy(sub, adapter, { repo, entries: [{ name: zp, data: 'x\n' }] });
+    assert.equal(r.first, 'DEPLOY 대조 불가', `${zp} ${JSON.stringify(d.mismatches)}`);
+    assert.ok(d.mismatches.some((m) => m.kind === 'corrupt' && /정규형/.test(m.detail)), zp);
+  }
+});
+
 test('maven-war: `Foo$Bar.java` 의 내부 클래스 `Foo$Bar$1.class` 는 가장 긴 기대 클래스(`Foo$Bar.class`)의 산출물 — 배포 대조·삭제 목록 모두 통과 (1.3.2 R2-2)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: WAR_PROJECT });

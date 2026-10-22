@@ -107,7 +107,8 @@ function zipName(raw, flags) {
   // 제어문자(impl R5-2) — NUL 에서 이름을 자르는 리더는 `x.js\0/`(우리에겐 폴더)를 일반 파일 `x.js` 로 푼다
   if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error(`zip 파일명에 제어문자(NUL 등): ${JSON.stringify(name)}`);
   // 정규형만(impl R6-3 훅) — 앞 `/`·역슬래시·빈 조각·`.`·`..` 는 해제 도구가 경로를 정리하며 다른 위치·충돌을 만든다(git archive 이름은 항상 정규형)
-  if (name.startsWith('/') || name.includes('\\') || name.replace(/\/$/, '').split('/').some((s) => s === '' || s === '.' || s === '..')) throw new Error(`zip 파일명이 정규형이 아님: ${JSON.stringify(name)}`);
+  // 드라이브 접두(`C:/…`·`C:…` — 1.3.2 R4-1)도 절대·드라이브 상대 경로라 Windows 해제 도구가 배포 루트 밖을 가리킨다(maven-war 웹 루트 매핑이 `src/main/webapp/C:/…` 를 그 이름으로 만든다)
+  if (name.startsWith('/') || /^[A-Za-z]:/.test(name) || name.includes('\\') || name.replace(/\/$/, '').split('/').some((s) => s === '' || s === '.' || s === '..')) throw new Error(`zip 파일명이 정규형이 아님: ${JSON.stringify(name)}`);
   return name;
 }
 
