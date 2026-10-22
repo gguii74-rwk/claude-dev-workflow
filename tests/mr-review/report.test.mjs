@@ -854,3 +854,90 @@ test('SKILL.md §5 경로 감시: 제외 3종(CODEX_HOME 전체 · $ROOT · $W) 
   const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
   assert.match(s8, /Codex 자체 경로 n건 제외/);
 });
+
+// ── 1.3.2 ⑨ 표시 · ⑪ 불일치 목록 = 부록 A 한 곳, 본문은 요약 + 참조 (spec 2026-10-22 3.⑨ 5 · 3.⑪) ──
+const { machineEvidence, mismatchSummary } = await import(join(LIB, 'report.mjs'));
+const { parseAppendixD } = await import(join(LIB, 'check.mjs'));
+const sectionOf = (md, start, end) => { const i = md.indexOf(start); const j = end ? md.indexOf(end, i + 1) : -1; return md.slice(i, j < 0 ? undefined : j); };
+function renderWith(root, deploy, name = 'r.md') {
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]), deploy });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, name);
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  return readFileSync(out, 'utf8');
+}
+const pad = (i) => String(i).padStart(2, '0');
+const MISS19 = Array.from({ length: 19 }, (_, i) => ({ kind: 'missing_in_zip', path: `src/main/java/com/example/acct/C${pad(i + 1)}.java`, detail: '배포 목록에 있으나 zip 에 없음' }));
+const EXTRA19 = Array.from({ length: 19 }, (_, i) => ({ kind: 'extra_in_zip', path: `WEB-INF/classes/com/example/acct/C${pad(i + 1)}.class`, detail: 'zip 에 있으나 배포 목록에 없음' }));
+const deploy38 = () => ({ ...baseDeploy(), applicable: true, reason: null, expected: { deploy: MISS19.map((m) => m.path), deleted: [] }, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: EXTRA19.map((m) => m.path), bytes_source: 'worktree', layout: 'source', bytes_skipped: [] }, result: '불일치', mismatches: [...MISS19, ...EXTRA19] });
+
+test('render: bytes_skipped 2건 → 실행 블록 「2. 검증 상태」·부록 A 에 「바이트 대조 생략 2건(컴파일 산출물 — 존재만 확인)」 + 부록 A 에 경로 각 1줄 · 0건이면 문구 없음 · SKILL §8 터미널 요약에 문구 (1.3.2 AC⑨-10 · D47)', () => {
+  const SK = ['WEB-INF/classes/com/example/acct/Foo$1.class', 'WEB-INF/classes/com/example/acct/Foo.class'];
+  const d = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/com/example/acct/Foo.java'], deleted: [] }, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: SK, bytes_source: 'worktree', layout: 'maven-war', bytes_skipped: SK }, result: '일치', mismatches: [] };
+  const md = renderWith(tmp(), d);
+  const PHRASE = '바이트 대조 생략 2건(컴파일 산출물 — 존재만 확인)';
+  const block = md.match(/```text\n([\s\S]*?)\n```/)[1];
+  const s2 = block.split('\n').find((l) => l.startsWith('- [실행] 배포본 zip 대조'));
+  assert.ok(s2 && s2.includes(PHRASE), s2);
+  const appA = sectionOf(md, '## 부록 A', '## 부록 B');
+  assert.ok(appA.includes(PHRASE));
+  for (const p of SK) assert.ok(appA.split('\n').some((l) => l.trim() === `- ${p}`), p);
+  assert.ok(!sectionOf(md, '# mr-review', '## 판정 초안').includes('바이트 대조 생략'));   // 헤더에는 넣지 않는다(D47)
+  const md0 = renderWith(tmp(), { ...d, zip: { ...d.zip, bytes_skipped: [] } });
+  assert.ok(!md0.includes('바이트 대조 생략'));
+  const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+  const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
+  assert.match(s8, /배포본 대조 결과[^\n]*바이트 대조 생략/);
+});
+
+test('render: 불일치 38건 — 4번째 이후 경로는 부록 A 에만 · 실행 블록·보완 문안·부록 D 는 종류별 건수 + 앞 3개 + 「외 n건」 + 「 · 전체 목록 부록 A」, 줄 < 400자 · 부록 D 파서가 제목을 자르지 않는다 (1.3.2 AC⑪-1 · AC⑪-5)', () => {
+  const md = renderWith(tmp(), deploy38());
+  const appA = sectionOf(md, '## 부록 A', '## 부록 B');
+  const lines = md.split('\n');
+  const c04 = lines.filter((l) => l.includes('C04.java'));
+  assert.equal(c04.length, 1, c04.join('\n'));
+  assert.ok(appA.includes(c04[0]));
+  for (const m of MISS19) assert.ok(appA.split('\n').includes(`- missing_in_zip ${m.path}: 배포 목록에 있으나 zip 에 없음`), m.path);   // AC⑪-5 전문 형식 불변
+  const block = md.match(/```text\n([\s\S]*?)\n```/)[1];
+  const sup = sectionOf(md, '## 작성자 보완 요청 문안', '\n## ');
+  const appD = sectionOf(md, '## 부록 D');
+  const targets = [
+    block.split('\n').find((l) => l.startsWith('- [실행] 배포본 zip 대조')),
+    block.split('\n').find((l) => l.startsWith('- 머지 전:')),
+    block.split('\n').find((l) => l.startsWith('- M-deploy ')),
+    sup.split('\n').find((l) => l.includes('배포본 대조 결과')),
+    appD.split('\n').find((l) => l.startsWith('- **M-deploy**')),
+  ];
+  for (const l of targets) {
+    assert.ok(l, '대상 줄');
+    for (const s of ['missing_in_zip 19건(', '외 16건', 'extra_in_zip 19건(', ' · 전체 목록 부록 A']) assert.ok(l.includes(s), `${s} ∉ ${l}`);
+    assert.ok(l.length < 400, `${l.length}자: ${l.slice(0, 80)}`);
+  }
+  assert.ok(targets[0].includes('missing_in_zip 19건(src/main/java/com/example/acct/C01.java, src/main/java/com/example/acct/C02.java, src/main/java/com/example/acct/C03.java 외 16건)'));
+  const t = parseAppendixD(md).get('M-deploy').title;
+  assert.ok(t.startsWith('배포본 불일치 — ') && t.endsWith(' · 전체 목록 부록 A'), t);
+});
+
+test('render: 보완 문안의 배포본 항목은 1개 · 「배포 목록에 있으나 zip 에 없음」은 리포트 전체에서 부록 A 의 19줄에만 (1.3.2 AC⑪-2)', () => {
+  const md = renderWith(tmp(), deploy38());
+  const sup = sectionOf(md, '## 작성자 보완 요청 문안', '\n## ');
+  assert.equal(sup.split('\n').filter((l) => l.includes('배포본 대조 결과')).length, 1);
+  assert.equal(md.split('배포 목록에 있으나 zip 에 없음').length - 1, 19);
+  assert.equal(sectionOf(md, '## 부록 A', '## 부록 B').split('배포 목록에 있으나 zip 에 없음').length - 1, 19);
+});
+
+test('render: path 없는 종류(deleted_list)만이면 요약은 종류 이름만 — 「전체 목록 부록 A」 없음 (1.3.2 AC⑪-3)', () => {
+  const d = baseDeploy(); d.applicable = true; d.result = '불일치'; d.mismatches = [{ kind: 'deleted_list', path: null, detail: '삭제 목록 불일치' }];
+  const md = renderWith(tmp(), d);
+  assert.match(md, /## 부록 D[\s\S]*- \*\*M-deploy\*\* \[기계\] MISSING_EVIDENCE \(차단\) — 배포본 불일치 — deleted_list \(-:-\) · 출처 machine/);
+  assert.ok(!md.includes('전체 목록 부록 A'));
+});
+
+test('machineEvidence: M-deploy detail = 종류 등장 순 · 경로 등장 순 요약 (1.3.2 AC⑪-4)', () => {
+  const d = { applicable: true, result: '불일치', mismatches: [{ kind: 'comment_sha', path: null, detail: 'x' }, { kind: 'bytes', path: 'src/b.js', detail: 'y' }, { kind: 'bytes', path: 'src/a.js', detail: 'z' }] };
+  const m = machineEvidence({ check: {}, snapshot: {}, deploy: d }).find((x) => x.id === 'M-deploy');
+  assert.equal(m.detail, '배포본 불일치 — comment_sha · bytes 2건(src/b.js, src/a.js) · 전체 목록 부록 A');
+  assert.equal(mismatchSummary({ mismatches: [] }), '');
+});

@@ -78,6 +78,20 @@ export function validateFindings(fnd) {
   return errors;
 }
 
+// ── 배포본 불일치 요약(1.3.2 ⑪ — spec 2026-10-22 3.⑪ D40·D46) ─────────────────────
+// 목록 전문은 부록 A 한 곳 — 본문(실행 블록·보완 문안·부록 D)은 종류별 건수 + 앞 SUMMARY_PATHS 개 경로 + 「외 n건」(종류·경로 = mismatches 등장 순).
+// path 없는 종류는 이름만. 끝 ` · 전체 목록 부록 A` 는 괄호 꼴로 쓰지 않는다 — 재리뷰 파서 APPENDIX_D_RE(check.mjs)가 제목 뒤 ` (…) · 출처` 로 위치 칸을 찾는다
+const SUMMARY_PATHS = 3;
+export function mismatchSummary(deploy) {
+  const kinds = new Map();
+  for (const m of deploy?.mismatches || []) { if (!kinds.has(m.kind)) kinds.set(m.kind, []); if (m.path) kinds.get(m.kind).push(m.path); }
+  const parts = [...kinds].map(([k, ps]) => (ps.length ? `${k} ${ps.length}건(${ps.slice(0, SUMMARY_PATHS).join(', ')}${ps.length > SUMMARY_PATHS ? ` 외 ${ps.length - SUMMARY_PATHS}건` : ''})` : k));
+  if ([...kinds.values()].some((ps) => ps.length)) parts.push('전체 목록 부록 A');
+  return parts.join(' · ');
+}
+// 컴파일 산출물 존재 대조 표시(1.3.2 ⑨ D38·D47) — 실행 블록 「2. 검증 상태」·부록 A(헤더에는 넣지 않는다)
+const skippedNote = (deploy) => ((deploy?.zip?.bytes_skipped || []).length ? `바이트 대조 생략 ${deploy.zip.bytes_skipped.length}건(컴파일 산출물 — 존재만 확인)` : '');
+
 // ── §5.5-4 판정 ───────────────────────────────────────────────────────────
 export function machineEvidence({ check, snapshot, deploy }) {
   const out = [];
@@ -89,7 +103,7 @@ export function machineEvidence({ check, snapshot, deploy }) {
   for (const name of snapshot?.api_failures || []) {
     if (name === 'closes_issues' || (snapshot.mode === 'diff-only' && (name === 'changes' || name === 'versions'))) out.push({ id: `M-api-${name}`, kind: 'api', detail: `GitLab 조회 실패: ${name} — 자료가 없는 것이 아니라 받지 못한 것(재실행 또는 로컬 clone 권장)` });
   }
-  if (deploy?.applicable && deploy.result !== '일치') out.push({ id: 'M-deploy', kind: 'deploy', detail: `배포본 ${deploy.result}${deploy.mismatches?.length ? ' — ' + deploy.mismatches.map((m) => m.kind + (m.path ? `(${m.path})` : '')).join(', ') : ''}` });
+  if (deploy?.applicable && deploy.result !== '일치') out.push({ id: 'M-deploy', kind: 'deploy', detail: `배포본 ${deploy.result}${mismatchSummary(deploy) ? ' — ' + mismatchSummary(deploy) : ''}` });
   // 재리뷰의 이전 차단 발견 목록이 불완전하면(댓글 축약분을 이전 리포트 부록 D 로 복원 못 함, R4-3) §5.6 「이전 차단 발견마다 확인」을 완료할 수 없다 — 원문 미확보와 같은 증거 부족
   if (check?.rereview?.active && check.rereview.priorBlockingComplete === false) out.push({ id: 'M-rereview', kind: 'rereview', detail: `이전 차단 발견 목록 불완전 — ${(check.rereview.priorBlocking || []).filter((b) => b.title === null).length}건 미확보(댓글 축약분 · 이전 리포트 ${check.rereview.priorReport ? '부록 D 에 없음' : '없음'}) — 확인 완료로 취급 금지` });
   (check?.baselineLinks || []).forEach((l, i) => { if (l.status === '미확보') out.push({ id: `M-baseline-${i + 1}`, kind: 'baseline', detail: `기준선·이슈 원문 미확보: ${l.raw || l.kind} — ${l.reason || ''}` }); });
@@ -183,7 +197,7 @@ function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack }
   const s1h = ['1. 의도 대조표', '| 수용기준·MR 주장 | 결과 | 코드 위치 |', '|---|---|---|'];
   const s2 = ['2. 검증 상태',
     `- [판독] base..head diff·변경 파일 전문 — head ${s7(snapshot.head_sha)} (돈 모델: ${models}${findings?.crossChecked ? '' : ' · 교차 검토 없음'})`,
-    deploy?.applicable ? `- [실행] 배포본 zip 대조(스킬 직접 수행): ${deploy.result}${deploy.mismatches?.length ? ' — ' + deploy.mismatches.map((m) => m.kind + (m.path ? `(${m.path})` : '')).join(', ') : ''}` : '- 배포본: 비해당(운영 배포 대상 변경 없음)',
+    deploy?.applicable ? `- [실행] 배포본 zip 대조(스킬 직접 수행): ${[deploy.result, mismatchSummary(deploy)].filter(Boolean).join(' — ')}${skippedNote(deploy) ? ` · ${skippedNote(deploy)}` : ''}` : '- 배포본: 비해당(운영 배포 대상 변경 없음)',
     '- [다른 주체 제공] 작성자 검증 표 결과 — 작성자 주장(이 스킬은 테스트·빌드를 실행하지 않는다)'];
   const evidenceItems = verdict.evidence.map((id) => byId[id] ? `${byId[id].title}` : (verdict.machineEvidence.find((m) => m.id === id)?.detail || id));
   const s3 = ['3. 통과해야 할 테스트', evidenceItems.length ? `- 머지 전: ${evidenceItems.map((t) => `[ ] ${t}`).join(' · ')}` : '- 머지 전: 없음', '- 배포 후: —(릴리즈 게이트 이관)'];
@@ -223,7 +237,7 @@ function supplementRequests({ check, snapshot, deploy }) {
   if (!check.reason?.why) items.push('「배경」에 ① 왜(관찰한 현상·요청 근거)를 적어 주세요.');
   if (!check.reason?.what) items.push('「배경」에 ② 무엇을(원인·수정 위치·적용 범위)을 적어 주세요.');
   if (check.attachmentClaimedButMissing) items.push('「배포본」에 첨부했다고 적혀 있지만 업로드 링크가 없습니다 — zip 을 첨부해 주세요.');
-  if (deploy?.applicable && deploy.result !== '일치') items.push(`배포본 대조 결과 「${deploy.result}」${deploy.mismatches?.length ? ' — ' + deploy.mismatches.map((m) => m.detail).join(' / ') : ''}. 최신 head 기준으로 zip·삭제 목록을 다시 만들어 주세요.`);
+  if (deploy?.applicable && deploy.result !== '일치') items.push(`배포본 대조 결과 「${deploy.result}」${mismatchSummary(deploy) ? ' — ' + mismatchSummary(deploy) : ''}. 최신 head 기준으로 zip·삭제 목록을 다시 만들어 주세요.`);
   for (const l of check.baselineLinks || []) if (l.status === '미확보') items.push(`Baseline 원문을 받을 수 없습니다(${l.raw || l.kind}: ${l.reason}). 접근 가능한 링크로 바꿔 주세요.`);
   if (check.rebase?.need) items.push('대상 브랜치와 충돌·리베이스가 필요합니다(need_rebase). 리베이스 뒤 Base SHA·Review head SHA 를 갱신해 주세요.');
   if (check.reviewerMismatch) items.push('Human reviewer 줄이 MR 의 Reviewer 와 다릅니다 — 같은 GitLab username 으로 맞춰 주세요.');
@@ -348,7 +362,7 @@ export function renderReport({ adapter, work, early = false }) {
     parts.push('');
   }
   parts.push('## 부록 A — 작성 규칙 검사표 · 배포본 대조', '', checkTable(check, deploy), '');
-  if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · zip ${deploy.zip.attachment || '없음'}(주석 ${deploy.zip.comment_sha ? s7(deploy.zip.comment_sha) : '-'})${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}`, '');
+  if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · zip ${deploy.zip.attachment || '없음'}(주석 ${deploy.zip.comment_sha ? s7(deploy.zip.comment_sha) : '-'})${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}${skippedNote(deploy) ? `\n${skippedNote(deploy)}:\n${deploy.zip.bytes_skipped.map((p) => `- ${p}`).join('\n')}` : ''}`, '');
   if (!early) {
     parts.push('## 부록 B — 근거 출처', '');
     parts.push(...((pack?.sources || []).map((s) => `- [${s.id}] ${s.kind} · ${s.ref}${s.inPackB ? '' : ' · (Codex 미제공)'}`)), '');
