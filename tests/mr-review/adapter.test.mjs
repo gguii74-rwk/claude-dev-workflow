@@ -112,3 +112,14 @@ test('gitlab.host 는 필수 키이고 호스트 이름 형태(스킴·경로 �
   assert.throws(() => loadAdapter(writeAdapter(tmp(), { gitlab: { host: 'https://gitlab.test/' } })), /gitlab\.host/);
   assert.equal(loadAdapter(writeAdapter(tmp(), { gitlab: { host: 'gitlab.test:8443' } })).gitlab.host, 'gitlab.test:8443');
 });
+
+test('문서 참조(policy.docs·docsMap.always·docsMap.rules[*].docs, repo: 포함)는 정규 상대 경로만 — 상위 이동·절대·역슬래시·빈 조각은 AdapterError (8b FR1-4)', () => {
+  const root = tmp();
+  for (const bad of ['../wiki-private/personal.md', '/etc/passwd', 'guide\\..\\x.md', 'guide//x.md', './guide/x.md', 'C:/x.md', 'repo:../outside.md', '']) {
+    const file = writeAdapter(root, { docsMap: { always: [bad], rules: [] } });
+    assert.throws(() => loadAdapter(file), (e) => e instanceof AdapterError && /docsMap\.always\[0\]\(정규 상대 경로/.test(e.message), bad);
+  }
+  const rules = writeAdapter(root, { docsMap: { always: ['guide/policy.md#0.'], rules: [{ match: ['**'], docs: ['guide/../../x.md'] }] } });
+  assert.throws(() => loadAdapter(rules), /docsMap\.rules\[0\]\.docs\[0\]/);
+  assert.doesNotThrow(() => loadAdapter(writeAdapter(root, { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md', 'repo:docs/a.md#2.'], rules: [] } })));
+});

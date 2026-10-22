@@ -503,33 +503,117 @@ test('입력에 위조한 SHA 자리표시가 있어도 가린 비밀값이 되�
     assert.ok(!m.text.includes(sec), JSON.stringify(m.text));
     assert.ok(!m.text.includes('\u0000'));
   }
-  const keep = maskTextWithCounts(`head ${sec} 기준`, []);
+  const keep = maskTextWithCounts(`head ${sec} 기준`, [], [sec]);
   assert.equal(keep.text, `head ${sec} 기준`);                                            // 정상 SHA 보존은 그대로(R5-2)
 });
 
 test('SHA 보호 자리표시는 어댑터 개인정보 패턴에 걸리지 않는다 — 16진·숫자 패턴도 정상 SHA 를 깨지 못하고, 깨지면 fail-closed (impl C2-N1, 추천 자동 채택(위임))', () => {
   const sha = 'abcdef0123456789abcdef0123456789abcdef01';
   const hexRule = [{ name: 'hexrun', pattern: '[0-9a-f]{8,}' }];                              // 옛 표식(16진 nonce)은 이 규칙에 항상 깨졌다
-  const a = maskTextWithCounts(`head ${sha} 기준`, hexRule);
+  const a = maskTextWithCounts(`head ${sha} 기준`, hexRule, [sha]);
   assert.equal(a.text, `head ${sha} 기준`);
   assert.deepEqual(a.residual, []);
   const rrn = [{ name: 'rrn', pattern: '\\d{6}-?[1-4]\\d{6}' }];                                // 픽스처 rrn — 옛 표식은 무작위 3000회 중 9회 깨졌다(C2)
-  for (let i = 0; i < 3000; i++) assert.equal(maskText(`head ${sha}`, rrn), `head ${sha}`);
+  for (let i = 0; i < 3000; i++) assert.equal(maskText(`head ${sha}`, rrn, [sha]), `head ${sha}`);
   const many = Array.from({ length: 20 }, (_, i) => sha.slice(0, 38) + String(i).padStart(2, '0').replace(/\d/g, (d) => 'abcdefghij'[d]).replace(/[g-j]/g, 'f'));
-  assert.equal(maskText(many.join(' '), [{ name: 'num', pattern: '\\d+' }]), many.join(' ')); // 번호 칸도 숫자가 아니다
+  assert.equal(maskText(many.join(' '), [{ name: 'num', pattern: '\\d+' }], many), many.join(' ')); // 번호 칸도 숫자가 아니다
   const breaker = [{ name: 'pua', pattern: '[\\uE000-\\uF8FF]' }];                             // 자리표시를 일부러 깨는 규칙 → 깨진 표식이 남으면 fail-closed
-  const b = maskTextWithCounts(`head ${sha}`, breaker);
+  const b = maskTextWithCounts(`head ${sha}`, breaker, [sha]);
   assert.ok(b.residual.some((r) => r.name === 'sha-guard'), JSON.stringify(b.residual));
-  assert.throws(() => maskText(`head ${sha}`, breaker), /SHA 보호 자리표시/);
+  assert.throws(() => maskText(`head ${sha}`, breaker, [sha]), /SHA 보호 자리표시/);
 });
 
 test('자리표시 무결성 — 경계 문자(NUL)만 지우는 규칙도 깨짐으로 잡고, 입력에 원래 있던 사적 영역 문자는 오탐하지 않는다 (impl C3 C2-N1 잔존 · 감사 이의, 추천 자동 채택(위임))', () => {
   const sha = 'abcdef0123456789abcdef0123456789abcdef01';
   const nulOnly = [{ name: 'nul', pattern: '\\u0000' }];                                      // 양끝 NUL 만 치환 — 옛 검사(NUL 존재만)는 통과시켰다
-  const a = maskTextWithCounts(`head ${sha}`, nulOnly);
+  const a = maskTextWithCounts(`head ${sha}`, nulOnly, [sha]);
   assert.ok(a.residual.some((r) => r.name === 'sha-guard'), JSON.stringify(a));
-  assert.throws(() => maskText(`head ${sha}`, nulOnly), /SHA 보호 자리표시/);
-  const b = maskTextWithCounts(`표 \uE003\uE010 head ${sha}`, []);                              // 입력의 사적 영역 문자는 대체 문자로 — 거짓 sha-guard 없음
+  assert.throws(() => maskText(`head ${sha}`, nulOnly, [sha]), /SHA 보호 자리표시/);
+  const b = maskTextWithCounts(`표 \uE003\uE010 head ${sha}`, [], [sha]);                              // 입력의 사적 영역 문자는 대체 문자로 — 거짓 sha-guard 없음
   assert.deepEqual(b.residual, []);
   assert.equal(b.text, `표 \uFFFD\uFFFD head ${sha}`);
+});
+
+test('넓은 기준: XML 요소·이스케이프·엔티티로 숨긴 키·카멜 표기 키의 비밀값도 가리고, 못 가린 형태(CDATA)는 잔존 → Codex 생략 · 키 단어의 일부일 뿐인 낱말은 그대로 (8b FR1-1, 추천 자동 채택(위임))', () => {
+  const cases = [
+    ['<password>XML_PRIVATE_VALUE_942</password> <user>bob</user>', 'XML_PRIVATE_VALUE_942'],
+    ['<db_password attr="1">\n  XML_MULTI_LINE\n</db_password>', 'XML_MULTI_LINE'],
+    ['{"\\u0070assword": "JSON_ESC_VAL"}', 'JSON_ESC_VAL'],
+    ['pass&#119;ord: ENTITY_VAL', 'ENTITY_VAL'],
+    ['?%70assword=PCT_VAL', 'PCT_VAL'],
+    ['&lt;password&gt;HTML_ESC_VAL&lt;/password&gt;', 'HTML_ESC_VAL'],
+    ['dbPassword: "CAMEL_SECRET"', 'CAMEL_SECRET'],
+    ['apiToken=CAMEL_TOKEN', 'CAMEL_TOKEN'],
+    ['JDBCPassword=UPPER_PREFIX', 'UPPER_PREFIX'],
+    ['passwordHash: CAMEL_SUFFIX', 'CAMEL_SUFFIX'],
+    ['credentials: CRED_VAL', 'CRED_VAL'],
+  ];
+  for (const [text, leak] of cases) {
+    const m = maskTextWithCounts(text, []);
+    assert.ok(!m.text.includes(leak), `${text} → ${m.text}`);
+    assert.deepEqual(m.residual, [], text);
+  }
+  assert.match(maskTextWithCounts('<password>V</password> <user>bob</user>', []).text, /<user>bob<\/user>/);   // 닫는 태그 뒤 다른 요소는 보존
+  const cdata = maskTextWithCounts('<password><![CDATA[CDATA_VAL]]></password>', []);
+  assert.ok(cdata.residual.some((r) => r.name === 'secret-decl'), JSON.stringify(cdata));                        // 못 가린 형태 = 잔존(fail-closed)
+  for (const t of ['tokens=keep secretary: Kim', '<password/> 와 <password></password>']) {                     // 키 아님 · 빈 요소
+    const m = maskTextWithCounts(t, []);
+    assert.equal(m.text, t);
+    assert.deepEqual(m.residual, []);
+  }
+});
+
+test('넓은 기준 CLI: MR 댓글의 XML 비밀값·이스케이프 키 비밀값이 팩 B 에 없다 · CDATA 비밀값이면 팩 B 미생성 (8b FR1-1, 추천 자동 채택(위임))', () => {
+  const notes = [{ id: 1, system: false, author: { id: 2, username: 'r' }, created_at: '2026-10-01T00:00:00Z', body: '설정:\n<password>XML_NOTE_SECRET</password>\n{"\\u0070assword": "ESC_NOTE_SECRET"}' }];
+  const a = setup({ notes });
+  const r = runCli(['pack', '--adapter', a.adapter, '--work', a.work], a.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /codexSkipped=false$/);
+  assert.doesNotMatch(readFileSync(join(a.work, 'pack-b.md'), 'utf8'), /XML_NOTE_SECRET|ESC_NOTE_SECRET/);
+  const b = setup({ notes: [{ ...notes[0], body: '<password><![CDATA[CDATA_NOTE_SECRET]]></password>' }] });
+  const r2 = runCli(['pack', '--adapter', b.adapter, '--work', b.work], b.env);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.match(r2.first, /codexSkipped=true$/);
+  assert.ok(!existsSync(join(b.work, 'pack-b.md')));
+});
+
+test('SHA 보호는 아는 SHA(스냅샷·MR 구조화 칸)만 — 모양만 같은 40자 16진 자격증명은 어댑터 규칙대로 가려진다 (8b FR1-2, 추천 자동 채택(위임))', () => {
+  const cred = '0123456789abcdef0123456789abcdef01234567';
+  const head = 'abcdef0123456789abcdef0123456789abcdef01';
+  const rule = [{ name: 'deployhash', pattern: '(?<=deploy_hash=)[0-9a-f]{40}' }];
+  const m = maskTextWithCounts(`deploy_hash=${cred}\nhead ${head}`, rule, [head]);
+  assert.ok(!m.text.includes(cred), m.text);
+  assert.match(m.text, /deploy_hash=\[masked:deployhash\]/);
+  assert.ok(m.text.endsWith(`head ${head}`), m.text);
+  assert.deepEqual(m.residual, []);
+  // CLI — 어댑터 mask 에 규칙을 넣으면 댓글의 자격증명이 팩 B 에 없고, 팩 헤더의 head SHA 는 그대로
+  const { adapter } = setup();
+  const rules = JSON.parse(readFileSync(adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).mask;
+  const s = setup({ adapterPatch: { mask: [...rules, ...rule] }, notes: [{ id: 1, system: false, author: { id: 2, username: 'r' }, created_at: '2026-10-01T00:00:00Z', body: `배포 deploy_hash=${cred}` }] });
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const b = readFileSync(join(s.work, 'pack-b.md'), 'utf8');
+  assert.ok(!b.includes(cred), 'credential leaked');
+  assert.ok(b.includes(`head ${HEAD}`), 'head SHA lost');
+});
+
+test('공통 문서 참조가 심볼릭 링크로 docsRoot 밖(개인 위키)을 가리키면 pack 이 멈춘다 · 전송 금지 위키 루트 안의 공통 문서는 팩 B 에서 빠진다 (8b FR1-4)', () => {
+  const s = setup();
+  symlinkSync(join(s.home, 'wiki-private', 'sr-auto.md'), join(s.docs.dir, 'guide', 'linked.md'));
+  writeAdapter(s.root, { docsMap: { always: ['guide/policy.md#0.', 'guide/linked.md'], rules: [] } });
+  const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.first, /^ERR .*docsRoot 밖/);
+  assert.ok(!existsSync(join(s.work, 'pack-b.md')));
+  // docsRoot 안의 하위 폴더를 전송 금지 위키 루트로 둔 경우 — 그 문서는 팩 A 만
+  const t = setup();
+  mkdirSync(join(t.docs.dir, 'private'), { recursive: true });
+  writeFileSync(join(t.docs.dir, 'private', 'note.md'), '# 메모\n\nPRIVATE-DOC-TEXT\n');
+  const fixtureRoots = JSON.parse(readFileSync(t.adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).wiki.roots;
+  writeAdapter(t.root, { docsMap: { always: ['guide/policy.md#0.', 'private/note.md'], rules: [] }, wiki: { roots: [...fixtureRoots, { path: join(t.docs.dir, 'private'), export: false }] } });
+  const r2 = runCli(['pack', '--adapter', t.adapter, '--work', t.work], t.env);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.doesNotMatch(readFileSync(join(t.work, 'pack-b.md'), 'utf8'), /PRIVATE-DOC-TEXT/);
+  assert.match(readFileSync(join(t.work, 'pack-a.md'), 'utf8'), /PRIVATE-DOC-TEXT/);
+  assert.equal(readJson(join(t.work, 'pack.json')).sources.find((x) => /private\/note\.md/.test(x.ref)).inPackB, false);
 });

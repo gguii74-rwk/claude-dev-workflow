@@ -315,7 +315,7 @@ test('마스킹은 SHA 를 변조하지 않는다 — 개인정보 패턴(rrn)�
   assert.doesNotMatch(md, /\[masked:rrn\]/);
   assert.match(md, /\[masked:phone\]/);                                                   // 진짜 개인정보는 여전히 가려진다
   // 이메일의 local-part·도메인 라벨이 40자 16진수여도 보호하지 않는다 — 개인정보 마스킹 우선(C1-1, 사용자 재판정)
-  const { maskText } = { maskText: (t, r) => deepMaskText(t, r) };
+  const { maskText } = { maskText: (t, r) => deepMaskText(t, r, [SHA]) };                // 보존 대상 = 아는 SHA(8b FR1-2)
   const rules = JSON.parse(readFileSync(adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).mask;
   const m1 = maskText(`담당 ${SHA}@example.test · head ${SHA}`, rules);                   // local-part 는 보호 대상에서 빠져 어댑터 패턴(rrn → email 순)에 그대로 걸린다 — 주소는 남지 않는다
   assert.ok(!m1.includes('@example.test') && !m1.includes(`${SHA}@`), m1);               // 주소도, 온전한 local-part 도 남지 않는다

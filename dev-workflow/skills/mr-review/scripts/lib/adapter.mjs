@@ -55,6 +55,15 @@ export function validate(cfg) {
   if (typeof v === 'string') for (const g of ['policy', 'sha', 'kind', 'verdict']) if (!v.includes(`(?<${g}>`)) missing.push(`comments.verdictFirstLine(그룹 ${g})`);
   const t = cfg.comments?.authorToken;
   if (typeof t === 'string' && !t.includes('(?<token>')) missing.push('comments.authorToken(그룹 token)');
+  // 문서 참조 경로(8b FR1-4) — `<docsRoot 기준 경로>`·`repo:<저장소 루트 기준 경로>`의 경로 부분은 정규 상대 경로만(빈 값·앞 `/`·드라이브·역슬래시·빈 조각·`.`·`..` 거부).
+  // docsRoot 밖(개인 위키 등 전송 금지 자료)을 공통 문서로 팩 B 에 넣는 설정 오류를 로드 단계에서 막는다. 실제 경로(심볼릭 링크) 탈출은 pack 이 다시 본다.
+  const docRefs = [['policy.docs', cfg.policy?.docs], ['docsMap.always', cfg.docsMap?.always], ...(Array.isArray(cfg.docsMap?.rules) ? cfg.docsMap.rules.map((r, i) => [`docsMap.rules[${i}].docs`, r?.docs]) : [])];
+  for (const [key, list] of docRefs) {
+    for (const [i, ref] of (Array.isArray(list) ? list : []).entries()) {
+      const rel = typeof ref === 'string' ? ref.replace(/^repo:/, '').split('#')[0] : '';
+      if (!rel || /^[\\/]|^[A-Za-z]:|\\/.test(rel) || rel.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')) missing.push(`${key}[${i}](정규 상대 경로만 — 문서 저장소·대상 저장소 밖을 가리킬 수 없다)`);
+    }
+  }
   for (const [i, m] of (cfg.mask || []).entries()) {
     if (!m || typeof m.name !== 'string' || typeof m.pattern !== 'string') { missing.push(`mask[${i}]`); continue; }
     let re;

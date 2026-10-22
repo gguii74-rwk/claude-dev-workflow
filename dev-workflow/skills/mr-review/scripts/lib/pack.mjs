@@ -98,34 +98,40 @@ export function residual(text, rules) {
 // 따옴표 안 값은 이스케이프(`\"`)를 값의 일부로 소비한다(impl R1-2 — `"prefix\"remaining"` 의 뒷부분이 남지 않게). 따옴표 없는 값은 줄에 가림 표시 하나만 남았을 때만 건너뛴다(`[masked:phone] 나머지` 는 다시 가린다).
 const MARK = '\\[masked:[^\\]\\s]*\\]';
 const WHOLE_MARK = (end) => `(?!${MARK}${end})`;
-export const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)(?![A-Za-z0-9])(?:[_.-][A-Za-z0-9]+)*';
+// 키 인식 넓힘(8b FR1-1, 추천 자동 채택(위임)): 접두·접미는 구분자(`_.-`)뿐 아니라 카멜 표기 경계(`dbPassword`·`apiToken`·`JDBCPassword`·`passwordHash`)도 허용한다.
+// 카멜 경계를 대소문자로 가려야 하므로 이 키를 쓰는 규칙은 `i` 플래그 없이 돌고, 키워드만 글자마다 대소문자 집합(`[pP]…`)으로 쓴다 — `tokens`·`secretary` 처럼 키워드 뒤가 소문자로 이어지는 낱말은 여전히 키가 아니다.
+const ci = (s) => s.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
+const KEYWORDS = ci('(?:password|passwd|pwd|passphrase|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization|credentials?)');
+export const SECRET_KEYS = `(?<![A-Za-z0-9])(?:[A-Za-z0-9]*?(?:[_.-]|[a-z0-9](?=[A-Z])|[A-Z](?=[A-Z][a-z])))?${KEYWORDS}(?:[_.-][A-Za-z0-9]+|[A-Z][A-Za-z0-9]*)*(?![A-Za-z0-9])`;
 // 여러 줄 값(impl R2-2, 사용자 판정): YAML 블록 스칼라(`key: |`·`>`·`|-` 뒤 들여쓴 줄 전부 — 사이 빈 줄 포함)를 한 덩어리로 가린다(따옴표 없는 값 규칙보다 먼저 — 그 규칙이 `|` 만 가리면 블록을 못 찾는다).
 // 따옴표 값은 줄바꿈을 포함해 닫는 따옴표까지(길이 상한 없음 — impl R3-3), 같은 줄에 닫는 따옴표가 없는 열린 값은 그 줄 끝까지 가린다(닫는 따옴표를 못 찾아도 값이 새지 않게).
 // 블록 머리 줄(impl R3-1): 앵커(`&a`)·태그(`!!str`)·주석(` # …`)·CRLF 를 허용한다.
 // 잘린 비밀키(impl R2-3, 사용자 판정): 발췌 상한이 END 줄을 잘라도 BEGIN 줄부터 키 본문 줄(base64·`Proc-Type:` 같은 머리 줄)까지 가린다 — 완결 PEM 규칙 뒤에 둔다.
 // 작은따옴표 값은 YAML 이스케이프 `''`(따옴표 문자 하나)도 값의 일부로 소비한다(impl R5-1 — `'alpha''BRAVO'` 의 뒷부분이 남지 않게).
+const XML_DECL = `<${SECRET_KEYS}(?:[ \\t][^<>\\n]*)?>`;   // 비밀값 키 이름의 여는 태그(속성 허용, `<password/>` 같은 빈 요소는 제외)
 const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S]${q === "'" ? "|''" : ''})+(?=${q})`;
 // 닫는 따옴표가 어디에도 없는 값(발췌가 값 중간을 자른 경우 등 — QUOTED 가 먼저 돌아 닫힘이 뒤에 있으면 이미 가려졌다)은 텍스트 끝까지 가리고, 안전장치가 잔존으로 본다(impl C1 R2-2 잔존 — 팩 B 는 Codex 생략, 리포트·cleanup 은 필드·값 단위라 그 값 끝까지).
 const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[masked:)(?![^${q}\\n]*${q})[\\s\\S]+`;
 // 닫는 따옴표 뒤 조각(impl C1 R5-1 잔존): `""값`·`"a" 값` 처럼 공백·주석·구분자(`,;)}]`)가 아닌 것이 오면 줄 끝까지 가린다 — 저장본(리포트·cleanup)에도 남지 않게.
 const AFTER_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q}(?:${MARK})?${q})(?![ \\t]*(?:[,;)}\\]#]|\\n|$))(?!${MARK}[ \\t]*(?:\\n|$))[^\\n]+`;
 export const SECRET_MASK = [
-  { name: 'secret', pattern: QUOTED('"'), flags: 'i' },
-  { name: 'secret', pattern: QUOTED("'"), flags: 'i' },
-  { name: 'secret', pattern: QUOTED('`'), flags: 'i' },
-  { name: 'secret', pattern: OPEN_QUOTE('"'), flags: 'i' },
-  { name: 'secret', pattern: OPEN_QUOTE("'"), flags: 'i' },
-  { name: 'secret', pattern: OPEN_QUOTE('`'), flags: 'i' },
-  { name: 'secret', pattern: AFTER_QUOTE('"'), flags: 'i' },
-  { name: 'secret', pattern: AFTER_QUOTE("'"), flags: 'i' },
-  { name: 'secret', pattern: AFTER_QUOTE('`'), flags: 'i' },
-  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*(?:[&!][^\\s]*[ \\t]+)*[|>][1-9+-]{0,2}(?:[ \\t]+#[^\\r\\n]*)?[ \\t]*\\r?\\n)(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*)*`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?![\\s"'\`])(?!${MARK}[ \\t]*(?:\\n|$))[^\\n]+`, flags: 'i' },
+  { name: 'secret', pattern: QUOTED('"') },
+  { name: 'secret', pattern: QUOTED("'") },
+  { name: 'secret', pattern: QUOTED('`') },
+  { name: 'secret', pattern: OPEN_QUOTE('"') },
+  { name: 'secret', pattern: OPEN_QUOTE("'") },
+  { name: 'secret', pattern: OPEN_QUOTE('`') },
+  { name: 'secret', pattern: AFTER_QUOTE('"') },
+  { name: 'secret', pattern: AFTER_QUOTE("'") },
+  { name: 'secret', pattern: AFTER_QUOTE('`') },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*(?:[&!][^\\s]*[ \\t]+)*[|>][1-9+-]{0,2}(?:[ \\t]+#[^\\r\\n]*)?[ \\t]*\\r?\\n)(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*)*` },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?![\\s"'\`])(?!${MARK}[ \\t]*(?:\\n|$))[^\\n]+` },
+  { name: 'secret', pattern: `(?<=${XML_DECL})[^<]+` },   // XML·HTML 요소 값(8b FR1-1) — `<password>V</password>`·여러 줄 값은 다음 `<` 까지(닫는 태그는 남긴다). CDATA 등 `<` 로 시작하는 값은 못 가리고 안전장치가 잔존으로 본다
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n[A-Za-z0-9+/=:, -]+)*' },
 ];
-// 마스킹이 정상 SHA 를 변조하지 않게(R5-2) — 40자 16진수 토큰(글자 a-f 1개 이상)은 개인정보일 수 없다. 자리표시자로 빼고 마스킹 뒤 복원한다(팩 B 헤더 `head <sha>`·리포트 자유 텍스트·cleanup 의 JSON 문자열 값 공통).
+// 마스킹이 정상 SHA 를 변조하지 않게(R5-2) — 호출자가 넘긴 아는 SHA(`knownShas`, 8b FR1-2)와 같은 40자 16진수 토큰(글자 a-f 1개 이상)만 자리표시자로 빼고 마스킹 뒤 복원한다(팩 B 헤더 `head <sha>`·리포트 자유 텍스트·cleanup 의 JSON 문자열 값 공통).
 // 글자 조건: 숫자만 40자인 토큰은 SHA 로 보지 않는다 — 전화·주민번호 같은 숫자열을 보호 대상으로 오인하지 않게. 7자 짧은 SHA 는 어떤 어댑터 패턴 길이(≥10)에도 못 미쳐 보호가 필요 없다.
 // 경계(C1-1, 사용자 재판정): 바로 앞뒤에 `@` 가 붙거나 `.<영숫자>` 로 이어지는 토큰은 이메일 local-part·도메인 라벨이라 보호하지 않는다 — 개인정보 마스킹이 SHA 보존보다 우선. 커밋 SHA 는 그런 자리에 오지 않는다(URL 경로 `/<sha>/`·문장 끝 `<sha>.` 은 보호 유지).
 // 자리표시자가 비밀값 자리(`token=<sha>`·`Bearer <sha>`)에 있으면 비밀값 패턴이 자리표시자째 가리므로 복원되지 않는다 — SHA 보호가 비밀값 제거를 우회하지 않는다.
@@ -134,7 +140,10 @@ const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\
 // 안전장치(impl R3-1, fail-closed): 패턴 목록은 형태를 하나씩 쫓아가므로(R1-1·R1-2·R2-2·R3-1 — 같은 계열 4회), 잔존 검사가 패턴과 무관하게 비밀값 키 선언을 본다.
 // 선언(`<키>[:=]`) 뒤 같은 줄 값이 가림 표시·빈 따옴표·블록 머리(`|`·`>`·앵커·태그·주석)·빈 값이 아니거나, 값 자리가 머리·표시뿐인데 그 줄보다 더 들여쓴 다음 줄이 통째로 가림 표시가 아니면 `secret-decl` 잔존 → Codex 생략.
 // 오탐 비용 = 단일 모델 리뷰(D14 fail-closed 경로) — 값 누출보다 낫다.
-const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'gi');
+const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'g');
+// XML 요소 선언(8b FR1-1) — 여는 태그 바로 뒤가 닫는 태그(`</`)이거나, 가림 표시 하나 뒤 닫는 태그·텍스트 끝이어야 한다. 그 밖(CDATA·중첩 태그·가림 뒤 잔여)은 잔존.
+const XML_DECL_RE = new RegExp(XML_DECL, 'g');
+const XML_OK = new RegExp(`^(?:${MARK})?(?:</|$)`);
 const DECL_HEAD_ALT = `(?:(?:${MARK}|[&!]\\S*|[|>][1-9+-]{0,2})[ \t]*)*(?:#.*)?`;
 // 같은 줄 값은 **줄 전체**로 본다(impl R4-2 + 훅) — 따옴표 없는 값은 가림 표시 하나(+ 주석)만, 따옴표 값은 여는 따옴표 바로 뒤 표시 또는 빈 따옴표, 그 밖은 블록 머리뿐이어야 한다.
 // 닫는 따옴표 뒤에는 공백·주석·구분자(`,` `;` `)` `}` `]` — JSON 한 줄의 다음 키 등)·가림 표시(뒤 조각을 가린 것, C1 R5-1)만 허용한다(impl R5-1 + 훅). 닫히지 않은 따옴표 값(`"[masked:…]` 로 끝남)은 잔존이다(C1 R2-2).
@@ -143,6 +152,7 @@ const DECL_OK = new RegExp(`^(?:["'\`]${MARK}["'\`]${AFTER_Q}|(["'\`])\\1${AFTER
 const DECL_WHOLE = new RegExp(`^[ \t]*${MARK}[ \t\r]*$`);   // 이어지는 줄은 통째로 가림 표시여야 한다(첫 토큰만 가린 `[masked:secret] 나머지` 는 통과 아님)
 const DECL_HEAD = new RegExp(`^${DECL_HEAD_ALT}$`);
 function unmaskedSecretDecl(text) {
+  for (const m of text.matchAll(XML_DECL_RE)) if (!XML_OK.test(text.slice(m.index + m[0].length))) return true;
   for (const m of text.matchAll(DECL_RE)) {
     const ls = text.lastIndexOf('\n', m.index) + 1;
     let le = text.indexOf('\n', m.index);
@@ -185,12 +195,26 @@ function maskContinuations(text) {
 // 자리표시 안의 무작위 값·번호는 사적 영역 문자(U+E000~E00F = 16진 한 자리)로 쓴다(impl C2-N1) — ASCII 16진·숫자면 어댑터 개인정보 패턴(rrn 등)이 자리표시를 깨 정상 SHA 가 돌아오지 않는다.
 // 복원 뒤 자리표시 문자(NUL·U+E000~E010)가 하나라도 남으면(어댑터 패턴이 자리표시 일부를 먹음 — 경계 NUL 만 지운 경우 포함, impl C3) `sha-guard` 잔존 — 팩 B 는 Codex 생략, `maskText`(리포트·cleanup)는 오류로 멈춘다(fail-closed).
 // 그래서 입력에 원래 있던 그 문자들은 NUL 과 같이 대체 문자로 바꾼다(거짓 잔존 방지). 어댑터 로드도 이 문자들을 잡는 mask 패턴을 거부한다(adapter.mjs `PLACEHOLDER_PROBE`).
+// 이스케이프·엔티티 정규화(8b FR1-1, 추천 자동 채택(위임)) — `\\u0070assword`·`pass&#119;ord`·`%70assword`·`&lt;password&gt;` 처럼 키·구분자·따옴표를 숨긴 표기가 규칙과 안전장치를 함께 빠져나가지 않게,
+// 입구에서 키·구분자·따옴표에 쓰이는 ASCII(영숫자 `_.-:=<>"'\``)로 풀리는 이스케이프만 푼다(출력 사본도 푼 형태 — 그 밖의 이스케이프·`&amp;` 는 그대로). 한 번만 푼다.
+const ESC_RE = /\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})|&#[xX]([0-9a-fA-F]{1,6});|&#(\d{1,7});|%([0-9a-fA-F]{2})|&(lt|gt|quot|apos);/g;
+const ESC_KEEP = /^[A-Za-z0-9_.:=<>"'`-]$/;
+const NAMED = { lt: '<', gt: '>', quot: '"', apos: "'" };
+function unescapeKeyChars(t) {
+  return t.replace(ESC_RE, (m, u, x, hx, d, pc, nm) => {
+    if (nm) return NAMED[nm];
+    const code = d != null ? parseInt(d, 10) : parseInt(u ?? x ?? hx ?? pc, 16);
+    const c = code <= 0x7e ? String.fromCharCode(code) : '';
+    return ESC_KEEP.test(c) ? c : m;
+  });
+}
 const PUA_HEX = (hex) => [...hex].map((h) => String.fromCharCode(0xE000 + parseInt(h, 16))).join('');
 const PUA_NUM = (s) => parseInt([...s].map((c) => (c.charCodeAt(0) - 0xE000).toString(16)).join(''), 16);
-export function maskTextWithCounts(text, maskRules) {
+export function maskTextWithCounts(text, maskRules, keepShas = []) {
   const keep = [];
+  const known = new Set(keepShas);
   const nonce = PUA_HEX(randomBytes(8).toString('hex'));
-  const held = text.replace(/\r\n/g, '\n').replace(/[\u0000\uE000-\uE010]/g, '\uFFFD').replace(SHA40_RE, (m) => { keep.push(m); return `\u0000${nonce}\uE010${PUA_HEX((keep.length - 1).toString(16))}\u0000`; });
+  const held = unescapeKeyChars(text.replace(/\r\n/g, '\n').replace(/[\u0000\uE000-\uE010]/g, '\uFFFD')).replace(SHA40_RE, (m) => { if (!known.has(m)) return m; keep.push(m); return `\u0000${nonce}\uE010${PUA_HEX((keep.length - 1).toString(16))}\u0000`; });
   const a = applyMask(held, maskRules);
   const b = applyMask(a.text, SECRET_MASK);
   const c = maskContinuations(b.text);
@@ -203,10 +227,22 @@ export function maskTextWithCounts(text, maskRules) {
   if (/[\u0000\uE000-\uE010]/.test(out)) left.push({ name: 'sha-guard' });
   return { text: out, applied, residual: left };
 }
-export function maskText(text, maskRules) {
-  const m = maskTextWithCounts(text, maskRules);
+export function maskText(text, maskRules, keepShas = []) {
+  const m = maskTextWithCounts(text, maskRules, keepShas);
   if (m.residual.some((r) => r.name === 'sha-guard')) throw new PackError('마스킹이 SHA 보호 자리표시를 깨뜨렸다 — 어댑터 mask 패턴이 사적 영역 문자(U+E000~)·NUL 을 잡지 않는지 확인');
   return m.text;
+}
+
+// 보호할 SHA = 구조화된 칸에서 나온 실제 커밋 SHA 만(8b FR1-2, 추천 자동 채택(위임)) — 스냅샷 세 SHA · MR `api_head`·`diff_refs`·`versions`.
+// 자유 텍스트 속 40자 16진수는 모양만으로 보호하지 않는다 — 어댑터 규칙(`credential=` 뒤 40자 16진 등)·비밀값 규칙이 그대로 적용된다.
+export function knownShas({ mr, snapshot } = {}) {
+  const out = new Set();
+  const add = (v) => { if (typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)) out.add(v); };
+  for (const k of ['head_sha', 'base_sha', 'target_sha']) add(snapshot?.[k]);
+  add(mr?.api_head);
+  for (const v of Object.values(mr?.diff_refs || {})) add(v);
+  for (const v of mr?.versions || []) for (const x of Object.values(v || {})) add(x);
+  return [...out];
 }
 
 function walkMd(dir, acc = []) {
@@ -288,11 +324,15 @@ function sliceDoc(md, rel, anchor) {
   return { text: lines.length > MAX_DOC_LINES ? lines.slice(0, MAX_DOC_LINES).join('\n') + '\n(… 상한으로 생략)' : md, missing: false };
 }
 
-function docText(docsRoot, ref) {
+// 공통 문서 경로 경계(8b FR1-4, fail-closed) — 어댑터 검증(정규 상대 경로)에 더해 실제 경로(심볼릭 링크 해소)가 docsRoot 안인지 본다. 밖이면 설정 오류로 멈춘다(전송 금지 자료가 공통 문서로 팩 B 에 들어가지 않게).
+// 전송 금지 위키 루트(export=false) 안이면 출처 종류와 무관하게 팩 B 에서 뺀다(`exportAllowed:false` — 팩 A 만).
+function docText(docsRoot, ref, forbidden = []) {
   const [rel, anchor] = ref.split('#');
   const file = path.join(docsRoot, rel);
-  if (!fs.existsSync(file)) return { text: `(문서 없음: ${rel})`, missing: true };
-  return sliceDoc(fs.readFileSync(file, 'utf8'), rel, anchor);
+  if (!fs.existsSync(file)) return { text: `(문서 없음: ${rel})`, missing: true, exportAllowed: true };
+  const real = fs.realpathSync(file);
+  if (!inside(real, fs.realpathSync(docsRoot))) throw new PackError(`공통 문서 참조가 docsRoot 밖을 가리킨다(심볼릭 링크 등): ${ref} → ${real}`);
+  return { ...sliceDoc(fs.readFileSync(real, 'utf8'), rel, anchor), exportAllowed: !forbidden.some((f) => fs.existsSync(f) && inside(real, fs.realpathSync(f))) };
 }
 
 // `repo:<경로>[#절]` — 대상 저장소 자신의 문서(AGENTS.md·CLAUDE.md·저장소 docs/)를 고정 head 에서 읽는다(SC-2, R3-6). 워크트리 모드 = 워크트리 파일, diff-only = repository/files raw(ref=head).
@@ -347,6 +387,7 @@ export function pack({ adapter, work }) {
   // 1. 문서 지도 + 정책 항상 읽는 절. 필수 문서(policy.docs·docsMap.always)의 파일·절 누락은 fail-closed(ERR) — 정책을 읽지 않은 판정을 만들지 않는다.
   //    문서 지도 규칙(docsMap.rules)의 문서 누락은 출처에 missing:true 로 남기고 계속한다(선택 보강 자료).
   const docsRoot = adapter.resolved.docsRoot;
+  const forbidden = adapter.resolved.wikiRoots.filter((r) => !r.export).map((r) => r.path);   // 전송 금지 루트 — 위키 탐색과 공통 문서 경계(8b FR1-4)가 함께 쓴다
   const docsSha = fs.existsSync(docsRoot) ? gitHead(docsRoot) : 'missing';
   const required = new Set([...adapter.docsMap.always, ...adapter.policy.docs]);
   const refs = new Set(required);
@@ -359,9 +400,9 @@ export function pack({ adapter, work }) {
       continue;
     }
     const [rel, anchor] = ref.split('#');
-    const t = docText(docsRoot, ref);
+    const t = docText(docsRoot, ref, forbidden);
     if (t.missing && required.has(ref)) throw new PackError(`필수 정책 문서·절 누락: ${ref} (docsRoot ${docsRoot}) — 어댑터 policy.docs·docsMap.always 와 공통 문서 저장소 체크아웃을 확인하라`);
-    add('doc', `${rel}@${docsSha}${anchor ? `#${anchor}` : ''}`, t.text, true, t.missing);
+    add('doc', `${rel}@${docsSha}${anchor ? `#${anchor}` : ''}`, t.text, t.exportAllowed, t.missing);
   }
   // 2. 기준선·이슈 원문(check 가 확보한 것). 외부 전송(팩 B)은 어댑터 §6 허용 범위만 — MR 본문 「배경」 · 대상 저장소 또는 공통 문서 저장소(docsRoot 와 같은 체크아웃인 프로젝트)의 문서·이슈.
   //    어댑터 projects 에 등록됐다는 사실은 전송 허가가 아니다 — 그 밖 저장소의 문서·이슈 원문은 Claude(팩 A)만 본다(이슈도 저장소 문서와 같은 규칙 — impl SDD 이월 T05, 사용자 판정 2026-10-22).
@@ -375,7 +416,6 @@ export function pack({ adapter, work }) {
   // 3. 위키 — 용어집(변경 영역 텍스트 = 제목·경로·diff 추가 줄에 용어가 있으면 슬러그 페이지) + 변경 파일 basename·코드 검색어(테이블명·선언 식별자) grep — spec §5.3-2 「변경 파일명·기능명·테이블명」(R4-5)
   const terms = codeTerms(mr);
   const areaText = [mr.title, ...(mr.diffs || []).flatMap((d) => [d.new_path, d.old_path]), ...addedLines(mr)].join(' ');
-  const forbidden = adapter.resolved.wikiRoots.filter((r) => !r.export).map((r) => r.path);
   for (const root of adapter.resolved.wikiRoots) {
     for (const pg of wikiPages(root, mr, areaText, { linesPerPage: adapter.wiki.linesPerPage, pagesPerPack: adapter.wiki.pagesPerPack }, terms, forbidden)) add('wiki', pg.rel, pg.text, pg.export);
   }
@@ -392,7 +432,7 @@ export function pack({ adapter, work }) {
 
   // 팩 B = 허용 출처만 + 마스킹(본문·댓글·발췌 전부에 적용 — D4) = 어댑터 개인정보 패턴 + 엔진 비밀값 패턴(SECRET_MASK — 리포트·cleanup 과 같은 maskText, R6-1). 잔존 검사도 두 규칙 모두. 잔존이면 B 없음.
   const rawB = `${header('B')}\n## MR\n\n${body}\n## 근거 자료\n${renderSources(sources, texts, { onlyB: true })}`;
-  const masked = maskTextWithCounts(rawB, adapter.mask);
+  const masked = maskTextWithCounts(rawB, adapter.mask, knownShas({ mr, snapshot: snap }));
   const left = masked.residual;   // 복원 전 텍스트 기준(C2-1) — 보존된 SHA 를 개인정보로 재탐지하지 않는다
   const ok = left.length === 0;
   const out = { sources, wikiTerms: terms, mask: { applied: masked.applied, residual: left.map((r) => ({ name: r.name, where: 'pack-b' })), ok }, packA: 'pack-a.md', packB: ok ? 'pack-b.md' : null, codexSkipped: !ok, codexSkipReason: ok ? null : `마스킹 뒤에도 패턴 잔존: ${left.map((r) => r.name).join(', ')} — Codex 를 건너뛴다(단일 모델 모드)` };

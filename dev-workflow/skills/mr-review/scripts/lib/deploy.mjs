@@ -143,6 +143,17 @@ export function readZip(buf) {
     p += 46 + nLen + eLen + cmLen;
   }
   if (p !== eocd) throw new Error(`zip EOCD 목차 크기 불일치(파싱한 목차 끝 ${p} ≠ EOCD ${eocd})`);
+  // 허용 레이아웃(8b FR1-3, 추천 자동 채택(위임)) — 거부 목록을 늘리는 대신 허용하는 배치만 통과시킨다: 파일 맨 앞(0)부터 local 레코드(헤더 + 이름 + 확장 + 데이터)가 오프셋 순으로
+  // 빈틈·겹침 없이 이어지고 마지막 레코드 끝이 목차 시작과 같아야 한다. 목차에 없는 local 항목(앞에 끼운 항목·항목 사이 바이트·prepend 데이터)은 순차 리더(funzip·ZipInputStream 등)만
+  // 푸는 내용이라 「일치」로 보증하지 않는다. data descriptor(bit 3)는 레코드 끝을 local 헤더로 확정할 수 없어 여기서 거부한다(git archive 는 쓰지 않음 — impl R4-1 실측).
+  let at = 0;
+  for (const e of [...entries].sort((a, b) => a.lho - b.lho)) {
+    if (e.lho !== at) throw new Error(`zip 레이아웃 불일치 — 목차에 없는 데이터 또는 겹침(오프셋 ${at} ≠ 항목 시작 ${e.lho}): ${e.name}`);
+    if (e.flags & 0x0008) throw new Error(`zip data descriptor(bit 3) 항목(미지원): ${e.name}`);
+    if (at + 30 > cdOff || buf.readUInt32LE(at) !== 0x04034b50) throw new Error(`zip local header 손상: ${e.name}`);
+    at += 30 + buf.readUInt16LE(at + 26) + buf.readUInt16LE(at + 28) + e.csize;
+  }
+  if (at !== cdOff) throw new Error(`zip 레이아웃 불일치 — 마지막 항목 끝 ${at} ≠ 목차 시작 ${cdOff}(목차에 없는 데이터)`);
   // 경로 충돌(impl C1 N2) — 파일과 같은 경로의 폴더 항목(`a.txt/`)이나 파일 아래 항목(`a.txt/b`)은 표준 리더가 충돌로 실패하거나 다르게 푼다(폴더는 대조에서 빠지므로 우리만 「일치」)
   // 대소문자 무시(impl R6-3 훅) — 대소문자를 구분하지 않는 파일 시스템에서 풀면 `A.txt`·`a.txt`·`A.TXT/` 가 같은 경로다
   const fileNames = new Set(entries.filter((e) => !e.name.endsWith('/')).map((e) => e.name.toLowerCase()));

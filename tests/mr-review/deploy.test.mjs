@@ -375,8 +375,7 @@ test('zip local header 의 CRC·압축 크기·원본 크기가 목차와 다르
     const z = readZip(b);
     assert.throws(() => z.read(z.entries[0]), /local header/, `offset ${off}`);
   }
-  const dd = readZip(mkZip([{ name: 'src/main/A.txt', data: 'reviewed', flags: 0x0008 }]));
-  assert.throws(() => dd.read(dd.entries[0]), /data descriptor/);
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'reviewed', flags: 0x0008 }])), /data descriptor/);   // 레이아웃 검사가 목록 단계에서 거부(8b FR1-3)
 });
 
 test('zip 파일명: 해독 결과를 다시 UTF-8 로 바꾼 바이트가 원래와 다르면(BOM 제거 등) 거부 (impl R4-4 훅, 추천 자동 채택(위임))', () => {
@@ -403,4 +402,36 @@ test('zip 파일명은 정규형만 — 앞 `/`·역슬래시·빈 조각·`.`·
   assert.throws(() => readZip(mkZip([{ name: 'src/A.txt', data: '1' }, { name: 'src/a.txt', data: '2' }])), /충돌/);
   assert.throws(() => readZip(mkZip([{ name: 'src/A.txt', data: '1' }, { name: 'SRC/a.txt/b.txt', data: '2' }])), /충돌/);
   assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/', data: '' }, { name: 'src/A.txt', data: '1' }, { name: 'src/B.txt', data: '2' }])));
+});
+
+test('zip 허용 레이아웃: 목차에 없는 local 항목을 앞·사이·끝에 끼우거나 겹치면 거부 — 순차 리더만 푸는 내용 · git archive zip 은 통과 (8b FR1-3, 추천 자동 채택(위임))', () => {
+  const root = tmp();
+  const { checkout, headSha } = initRepos(root);
+  const good = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), ['src/main/java/app/A.java', 'src/main/java/app/B.java']));
+  assert.doesNotThrow(() => readZip(good));
+  const hidden = mkZip([{ name: 'injected.jsp', data: '<% evil %>' }]);
+  const hiddenLocal = hidden.subarray(0, hidden.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])));   // central 앞까지 = local 레코드만
+  // 정상 zip 앞에 숨은 local 항목을 붙이고 목차·EOCD 오프셋만 보정한다(리뷰 재현과 같은 형태)
+  const shift = (zip, n) => {
+    const b = Buffer.from(zip);
+    const eocdAt = b.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    const cdOff = b.readUInt32LE(eocdAt + 16);
+    for (let p = cdOff; p < eocdAt; ) { b.writeUInt32LE(b.readUInt32LE(p + 42) + n, p + 42); p += 46 + b.readUInt16LE(p + 28) + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32); }
+    b.writeUInt32LE(cdOff + n, eocdAt + 16);
+    return b;
+  };
+  const prepended = Buffer.concat([hiddenLocal, shift(good, hiddenLocal.length)]);
+  assert.throws(() => readZip(prepended), /레이아웃/);
+  // 끝(마지막 항목 뒤·목차 앞)에 끼운 항목
+  const two = mkZip([{ name: 'a.txt', data: 'A' }]);
+  const cdAt = two.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  const tail = Buffer.concat([two.subarray(0, cdAt), hiddenLocal, two.subarray(cdAt)]);
+  const eocdAt = tail.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  tail.writeUInt32LE(cdAt + hiddenLocal.length, eocdAt + 16);
+  assert.throws(() => readZip(tail), /레이아웃/);
+  // 두 목차 항목이 같은 local 레코드를 가리키는 겹침
+  const dup = mkZip([{ name: 'a.txt', data: 'A' }, { name: 'b.txt', data: 'A' }]);
+  const cd2 = dup.lastIndexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  dup.writeUInt32LE(0, cd2 + 42);
+  assert.throws(() => readZip(dup), /레이아웃|local header/);
 });

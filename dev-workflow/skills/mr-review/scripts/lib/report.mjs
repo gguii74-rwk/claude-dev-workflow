@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { maskText, SECRET_MASK, SECRET_KEYS } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
+import { maskText, SECRET_MASK, SECRET_KEYS, knownShas } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
 export { maskText, SECRET_MASK };
 
 export class ReportError extends Error {}
@@ -13,10 +13,11 @@ const TYPES = ['DEFECT', 'MISSING_EVIDENCE', 'DESIGN_DRIFT', 'FOLLOW_UP'];
 const CONF = ['high', 'medium', 'low'];
 const BLOCK_MAX_LINES = 40;
 // 정리(cleanup) 때 남기는 JSON 의 문자열 값에 어댑터 마스킹 + 비밀값 제거(`maskText` = 어댑터 mask + SECRET_MASK, 40자 SHA 보존 — pack.mjs, R5-2·C1-1)를 적용한다(R3-9) — 키 이름은 건드리지 않는다(`"token": "FIXED"` 같은 값이 키워드 패턴에 걸리지 않게 값만 본다).
-export function deepMask(v, maskRules) {
-  if (typeof v === 'string') return maskText(v, maskRules);
-  if (Array.isArray(v)) return v.map((x) => deepMask(x, maskRules));
-  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepMask(x, maskRules)]));
+// 보존할 SHA 는 호출자가 넘긴 아는 SHA(`knownShas` — 스냅샷·MR 구조화 칸)만이다(8b FR1-2).
+export function deepMask(v, maskRules, keepShas = []) {
+  if (typeof v === 'string') return maskText(v, maskRules, keepShas);
+  if (Array.isArray(v)) return v.map((x) => deepMask(x, maskRules, keepShas));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepMask(x, maskRules, keepShas)]));
   return v;
 }
 
@@ -251,10 +252,10 @@ function checkTable(check, deploy) {
 // 문서 전체 마스킹(아래 F5)은 따옴표 없는 비밀값을 줄 끝까지 가리므로(R4-2), 구분자가 남으면 같은 줄에 조립한 파일:줄·출처·확신까지 지운다(§5.7 위치 보존).
 // 빈 따옴표 값(`password = ""`·`""[masked:…]`)도 구분자를 지운다(impl C2 C1-1 잔존 — 따옴표 뒤 조각 규칙이 같은 줄 뒤를 가린다).
 const KEY_SEP = new RegExp(`(${SECRET_KEYS}["'\`]?)[ \t]*[:=][ \t]*(?=["'\`]?(?:\\[masked:|["'\`]))`, 'gi');
-function fieldMask(v, maskRules) {
-  if (typeof v === 'string') return maskText(v, maskRules).replace(KEY_SEP, '$1 ');
-  if (Array.isArray(v)) return v.map((x) => fieldMask(x, maskRules));
-  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fieldMask(x, maskRules)]));
+function fieldMask(v, maskRules, keepShas) {
+  if (typeof v === 'string') return maskText(v, maskRules, keepShas).replace(KEY_SEP, '$1 ');
+  if (Array.isArray(v)) return v.map((x) => fieldMask(x, maskRules, keepShas));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fieldMask(x, maskRules, keepShas)]));
   return v;
 }
 
@@ -263,6 +264,7 @@ export function renderReport({ adapter, work, early = false }) {
   const snapshot = readJson(work, 'snapshot.json');
   const check = readJson(work, 'check.json');
   if (!mr || !snapshot || !check) throw new ReportError('mr.json·snapshot.json·check.json 이 필요하다(collect·check 먼저)');
+  const keep = knownShas({ mr, snapshot });
   const deploy = readJson(work, 'deploy.json');
   const pack = readJson(work, 'pack.json');
   let findings = early ? null : readJson(work, 'findings.json');
@@ -274,9 +276,9 @@ export function renderReport({ adapter, work, early = false }) {
     else if (verdict.head_sha !== snapshot.head_sha) verdict = failed(`verdict.json 의 head ${s7(verdict.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 판정은 쓰지 않는다(verdict 를 다시 실행)`);
     else if (findings?.head_sha && findings.head_sha !== snapshot.head_sha) verdict = failed(`findings.json 의 head ${s7(findings.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 검토 결과는 쓰지 않는다`);
   }
-  findings = fieldMask(findings, adapter.mask);
-  verdict = fieldMask(verdict, adapter.mask);
-  mr.title = fieldMask(mr.title, adapter.mask);
+  findings = fieldMask(findings, adapter.mask, keep);
+  verdict = fieldMask(verdict, adapter.mask, keep);
+  mr.title = fieldMask(mr.title, adapter.mask, keep);
   const adapterId = `${path.basename(adapter.file)}@${createHash('sha1').update(adapter.markdown).digest('hex').slice(0, 8)}`;
   const mode = early ? '조기 종료(결정적 검사만)' : `${check.rereview?.active ? '재리뷰' : '전체'}${snapshot.mode === 'diff-only' ? ' · diff-only' : ''}`;
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
@@ -342,7 +344,7 @@ export function renderReport({ adapter, work, early = false }) {
       // 무효 결과(JSON 오류·스키마 실패·validReviewers 밖)는 구조화하지 않는다(R3-7) — 한쪽이 깨져도 단일 모델 리포트는 끝까지 렌더된다
       let r = null;
       try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { parts.push(`(무효 결과 — JSON 파싱 실패: ${e.message.slice(0, 120)})`, ''); continue; }
-      r = fieldMask(r, adapter.mask);
+      r = fieldMask(r, adapter.mask, keep);
       if (!(findings?.validReviewers || []).includes(name) || !Array.isArray(r?.findings)) { parts.push(`(무효 결과 — 스키마 검증 실패 또는 유효 검토자 아님: findings=${Array.isArray(r?.findings) ? `${r.findings.length}건` : typeof r?.findings})`, ''); continue; }
       // §5.7 원본 발견 보존 — 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제까지(마스킹은 아래 전체 적용). 필드마다 줄을 나눈다(impl R4-2 — 따옴표 없는 비밀값은 줄 끝까지 가려지므로 근거의 `password: …` 가 같은 줄 시나리오·권고까지 지우지 않게)
       parts.push(...(r.findings.flatMap((f) => [`- [${f?.lens}] ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'}) · 확신 ${f?.confidence}`, `  - 근거: ${f?.evidence || '-'}`, `  - 시나리오: ${f?.scenario || '-'}`, `  - 설계 내 수정: ${f?.fixableInDesign || '-'}${f?.fixableInDesign === 'no' ? ` · 깨진 전제: ${f?.brokenPremise || '-'}` : ''}`, `  - 권고: ${f?.recommendation || ''}`])), r.findings.length ? '' : '(발견 없음)', '');
@@ -363,7 +365,7 @@ export function renderReport({ adapter, work, early = false }) {
   }
   const text = parts.join('\n');
   // F5 — 산출물 전체 비밀값 제거: 어댑터 개인정보 패턴 + 엔진 내장 비밀값 리터럴 패턴(§5.7 「하드코딩 비밀값은 [masked:secret] <파일:줄>로만」 — 어댑터 mask 에 비밀번호·API 키 패턴이 없어도 적용). SHA 는 보존(R5-2 — maskText).
-  return maskText(text, adapter.mask);
+  return maskText(text, adapter.mask, keep);
 }
 
 // ── 정리(F7·F5) ───────────────────────────────────────────────────────────
@@ -398,6 +400,9 @@ export function cleanup({ work, adapter }) {
   for (const f of ['codex.prompt', 'codex.out', 'codex.sh', 'codex.pid', 'pack-a.md', 'pack-b.md']) { const p = path.join(work, f); if (fs.existsSync(p)) { fs.rmSync(p); raw += 1; } }
   const bl = path.join(work, 'baseline');
   if (fs.existsSync(bl)) { raw += fs.readdirSync(bl).length; fs.rmSync(bl, { recursive: true, force: true }); }
+  let mrRaw = null;
+  try { mrRaw = JSON.parse(fs.readFileSync(path.join(work, 'mr.json'), 'utf8')); } catch { /* 없거나 손상 — 스냅샷 SHA 만 보존 */ }
+  const keep = knownShas({ mr: mrRaw, snapshot });   // 보존할 SHA = 구조화 칸의 실제 커밋만(8b FR1-2)
   let masked = 0;
   const failed = [];
   for (const f of MASKED_JSON) {
@@ -406,7 +411,7 @@ export function cleanup({ work, adapter }) {
     let obj;
     try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { fs.rmSync(p); raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
     let out;
-    try { out = JSON.stringify(deepMask(obj, adapter?.mask || []), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
+    try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
     fs.writeFileSync(p, out);
     masked += 1;
   }
