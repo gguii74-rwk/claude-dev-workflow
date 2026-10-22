@@ -725,3 +725,12 @@ test('SKILL.md: §0 공통 종료 절차에 cleanup ERR 목록이 비었을 때(
   assert.match(s8, /CLEANED worktree=<b> zip=<n> raw=<n> masked=<n> extra=<n>/);
   assert.match(s8, /snapshot\.json/);
 });
+
+test('SKILL.md §5 경로 감시: 제외 3종(CODEX_HOME 전체 · $ROOT · $W) + 위키 루트 우선 + 터미널 요약 「Codex 자체 경로 n건 제외」 (1.3.1 AC⑧-1 · D32)', () => {
+  const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+  const item = skill.split('\n').find((l) => l.startsWith('- **경로 감시**'));
+  assert.ok(item, '§5 경로 감시 항목');
+  for (const re of [/\$CODEX_HOME/, /~\/\.codex\//, /\$ROOT/, /\$W/, /위키 루트[^。\n]*제외 3종 안에 있어도/, /제외/, /「Codex 자체 경로 n건 제외」/]) assert.match(item, re);
+  const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
+  assert.match(s8, /Codex 자체 경로 n건 제외/);
+});
