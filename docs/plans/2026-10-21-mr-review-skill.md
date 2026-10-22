@@ -507,6 +507,15 @@ DEFER_LOW(출처 SDD 이월 — 요약 기록, 판정 영향 없음·fail-closed
 
 **종결(2026-10-22)**: impl 루프 성공 종료 — 적대 6(R1~R5 + 복귀 R6) · 확인 4(C1 · C2 재진입 · C3 · C4 폴백②) = 총 10(유계 상한) · 고유 blocking 39행 전부 FIXED(high 17 · medium 22 — ESCALATE 전부 닫힘 · ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE 0) · DEFER_LOW 2묶음 · 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict pass(C4) · 권고 = 새 세션 전체 브랜치 리뷰(마스킹·zip 해석 계열의 경계가 라운드마다 확장 — C2·C3 확인 리뷰어 권고).
 
+## 적대검증 ledger (impl — 전체 브랜치 재리뷰)
+
+보안 크리티컬: yes (호출자 지정 — 기동 전 사용자 확인 2026-10-21 22:2x, impl 루프 승계) — 접촉면 외부 전송(팩 B → Codex)·개인정보/비밀값 마스킹 경계·zip 해석·경로
+
+- 루프(8b, 새 루프): base `6c0f5e7`(6c0f5e7ab3f346ff18897c2ba42531e23b9e9a18, 호출자 지정 — SC-7 `<base>`) · branch `gguii74-rwk/mr-review-skill-impl`(오르카 워크트리) · 착수 HEAD `d9a3a1b`(40커밋) · 예산 max 2 · confirm 1 · auto 1 · **위임 모드** · 입도 = 통합 1회(브랜치 전체 diff). 목적 = impl 루프 C2·C3 확인 리뷰어 공통 권고 「새 세션 전체 브랜치 리뷰」(사용자 수용 2026-10-22) — 마스킹·zip 해석 계열의 **구조적 빈틈**을 신선한 컨텍스트로 본다. 같은 계열 2회 이상이면 설계 변경 선택지를 포함해 ESCALATE.
+- 기결정: 위 `## 적대검증 ledger (impl)` 39행의 판정 전부(재지목은 「확인된 수정의 회귀·우회」로만 유효) · spec D1~D16 · P1~P10 · plan ledger 사용자 판정.
+- 사전 게이트(SC-7, HEAD `d9a3a1b`): T1 107/107 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0(skills·tests 전체 0 · README 추가 줄 0) · T7 0 · 대장 확인 대기 0 · 승계 미확인 FIXED 0. 라운드 파일 접미 = `-FR<N>`·`-FC<N>`(impl 루프의 `-R<N>`·`-C<N>` 기록 덮어쓰기 방지).
+- score 산식 = 전환용(미확인 FIXED 큐 제외, §2c 분류 직후·수정 전 스냅샷, weight c4/h3/m1). 보안 트랙이라 전환 신호 1(정체) 무시.
+
 ## 확인 대기 대장
 
 | # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
