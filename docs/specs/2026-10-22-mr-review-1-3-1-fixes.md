@@ -211,3 +211,22 @@ harden-spec(2026-10-22, 이 세션)에서 확정 — 질문 9건 전부 추천�
 | D32 | ⑧ 경로 감시 제외 = `$CODEX_HOME` 전체 + `$ROOT` + `W` 자체. 어댑터 위키 루트는 제외보다 우선 | 사용자 결정(갭 B2) — 오탐 반복은 진짜 경고를 무력화, Codex 홈은 D16 감시 대상 아님 |
 | D33 | ⑤ snapshot 전 실패 뒤의 cleanup ERR는 동작 유지, SKILL §0 보고 문구만 「목록 비면 정상」으로 정정 | 사용자 결정(갭 B3) — fail-closed 유지 |
 | D34 | 세부 4종 채택: `snapshot.base_source`·`deploy.zip.bytes_source` 진단 필드 · 이름 `bytes_unavailable`·`BASE_MISMATCH`·`DIFF_EMPTY_MISMATCH` · 배포본 결과 우선순위 「대조 불가 > 불일치」 유지 · cleanup 둘째 줄 이후 `extra:` 이름 나열 | 사용자 결정(갭 B4) |
+
+## 적대검증 ledger (impl)
+
+보안 크리티컬: yes (호출자 지정 — 사용자 확인 2026-10-22 16:5x) — 접촉면 외부 전송(Codex)·개인정보 경계(마스킹)·zip 해석·경로·삭제(cleanup 허용 목록)
+
+- 루프: base `a61d71f`(a61d71f815067f35f1940f4de49dc36e590fe5f3 = main = origin/main, 1.3.0 릴리스 = 구현 착수 직전 — SC-7 `<base>`) · branch `gguii74-rwk/mr-review-1-3-1-fixes`(오르카 워크트리) · 착수 HEAD `9ab8156` · 예산 max 5 · confirm 2 · auto 1 · **위임 모드**(`DEV_WORKFLOW_MODE=delegated`) · 입도 = 통합 1회(경량 경로 D19 — plan 없음, ledger = 이 spec 말미). 1.3.0 plan 의 ledger·대장은 이력이며 이 루프가 건드리지 않는다.
+- 사전 게이트(SC-7, HEAD `9ab8156`): T1 153/153 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0(skills·tests 전체 + README·spec·plan 추가 줄) · T7 0 · 대장 대기 0 · 승계 미확인 FIXED 0 · codex companion 1.0.6.
+- 가드 focus = 이 spec D17~D34 전문 + 1.3.0 spec D1~D16 전문 + 사용자 확인된 구현 판단 4건·이월(`2951699`)·릴리스 몫 항목.
+
+| # | fingerprint | severity | disposition | 근거 |
+|---|---|---|---|---|
+| R1-1 | report.mjs cleanup · 허용 JSON 이름이 W 밖을 가리키는 심볼릭 링크면 마스킹 루프가 따라가 외부 파일을 덮어씀 · lstat 으로 일반 파일만 마스킹, 쓰기 O_NOFOLLOW, 외부 대상 보존 회귀 테스트 | high | FIXED | `42aaf4f` — 마스킹 루프가 `lstat().isFile()` 아니면 건너뜀(허용 목록 정리가 링크만 삭제 → `extra`) · 쓰기 `O_NOFOLLOW` · 테스트 「허용 JSON 이름(mr.json)이 W 밖 파일을 가리키는 심볼릭 링크면 …」(대상 바이트 불변) |
+| R1-2 | SKILL.md §0 · 사전 점검 호스트 추출 정규식이 CRLF·들여쓴 펜스 어댑터를 거부(extractBlock 은 허용) → 정상 설정을 GLAB_HOST_FAIL 로 오안내 · 어댑터 파서와 같은 형식 | medium | FIXED | `bbd950b` — 줄마다 trim 뒤 여는/닫는 펜스 탐색(extractBlock 과 같은 규칙) · 테스트 「SKILL.md §0 사전 점검의 호스트 추출이 …」(LF·CRLF·들여쓴 펜스 3종 → `gitlab.test`) · bash 실측(CRLF 어댑터 → `--hostname gitlab.test`) — zsh 실측은 9단계 몫 |
+
+**R1(적대, 2026-10-22)**: HEAD `9ab8156` · 스레드 `01a1629c…` · 실행 로그 25건 · verdict needs-attention · high 1 · medium 1 · low 0 · 신규 2 · 기결정 재론 0. 전환용 score **4**(high 3 + medium 1 — 현행 산식, 수정 전 스냅샷) · 미확인 FIXED 큐 0 → 2. batch 적재 0(적대 소진 1 = auto-rounds 1 → flush 대상 없음, 이후 정밀 모드). 수정 게이트(SC-7, `bbd950b`): T1 **155/155** · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0.
+
+## 확인 대기 대장
+
+해당 없음.
