@@ -7,6 +7,8 @@ export class AdapterError extends Error {}
 // SHA 보호 자리표시(pack.mjs `maskTextWithCounts` — NUL + U+E000~E00F 인코딩 + U+E010 구분)에 쓰는 문자 전부. mask 패턴이 여기에 걸리면 자리표시가 깨진다(impl C3 C2-N1).
 const PLACEHOLDER_PROBE = `\u0000${Array.from({ length: 17 }, (_, i) => String.fromCharCode(0xE000 + i)).join('')}\uE000\u0000`;
 
+export const DEPLOY_LAYOUTS = ['source', 'maven-war'];
+
 const OPEN = '```json mr-review-adapter';
 const CLOSE = '```';
 
@@ -48,6 +50,8 @@ export function validate(cfg) {
   for (const [name, p] of Object.entries(cfg.projects || {})) {
     if (!p || !Number.isInteger(p.id)) missing.push(`projects.${name}.id`);
     if (!p || typeof p.path !== 'string') missing.push(`projects.${name}.path`);
+    // 배포본 zip 배치(1.3.2 ⑨ — spec 2026-10-22 3.⑨ D37) — 선택 키, 없으면 source(소스 경로 그대로). 매핑 표는 deploy.mjs 내장 프리셋
+    if (p && p.deployLayout !== undefined && !DEPLOY_LAYOUTS.includes(p.deployLayout)) missing.push(`projects.${name}.deployLayout(${DEPLOY_LAYOUTS.map((l) => `"${l}"`).join('|')})`);
   }
   if (Array.isArray(cfg.policy?.acceptedIds) && cfg.policy.acceptedIds.length === 0) missing.push('policy.acceptedIds(비어 있음)');
   if (Array.isArray(cfg.contract?.lines) && cfg.contract.lines.length !== 10) missing.push('contract.lines(10개)');
@@ -93,7 +97,7 @@ export function loadAdapter(file) {
   const workspaceRoot = path.resolve(baseDir, cfg.workspaceRoot);
   const projects = {};
   for (const [name, p] of Object.entries(cfg.projects)) {
-    projects[name] = { id: p.id, checkout: path.resolve(workspaceRoot, p.path), deployExempt: p.deployExempt === true };
+    projects[name] = { id: p.id, checkout: path.resolve(workspaceRoot, p.path), deployExempt: p.deployExempt === true, deployLayout: p.deployLayout ?? 'source' };
   }
   const wikiRoots = cfg.wiki.roots.map((r) => {
     const root = path.resolve(expandHome(r.path));

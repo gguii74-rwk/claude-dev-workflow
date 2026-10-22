@@ -123,3 +123,13 @@ test('문서 참조(policy.docs·docsMap.always·docsMap.rules[*].docs, repo: �
   assert.throws(() => loadAdapter(rules), /docsMap\.rules\[0\]\.docs\[0\]/);
   assert.doesNotThrow(() => loadAdapter(writeAdapter(root, { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md', 'repo:docs/a.md#2.'], rules: [] } })));
 });
+
+test('projects.<이름>.deployLayout: "maven-war" 보존 · 키 없음 = "source" · 그 밖 값은 AdapterError (1.3.2 AC⑨-1)', () => {
+  const root = tmp();
+  const a = loadAdapter(writeAdapter(root, { projects: { gamma: { id: 104, path: 'repos/gamma', deployLayout: 'maven-war' } } }));
+  assert.equal(a.resolved.projects.gamma.deployLayout, 'maven-war');
+  assert.equal(a.resolved.projects.alpha.deployLayout, 'source');
+  assert.equal(loadAdapter(writeAdapter(root, { projects: { gamma: { id: 104, path: 'repos/gamma', deployLayout: 'source' } } })).resolved.projects.gamma.deployLayout, 'source');
+  const bad = writeAdapter(root, { projects: { gamma: { id: 104, path: 'repos/gamma', deployLayout: 'gradle' } } });
+  assert.throws(() => loadAdapter(bad), (e) => e instanceof AdapterError && /projects\.gamma\.deployLayout/.test(e.message));
+});
