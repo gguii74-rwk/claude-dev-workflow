@@ -980,6 +980,14 @@ test('SKILL.md §5 경로 감시: `.`·`..` 성분이 든 후보는 제외 5종 
   assert.ok(item.includes('/usr/share/../../etc/passwd'));
 });
 
+test('SKILL.md §5 경로 감시: 제외 (가)~(라) 후보는 realpath 로 링크를 푼 실제 경로로 다시 판정 — 제외 영역 밖·위키 루트 안·실제 경로 확인 불가면 제외하지 않는다 (1.3.2 R3-2)', () => {
+  const item = skillText().split('\n').find((l) => l.startsWith('- **경로 감시**'));
+  assert.ok(item.includes('realpath'));
+  assert.ok(item.includes('/usr/share/locale/locale.alias'));
+  assert.match(item, /실제 경로가[^\n]*위키 루트 안이면 제외하지 않/);
+  assert.match(item, /실제 경로를 구하지 못하면[^\n]*제외하지 않는다/);
+});
+
 test('SKILL.md 터미널 요약: 「경로 감시 제외 n건(Codex 자체 a · 시스템 실행 파일 b · 존재하지 않는 경로 c)」 — §5 끝과 §8 둘 다 (1.3.2 AC⑩-2 · D39)', () => {
   const skill = skillText();
   const item = skill.split('\n').find((l) => l.startsWith('- **경로 감시**'));
