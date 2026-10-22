@@ -167,7 +167,7 @@ function fullWork(root, { check = baseCheck(), snap = baseSnap(), deploy = baseD
   writeFileSync(join(work, 'deploy.json'), JSON.stringify(deploy));
   if (pack) writeFileSync(join(work, 'pack.json'), JSON.stringify({ sources: [{ id: 'S1', kind: 'doc', ref: 'guide/policy.md@abc#5.', exportAllowed: true, inPackB: true, lines: 3 }, { id: 'S2', kind: 'wiki', ref: 'wiki-private/x.md', exportAllowed: false, inPackB: false, lines: 2 }], mask: { applied: { phone: 1 }, residual: [], ok: true }, packA: 'pack-a.md', packB: 'pack-b.md', codexSkipped: false, codexSkipReason: null }));
   if (reviews) {
-    writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L5', type: 'DEFECT', title: '비밀번호 평문 로그 010-1234-5678', file: 'src/A.java', line_start: 3, line_end: 3, evidence: 'S1 · src/A.java:3 db.password = "synthetic-db-password"; api_key: SYNTH-KEY-12345; cfg {"password": "synthetic-json-password"}; secret = "two word secret"', scenario: '로그 유출', confidence: 'high', recommendation: '마스킹', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true }));
+    writeFileSync(join(work, 'review-claude.json'), JSON.stringify({ reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L5', type: 'DEFECT', title: '비밀번호 평문 로그 010-1234-5678', file: 'src/A.java', line_start: 3, line_end: 3, evidence: 'S1 · src/A.java:3 db.password = "synthetic-db-password"; cfg {"password": "synthetic-json-password"}; secret = "two word secret"; api_key: SYNTH-KEY-12345', scenario: '로그 유출', confidence: 'high', recommendation: '마스킹', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true }));
     writeFileSync(join(work, 'review-codex.json'), JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [], intent: [], baselineCandidateRelevant: true }));
   }
   if (fnd) writeFileSync(join(work, 'findings.json'), JSON.stringify(fnd));
@@ -209,7 +209,7 @@ test('verdict CLI → verdict.json · render 전체 리포트(실행 블록 형�
   assert.match(md, /## 부록 A/);
   assert.match(md, /## 부록 B[\s\S]*wiki-private\/x\.md.*Codex 미제공/);
   assert.match(md, /## 부록 C[\s\S]*claude[\s\S]*codex/);
-  assert.match(md, /## 부록 C[\s\S]*근거: S1 · src\/A\.java:3 db\.password = "\[masked:secret\]"; api_key: \[masked:secret\]; cfg \{"password": "\[masked:secret\]"\}; secret = "\[masked:secret\]" · 시나리오: 로그 유출 · 설계 내 수정: yes/);   // 원본 발견의 근거·시나리오 보존(R1-9) + 비밀값만 제거
+  assert.match(md, /## 부록 C[\s\S]*근거: S1 · src\/A\.java:3 db\.password = "\[masked:secret\]"; cfg \{"password": "\[masked:secret\]"\}; secret = "\[masked:secret\]"; api_key: \[masked:secret\]\n  - 시나리오: 로그 유출\n  - 설계 내 수정: yes/);   // 원본 발견의 근거·시나리오 보존(R1-9) + 비밀값만 제거
   assert.match(md, /## 부록 D[\s\S]*\*\*F1\*\*[\s\S]*실패 시나리오: 로그에 평문[\s\S]*\*\*F3\*\*/);   // 병합 발견 상세
   assert.match(md, /정책 버전: 계약 TEST-POLICY-v1\.0 \/ 판정 기준 TEST-POLICY-v1\.1/);
   assert.match(md, /교차 검토: 있음/);

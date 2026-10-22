@@ -90,11 +90,11 @@ export function residual(text, rules) {
 // ── 엔진 마스킹 규칙(공유 — 팩 B · 리포트 · cleanup 이 같은 함수를 쓴다, R6-1) ──────────────────
 // 엔진 내장 비밀값 리터럴 패턴(프로젝트 무관 — D10 위배 아님): `password = "x"` · `api_key: x` · `secret=x` · `Authorization: Bearer x`(인증 방식 + 자격증명을 한 매치로, R3-1) · `Bearer x` · PEM 블록. 값만 가린다. 키워드는 대소문자 무관(`flags: 'i'`).
 // 이미 가려진 자리(`[masked:…]`)는 다시 매치하지 않는다(부정 전방탐색) — 어댑터 마스킹 뒤에 적용되므로 이중 마스킹으로 자리표시자를 깨지 않는다.
-// 비밀값 리터럴 — 따옴표 안 값은 공백을 포함해 **전체**를 가린다(C1 R2-1 잔존 보정: `"password": "two word secret"`·JSON 키 형태 `"password": "…"`). 따옴표 없는 값은 토큰 하나.
+// 비밀값 리터럴 — 따옴표 안 값은 공백을 포함해 **전체**를 가린다(C1 R2-1 잔존 보정: `"password": "two word secret"`·JSON 키 형태 `"password": "…"`). 따옴표 없는 값은 **줄 끝까지**(impl R4-2 — 설정 문법상 `password: my pass phrase`·`!!str 값`·`PASSWORD=a,b` 모두 줄 끝까지가 값이다. 대가 = 산문 `token: …` 뒤 설명도 가려짐).
 // 어댑터 `mask`(개인정보)와 별개로 팩 B(Codex 전송)에도 적용하고 잔존 검사 대상에 넣는다(R6-1 — 리포트에만 걸면 MR 본문·댓글의 `password = "…"` 가 그대로 Codex 로 간다, F5). D4 의 코드 전송 범위(워크트리 diff)는 여기서 가리지 않는다.
 // 키 앞뒤에 식별자 접두·접미(`DB_PASSWORD`·`GITLAB_TOKEN`·`aws_secret_access_key`)를 허용한다(F5) — `_` 는 단어 문자라 `\b` 만으로는 안 걸린다.
 // 이미 가려진 값은 **값 전체가 표식 하나일 때만** 건너뛴다(impl R1-1) — 어댑터 개인정보 패턴이 값 앞부분만 가린 `"[masked:phone] 나머지"` 는 값 전체를 다시 가린다.
-// 따옴표 안 값은 이스케이프(`\"`)를 값의 일부로 소비한다(impl R1-2 — `"prefix\"remaining"` 의 뒷부분이 남지 않게). 따옴표 없는 값은 표식이 섞인 토큰(`[masked:phone]extra`)도 한 덩어리로 본다.
+// 따옴표 안 값은 이스케이프(`\"`)를 값의 일부로 소비한다(impl R1-2 — `"prefix\"remaining"` 의 뒷부분이 남지 않게). 따옴표 없는 값은 줄에 가림 표시 하나만 남았을 때만 건너뛴다(`[masked:phone] 나머지` 는 다시 가린다).
 const MARK = '\\[masked:[^\\]\\s]*\\]';
 const WHOLE_MARK = (end) => `(?!${MARK}${end})`;
 const SECRET_KEYS = '(?<![A-Za-z0-9])(?:[A-Za-z0-9]*[_.-])?(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|token|authorization)(?![A-Za-z0-9])(?:[_.-][A-Za-z0-9]+)*';
@@ -112,7 +112,7 @@ export const SECRET_MASK = [
   { name: 'secret', pattern: OPEN_QUOTE("'"), flags: 'i' },
   { name: 'secret', pattern: OPEN_QUOTE('`'), flags: 'i' },
   { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*(?:[&!][^\\s]*[ \\t]+)*[|>][1-9+-]{0,2}(?:[ \\t]+#[^\\r\\n]*)?[ \\t]*\\r?\\n)(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*)*`, flags: 'i' },
-  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?!["'\`])${WHOLE_MARK('(?:[\\s"\'\`,;)\\]]|$)')}(?:(?:Bearer|Basic|Token|Digest)\\s+)?(?:${MARK}|[^\\s"'\`,;)\\]])+`, flags: 'i' },
+  { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?![\\s"'\`])(?!${MARK}[ \\t]*(?:\\n|$))[^\\n]+`, flags: 'i' },
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n[A-Za-z0-9+/=:, -]+)*' },
@@ -127,15 +127,17 @@ const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\
 // 선언(`<키>[:=]`) 뒤 같은 줄 값이 가림 표시·빈 따옴표·블록 머리(`|`·`>`·앵커·태그·주석)·빈 값이 아니거나, 값 자리가 머리·표시뿐인데 그 줄보다 더 들여쓴 다음 줄이 통째로 가림 표시가 아니면 `secret-decl` 잔존 → Codex 생략.
 // 오탐 비용 = 단일 모델 리뷰(D14 fail-closed 경로) — 값 누출보다 낫다.
 const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'gi');
-const DECL_OK = new RegExp(`^(?:$|#|${MARK}|["'\`]${MARK}|(["'\`])\\1|[|>&!])`);
+const DECL_HEAD_ALT = `(?:(?:${MARK}|[&!]\\S*|[|>][1-9+-]{0,2})[ \t]*)*(?:#.*)?`;
+// 같은 줄 값은 **줄 전체**로 본다(impl R4-2 + 훅) — 따옴표 없는 값은 가림 표시 하나(+ 주석)만, 따옴표 값은 여는 따옴표 바로 뒤 표시 또는 빈 따옴표(닫힌 뒤는 다른 키일 수 있어 허용), 그 밖은 블록 머리뿐이어야 한다
+const DECL_OK = new RegExp(`^(?:["'\`]${MARK}.*|(["'\`])\\1.*|${DECL_HEAD_ALT})$`);
 const DECL_WHOLE = new RegExp(`^[ \t]*${MARK}[ \t\r]*$`);   // 이어지는 줄은 통째로 가림 표시여야 한다(첫 토큰만 가린 `[masked:secret] 나머지` 는 통과 아님)
-const DECL_HEAD = new RegExp(`^(?:(?:${MARK}|[&!]\\S*|[|>][1-9+-]{0,2})[ \t]*)*(?:#.*)?$`);
+const DECL_HEAD = new RegExp(`^${DECL_HEAD_ALT}$`);
 function unmaskedSecretDecl(text) {
   for (const m of text.matchAll(DECL_RE)) {
     const ls = text.lastIndexOf('\n', m.index) + 1;
     let le = text.indexOf('\n', m.index);
     if (le < 0) le = text.length;
-    const rest = text.slice(m.index + m[0].length, le).replace(/\r$/, '').trimStart();
+    const rest = text.slice(m.index + m[0].length, le).trimStart();
     if (!DECL_OK.test(rest)) return true;
     if (!DECL_HEAD.test(rest)) continue;
     const next = text.slice(le + 1).split('\n').find((l) => l.trim() !== '');
@@ -145,9 +147,10 @@ function unmaskedSecretDecl(text) {
   }
   return false;
 }
+// 줄바꿈 통일(impl R4-3) — 모든 규칙이 LF 만 보므로 CRLF 문서(잘린 PEM·YAML 블록 등)가 규칙을 빠져나가지 않게 입구에서 LF 로 바꾼다(출력 사본의 줄바꿈도 LF).
 export function maskTextWithCounts(text, maskRules) {
   const keep = [];
-  const held = text.replace(SHA40_RE, (m) => { keep.push(m); return `\u0000sha40:${keep.length - 1}\u0000`; });
+  const held = text.replace(/\r\n/g, '\n').replace(SHA40_RE, (m) => { keep.push(m); return `\u0000sha40:${keep.length - 1}\u0000`; });
   const a = applyMask(held, maskRules);
   const b = applyMask(a.text, SECRET_MASK);
   const applied = { ...a.applied };

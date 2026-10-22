@@ -329,8 +329,8 @@ export function renderReport({ adapter, work, early = false }) {
       let r = null;
       try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { parts.push(`(무효 결과 — JSON 파싱 실패: ${e.message.slice(0, 120)})`, ''); continue; }
       if (!(findings?.validReviewers || []).includes(name) || !Array.isArray(r?.findings)) { parts.push(`(무효 결과 — 스키마 검증 실패 또는 유효 검토자 아님: findings=${Array.isArray(r?.findings) ? `${r.findings.length}건` : typeof r?.findings})`, ''); continue; }
-      // §5.7 원본 발견 보존 — 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제까지(마스킹은 아래 전체 적용)
-      parts.push(...(r.findings.map((f) => `- [${f?.lens}] ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'}) · 확신 ${f?.confidence} · 근거: ${f?.evidence || '-'} · 시나리오: ${f?.scenario || '-'} · 설계 내 수정: ${f?.fixableInDesign || '-'}${f?.fixableInDesign === 'no' ? ` · 깨진 전제: ${f?.brokenPremise || '-'}` : ''} · 권고: ${f?.recommendation || ''}`)), r.findings.length ? '' : '(발견 없음)', '');
+      // §5.7 원본 발견 보존 — 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제까지(마스킹은 아래 전체 적용). 필드마다 줄을 나눈다(impl R4-2 — 따옴표 없는 비밀값은 줄 끝까지 가려지므로 근거의 `password: …` 가 같은 줄 시나리오·권고까지 지우지 않게)
+      parts.push(...(r.findings.flatMap((f) => [`- [${f?.lens}] ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'}) · 확신 ${f?.confidence}`, `  - 근거: ${f?.evidence || '-'}`, `  - 시나리오: ${f?.scenario || '-'}`, `  - 설계 내 수정: ${f?.fixableInDesign || '-'}${f?.fixableInDesign === 'no' ? ` · 깨진 전제: ${f?.brokenPremise || '-'}` : ''}`, `  - 권고: ${f?.recommendation || ''}`])), r.findings.length ? '' : '(발견 없음)', '');
     }
     // 부록 D — 병합 발견 상세: 실행 블록(40줄)이 생략한 근거·시나리오·전제·리뷰어 결정을 발견마다 보존한다(사람이 차단 판단을 검증할 수 있게)
     parts.push('## 부록 D — 병합 발견 상세 · 리뷰어 결정', '');

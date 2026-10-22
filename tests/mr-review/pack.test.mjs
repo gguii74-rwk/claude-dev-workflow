@@ -111,7 +111,7 @@ test('팩: 문서 지도(절 발췌·@sha) · 정책 항상 읽기 · 위키(용
 });
 
 test('팩 B 는 엔진 비밀값 패턴(SECRET_MASK)도 적용·잔존 검사한다 — 본문·댓글의 password/API 키가 Codex 로 가지 않는다 (R6-1, F5) · SHA 는 보존', () => {
-  const { adapter, work, env } = setup({ description: '## 배경\n- ① 왜: 설정 password = "synthetic-secret-only" 교체\n- ② 무엇을: 자동분류 패턴', notes: [{ id: 5, system: false, author: { username: 'u' }, created_at: 't', body: '참고 api_key: SYNTH-KEY-999 · {"client_secret": "two word value"}' }] });
+  const { adapter, work, env } = setup({ description: '## 배경\n- ① 왜: 설정 password = "synthetic-secret-only" 교체\n- ② 무엇을: 자동분류 패턴', notes: [{ id: 5, system: false, author: { username: 'u' }, created_at: 't', body: '참고 api_key: SYNTH-KEY-999\n{"client_secret": "two word value"}' }] });   // 따옴표 없는 값은 줄 끝까지 가려지므로(impl R4-2) JSON 은 다음 줄에
   const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.first, /codexSkipped=false$/);                                  // 비밀값은 가려졌으므로 Codex 를 건너뛰지 않는다
@@ -141,7 +141,11 @@ test('잔존 검사는 SHA 복원 전에 — rrn 패턴에 걸리는 정상 head
   const b = readFileSync(join(work, 'pack-b.md'), 'utf8');
   assert.match(b, new RegExp(`head ${RRN_SHA} · base`));                                        // 헤더·본문의 SHA 보존
   assert.match(b, new RegExp(`head ${RRN_SHA} 기준`));
-  assert.doesNotMatch(b, /\[masked:rrn\]|010-1234-5678|synthetic-secret-only/);                // 진짜 개인정보·비밀값은 가려진다
+  // MR 절만 본다 — 출처 표기 `<경로>@<문서 SHA>` 는 `@` 경계(C1-1)로 SHA 보호 밖이라, 실행마다 바뀌는 테스트 문서 SHA 에 우연히 rrn 꼴 숫자열이 생기면 그 표기가 가려져 간헐 실패했다(impl R4 루프 발견 — 표시 문제는 DEFER_LOW)
+  const mrPart = b.slice(b.indexOf('\n## MR\n'), b.indexOf('\n## 근거 자료\n'));
+  assert.ok(mrPart.includes(`head ${RRN_SHA} 기준`));
+  assert.doesNotMatch(mrPart, /\[masked:rrn\]|010-1234-5678|synthetic-secret-only/);           // 진짜 개인정보·비밀값은 가려진다
+  assert.doesNotMatch(b, /010-1234-5678|synthetic-secret-only/);
   assert.match(b, /\[masked:phone\]/);
   // 단위: 복원 전 잔존 검사 — 보존 SHA 는 잔존이 아니고, 패턴이 못 가린 값은 잔존이다
   const rules = JSON.parse(readFileSync(adapter, 'utf8').match(/```json mr-review-adapter\n([\s\S]*?)\n```/)[1]).mask;
@@ -421,11 +425,33 @@ test('안전장치: 비밀값 키 선언 뒤 값이 가림 표시가 아니거�
 });
 
 test('안전장치 CLI: MR 본문에 가리지 못한 비밀값 선언이 있으면 팩 B 미생성 · codexSkipped (impl R3-1, 추천 자동 채택(위임))', () => {
-  const { adapter, work, env } = setup({ description: '## 배경\n- 설정\n\n```yaml\ndb:\n  password:\n    value: SECRETC1\n```\n' });
+  // 어댑터 규칙이 값 첫 줄을 통째로 가려 엔진 규칙이 건너뛴 뒤, 더 들여쓴 이어지는 줄(YAML 여러 줄 평문 값)이 남는 형태
+  const { adapter, work, env } = setup({ description: '## 배경\n- 설정\n\n```yaml\ndb:\n  password: 010-1234-5678\n    SECRETC1 이어지는 값\n```\n' });
   const r = runCli(['pack', '--adapter', adapter, '--work', work], env);
   assert.equal(r.code, 0, r.out + r.err);
   const p = readJson(join(work, 'pack.json'));
   assert.equal(p.codexSkipped, true);
   assert.match(p.codexSkipReason, /secret-decl/);
   assert.ok(!existsSync(join(work, 'pack-b.md')));
+});
+
+test('따옴표 없는 비밀값은 줄 끝까지 가린다 — 태그·앵커·쉼표·여러 단어 값도 잔존 0 · 안전장치는 줄 전체로 본다 (impl R4-2 + 훅, 추천 자동 채택(위임))', () => {
+  for (const text of ['password: !!str PRIVATE_VALUE', 'PASSWORD=prefix,PRIVATE_VALUE', 'password: &a PRIVATE_VALUE', 'password: my PRIVATE_VALUE phrase', 'password:\n  value: PRIVATE_VALUE']) {
+    const m = maskTextWithCounts(text, []);
+    assert.doesNotMatch(m.text, /PRIVATE_VALUE/, `${JSON.stringify(text)} → ${JSON.stringify(m.text)}`);
+    assert.deepEqual(m.residual, [], JSON.stringify(text));
+  }
+  assert.equal(maskTextWithCounts('password: [masked:secret]', []).text, 'password: [masked:secret]');   // 멱등
+  assert.equal(maskTextWithCounts('a: 1\npassword = hunter2 이므로\nb: 2', []).text, 'a: 1\npassword = [masked:secret]\nb: 2');
+  assert.deepEqual(maskTextWithCounts('{"password":"x","user":"keep-me"}', []).residual, []);
+  // 어댑터 규칙이 값 앞부분을 가린 뒤에도 같은 줄에 남은 것이 있으면 다시 가린다
+  const m = maskTextWithCounts('token: 010-1234-5678 PRIVATE_VALUE', [{ name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }]);
+  assert.doesNotMatch(m.text, /PRIVATE_VALUE/);
+  assert.deepEqual(m.residual, []);
+});
+
+test('CRLF 문서도 LF 와 같게 가린다 — END 없이 잘린 PEM 의 키 본문이 남지 않는다 (impl R4-3, 추천 자동 채택(위임))', () => {
+  const m = maskTextWithCounts('앞\r\n-----BEGIN PRIVATE KEY-----\r\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\r\nabcdEFGH==\r\n(… 발췌 상한으로 생략)', []);
+  assert.doesNotMatch(m.text, /MIIEvQ|abcdEFGH/, JSON.stringify(m.text));
+  assert.deepEqual(m.residual, []);
 });

@@ -74,7 +74,11 @@ const SAFE_EXTRA = new Set([0x5455, 0x7875]);
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 function zipName(raw, flags) {
   if (!(flags & 0x0800) && raw.some((b) => b >= 0x80)) throw new Error(`zip 파일명이 UTF-8 표시 없이 비ASCII(표준 리더와 이름이 달라짐): ${raw.toString('latin1')}`);
-  try { return UTF8.decode(raw); } catch { throw new Error(`zip 파일명이 올바른 UTF-8 이 아님: ${raw.toString('latin1')}`); }
+  let name;
+  try { name = UTF8.decode(raw); } catch { throw new Error(`zip 파일명이 올바른 UTF-8 이 아님: ${raw.toString('latin1')}`); }
+  // 왕복 대조(impl R4-4) — 해독기가 몰래 바꾼 이름(앞 BOM 제거 등)은 다른 리더와 이름이 갈린다
+  if (!Buffer.from(name, 'utf8').equals(raw)) throw new Error(`zip 파일명이 UTF-8 왕복에서 바뀜(BOM 등): ${raw.toString('latin1')}`);
+  return name;
 }
 
 function checkExtra(buf, start, len, name, where) {
@@ -148,6 +152,10 @@ export function readZip(buf) {
     const lFlags = buf.readUInt16LE(h + 6);
     if (lFlags !== e.flags) throw new Error(`zip local header 플래그 불일치(${lFlags} ≠ ${e.flags}): ${e.name}`);
     if (e.flags & 0x0041) throw new Error(`zip 암호화 플래그(미지원): ${e.name}`);
+    // local 크기·CRC 대조(impl R4-1) — 표준 리더는 local 값으로 풀 수 있어 목차와 다르면 다른 바이트가 나온다. data descriptor(bit 3)는 local 값이 비어 경계를 확정할 수 없어 거부(git archive 는 쓰지 않음 — 실측)
+    if (e.flags & 0x0008) throw new Error(`zip data descriptor(bit 3) 항목(미지원): ${e.name}`);
+    if (buf.readUInt32LE(h + 14) !== e.crc) throw new Error(`zip local header CRC 불일치(목차와 다름): ${e.name}`);
+    if (buf.readUInt32LE(h + 18) !== e.csize || buf.readUInt32LE(h + 22) !== e.usize) throw new Error(`zip local header 크기 불일치(목차와 다름): ${e.name}`);
     const start = h + 30 + nLen + eLen;
     if (start + e.csize > buf.length) throw new Error(`zip 데이터 범위 초과: ${e.name}`);
     const data = buf.subarray(start, start + e.csize);

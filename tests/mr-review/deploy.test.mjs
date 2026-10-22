@@ -365,3 +365,20 @@ test('zip 파일명: UTF-8 표시(bit 11) 없는 비ASCII 이름·깨진 UTF-8 �
   assert.deepEqual(gz.entries.map((e) => e.name), ['설정.txt']);
   assert.equal(gz.read(gz.entries[0]).toString(), 'k\n');
 });
+
+test('zip local header 의 CRC·압축 크기·원본 크기가 목차와 다르거나 data descriptor(bit 3)를 쓰면 거부 — 표준 리더가 다른 바이트를 풀 수 있는 zip (impl R4-1, 추천 자동 채택(위임))', () => {
+  const good = mkZip([{ name: 'src/main/A.txt', data: 'reviewed' }]);
+  assert.equal(readZip(good).read(readZip(good).entries[0]).toString(), 'reviewed');
+  for (const off of [14, 18, 22]) {
+    const b = Buffer.from(good);
+    b.writeUInt32LE(b.readUInt32LE(off) + 1, off);
+    const z = readZip(b);
+    assert.throws(() => z.read(z.entries[0]), /local header/, `offset ${off}`);
+  }
+  const dd = readZip(mkZip([{ name: 'src/main/A.txt', data: 'reviewed', flags: 0x0008 }]));
+  assert.throws(() => dd.read(dd.entries[0]), /data descriptor/);
+});
+
+test('zip 파일명: 해독 결과를 다시 UTF-8 로 바꾼 바이트가 원래와 다르면(BOM 제거 등) 거부 (impl R4-4 훅, 추천 자동 채택(위임))', () => {
+  assert.throws(() => readZip(mkZip([{ name: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('src/a.txt')]), data: 'x', flags: 0x0800 }])), /UTF-8/);
+});
