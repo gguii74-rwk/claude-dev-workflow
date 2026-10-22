@@ -108,8 +108,6 @@ export const SECRET_KEYS = `(?<![A-Za-z0-9])(?:[A-Za-z0-9]*?(?:[_.-]|[a-z0-9](?=
 // 블록 머리 줄(impl R3-1): 앵커(`&a`)·태그(`!!str`)·주석(` # …`)·CRLF 를 허용한다.
 // 잘린 비밀키(impl R2-3, 사용자 판정): 발췌 상한이 END 줄을 잘라도 BEGIN 줄부터 키 본문 줄(base64·`Proc-Type:` 같은 머리 줄)까지 가린다 — 완결 PEM 규칙 뒤에 둔다.
 // 작은따옴표 값은 YAML 이스케이프 `''`(따옴표 문자 하나)도 값의 일부로 소비한다(impl R5-1 — `'alpha''BRAVO'` 의 뒷부분이 남지 않게).
-const XML_DECL = `<${SECRET_KEYS}(?:[ \\t][^<>\\n]*)?>`;   // 비밀값 키 이름의 여는 태그(속성 허용, `<password/>` 같은 빈 요소는 제외)
-const ATTR_KEY = `\\b(?:name|key|property)[ \\t]*=[ \\t]*["']${SECRET_KEYS}["']`;   // 키를 속성 값으로 둔 XML 설정(8b FR2-4)
 const QUOTED = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})${WHOLE_MARK(q)}(?:[^${q}\\\\]|\\\\[\\s\\S]${q === "'" ? "|''" : ''})+(?=${q})`;
 // 닫는 따옴표가 어디에도 없는 값(발췌가 값 중간을 자른 경우 등 — QUOTED 가 먼저 돌아 닫힘이 뒤에 있으면 이미 가려졌다)은 텍스트 끝까지 가리고, 안전장치가 잔존으로 본다(impl C1 R2-2 잔존 — 팩 B 는 Codex 생략, 리포트·cleanup 은 필드·값 단위라 그 값 끝까지).
 const OPEN_QUOTE = (q) => `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*${q})(?!\\[masked:)(?![^${q}\\n]*${q})[\\s\\S]+`;
@@ -127,12 +125,9 @@ export const SECRET_MASK = [
   { name: 'secret', pattern: AFTER_QUOTE('`') },
   { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?[ \\t]*:[ \\t]*(?:[&!][^\\s]*[ \\t]+)*[|>][1-9+-]{0,2}(?:[ \\t]+#[^\\r\\n]*)?[ \\t]*\\r?\\n)(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*(?:\\n(?:[ \\t]*\\r?\\n)*[ \\t]+[^\\n]*)*` },
   { name: 'secret', pattern: `(?<=${SECRET_KEYS}["'\`]?\\s*[:=]\\s*)(?![\\s"'\`])(?!${MARK}[ \\t]*(?:\\n|$))(?:[^\\n]*\\\\\\n)*[^\\n]+` },   // 줄 끝 `\` 이음(Java properties)은 다음 줄까지 값(8b FR2-4)
-  { name: 'secret', pattern: `(?<=${XML_DECL})[^<]+` },
-  { name: 'secret', pattern: `(?<=<[^<>]*${ATTR_KEY}[^<>]*?\\bvalue[ \\t]*=[ \\t]*")[^"]*` },   // XML 속성 꼴(8b FR2-4) — `<property name="password" value="V"/>`·`<add key="Password" value='V'/>`
-  { name: 'secret', pattern: `(?<=<[^<>]*${ATTR_KEY}[^<>]*?\\bvalue[ \\t]*=[ \\t]*')[^']*` },
-  { name: 'secret', pattern: `(?<=<[^<>]*\\bvalue[ \\t]*=[ \\t]*")[^"]*(?="[^<>]*${ATTR_KEY})` },   // value 가 키 속성보다 앞
-  { name: 'secret', pattern: `(?<=<[^<>]*\\bvalue[ \\t]*=[ \\t]*')[^']*(?='[^<>]*${ATTR_KEY})` },
-  { name: 'secret', pattern: `(?<=<[^<>]*${ATTR_KEY}[^<>]*(?<!/)>)[^<]+` },   // `<entry key="password">V</entry>`   // XML·HTML 요소 값(8b FR1-1) — `<password>V</password>`·여러 줄 값은 다음 `<` 까지(닫는 태그는 남긴다). CDATA 등 `<` 로 시작하는 값은 못 가리고 안전장치가 잔존으로 본다
+  // XML·HTML 요소·속성 값은 정규식이 아니라 태그 해석기(`maskXml`, 아래)가 가린다(8b FR2-4 감사 이의 재판정 — CDATA·중첩 요소·대문자 `VALUE`·따옴표 없는 값, 선형 시간)
+  { name: 'secret', pattern: '(?<=[A-Za-z][A-Za-z0-9+.-]*://[^\\s/:@]+:)(?!\\[masked:)[^\\s/@]+(?=@)' },   // URL 자격증명 `scheme://user:비번@host` 의 비번(8b FR1-1 감사 이의 재판정)
+  { name: 'secret', pattern: `(?<=(?<![\\w-])--?${SECRET_KEYS}[ \\t]+)(?!-|${MARK})(?:"[^"\\n]*"|'[^'\\n]*'|[^\\s"'][^\\s]*)` },   // 명령줄 옵션 `--password 값`·`-token "값"`(같은 재판정 — `--password=값` 은 위 `=` 규칙)
   { name: 'secret', pattern: '(?<=\\bBearer\\s+)(?!\\[masked:)[^\\s"\'`,;)\\]]{8,}' },   // 문자 집합은 SHA 자리표시자(아래 maskText)도 삼키도록 넓게 — `Bearer <40자 16진수>` 가 보호 자리표시자 뒤에 숨어 잔존 검사에서 되살아나지 않게
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----' },
   { name: 'secret', pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----(?:\\n[A-Za-z0-9+/=:, -]+)*' },
@@ -147,13 +142,63 @@ const SHA40_RE = /(?<![@.\w])(?=[0-9a-f]{40}\b)(?=[0-9]*[a-f])[0-9a-f]{40}(?!@|\
 // 선언(`<키>[:=]`) 뒤 같은 줄 값이 가림 표시·빈 따옴표·블록 머리(`|`·`>`·앵커·태그·주석)·빈 값이 아니거나, 값 자리가 머리·표시뿐인데 그 줄보다 더 들여쓴 다음 줄이 통째로 가림 표시가 아니면 `secret-decl` 잔존 → Codex 생략.
 // 오탐 비용 = 단일 모델 리뷰(D14 fail-closed 경로) — 값 누출보다 낫다.
 const DECL_RE = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*[:=]`, 'g');
-// XML 요소 선언(8b FR1-1) — 여는 태그 바로 뒤가 닫는 태그(`</`)이거나, 가림 표시 하나 뒤 닫는 태그·텍스트 끝이어야 한다. 그 밖(CDATA·중첩 태그·가림 뒤 잔여)은 잔존.
-const XML_DECL_RE = new RegExp(XML_DECL, 'g');
-const XML_OK = new RegExp(`^(?:${MARK})?(?:</|$)`);
-// XML 속성 꼴 안전장치(8b FR2-4) — 키 속성이 있는 태그의 `value` 속성은 비었거나 가림 표시 하나, 닫히지 않은 태그 뒤 텍스트는 공백·가림 표시뿐이어야 한다.
-const ATTR_TAG_RE = new RegExp(`<[^<>]*${ATTR_KEY}[^<>]*>`, 'g');
-const VALUE_ATTR_RE = /\bvalue[ \t]*=[ \t]*(["'])(.*?)\1/g;
 const WHOLE_MARK_RE = new RegExp(`^${MARK}$`);
+// URL 자격증명·명령줄 옵션 안전장치(8b FR1-1 감사 이의 재판정) — 가림 표시가 아닌 비번·옵션 값이 남으면 잔존.
+const URL_CRED_LEFT = new RegExp(`[A-Za-z][A-Za-z0-9+.-]*://[^\\s/:@]+:(?!${MARK}@)[^\\s/@]+@`);
+const CLI_LEFT = new RegExp(`(?<![\\w-])--?${SECRET_KEYS}[ \\t]+(?!-|${MARK})[^\\s]`);
+
+// ── XML 태그 해석기(8b FR2-4 감사 이의 재판정, 추천 자동 채택(위임)) ─────────────────────────────
+// 태그를 한 번씩만 훑는다(선형 — 정규식 뒤돌아보기 반복의 이차 시간 제거, 훅). 비밀값 키 요소(`<password>`·`<db_password …>`) 또는 키 속성(`name`·`key`·`property` = 비밀값 키,
+// 속성 이름 대소문자 무관)을 가진 여는 태그는 ① `value` 속성(대소문자·따옴표 무관)을 가림 표시로, ② 짝 닫는 태그(`</이름>`)까지의 본문 전체(CDATA·중첩 `<value>` 포함)를 가림 표시 하나로 바꾼다.
+// 짝 닫는 태그가 없으면 가리지 않고 안전장치가 잔존으로 본다(HTML 빈 요소 `<input>`·`<param>` 등은 자기 닫힘으로 취급). 같은 해석으로 안전장치도 본다.
+const TAG_RE = /<([A-Za-z_][\w:.-]*)((?:[^<>"']|"[^"<>]*"|'[^'<>]*')*)>/g;
+const CLOSE_RE = /<\/([A-Za-z_][\w:.-]*)\s*>/g;
+const KEY_NAME_RE = new RegExp(`^${SECRET_KEYS}$`);
+const KEY_ATTR_RE = new RegExp(`(?<![\\w-])${ci('(?:name|key|property)')}[ \\t]*=[ \\t]*["']${SECRET_KEYS}["']`);
+const VALUE_ATTR = new RegExp(`((?<![\\w-])${ci('value')}[ \\t]*=[ \\t]*)("[^"]*"|'[^']*'|[^\\s"'>/]+)`, 'g');
+const VOID_TAGS = new Set(['input', 'param', 'meta', 'link', 'br', 'hr', 'img', 'source', 'track', 'area', 'base', 'col', 'embed', 'wbr', 'keygen']);
+const markVal = (v) => WHOLE_MARK_RE.test(v.replace(/^["']|["']$/g, '')) || /^(?:""|'')$/.test(v);
+function xmlKeyed(text) {
+  const closes = new Map();
+  for (const c of text.matchAll(CLOSE_RE)) { if (!closes.has(c[1])) closes.set(c[1], []); closes.get(c[1]).push(c.index); }
+  const nextClose = (name, from) => { const xs = closes.get(name) || []; let lo = 0; let hi = xs.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (xs[mid] < from) lo = mid + 1; else hi = mid; } return lo < xs.length ? xs[lo] : -1; };
+  const out = [];
+  for (const m of text.matchAll(TAG_RE)) {
+    const [tag, name, attrs] = m;
+    if (!KEY_NAME_RE.test(name) && !KEY_ATTR_RE.test(attrs)) continue;
+    const end = m.index + tag.length;
+    const selfClosing = /\/\s*$/.test(attrs) || VOID_TAGS.has(name.toLowerCase());
+    out.push({ start: m.index, end, tag, name, attrs, selfClosing, close: selfClosing ? -1 : nextClose(name, end) });
+  }
+  return out;
+}
+function maskXml(text) {
+  let out = '';
+  let at = 0;
+  let n = 0;
+  for (const k of xmlKeyed(text)) {
+    if (k.start < at) continue;                                                              // 앞 요소 본문 안에 든 태그 — 이미 통째로 가렸다
+    const tag = k.tag.replace(VALUE_ATTR, (all, pre, v) => (markVal(v) ? all : (n += 1, `${pre}"[masked:secret]"`)));
+    out += text.slice(at, k.start) + tag;
+    at = k.end;
+    if (k.close < 0) continue;
+    const body = text.slice(k.end, k.close);
+    if (body.trim() === '' || WHOLE_MARK_RE.test(body.trim())) out += body;
+    else { out += '[masked:secret]'; n += 1; }
+    at = k.close;
+  }
+  return { text: out + text.slice(at), n };
+}
+function xmlLeft(text) {
+  for (const k of xmlKeyed(text)) {
+    for (const v of k.attrs.matchAll(VALUE_ATTR)) if (!markVal(v[2])) return true;
+    if (k.selfClosing) continue;
+    if (k.close < 0) return true;                                                            // 짝 닫는 태그 없음 — 값 범위를 확정할 수 없다(발췌가 자른 경우 포함)
+    const body = text.slice(k.end, k.close).trim();
+    if (body !== '' && !WHOLE_MARK_RE.test(body)) return true;
+  }
+  return false;
+}
 // 비밀값 키 바로 뒤의 풀지 않은 이스케이프(8b FR2-2) — `password\u003a V`·`password&gt;V` 처럼 구분자를 숨긴 꼴은 가리지 못하므로 잔존으로 본다.
 const ESC_AFTER_KEY = new RegExp(`${SECRET_KEYS}["'\`]?[ \t]*(?:\\\\u[0-9a-fA-F]{4}|\\\\x[0-9a-fA-F]{2}|&#[xX]?[0-9a-fA-F]+;|%[0-9a-fA-F]{2}|&(?:lt|gt|quot|apos|amp);)`);
 const DECL_HEAD_ALT = `(?:(?:${MARK}|[&!]\\S*|[|>][1-9+-]{0,2})[ \t]*)*(?:#.*)?`;
@@ -164,13 +209,7 @@ const DECL_OK = new RegExp(`^(?:["'\`]${MARK}["'\`]${AFTER_Q}|(["'\`])\\1${AFTER
 const DECL_WHOLE = new RegExp(`^[ \t]*${MARK}[ \t\r]*$`);   // 이어지는 줄은 통째로 가림 표시여야 한다(첫 토큰만 가린 `[masked:secret] 나머지` 는 통과 아님)
 const DECL_HEAD = new RegExp(`^${DECL_HEAD_ALT}$`);
 function unmaskedSecretDecl(text) {
-  if (ESC_AFTER_KEY.test(text)) return true;
-  for (const m of text.matchAll(ATTR_TAG_RE)) {
-    for (const v of m[0].matchAll(VALUE_ATTR_RE)) if (v[2] !== '' && !WHOLE_MARK_RE.test(v[2])) return true;
-    const after = /^[^<]*/.exec(text.slice(m.index + m[0].length))[0];
-    if (!m[0].endsWith('/>') && after.trim() !== '' && !WHOLE_MARK_RE.test(after.trim())) return true;
-  }
-  for (const m of text.matchAll(XML_DECL_RE)) if (!XML_OK.test(text.slice(m.index + m[0].length))) return true;
+  if (ESC_AFTER_KEY.test(text) || URL_CRED_LEFT.test(text) || CLI_LEFT.test(text) || xmlLeft(text)) return true;
   for (const m of text.matchAll(DECL_RE)) {
     const ls = text.lastIndexOf('\n', m.index) + 1;
     let le = text.indexOf('\n', m.index);
@@ -233,19 +272,20 @@ export function maskTextWithCounts(text, maskRules, keepShas = []) {
   const nonce = PUA_HEX(randomBytes(8).toString('hex'));
   const held = unescapeKeyChars(text.replace(/\r\n/g, '\n').replace(/[\u0000\uE000-\uE010]/g, '\uFFFD')).replace(SHA40_RE, (m) => { if (!known.has(m)) return m; keep.push(m); return `\u0000${nonce}\uE010${PUA_HEX((keep.length - 1).toString(16))}\u0000`; });
   const a = applyMask(held, maskRules);
-  const b = applyMask(a.text, SECRET_MASK);
+  const x = maskXml(a.text);
+  const b = applyMask(x.text, SECRET_MASK);
   const c = maskContinuations(b.text);
   const applied = { ...a.applied };
   for (const [k, v] of Object.entries(b.applied)) applied[k] = (applied[k] || 0) + v;
-  if (c.n) applied.secret = (applied.secret || 0) + c.n;
+  if (c.n + x.n) applied.secret = (applied.secret || 0) + c.n + x.n;
   const left = residual(c.text, [...maskRules, ...SECRET_MASK]);
   if (unmaskedSecretDecl(c.text)) left.push({ name: 'secret-decl' });
   const out = c.text.replace(new RegExp(`\u0000${nonce}\uE010([\uE000-\uE00F]+)\u0000`, 'g'), (_, i) => keep[PUA_NUM(i)]);
   if (/[\u0000\uE000-\uE010]/.test(out)) left.push({ name: 'sha-guard' });
   return { text: out, applied, residual: left };
 }
-// 저장·전송본(리포트·cleanup JSON·필드)은 잔존을 남기지 않는다(8b FR2-3, fail-closed) — 팩 B 는 잔존이면 Codex 를 생략하지만 저장본은 생략할 수 없으므로,
-// 잔존이 있으면 줄마다 다시 검사해 잔존 줄을 통째로 `[masked:unmaskable]` 로 바꾸고, 여러 줄에 걸친 형태라 그래도 남으면 텍스트 전체를 바꾼다.
+// 저장·전송본(리포트 필드·cleanup JSON 문자열 값)은 잔존을 남기지 않는다(8b FR2-3, fail-closed) — 팩 B 는 잔존이면 Codex 를 생략하지만 저장본은 생략할 수 없으므로,
+// 잔존이 있으면 그 문자열(필드 하나)을 통째로 `[masked:unmaskable]` 로 바꾼다(FC1 재판정 — 줄 단위로 지우면 탐지 근거만 사라지고 여러 줄 값의 나머지가 남는다). 리포트 조립본은 render 가 따로 막는다.
 const UNMASKABLE = '[masked:unmaskable]';
 function shaGuard(m) {
   if (m.residual.some((r) => r.name === 'sha-guard')) throw new PackError('마스킹이 SHA 보호 자리표시를 깨뜨렸다 — 어댑터 mask 패턴이 사적 영역 문자(U+E000~)·NUL 을 잡지 않는지 확인');
@@ -253,10 +293,7 @@ function shaGuard(m) {
 }
 export function maskText(text, maskRules, keepShas = []) {
   const m = shaGuard(maskTextWithCounts(text, maskRules, keepShas));
-  if (!m.residual.length) return m.text;
-  const lines = m.text.split('\n').map((l) => (shaGuard(maskTextWithCounts(l, maskRules, keepShas)).residual.length ? UNMASKABLE : l));
-  const f = shaGuard(maskTextWithCounts(lines.join('\n'), maskRules, keepShas));
-  return f.residual.length ? UNMASKABLE : f.text;
+  return m.residual.length ? UNMASKABLE : m.text;
 }
 
 // 보호할 SHA = 구조화된 칸에서 나온 실제 커밋 SHA 만(8b FR1-2, 추천 자동 채택(위임)) — 스냅샷 세 SHA · MR `api_head`·`diff_refs`·`versions`.

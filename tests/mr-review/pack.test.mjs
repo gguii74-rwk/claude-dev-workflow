@@ -555,8 +555,8 @@ test('넓은 기준: XML 요소·이스케이프·엔티티로 숨긴 키·카�
   assert.match(maskTextWithCounts('<password>V</password> <user>bob</user>', []).text, /<user>bob<\/user>/);   // 닫는 태그 뒤 다른 요소는 보존
   const html = maskTextWithCounts('&lt;password&gt;HTML_ESC_VAL&lt;/password&gt;', []);                         // 구분자로 풀리는 엔티티는 풀지 않고 잔존(8b FR2-2)
   assert.ok(html.residual.some((r) => r.name === 'secret-decl'), JSON.stringify(html));
-  const cdata = maskTextWithCounts('<password><![CDATA[CDATA_VAL]]></password>', []);
-  assert.ok(cdata.residual.some((r) => r.name === 'secret-decl'), JSON.stringify(cdata));                        // 못 가린 형태 = 잔존(fail-closed)
+  const cut = maskTextWithCounts('<property name="password"><value>CUT_VAL', []);                                // 짝 닫는 태그 없음(발췌가 자름) = 범위 미확정 → 잔존(fail-closed)
+  assert.ok(cut.residual.some((r) => r.name === 'secret-decl'), JSON.stringify(cut));
   for (const t of ['tokens=keep secretary: Kim', '<password/> 와 <password></password>']) {                     // 키 아님 · 빈 요소
     const m = maskTextWithCounts(t, []);
     assert.equal(m.text, t);
@@ -571,7 +571,7 @@ test('넓은 기준 CLI: MR 댓글의 XML 비밀값·이스케이프 키 비밀�
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.first, /codexSkipped=false$/);
   assert.doesNotMatch(readFileSync(join(a.work, 'pack-b.md'), 'utf8'), /XML_NOTE_SECRET|ESC_NOTE_SECRET/);
-  const b = setup({ notes: [{ ...notes[0], body: '<password><![CDATA[CDATA_NOTE_SECRET]]></password>' }] });
+  const b = setup({ notes: [{ ...notes[0], body: 'password\\u003a ESC_SEP_NOTE_SECRET' }] });   // 못 가린 꼴(구분자 이스케이프) → 잔존
   const r2 = runCli(['pack', '--adapter', b.adapter, '--work', b.work], b.env);
   assert.equal(r2.code, 0, r2.out + r2.err);
   assert.match(r2.first, /codexSkipped=true$/);
@@ -629,11 +629,9 @@ test('이스케이프는 키 글자만 푼다 — 값 안의 `\\u0022` 가 값 �
   }
 });
 
-test('저장·전송본은 잔존을 남기지 않는다 — maskText(리포트·cleanup)는 못 가린 줄을 통째로 [masked:unmaskable] 로 · cleanup JSON 에도 평문 없음 (8b FR2-3)', () => {
-  const t = '앞 줄 유지\n<password><![CDATA[CDATA_STORE_SECRET]]></password>\n뒤 줄 유지';
-  const out = maskText(t, []);
-  assert.ok(!out.includes('CDATA_STORE_SECRET'), out);
-  assert.equal(out, '앞 줄 유지\n[masked:unmaskable]\n뒤 줄 유지');
+test('저장·전송본은 잔존을 남기지 않는다 — maskText(리포트 필드·cleanup 문자열 값)는 잔존 문자열을 통째로 [masked:unmaskable] 로 · 여러 줄 값의 나머지 줄도 남지 않는다 · cleanup JSON 에도 평문 없음 (8b FR2-3 · FC1 재판정)', () => {
+  const t = '앞 줄\n<property name="password"><value>\nMULTI_STORE_SECRET';                                     // 짝 닫는 태그 없는 여러 줄 값 — 줄 단위로 지우면 둘째 줄이 남던 꼴(FC1)
+  assert.equal(maskText(t, []), '[masked:unmaskable]');
   assert.ok(!maskText('password\\u003a ESC_STORE_SECRET', []).includes('ESC_STORE_SECRET'));
   const root = tmp();
   const work = join(root, 'work');
@@ -659,7 +657,7 @@ test('재리뷰 이전 차단 발견은 팩 B 출처(rereview)로 들어가 같�
   assert.match(b, /- F1 DEFECT — 로그에 password=\[masked:secret\]/);
   assert.match(b, /- F2 DEFECT — \(미확보 — 이전 리포트 없음\)/);
   assert.doesNotMatch(b, /PRIOR_TITLE_SECRET/);
-  check.rereview.priorBlocking[0].title = '<password><![CDATA[PRIOR_CDATA]]></password>';
+  check.rereview.priorBlocking[0].title = 'password\\u003a PRIOR_ESC';
   writeFileSync(join(s.work, 'check.json'), JSON.stringify(check));
   const r2 = runCli(['pack', '--adapter', s.adapter, '--work', s.work], s.env);
   assert.match(r2.first, /codexSkipped=true$/);
@@ -698,5 +696,46 @@ test('비밀값 키 인식 정규식은 대문자·식별자 연속에도 선형
     const s0 = Date.now();
     maskTextWithCounts(t, []);
     assert.ok(Date.now() - s0 < 2000, `${t.slice(0, 20)}… ${Date.now() - s0}ms`);
+  }
+});
+
+test('URL 자격증명(`scheme://user:비번@host`)·명령줄 옵션(`--password 값`)도 가린다 — 가림 표시가 아닌 값이 남으면 잔존 (8b FR1-1 감사 이의 재판정, 추천 자동 채택(위임))', () => {
+  const cases = [
+    ['curl https://deploy:URL_PASS@nexus.example/x', 'URL_PASS'],
+    ['git clone ssh+git://bot:SSH_PASS@host/r.git', 'SSH_PASS'],
+    ['run --password CLI_PASS --user bob', 'CLI_PASS'],
+    ['mysql -password "CLI Q"', 'CLI Q'],
+    ['tool --db-token CLI_TOK', 'CLI_TOK'],
+  ];
+  for (const [text, leak] of cases) {
+    const m = maskTextWithCounts(text, []);
+    assert.ok(!m.text.includes(leak), `${text} → ${m.text}`);
+    assert.deepEqual(m.residual, [], text);
+  }
+  assert.match(maskTextWithCounts('run --password X --user bob', []).text, /--user bob$/);                       // 다음 옵션은 보존
+  for (const t of ['https://example.com/a:b@c', 'token --foo', 'see https://host/path']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
+});
+
+test('XML 태그 해석기: 비밀값 키 요소·속성 태그의 value(대소문자·따옴표 무관)와 짝 닫는 태그까지 본문 전체(CDATA·중첩 <value>)를 가린다 · HTML 빈 요소는 자기 닫힘 · 짝 없으면 잔존 · 선형 시간 (8b FR2-4 감사 이의 재판정 + FC1 + 훅, 추천 자동 채택(위임))', () => {
+  const cases = [
+    ['<property name="password" VALUE="UPPER_V"/>', 'UPPER_V'],
+    ['<property name="password" value=UNQUOTED_V />', 'UNQUOTED_V'],
+    ['<property name="password">\n  <value>NESTED_V</value>\n</property>', 'NESTED_V'],
+    ['<entry key="password"><![CDATA[ENTRY_CDATA]]></entry>', 'ENTRY_CDATA'],
+    ['<password><![CDATA[\nMULTI_CDATA\n]]></password>', 'MULTI_CDATA'],
+    ['<Property Name="db.Password" Value="CASE_V"/>', 'CASE_V'],
+  ];
+  for (const [text, leak] of cases) {
+    const m = maskTextWithCounts(text, []);
+    assert.ok(!m.text.includes(leak), `${text} → ${m.text}`);
+    assert.deepEqual(m.residual, [], text);
+  }
+  assert.equal(maskTextWithCounts('<property name="password"><value>X</value></property> <p>keep</p>', []).text, '<property name="password">[masked:secret]</property> <p>keep</p>');
+  for (const t of ['<input type="password" name="password"> 설명', '<password/> 와 <password></password>', '<label for="password">비밀번호</label>']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
+  // 이차 시간이던 입력(훅 — 한 태그에 value 속성 수만 개)도 선형
+  for (const t of ['<a ' + 'value="x" '.repeat(32000), '<a name="password" ' + 'value="" '.repeat(32000), '<password>'.repeat(20000), '<a b="'.repeat(20000)]) {
+    const s0 = Date.now();
+    maskTextWithCounts(t, []);
+    assert.ok(Date.now() - s0 < 2000, `${t.slice(0, 24)}… ${Date.now() - s0}ms`);
   }
 });

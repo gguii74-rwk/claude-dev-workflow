@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { maskText, SECRET_MASK, SECRET_KEYS, knownShas } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
+import { maskText, maskTextWithCounts, SECRET_MASK, SECRET_KEYS, knownShas } from './pack.mjs';   // 엔진 마스킹 규칙은 pack.mjs 가 정본(팩 B·리포트·cleanup 공유, R6-1) — 여기서 다시 정의하지 않는다
 export { maskText, SECRET_MASK };
 
 export class ReportError extends Error {}
@@ -262,11 +262,11 @@ function fieldMask(v, maskRules, keepShas) {
 export function renderReport({ adapter, work, early = false }) {
   const mr = readJson(work, 'mr.json');
   const snapshot = readJson(work, 'snapshot.json');
-  const check = readJson(work, 'check.json');
+  let check = readJson(work, 'check.json');
   if (!mr || !snapshot || !check) throw new ReportError('mr.json·snapshot.json·check.json 이 필요하다(collect·check 먼저)');
   const keep = knownShas({ mr, snapshot });
-  const deploy = readJson(work, 'deploy.json');
-  const pack = readJson(work, 'pack.json');
+  let deploy = readJson(work, 'deploy.json');
+  let pack = readJson(work, 'pack.json');
   let findings = early ? null : readJson(work, 'findings.json');
   let verdict = early ? null : readJson(work, 'verdict.json');
   // 판정 입력의 head 일치 검증 — 같은 work 에 남은 이전 실행의 verdict.json·findings.json 을 현재 head 의 판정으로 쓰지 않는다(F6). 비-early 인데 verdict 가 없으면 리뷰 실패로 렌더한다(판정 블록 없음).
@@ -279,6 +279,12 @@ export function renderReport({ adapter, work, early = false }) {
   findings = fieldMask(findings, adapter.mask, keep);
   verdict = fieldMask(verdict, adapter.mask, keep);
   mr.title = fieldMask(mr.title, adapter.mask, keep);
+  // 리포트 재료는 전부 필드 단위로 먼저 가린다(8b FR2-3 FC1 재판정) — 잔존 필드는 통째로 `[masked:unmaskable]`(maskText). 조립본 전체 검사는 아래에서 한 번 더.
+  mr.web_url = fieldMask(mr.web_url, adapter.mask, keep);
+  if (mr.project) mr.project.name = fieldMask(mr.project.name, adapter.mask, keep);
+  check = fieldMask(check, adapter.mask, keep);
+  deploy = fieldMask(deploy, adapter.mask, keep);
+  pack = fieldMask(pack, adapter.mask, keep);
   const adapterId = `${path.basename(adapter.file)}@${createHash('sha1').update(adapter.markdown).digest('hex').slice(0, 8)}`;
   const mode = early ? '조기 종료(결정적 검사만)' : `${check.rereview?.active ? '재리뷰' : '전체'}${snapshot.mode === 'diff-only' ? ' · diff-only' : ''}`;
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
@@ -365,7 +371,10 @@ export function renderReport({ adapter, work, early = false }) {
   }
   const text = parts.join('\n');
   // F5 — 산출물 전체 비밀값 제거: 어댑터 개인정보 패턴 + 엔진 내장 비밀값 리터럴 패턴(§5.7 「하드코딩 비밀값은 [masked:secret] <파일:줄>로만」 — 어댑터 mask 에 비밀번호·API 키 패턴이 없어도 적용). SHA 는 보존(R5-2 — maskText).
-  return maskText(text, adapter.mask, keep);
+  // 조립본에 잔존이 남으면(재료 밖 문구가 비밀값 꼴을 만든 경우 등) 리포트를 쓰지 않는다 — 줄·필드를 지워 탐지 근거만 없애는 대신 멈춘다(8b FR2-3, fail-closed)
+  const fin = maskTextWithCounts(text, adapter.mask, keep);
+  if (fin.residual.length) throw new ReportError(`리포트 조립본에 마스킹 잔존(${fin.residual.map((r) => r.name).join(', ')}) — 리포트를 쓰지 않는다`);
+  return fin.text;
 }
 
 // ── 정리(F7·F5) ───────────────────────────────────────────────────────────

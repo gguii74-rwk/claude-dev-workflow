@@ -553,3 +553,18 @@ test('cleanup: 마스킹이 실패한 JSON 은 원문으로 남기지 않고 지
   assert.doesNotMatch(readFileSync(join(work, 'check.json'), 'utf8'), /synthetic-plain-secret/);
   assert.ok(!existsSync(join(work, 'zip')));
 });
+
+test('리포트: 발견 근거에 못 가린 비밀값 꼴(짝 없는 여러 줄 XML 값)이 있으면 그 필드만 [masked:unmaskable] — 다음 줄 비밀값도 리포트에 없고 나머지는 남는다 (8b FR2-3 FC1 재판정)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const fnd = findings([F({ evidence: '설정 발췌 <property name="password"><value>\nRENDER_MULTI_SECRET', title: '설정 평문 비밀번호' })]);
+  const work = fullWork(root, { fnd });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT determined CHANGES_REQUESTED');
+  const out = join(root, 'r.md');
+  const r = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(r.code, 0, r.out + r.err);
+  const md = readFileSync(out, 'utf8');
+  assert.doesNotMatch(md, /RENDER_MULTI_SECRET/);
+  assert.match(md, /근거: \[masked:unmaskable\]/);
+  assert.match(md, /설정 평문 비밀번호/);                                                   // 다른 필드는 그대로
+});

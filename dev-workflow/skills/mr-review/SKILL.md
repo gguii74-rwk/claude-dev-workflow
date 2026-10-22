@@ -105,7 +105,7 @@ fi
 
 첫 줄 `PACKED sources=<n> codexSkipped=<b>`. `codexSkipped=true`면 **Codex를 띄우지 않는다**(마스킹 잔존 — `pack.json.codexSkipReason`을 시작 요약에 적고 단일 모델 모드). 팩 A = `W/pack-a.md`(Claude 전부), 팩 B = `W/pack-b.md`(Codex — 허용 출처 + 마스킹).
 
-**비밀값 가림의 범위**: 엔진이 알아보는 꼴 = `키: 값`·`키=값`(따옴표·YAML 블록·이어지는 줄·properties 줄 끝 `\` 이음) · XML `<키>값</키>` · XML 속성(`name`·`key`·`property` = 키, `value` = 값) · `<entry key="키">값</entry>` · `Bearer` · PEM 비밀키. 키 = password·passwd·pwd·passphrase·secret·api key·access key·private key·client secret·token·authorization·credential(s)와 그 구분자·카멜 표기 확장(`DB_PASSWORD`·`dbPassword`). 알아보지만 가리지 못한 꼴(CDATA·구분자 이스케이프 등)은 잔존 → 팩 B 는 Codex 생략, 리포트·cleanup 은 그 줄을 `[masked:unmaskable]` 로 바꾼다. **그 밖의 꼴(구분자 없는 `--password 값`, 키 단어 없는 URL 자격증명 등)은 가리지 못한다** — 글(본문·댓글·발췌) 속 비밀값 가림은 알려진 꼴 기준의 최선 노력이고, 코드(워크트리)는 D4 대로 가리지 않고 Codex 로 간다. 프로젝트 고유 꼴은 어댑터 `mask` 에 넣는다.
+**비밀값 가림의 범위**: 엔진이 알아보는 꼴 = `키: 값`·`키=값`(따옴표·YAML 블록·이어지는 줄·properties 줄 끝 `\` 이음) · 명령줄 옵션 `--키 값` · URL 자격증명 `scheme://사용자:비번@호스트` · XML 요소 `<키>…</키>` 와 키 속성(`name`·`key`·`property` = 키) 태그 — `value` 속성(대소문자·따옴표 무관)과 짝 닫는 태그까지 본문 전체(CDATA·중첩 요소 포함) · `Bearer` · PEM 비밀키. 키 = password·passwd·pwd·passphrase·secret·api key·access key·private key·client secret·token·authorization·credential(s)와 그 구분자·카멜 표기 확장(`DB_PASSWORD`·`dbPassword`). 알아보지만 가리지 못한 꼴(짝 닫는 태그가 없는 XML 값·구분자 이스케이프 등)은 잔존 → 팩 B 는 Codex 생략, 리포트 필드·cleanup 문자열 값은 그 값 전체를 `[masked:unmaskable]` 로 바꾸고, 리포트 조립본에 잔존이 남으면 `render` 가 `ERR`(리포트를 쓰지 않음). **그 밖의 꼴(키 단어 없이 공백으로만 이어진 값 등)은 가리지 못한다** — 글(본문·댓글·발췌) 속 비밀값 가림은 알려진 꼴 기준의 최선 노력이고, 코드(워크트리)는 D4 대로 가리지 않고 Codex 로 간다. 프로젝트 고유 꼴은 어댑터 `mask` 에 넣는다.
 
 ## 5. 독립 병렬 검토 — 두 검토자는 서로의 존재·결과를 모른다
 
