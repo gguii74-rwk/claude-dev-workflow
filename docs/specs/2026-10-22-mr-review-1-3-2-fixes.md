@@ -226,7 +226,7 @@ harden-spec(2026-10-22 20:0x~20:1x, 이 세션)에서 확정 — 판단 갭 9건
 
 보안 크리티컬: yes (호출자 지정 — 사용자 확정 2026-10-22 20:44) — 접촉면 zip 해석·경로 사상(소스↔WAR 매핑)·경로 감시 제외 확대·리포트 요약(마스킹 경계)
 
-- 루프: base `c3b946a`(c3b946af90faa984157ad9303b6cd804cc7c75cf = 1.3.1 릴리스 = origin/main, 호출자 지정 — SC-7 `<base>`) · branch `gguii74-rwk/mr-review-1-3-2-fixes`(오르카 워크트리) · 착수 HEAD `60d8990` · 예산 max 5 · confirm 2 · auto 1 · **위임 모드**(`DEV_WORKFLOW_MODE=delegated`) · 입도 = 통합 1회(경량 D36 — plan 없음, ledger = 이 spec 말미).
+- 루프: base `c3b946a`(c3b946af90faa984157ad9303b6cd804cc7c75cf = 1.3.1 릴리스 = origin/main, 호출자 지정 — SC-7 `<base>`) · branch `…/mr-review-1-3-2-fixes`(오르카 워크트리 — 사용자 접두는 SC-7 T6 때문에 생략) · 착수 HEAD `60d8990` · 예산 max 5 · confirm 2 · auto 1 · **위임 모드**(`DEV_WORKFLOW_MODE=delegated`) · 입도 = 통합 1회(경량 D36 — plan 없음, ledger = 이 spec 말미).
 - 사전 게이트(SC-7, HEAD `60d8990`): T1 182/182 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0(skills·tests 0 · README·docs 추가 줄 0) · T7 0 · 대장 대기 0건 승계 · codex companion 1.0.6.
 - 승계 기결정(focus 전문): D1~D51 · 비목표·수용된 한계(§2·§6) · impl 트랙 자동 보안 리뷰 (가) maven-war 비매핑 소스 경로 그대로 통과·④ zip 경로 꼴 수용(D45·§3.⑨-2·④) (나) 내부 클래스 `Foo$<무엇이든>.class` 인정(D38·AC⑨-4) = 설계 동작(트랙 프롬프트 — 재론 금지) · 빌더 결정 3건(.class CRC 판독 · detail 「(기대 경로 …)」 조건 · 요약 꼬리 「 · 전체 목록 부록 A」) = 판단 재론 없음, 결함만 finding.
 
@@ -236,9 +236,12 @@ harden-spec(2026-10-22 20:0x~20:1x, 이 세션)에서 확정 — 판단 갭 9건
 | R1 | R1-2 `SKILL.md` §5 경로 감시 제외가 `.`·`..` 성분을 처리하지 않아 `/usr/share/../../etc/passwd`가 (라)로 빠짐 | medium | FIXED `edbd0b9` | `.`·`..` 성분 후보는 제외 5종 어디에도 넣지 않고 그대로 적는다 — D48 「`/etc/` 제외하지 않는다」 경계 구현(D 변경 아님). 테스트 `report.test.mjs` 「R1-2」 |
 | R1 | (커밋 훅 자동 보안 리뷰, `9e1f0d7` 대상) 본문의 `Foo$1.class`가 실제로는 별도 리소스 파일이어도 삭제한 `Foo.java`의 내부 클래스로 흡수됨 | medium | DUPLICATE [루프 판정] | D38(내부 클래스 `Foo$<무엇이든>.class` = `Foo.java` 산출물)·impl 트랙 (나)와 같은 설계 동작. `9e1f0d7`이 흡수 범위를 「삭제한 `.java`가 있을 때만」으로 이미 좁힘 — **확인 임무 ③ 우선 감사 대상** |
 
-- score 이력(전환용 = 미확인 FIXED 큐 제외 산식): R1 **4**(high 1 + medium 1, 수정 전 스냅샷).
-- 미확인 FIXED 큐: R1-1(`9e1f0d7`) · R1-2(`edbd0b9`).
-- R1 뒤 게이트(SC-7, HEAD `edbd0b9`): T1 184/184 · T2 0 · T3 56/56 · T4~T7 0.
+| R2 | R2-1 `deploy.mjs` 배포 소스와 삭제 소스가 같은 zip 경로로 사상되는 충돌(소스 이동 `src/main/resources/a.xml` → `src/main/java/a.xml`)을 검사하지 않아 새 파일을 지우는 삭제 지시가 「일치」 | high | FIXED `216cfd2` | ④ 블록에서 기대 배포·기대 삭제의 zip 경로 교집합 → `map_conflict`(detail 끝 `(삭제)`) → 대조 불가. §3.⑨-3 `map_conflict`(두 소스 → 같은 zip 경로)의 같은 뜻 — 결과 어휘·D34 우선순위 불변. 테스트 「R2-1」 |
+| R2 | R2-2 `deploy.mjs` `outerClass()`가 첫 `$`에서 잘라 `Foo$Bar.java`의 정상 산출물 `Foo$Bar$1.class`를 `Foo.class`로 조회 → `extra_in_zip` 오탐 | medium | FIXED `216cfd2` | `outerClasses()` — 바깥 후보를 긴 것부터(`Foo$Bar.class` → `Foo.class`), 배포 대조·④ 삭제 목록 공통. §3.⑨-3 「`Foo$Bar.java`도 깨지지 않는다」 의도의 구현. 테스트 「R2-2」. **계열 감시**: 내부 클래스 정규화 영역 2건째(R1-1 흡수 · R2-2 오탐 — 결함 다름) — 3건째면 설계 선택지와 함께 ESCALATE |
+
+- score 이력(전환용 = 미확인 FIXED 큐 제외 산식): R1 **4**(high 1 + medium 1, 수정 전 스냅샷) · R2 **4**(high 1 + medium 1) — 보안 트랙이라 신호 1(정체) 무시.
+- 미확인 FIXED 큐: R1-1(`9e1f0d7`) · R1-2(`edbd0b9`) · R2-1(`216cfd2`) · R2-2(`216cfd2`). 적대 비재출현(R2): R1-1 · R1-2(참고 — 큐 유지).
+- R1 뒤 게이트(SC-7, HEAD `edbd0b9`): T1 184/184 · T2 0 · T3 56/56 · T4~T7 0. R2 뒤 게이트(HEAD `216cfd2`): T1 186/186 · T2 0 · T3 56/56 · T4·T5·T7 0 · T6 skills·tests 0 · docs 추가 줄 1(이 ledger 의 브랜치 이름 — 다음 커밋에서 접두 생략으로 해소).
 
 ## 확인 대기 대장
 
