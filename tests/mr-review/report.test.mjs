@@ -974,6 +974,12 @@ test('SKILL.md §5 경로 감시 제외 (라) 명령 실행기·시스템 실행
   assert.match(item, /`cat`·`ls`로 열지 않는다/);
 });
 
+test('SKILL.md §5 경로 감시: `.`·`..` 성분이 든 후보는 제외 5종 어디에도 넣지 않고 그대로 적는다(접두가 실제 위치가 아님) (1.3.2 R1-2)', () => {
+  const item = skillText().split('\n').find((l) => l.startsWith('- **경로 감시**'));
+  assert.match(item, /`\.`·`\.\.` 성분이 든 후보[^\n]*제외 5종 어디에도 넣지 않고 그대로 적는다/);
+  assert.ok(item.includes('/usr/share/../../etc/passwd'));
+});
+
 test('SKILL.md 터미널 요약: 「경로 감시 제외 n건(Codex 자체 a · 시스템 실행 파일 b · 존재하지 않는 경로 c)」 — §5 끝과 §8 둘 다 (1.3.2 AC⑩-2 · D39)', () => {
   const skill = skillText();
   const item = skill.split('\n').find((l) => l.startsWith('- **경로 감시**'));
