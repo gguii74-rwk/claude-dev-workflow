@@ -444,6 +444,25 @@ test('얕은 clone 에서 API base 가 로컬에 없으면 ERR BASE_MISMATCH 문
   assert.ok(!existsSync(join(work, 'snapshot.json')));
 });
 
+test('얕은 clone 에서 base 객체는 있으나 head 까지의 이력이 shallow 경계로 끊겨 조상 확인이 실패해도 git fetch --unshallow 를 안내한다 (1.3.1 R2-1 · D28)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { bare, checkout, baseSha, headSha } = initRepos(root, { iid: IID });
+  mergeIntoTarget(root, bare, { ff: true });
+  rmSync(checkout, { recursive: true, force: true });
+  git(root, 'clone', '-q', '--depth', '1', `file://${bare}`, checkout);   // head 만
+  git(bare, 'tag', 'b0', baseSha);
+  git(checkout, 'fetch', '-q', '--depth', '1', 'origin', 'refs/tags/b0:refs/tags/b0');   // base 객체도 받지만 head 와 이어지지 않는다
+  git(checkout, 'cat-file', '-e', `${baseSha}^{commit}`);
+  const p = `projects/101/merge_requests/${IID}`;
+  const g = fakeGlab(root, rules(headSha, { base: baseSha, metaRules: [{ match: `^api ${p}$`, json: mergedMeta(headSha, baseSha) }] }));
+  const work = join(root, 'work');
+  const r = runCli(collectArgs(adapter, work), g.env);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.first, /^ERR BASE_MISMATCH — 얕은 clone\(shallow\)이라 .*git fetch --unshallow 뒤 다시 실행/);
+  assert.ok(!existsSync(join(work, 'snapshot.json')));
+});
+
 // ── 1.3.1 ① 포트 있는 GitLab — --hostname 은 포트 제거, web_url 대조는 포트 포함 (spec 2026-10-22 3.①) ──
 test('포트 있는 어댑터 host: glab --hostname 에는 포트 없는 호스트만, web_url 은 포트까지 같아야 통과 (1.3.1 AC①-1·①-2)', () => {
   const root = tmp();

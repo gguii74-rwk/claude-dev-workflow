@@ -84,7 +84,7 @@ export function pinWorktree(checkout, mr, work) {
   if (apiBase) {
     const present = spawnSync('git', ['-C', checkout, 'cat-file', '-e', `${apiBase}^{commit}`]).status === 0;
     if (!present || spawnSync('git', ['-C', checkout, 'merge-base', '--is-ancestor', apiBase, head]).status !== 0) {
-      if (!present && git(checkout, ['rev-parse', '--is-shallow-repository'], { allowFail: true }) === 'true') throw new CollectError(`BASE_MISMATCH — 얕은 clone(shallow)이라 base ${apiBase.slice(0, 7)}가 로컬에 없다. 체크아웃에서 git fetch --unshallow 뒤 다시 실행`);
+      if (git(checkout, ['rev-parse', '--is-shallow-repository'], { allowFail: true }) === 'true') throw new CollectError(`BASE_MISMATCH — 얕은 clone(shallow)이라 base ${apiBase.slice(0, 7)}${present ? '와 head 사이 이력이' : '가'} 로컬에 없다. 체크아웃에서 git fetch --unshallow 뒤 다시 실행`);   // base 객체가 있어도 shallow 경계로 이력이 끊기면 조상 확인이 실패한다(R2-1)
       throw new CollectError(`BASE_MISMATCH — API base ${apiBase.slice(0, 7)}가 head ${head.slice(0, 7)}의 조상이 아니다`);
     }
     base = apiBase;
