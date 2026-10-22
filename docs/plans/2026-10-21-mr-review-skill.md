@@ -124,7 +124,7 @@
 | `codex.prompt` · `codex.out` · `codex.sh` · `codex.pid` | SKILL | cleanup | Codex 실행 파일(원시 — 보존 금지) — **`codex.pid`의 프로세스가 살아 있으면 cleanup 은 `ERR` 로 거부**(아무것도 지우지·마스킹하지 않음, plan R6-2 — 종료 확인은 SKILL §0 몫) |
 | `zip/<파일명>` · `worktree/` · `blobs/` · `baseline/` | deploy·collect·check | cleanup | 임시 산출물(F7) — `baseline/`은 원문이라 cleanup이 지운다(pack이 이미 소비) |
 
-**산출물 수명주기(cleanup — F5·F7)**: **선행 조건 = 검토자 종료 확인**(SKILL §0 — Claude `TaskStop`+알림, Codex pid TERM→생존 확인→KILL; `codex.pid` 프로세스 생존이면 cleanup 이 `ERR`로 거부, plan R6-2). 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`deploy.json`·`review-*.json`·`findings.json`·`verdict.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `deploy.json`(zip 파일명·주석·API 오류 문자열)·`verdict.json`(`machineEvidence`에 복사된 미확보 링크 `raw`·`reason`)도 MR 원문이 흘러드는 파일이라 「원문 없음」으로 가정하지 않는다(plan R4-1). `snapshot.json`·`pack.json`·리포트는 그대로(경로·SHA·카운트·패턴 이름만, 리포트는 저장 시 마스킹). 파싱 불가 JSON은 마스킹할 수 없으므로 지운다. **마스킹(리포트·JSON 사본 모두)은 40자 SHA(16진수, 글자 포함)를 보존한다 — 단 아는 SHA(스냅샷 세 SHA·MR `api_head`·`diff_refs`·`versions`)만, 자유 텍스트 속 모양만 같은 40자 16진은 보호하지 않는다(8b FR1-2)**. **저장본 마스킹은 잔존을 남기지 않는다** — 잔존이 있는 문자열 값은 통째로 `[masked:unmaskable]`, 리포트 조립본에 잔존이 남으면 render `ERR`(8b FR2-3 · FC1 재판정)(`maskText` — 자리표시자로 빼고 복원, plan R5-2: 개인정보 패턴에 걸리는 정상 SHA 가 변조되면 이전 판정 파싱·`--resolve` head 대조가 깨진다).
+**산출물 수명주기(cleanup — F5·F7)**: **선행 조건 = 검토자 종료 확인**(SKILL §0 — Claude `TaskStop`+알림, Codex pid TERM→생존 확인→KILL; `codex.pid` 프로세스 생존이면 cleanup 이 `ERR`로 거부, plan R6-2). 원문(`worktree/`·`zip/`·`blobs/`·`codex.*`·`pack-a.md`·`pack-b.md`·`baseline/`)은 삭제. `mr.json`·`check.json`·`deploy.json`·`review-*.json`·`findings.json`·`verdict.json`은 **문자열 값**(키 이름 제외)에 어댑터 `mask` + 엔진 `SECRET_MASK`를 적용한 사본으로 덮어써 남긴다 — `--resolve` 재계산(verdict·render)·재리뷰 입력으로 충분하다. `deploy.json`(zip 파일명·주석·API 오류 문자열)·`verdict.json`(`machineEvidence`에 복사된 미확보 링크 `raw`·`reason`)도 MR 원문이 흘러드는 파일이라 「원문 없음」으로 가정하지 않는다(plan R4-1). `snapshot.json`·`pack.json`·리포트는 그대로(경로·SHA·카운트·패턴 이름만, 리포트는 저장 시 마스킹). **1.3.1에서 변경(spec 2026-10-22 3.⑤)**: 삭제는 허용 목록 방식 — 위 처리 뒤 `W` 최상위에 허용 9종(`snapshot`·`pack`·`mr`·`check`·`deploy`·`review-claude`·`review-codex`·`findings`·`verdict` `.json`) 외 항목을 전부 지운다(이름 무관·숨김 포함·링크는 링크만). 선행 표지 = `snapshot.json` 이 우리 형식(`mode`·40자 `head_sha`·`fetched_at`)으로 파싱될 때만, 아니면 무삭제 `ERR`. 파싱 불가 JSON은 마스킹할 수 없으므로 지운다. **마스킹(리포트·JSON 사본 모두)은 40자 SHA(16진수, 글자 포함)를 보존한다 — 단 아는 SHA(스냅샷 세 SHA·MR `api_head`·`diff_refs`·`versions`)만, 자유 텍스트 속 모양만 같은 40자 16진은 보호하지 않는다(8b FR1-2)**. **저장본 마스킹은 잔존을 남기지 않는다** — 잔존이 있는 문자열 값은 통째로 `[masked:unmaskable]`, 리포트 조립본에 잔존이 남으면 render `ERR`(8b FR2-3 · FC1 재판정)(`maskText` — 자리표시자로 빼고 복원, plan R5-2: 개인정보 패턴에 걸리는 정상 SHA 가 변조되면 이전 판정 파싱·`--resolve` head 대조가 깨진다).
 
 **`mr.json`**:
 ```json
@@ -147,12 +147,12 @@
 
 **`snapshot.json`**:
 ```json
-{ "mode": "worktree|diff-only", "target_sha": "", "base_sha": "", "head_sha": "", "checkout": "<절대|null>", "worktree": "<절대|null>",
+{ "mode": "worktree|diff-only", "target_sha": "", "base_sha": "", "base_source": "api|merge-base|null", "head_sha": "", "checkout": "<절대|null>", "worktree": "<절대|null>",
   "attempts": 1, "unrecovered": ["<path>"], "rebuilt": ["<path>"], "diff_list_complete": true, "api_failures": ["<name>"], "fetched_at": "<ISO>" }
 ```
 - `diff_list_complete`: 워크트리 모드는 항상 `true`(git diff 정본). diff-only는 `overflow === false || (changes_count 가 정수이고 "+" 없음이고 ≤ 수신 diffs 수)` — API overflow 로 파일 항목이 통째로 빠졌을 가능성을 못 배제하면(`overflow`가 `true`·`null`) `false`(fail-closed) → verdict 기계 증거 `M-diff-list`(HOLD_EVIDENCE 이상). `mr.json.changes_count` = 메타 `changes_count` 문자열("25"·"25+"·`null`). `api_failures` = `mr.json.api_failures` 복사(verdict가 snapshot만 읽는다).
-- `mode: worktree` — `head_sha` = fetch한 `refs/mr-review/<iid>/head`가 가리키는 SHA(= `mr.json.api_head`와 같아야 함 — 다르면 collect가 1부터 다시, 최대 3회, 초과 시 exit 3 `HEAD_MOVED`). `target_sha` = fetch 직후 `origin/<target>`. `base_sha` = `merge-base`.
-- `mode: diff-only` — `head_sha` = `api_head`, `base_sha`·`target_sha` = `versions[0].base_commit_sha`(없으면 `diff_refs.base_sha`). **`versions[0].head_commit_sha`·`diff_refs.head_sha`가 `api_head`와 다르면(수집 중 push) 재수집 — 최대 3회, 초과 시 exit 3 `HEAD_MOVED`**(서로 다른 head의 메타·diff·raw를 한 스냅샷으로 섞지 않는다, F6). **검토 루트 `<work>/blobs/head/`는 잘림 유무와 무관하게 항상 만들고 삭제되지 않은 모든 변경 파일의 head 원문을 그 SHA로 받는다**(task-07의 검토자 cwd·파일 전문 위치). `unrecovered` = head 원문을 받지 못했거나 양쪽 blob으로 diff를 재구성하지 못한 변경 파일. `rebuilt` = 재구성에 성공해 `mr.json.diffs[*].diff`를 교체한 파일. 새 `collect`는 이전 실행의 `check.json`·`deploy.json`·`pack*`·`review-*.json`·`findings.json`·`verdict.json`·`baseline/`·`blobs/`를 먼저 지운다.
+- `mode: worktree` — `head_sha` = fetch한 `refs/mr-review/<iid>/head`가 가리키는 SHA(= `mr.json.api_head`와 같아야 함 — 다르면 collect가 1부터 다시, 최대 3회, 초과 시 exit 3 `HEAD_MOVED`). `target_sha` = fetch 직후 `origin/<target>`. `base_sha` = `merge-base`. **1.3.1에서 변경(spec 2026-10-22 3.② — 정본은 그 spec)**: `base_sha` = API diff base(`versions[0].base_commit_sha` → 없으면 `diff_refs.base_sha`) — 로컬에 있고 head 의 조상이어야 한다(아니면 exit 2 `BASE_MISMATCH`, 얕은 clone 이면 `git fetch --unshallow` 안내). 둘 다 없을 때만 `merge-base` 폴백, git diff 0건인데 API 변경 ≥1 이면 exit 2 `DIFF_EMPTY_MISMATCH`. `base_source` = `api|merge-base`. 재수집 조건 = fetch head ≠ API head **또는** diff 버전 head(`versions[0].head_commit_sha`·`diff_refs.head_sha`) ≠ API head.
+- `mode: diff-only` — `head_sha` = `api_head`, `base_sha`·`target_sha` = `versions[0].base_commit_sha`(없으면 `diff_refs.base_sha`; `base_source` = 있으면 `api`, 없으면 `null` — 1.3.1에서 추가). **`versions[0].head_commit_sha`·`diff_refs.head_sha`가 `api_head`와 다르면(수집 중 push) 재수집 — 최대 3회, 초과 시 exit 3 `HEAD_MOVED`**(서로 다른 head의 메타·diff·raw를 한 스냅샷으로 섞지 않는다, F6). **검토 루트 `<work>/blobs/head/`는 잘림 유무와 무관하게 항상 만들고 삭제되지 않은 모든 변경 파일의 head 원문을 그 SHA로 받는다**(task-07의 검토자 cwd·파일 전문 위치). `unrecovered` = head 원문을 받지 못했거나 양쪽 blob으로 diff를 재구성하지 못한 변경 파일. `rebuilt` = 재구성에 성공해 `mr.json.diffs[*].diff`를 교체한 파일. 새 `collect`는 이전 실행의 `check.json`·`deploy.json`·`pack*`·`review-*.json`·`findings.json`·`verdict.json`·`baseline/`·`blobs/`를 먼저 지운다.
 
 **`check.json`**:
 ```json
@@ -190,11 +190,12 @@
 ```json
 { "applicable": true, "reason": "<해당 없음 사유|null>",
   "expected": { "deploy": ["<path>"], "deleted": ["<path>"] },
-  "zip": { "attachment": "<filename|null>", "downloaded": false, "comment_sha": "<string|null>", "entries": ["<path>"] },
+  "zip": { "attachment": "<filename|null>", "downloaded": false, "comment_sha": "<string|null>", "entries": ["<path>"], "bytes_source": "worktree|blobs|null" },
   "bodyDeletedList": ["<path>"],
   "result": "일치|불일치|대조 불가|zip 누락|해당 없음",
-  "mismatches": [{ "kind": "comment_sha|missing_in_zip|extra_in_zip|bytes|deleted_list|download|corrupt", "path": "<path|null>", "detail": "" }] }
+  "mismatches": [{ "kind": "comment_sha|missing_in_zip|extra_in_zip|bytes|bytes_unavailable|deleted_list|download|corrupt", "path": "<path|null>", "detail": "" }] }
 ```
+- **1.3.1에서 변경(spec 2026-10-22 3.③)**: diff-only 도 바이트를 대조한다 — 기준 = collect 가 받은 head 원문 `W/blobs/head/<경로>`(`zip.bytes_source = blobs`, 워크트리 모드 = `worktree`). zip 항목이 일반 파일이 아니면 `type` 불일치, 원문 미확보(`unrecovered`·blob 없음)는 경로별 `bytes_unavailable` → `대조 불가`. `path:null` 인 `bytes` 항목은 더 이상 없다.
 - `applicable` = `!deployExempt && (expected.deploy.length + expected.deleted.length > 0 || bodyDeletedList.length > 0)` — 기대 변경이 없어도 본문에 삭제 목록이 있으면 해당(zip 단계는 건너뛰고 ④ 삭제 목록 비교만, `reason` = 「운영 배포 대상 변경 없음 — 본문 삭제 목록만 대조(④)」) → 기대에 없는 삭제 지시는 `deleted_list` 불일치 → `M-deploy`(plan R4-2). 둘 다 비면 `applicable:false`·「해당 없음」. `expected`는 `--no-renames` 기준 `git diff --name-only --diff-filter=ACMR|D base..head`를 `deploy.targets`로 걸러 `deploy.excludes`를 뺀 것. diff-only 모드는 `mr.json.diffs`로 같은 목록을 계산하되 `bytes` 대조는 `대조 불가`.
 - 결과 순서: zip 첨부 없음 + `expected.deploy` 비어 있지 않음 → `zip 누락`; 다운로드 실패·zip 손상(central directory·local header signature·**local header ↔ central directory 파일명·압축 방식·일반 목적 플래그 불일치**·**암호화 플래그(bit0·bit6, 미지원)**·**CRC-32·비압축 크기 불일치** 포함) → `대조 불가`; 그 밖 mismatches 비면 `일치`, 아니면 `불일치`. `bodyDeletedList`는 본문 「배포본」 항목 아래 목록(줄 시작 `-`·`*`·숫자. 또는 코드펜스 안 한 줄 한 경로)에서 뽑는다. `expected.deleted`와 집합 비교(순서 무관).
 
@@ -263,7 +264,7 @@
 | `review-validate` | `--file <path> [--head <40자>] [--reviewer claude\|codex]` | `VALID` exit 0 · `INVALID <이유>` exit 1 — `--head`·`--reviewer`가 있으면 원본 결과의 `head_sha`·`reviewer`와 일치해야 VALID(SKILL은 항상 둘 다 준다) |
 | `verdict` | `--adapter --work [--resolve <id>=<confirmed\|dismissed\|confirmed:fixable\|confirmed:design>]...` | `VERDICT <status> <verdict\|->` exit 0 · `findings.json` 없음 → exit 2 · `fixableInDesign` 상충 항목에 접미 없는 `confirmed` → `ERR` exit 2(SC-5, plan R6-3) |
 | `render` | `--adapter --work [--early] [--out <파일>]` | `REPORT <경로>` exit 0 — `--out` 생략 시 `<reportDir>/<프로젝트>-<iid>-<sha7>.md` |
-| `cleanup` | `--adapter --work` | `CLEANED worktree=<bool> zip=<n> raw=<n> masked=<n>` exit 0 — `raw` = 지운 원문 파일 수(`codex.*`·`pack-*.md`·`baseline/*`), `masked` = 마스킹 사본으로 바꾼 JSON 수(SC-3 산출물 수명주기) · `codex.pid`의 프로세스 생존 → `ERR 검토자 프로세스 생존(codex.pid <n>) …` exit 2(아무것도 지우지 않음, plan R6-2) |
+| `cleanup` | `--adapter --work` | `CLEANED worktree=<bool> zip=<n> raw=<n> masked=<n>` exit 0(**1.3.1에서 변경**: 끝에 ` extra=<n>` — 허용 9종 밖에서 지운 최상위 항목 수, 둘째 줄 `extra: <이름들>` · `snapshot.json` 표지 없음·형식 불일치 → `ERR … 정리하지 않는다: <W 항목 목록|(없음)>` exit 2) — `raw` = 지운 원문 파일 수(`codex.*`·`pack-*.md`·`baseline/*`), `masked` = 마스킹 사본으로 바꾼 JSON 수(SC-3 산출물 수명주기) · `codex.pid`의 프로세스 생존 → `ERR 검토자 프로세스 생존(codex.pid <n>) …` exit 2(아무것도 지우지 않음, plan R6-2) |
 
 - 공통: `--adapter`는 `MR_REVIEW_ADAPTER` 환경변수로 대체 가능(인자 우선). 모든 오류는 stderr 없이 stdout `ERR <메시지>` 한 줄 + exit 2(SKILL이 첫 줄만 읽는다). JSON 쓰기는 `JSON.stringify(v, null, 2)`.
 - 셸 블록 표기: bash 위치 인자는 `${N}`(1.1.1 D2) — SKILL.md 셸 블록에 맨 `$`+숫자를 쓰지 않는다.
