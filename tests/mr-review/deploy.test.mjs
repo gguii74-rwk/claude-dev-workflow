@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
@@ -16,11 +16,13 @@ function archive(checkout, sha, out, files) {
   return out;
 }
 
-function workdir(root, { checkout, baseSha, headSha, mode = 'worktree', attachments = [], description = '', diffs = [], deployExempt = false }) {
-  const work = join(root, 'work');
+// blobs = diff-only 의 head 원문 { 경로: 내용 } → W/blobs/head/<경로>(collect 가 받는 위치) · unrecovered = snapshot.unrecovered
+function workdir(root, { checkout, baseSha, headSha, mode = 'worktree', attachments = [], description = '', diffs = [], deployExempt = false, blobs = {}, unrecovered = [], name = 'work' }) {
+  const work = join(root, name);
   mkdirSync(work, { recursive: true });
+  for (const [p, c] of Object.entries(blobs)) { mkdirSync(dirname(join(work, 'blobs', 'head', p)), { recursive: true }); writeFileSync(join(work, 'blobs', 'head', p), c); }
   writeFileSync(join(work, 'mr.json'), JSON.stringify({ project: { name: 'alpha', id: 101, checkout, deployExempt }, iid: 7, description, api_head: headSha, diffs, notes: [], closes_issues: [], versions: [] }));
-  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ mode, target_sha: baseSha, base_sha: baseSha, head_sha: headSha, checkout: mode === 'worktree' ? checkout : null, worktree: null, attempts: 1, unrecovered: [], rebuilt: [] }));
+  writeFileSync(join(work, 'snapshot.json'), JSON.stringify({ mode, target_sha: baseSha, base_sha: baseSha, head_sha: headSha, checkout: mode === 'worktree' ? checkout : null, worktree: null, attempts: 1, unrecovered, rebuilt: [] }));
   writeFileSync(join(work, 'check.json'), JSON.stringify({ attachments, deployExempt, deployNote: null }));
   return work;
 }
@@ -236,7 +238,9 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
   assert.equal(r3.first, 'DEPLOY 대조 불가');
   const d3 = readJson(join(w3, 'deploy.json'));
   assert.equal(d3.zip.comment_sha, headSha);
-  assert.ok(d3.mismatches.some((m) => m.kind === 'bytes' && /diff-only/.test(m.detail)));
+  // 1.3.1 ③(AC③-5) — head 원문(blobs/head)이 없는 diff-only 는 경로별 bytes_unavailable → 대조 불가. path 없는 bytes 항목은 더 이상 없다
+  assert.deepEqual(d3.mismatches.filter((m) => m.kind === 'bytes_unavailable').map((m) => m.path), ['src/main/java/app/A.java', 'src/main/java/app/B.java']);
+  assert.ok(!d3.mismatches.some((m) => m.kind === 'bytes' && m.path === null));
 });
 
 // 최소 zip 작성기(테스트 전용) — entries = [{ name(문자열|Buffer), data, method = 0|8, usize?, made?, ext?, flags?, tail? }]
@@ -463,4 +467,90 @@ test('Deflate 스트림 뒤 미소비 바이트는 손상으로 거부 — 실�
     const ok = readZip(mkZip([{ name: 'a.txt', data, method: 8 }]));
     assert.equal(ok.read(ok.entries[0]).toString(), data);
   }
+});
+
+// ── 1.3.1 ③ diff-only 바이트 대조 = W/blobs/head 기준 (spec 2026-10-22 3.③) ──
+const AB = ['src/main/java/app/A.java', 'src/main/java/app/B.java'];
+const abDiffs = [
+  { old_path: AB[0], new_path: AB[0], new_file: false, renamed_file: false, deleted_file: false },
+  { old_path: AB[1], new_path: AB[1], new_file: true, renamed_file: false, deleted_file: false },
+];
+const ATT = [{ url: `/uploads/${SECRET}/d.zip`, kind: 'zip', filename: 'd.zip', secret: SECRET, where: 'body' }];
+const headBlobs = (checkout, headSha) => Object.fromEntries(AB.map((p) => [p, git(checkout, 'show', `${headSha}:${p}`) + '\n']));
+function diffOnlyDeploy(root, adapter, { zipBuf, blobs, unrecovered = [], name }) {
+  const zf = join(root, `${name}.zip`);
+  writeFileSync(zf, zipBuf);
+  const work = workdir(root, { checkout: null, baseSha: 'b'.repeat(40), headSha: zipBuf.headSha, mode: 'diff-only', attachments: ATT, diffs: abDiffs, blobs, unrecovered, name });
+  const r = runCli(['deploy', '--adapter', adapter, '--work', work], fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: zf }]).env);
+  return { r, d: readJson(join(work, 'deploy.json')) };
+}
+
+test('diff-only: head 원문(blobs/head)이 있으면 zip 바이트를 대조해 일치 — bytes_source = blobs, 워크트리 모드는 worktree (1.3.1 AC③-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const zipBuf = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), AB));
+  zipBuf.headSha = headSha;
+  const { r, d } = diffOnlyDeploy(root, adapter, { zipBuf, blobs: headBlobs(checkout, headSha), name: 'w1' });
+  assert.equal(r.first, 'DEPLOY 일치', JSON.stringify(d.mismatches));
+  assert.deepEqual(d.mismatches, []);
+  assert.equal(d.zip.bytes_source, 'blobs');
+  const g = fakeGlab(root, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: join(root, 'g.zip') }]);
+  const wt = workdir(root, { checkout, baseSha, headSha, attachments: ATT, description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: src/main/java/app/Old.java\n', name: 'w-wt' });
+  assert.equal(runCli(['deploy', '--adapter', adapter, '--work', wt], g.env).first, 'DEPLOY 일치');
+  assert.equal(readJson(join(wt, 'deploy.json')).zip.bytes_source, 'worktree');
+});
+
+test('diff-only: zip 안 한 파일 1바이트가 다르면 그 경로의 bytes 불일치 (1.3.1 AC③-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, headSha } = initRepos(root);
+  const blobs = headBlobs(checkout, headSha);
+  const zipBuf = mkZip([{ name: AB[0], data: blobs[AB[0]].replace('2', '3') }, { name: AB[1], data: blobs[AB[1]] }], headSha);
+  zipBuf.headSha = headSha;
+  const { r, d } = diffOnlyDeploy(root, adapter, { zipBuf, blobs, name: 'w1' });
+  assert.equal(r.first, 'DEPLOY 불일치');
+  assert.deepEqual(d.mismatches.map((m) => [m.kind, m.path]), [['bytes', AB[0]]]);
+  assert.match(d.mismatches[0].detail, /blobs\/head\/src\/main\/java\/app\/A\.java와 바이트 불일치/);
+});
+
+test('diff-only: head 원문 미확보(unrecovered 또는 blob 없음) 경로는 bytes_unavailable → 대조 불가 (1.3.1 AC③-3)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, headSha } = initRepos(root);
+  const zipBuf = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), AB));
+  zipBuf.headSha = headSha;
+  const blobs = headBlobs(checkout, headSha);
+  const a = diffOnlyDeploy(root, adapter, { zipBuf, blobs, unrecovered: [AB[1]], name: 'w1' });   // blob 이 있어도 unrecovered 면 쓰지 않는다
+  assert.equal(a.r.first, 'DEPLOY 대조 불가');
+  assert.deepEqual(a.d.mismatches.map((m) => [m.kind, m.path]), [['bytes_unavailable', AB[1]]]);
+  assert.equal(a.d.mismatches[0].detail, 'head 원문 미확보 — 바이트 대조 불가');
+  const b = diffOnlyDeploy(root, adapter, { zipBuf, blobs: { [AB[0]]: blobs[AB[0]] }, name: 'w2' });   // B 의 blob 파일 자체가 없다
+  assert.equal(b.r.first, 'DEPLOY 대조 불가');
+  assert.deepEqual(b.d.mismatches.map((m) => [m.kind, m.path]), [['bytes_unavailable', AB[1]]]);
+});
+
+test('diff-only: zip 항목이 일반 파일이 아니면(심볼릭 링크) 유형 불일치 — zip 쪽 유형만 본다 (1.3.1 AC③-4)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, headSha } = initRepos(root);
+  const blobs = headBlobs(checkout, headSha);
+  const zipBuf = mkZip([{ name: AB[0], data: blobs[AB[0]], ext: (0o120777 << 16) >>> 0 }, { name: AB[1], data: blobs[AB[1]] }], headSha);
+  zipBuf.headSha = headSha;
+  const { r, d } = diffOnlyDeploy(root, adapter, { zipBuf, blobs, name: 'w1' });
+  assert.equal(r.first, 'DEPLOY 불일치');
+  assert.deepEqual(d.mismatches.map((m) => [m.kind, m.path]), [['type', AB[0]]]);
+  assert.match(d.mismatches[0].detail, /diff-only — zip 항목 유형 symlink 확인 불가\(일반 파일만 대조\)/);
+});
+
+test('diff-only: bytes_unavailable 과 extra_in_zip 이 함께면 결과 = 대조 불가(우선순위 유지)이고 mismatches 에 둘 다 남는다 (1.3.1 AC③-6 · D34)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, headSha } = initRepos(root);
+  const zipBuf = readFileSync(archive(checkout, headSha, join(root, 'g.zip'), [...AB, 'README.md']));
+  zipBuf.headSha = headSha;
+  const blobs = headBlobs(checkout, headSha);
+  const { r, d } = diffOnlyDeploy(root, adapter, { zipBuf, blobs: { [AB[0]]: blobs[AB[0]] }, name: 'w1' });
+  assert.equal(r.first, 'DEPLOY 대조 불가');
+  assert.deepEqual(d.mismatches.map((m) => [m.kind, m.path]).sort(), [['bytes_unavailable', AB[1]], ['extra_in_zip', 'README.md']]);
 });

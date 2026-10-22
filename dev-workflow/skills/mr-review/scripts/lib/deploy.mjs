@@ -5,6 +5,7 @@ import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { apiRaw } from './gitlab.mjs';
 import { matchesAny } from './adapter.mjs';
+import { insideRoot } from './collect.mjs';
 
 const MAX_BUFFER = 512 * 1024 * 1024;
 const MAX_ENTRY = 256 * 1024 * 1024;   // 항목 하나의 비압축 상한(압축 폭탄 — impl SDD 이월 T04①). 소스·리소스 배포본 범위
@@ -250,7 +251,7 @@ export function deploy({ adapter, work }) {
   const mr = JSON.parse(fs.readFileSync(path.join(work, 'mr.json'), 'utf8'));
   const snap = JSON.parse(fs.readFileSync(path.join(work, 'snapshot.json'), 'utf8'));
   const check = JSON.parse(fs.readFileSync(path.join(work, 'check.json'), 'utf8'));
-  const out = { applicable: false, reason: null, expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [] }, bodyDeletedList: parseDeletedList(mr.description || ''), result: '해당 없음', mismatches: [] };
+  const out = { applicable: false, reason: null, expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [], bytes_source: null }, bodyDeletedList: parseDeletedList(mr.description || ''), result: '해당 없음', mismatches: [] };
   const exempt = check.deployExempt === true || mr.project?.deployExempt === true;
   if (exempt) { out.reason = '어댑터 배포 제외 프로젝트'; return finish(work, out); }
   out.expected = expectedLists({ adapter, mr, snap });
@@ -295,6 +296,7 @@ export function deploy({ adapter, work }) {
         const expSet = new Set(out.expected.deploy);
         for (const p of out.expected.deploy) if (!inZip.has(p)) mm.push({ kind: 'missing_in_zip', path: p, detail: '배포 목록에 있으나 zip 에 없음' });
         for (const p of out.zip.entries) if (!expSet.has(p)) mm.push({ kind: 'extra_in_zip', path: p, detail: 'zip 에 있으나 배포 목록에 없음' });
+        out.zip.bytes_source = snap.mode === 'worktree' ? 'worktree' : 'blobs';
         if (snap.mode === 'worktree') {
           for (const e of files) {
             if (!expSet.has(e.name)) continue;
@@ -306,7 +308,19 @@ export function deploy({ adapter, work }) {
             if (!gb || !gb.equals(zb)) mm.push({ kind: 'bytes', path: e.name, detail: `git show ${snap.head_sha.slice(0, 7)}:${e.name} 와 바이트 불일치` });
           }
         } else {
-          mm.push({ kind: 'bytes', path: null, detail: 'diff-only 모드 — 로컬 체크아웃이 없어 바이트 대조 불가(로컬 clone 권장)' });
+          // diff-only(1.3.1 ③ — spec 2026-10-22 3.③) — collect 가 받은 head 원문 `W/blobs/head/` 와 대조한다. 유형은 zip 쪽만 본다(일반 파일만 대조 — tree API 유형 대조는 안 함, D22).
+          // 원문을 못 받은 경로(unrecovered·blob 없음)는 경로별 대조 불가. blob 경로는 복원 루트 안으로만 해소한다
+          const headRoot = path.join(work, 'blobs', 'head');
+          const unrecovered = new Set(snap.unrecovered || []);
+          for (const e of files) {
+            if (!expSet.has(e.name)) continue;
+            if (e.type !== 'file') { mm.push({ kind: 'type', path: e.name, detail: `diff-only — zip 항목 유형 ${e.type} 확인 불가(일반 파일만 대조)` }); continue; }
+            const blob = insideRoot(headRoot, e.name);
+            if (unrecovered.has(e.name) || !blob || !fs.lstatSync(blob, { throwIfNoEntry: false })?.isFile()) { mm.push({ kind: 'bytes_unavailable', path: e.name, detail: 'head 원문 미확보 — 바이트 대조 불가' }); continue; }
+            let zb;
+            try { zb = z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: e.name, detail: err.message }); continue; }
+            if (!fs.readFileSync(blob).equals(zb)) mm.push({ kind: 'bytes', path: e.name, detail: `blobs/head/${e.name}와 바이트 불일치` });
+          }
         }
       }
     }
@@ -319,7 +333,7 @@ export function deploy({ adapter, work }) {
     if (!same) mm.push({ kind: 'deleted_list', path: null, detail: `삭제 목록 불일치 — 기대 [${[...expDel].join(', ') || '없음'}] / 본문 [${[...bodyDel].join(', ') || '없음'}]` });
   }
   if (out.result !== 'zip 누락') {
-    if (mm.some((m) => m.kind === 'download' || m.kind === 'corrupt' || (m.kind === 'bytes' && m.path === null))) out.result = '대조 불가';
+    if (mm.some((m) => m.kind === 'download' || m.kind === 'corrupt' || m.kind === 'bytes_unavailable')) out.result = '대조 불가';
     else out.result = mm.length ? '불일치' : '일치';
   }
   return finish(work, out);

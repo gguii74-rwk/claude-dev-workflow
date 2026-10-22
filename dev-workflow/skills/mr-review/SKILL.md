@@ -27,7 +27,7 @@ description: Use when a designated reviewer wants a read-only, policy-formatted 
 - `<프로젝트>` = 어댑터 `projects`의 키(GitLab 프로젝트 basename). `<iid>` = MR 번호.
 - `--adapter` 생략 시 환경변수 `MR_REVIEW_ADAPTER`. 둘 다 없으면 멈추고 어댑터 위치를 묻는다.
 - `--full` = 작성 규칙 미충족이어도 조기 종료하지 않고 끝까지(판정 입력은 그대로 — 계약 미완은 증거 부족으로 남는다).
-- `--diff-only` = 로컬 체크아웃이 있어도 API diff만으로(바이트 대조 불가·복원 실패는 증거 부족).
+- `--diff-only` = 로컬 체크아웃이 있어도 API diff만으로(배포본 바이트는 API로 받은 head 원문 `W/blobs/head/`와 대조 — 원문 미확보·복원 실패는 증거 부족).
 - `--resolve` = 이전 실행이 「판정 미확정」으로 끝났을 때, 리뷰어가 후보를 확인·기각한 결과로 판정·리포트만 다시 만든다(§9).
 
 ## 0. 전제 확인
