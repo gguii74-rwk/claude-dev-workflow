@@ -1,6 +1,6 @@
 # mr-review 1.3.1 — 첫 실사용에서 드러난 엔진 결함 5건 수정
 
-> 상태: **harden 완료**(harden-spec 2026-10-22 — 판단 갭 9건 전부 질문으로 해소, 유예 0건) · 작성 2026-10-22 · 버전 **1.3.1 패치** · 다음 = impl 트랙(경량 — review-loop(spec)·plan 생략, D19)
+> 상태: **impl 완료**(2026-10-22 — AC 26개(「27개」 표기는 §6 의 AC⑧-2 재언급까지 센 값) 중 25개 테스트 GREEN · AC⑧-2 와 실측 V1 은 9단계 · T1 153/153 · 구현 끝 커밋 `cc61ea0`) · harden 완료(harden-spec 2026-10-22 — 판단 갭 9건 전부 질문으로 해소, 유예 0건) · 작성 2026-10-22 · 버전 **1.3.1 패치** · 다음 = 8 review-loop(impl)(경량 — review-loop(spec)·plan 생략, D19)
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16 승계) · plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-1~SC-8)
 > 경로: **경량**(dev-cycle 1차 판정 + 사용자 확인 2026-10-22, 수동 모드 — 접촉 표면 무신호: 스키마·권한·인증·외부 연동 신설 없음. 호스트 처리·cleanup 삭제 범위 변경은 기존 기능의 결함 수정이며 테스트로 고정한다)
 
