@@ -1,6 +1,6 @@
 # mr-review 1.3.2 — 2차 실사용에서 드러난 엔진 결함 4건 수정
 
-> 상태: **spec 확정 — harden 완료**(2026-10-22 20:1x — 판단 갭 9건 전부 질문으로 해소(전부 추천안 채택) · 사실 갭 8건 조회 해소 · 유예 0건 · 실측 3건은 §6) · 작성 2026-10-22 · 버전 **1.3.2 패치** · 다음 = spec 커밋 → (경량 D36: 4·5·6 생략) → impl 트랙(TDD → review-loop impl → 릴리스)
+> 상태: **impl 완료(HEAD)**(2026-10-22 21:1x — 7 impl 트랙, 위임 · 결함 ⑨ `eaef5a4`·`462b974`(⑨ 표시 + ⑪) · ⑫ `8c4ffa5` · ⑩ `aacc738` · README `08dde93` · D42 정정 `25328b3` · 게이트 SC-7 T1 182/182 · T2~T7 0 · T3 56/56 · version 1.3.1 유지) · 이전: spec 확정 — harden 완료(2026-10-22 20:1x) · 작성 2026-10-22 · 버전 **1.3.2 패치** · 다음 = 8 review-loop(impl) `--phase impl --security yes --auto-rounds 1 --base c3b946a` → 9 릴리스(version bump·실측 V1~V3·AC⑨-10·⑩-3·⑪·⑫-3 실측)
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16 승계) · 1.3.1 spec `docs/specs/2026-10-22-mr-review-1-3-1-fixes.md`(D17~D34 승계 — 특히 D22 diff-only 바이트 대조·D32 경로 감시 제외 3종·D34 배포본 결과 우선순위) · plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-1~SC-8)
 > 경로: **경량**(dev-cycle 1차 판정 + 사용자 확인 2026-10-22 19:5x, 수동 모드 — 접촉 표면 무신호: 스키마·마이그레이션·권한·인증·외부 연동 신설 없음. ⑨ `.class` 존재 대조·⑩ 경로 감시 제외 확대는 「증거를 약하게 만드는」 변경이라 리포트에 명시하고 테스트로 고정한다)
 
