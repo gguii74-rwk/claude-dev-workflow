@@ -35,7 +35,7 @@ description: Use when a designated reviewer wants a read-only, policy-formatted 
 ```bash
 A="<--adapter 값, 없으면 빈 값>"; [ -n "$A" ] || A="${MR_REVIEW_ADAPTER}"; [ -f "$A" ] || echo ADAPTER_MISSING
 glab auth status 2>&1 | head -3
-H=$(node -e 'const m=require("fs").readFileSync(process.argv[1],"utf8").match(/```json mr-review-adapter\n([\s\S]*?)\n```/);console.log(JSON.parse(m[1]).gitlab.host.replace(/:\d+$/,""))' "$A") && glab api --hostname "$H" version >/dev/null 2>&1 || echo "GLAB_HOST_FAIL $H"
+H=$(node -e 'const L=require("fs").readFileSync(process.argv[1],"utf8").split("\n").map((s)=>s.trim()),i=L.indexOf("```json mr-review-adapter"),j=L.indexOf("```",i+1);console.log(JSON.parse(L.slice(i+1,j).join("\n")).gitlab.host.replace(/:\d+$/,""))' "$A") && glab api --hostname "$H" version >/dev/null 2>&1 || echo "GLAB_HOST_FAIL $H"
 ```
 
 - `ADAPTER_MISSING`이거나 `glab`이 인증돼 있지 않으면 **멈춘다**(어댑터·glab 없이는 돌지 않는다).

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git, CLI } from './helpers.mjs';
 
 const IID = 7;
@@ -471,4 +472,21 @@ test('SKILL.md §0 에 포트 있는 GitLab 의 glab 설정 전제와 glab api �
   assert.match(s0, /api_host/);
   assert.match(s0, /GLAB_HOST_FAIL[^\n]*\*\*멈춘다\*\*/);
   assert.match(s0, /포트 없는 호스트 키/);
+});
+
+test('SKILL.md §0 사전 점검의 호스트 추출이 어댑터 파서(extractBlock)와 같은 형식을 받는다 — CRLF·들여쓴 펜스에서도 포트 뗀 호스트 (1.3.1 R1-2)', () => {
+  const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+  const line = skill.split('\n').find((l) => l.startsWith('H=$(node -e '));
+  assert.ok(line, 'SKILL §0 의 H=$(node -e …) 줄');
+  const js = line.slice('H=$(node -e \''.length, line.indexOf('\' "$A")'));
+  const root = tmp();
+  const lf = readFileSync(writeAdapter(root, { gitlab: { host: 'gitlab.test:8443' } }), 'utf8');
+  const variants = { lf, crlf: lf.replace(/\n/g, '\r\n'), indented: lf.replace(/^```/gm, '  ```') };
+  for (const [name, text] of Object.entries(variants)) {
+    const f = join(root, `adapter-${name}.md`);
+    writeFileSync(f, text);
+    const r = spawnSync(process.execPath, ['-e', js, f], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `${name}: ${r.stderr}`);
+    assert.equal(r.stdout.trim(), 'gitlab.test', name);
+  }
 });
