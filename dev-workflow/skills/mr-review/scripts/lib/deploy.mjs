@@ -373,11 +373,14 @@ export function deploy({ adapter, work }) {
     }
   }
   // ④ 삭제 목록은 기대가 비어 있어도 항상 집합 비교(순서 무관) — 본문에만 있는 삭제 지시(기대에 없는 경로)는 배포자가 정상 파일을 지우게 하므로 불일치다.
-  // 1.3.2 ⑨ — 양쪽을 zip 경로로 정규화(소스 접두는 매핑 · 이미 zip 경로 꼴은 그대로 · maven-war 내부 클래스는 바깥 클래스)한 뒤 비교한다. detail 에는 원문을 적는다
+  // 1.3.2 ⑨ — 양쪽을 zip 경로로 정규화(소스 접두는 매핑 · 이미 zip 경로 꼴은 그대로)한 뒤 비교한다. detail 에는 원문을 적는다.
+  // 내부 클래스(maven-war)는 ② 와 같은 2단계 — 본문 이름 그대로 먼저, 없을 때만 삭제한 .java 의 산출물(compare: exists)인 바깥 클래스로 본다(`$` 든 리소스·`Foo$Bar.java` 의 고유 이름을 합치지 않는다 — R1-1)
   {
-    const norm = (p) => { const zp = zipPathFor(layout, p).zip; return (layout === 'maven-war' && outerClass(zp)) || zp; };
-    const expDel = new Set(out.expected.deleted.map(norm));
-    const bodyDel = new Set(out.bodyDeletedList.map(norm));
+    const expMapped = out.expected.deleted.map((p) => zipPathFor(layout, p));
+    const expDel = new Set(expMapped.map((t) => t.zip));
+    const expClasses = new Set(expMapped.filter((t) => t.compare === 'exists').map((t) => t.zip));
+    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? outerClass(zp) : null; return outer && expClasses.has(outer) ? outer : zp; };
+    const bodyDel = new Set(out.bodyDeletedList.map(normBody));
     const same = expDel.size === bodyDel.size && [...expDel].every((p) => bodyDel.has(p));
     if (!same) mm.push({ kind: 'deleted_list', path: null, detail: `삭제 목록 불일치 — 기대 [${out.expected.deleted.join(', ') || '없음'}] / 본문 [${out.bodyDeletedList.join(', ') || '없음'}]` });
   }

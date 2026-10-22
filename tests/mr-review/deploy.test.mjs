@@ -714,6 +714,26 @@ test('maven-war ④ 삭제 목록: 기대·본문을 zip 경로로 정규화해 
   assert.match(c.d.mismatches[0].detail, /html\/other\.html/);
 });
 
+test('maven-war ④ 삭제 목록: 내부 클래스 정규화는 삭제한 .java 의 산출물에만 — `$` 든 리소스·`Foo$Bar.java` 의 고유 이름은 보존해 다른 파일 삭제 지시를 deleted_list 로 잡는다 (1.3.2 R1-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const body = (items) => `## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n${items.map((i) => `  - 삭제: ${i}\n`).join('')}`;
+  // `$` 든 리소스 삭제(기대 = WEB-INF/classes/p/Foo$A.class) ↔ 본문은 다른 파일 Foo$B.class
+  const RES = { 'src/main/resources/p/Foo$A.class': 'res\n' };
+  const r1 = warRepo(join(root, 'r1'), { baseFiles: RES, del: Object.keys(RES) });
+  const a = warDeploy(join(root, 'r1'), adapter, { repo: r1, entries: warEntries(), description: body(['WEB-INF/classes/p/Foo$B.class']), name: 'w1' });
+  assert.deepEqual(kp(a.d), [['deleted_list', null]]);
+  const a2 = warDeploy(join(root, 'r1'), adapter, { repo: r1, entries: warEntries(), description: body(['WEB-INF/classes/p/Foo$A.class']), name: 'w1b' });
+  assert.equal(a2.r.first, 'DEPLOY 일치', JSON.stringify(a2.d.mismatches));
+  // Foo$Bar.java 삭제(기대 = …/Foo$Bar.class) ↔ 본문은 바깥 클래스 Foo.class(정상 파일) 삭제
+  const JB = { 'src/main/java/com/example/acct/Foo$Bar.java': 'class Foo$Bar {}\n' };
+  const r2 = warRepo(join(root, 'r2'), { baseFiles: JB, del: Object.keys(JB) });
+  const b = warDeploy(join(root, 'r2'), adapter, { repo: r2, entries: warEntries(), description: body([`${CLS}Foo.class`]), name: 'w2' });
+  assert.deepEqual(kp(b.d), [['deleted_list', null]]);
+  const b2 = warDeploy(join(root, 'r2'), adapter, { repo: r2, entries: warEntries(), description: body([`${CLS}Foo$Bar.class`]), name: 'w2b' });
+  assert.equal(b2.r.first, 'DEPLOY 일치', JSON.stringify(b2.d.mismatches));
+});
+
 test('maven-war: 두 소스 경로가 같은 zip 경로로 사상되면 map_conflict → 대조 불가(extra_in_zip 이 함께여도) (1.3.2 AC⑨-8)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: WAR_PROJECT });
