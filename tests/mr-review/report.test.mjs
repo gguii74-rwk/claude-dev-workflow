@@ -846,13 +846,14 @@ test('SKILL.md: §0 공통 종료 절차에 cleanup ERR 목록이 비었을 때(
   assert.match(s8, /snapshot\.json/);
 });
 
-test('SKILL.md §5 경로 감시: 제외 3종(CODEX_HOME 전체 · $ROOT · $W) + 위키 루트 우선 + 터미널 요약 「Codex 자체 경로 n건 제외」 (1.3.1 AC⑧-1 · D32)', () => {
+// 1.3.2 ⑩(D39)에서 제외 3종 → 5종 · 터미널 요약 문구 「경로 감시 제외 n건(…)」으로 갱신(spec 2026-10-22 AC⑩-1·2)
+test('SKILL.md §5 경로 감시: 제외 5종 중 (가)~(다)(CODEX_HOME 전체 · $ROOT · $W) + 위키 루트 우선 + 터미널 요약 「경로 감시 제외 n건(Codex 자체 …)」 (1.3.1 AC⑧-1 · D32 → 1.3.2 D39)', () => {
   const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
   const item = skill.split('\n').find((l) => l.startsWith('- **경로 감시**'));
   assert.ok(item, '§5 경로 감시 항목');
-  for (const re of [/\$CODEX_HOME/, /~\/\.codex\//, /\$ROOT/, /\$W/, /위키 루트[^。\n]*제외 3종 안에 있어도/, /제외/, /「Codex 자체 경로 n건 제외」/]) assert.match(item, re);
+  for (const re of [/\$CODEX_HOME/, /~\/\.codex\//, /\$ROOT/, /\$W/, /위키 루트[^。\n]*제외 5종 안에 있어도/, /제외/, /「경로 감시 제외 n건\(Codex 자체 a/]) assert.match(item, re);
   const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
-  assert.match(s8, /Codex 자체 경로 n건 제외/);
+  assert.match(s8, /경로 감시 제외 n건\(Codex 자체/);
 });
 
 // ── 1.3.2 ⑨ 표시 · ⑪ 불일치 목록 = 부록 A 한 곳, 본문은 요약 + 참조 (spec 2026-10-22 3.⑨ 5 · 3.⑪) ──
@@ -962,4 +963,21 @@ test('SKILL.md §6-5: row 번호 기준 병합 · criterion = 메인이 검증 �
   for (const re of [/`row` 번호 기준/, /`criterion`[^\n]*메인이[^\n]*원문/, /한쪽에만/, /누락/, /배열 순서/, /범위 밖/, /중복/, /intent 행 번호 누락/]) assert.match(r5, re);
   const ex = s6.slice(s6.indexOf('```json'), s6.indexOf('```', s6.indexOf('```json') + 7));
   assert.match(ex.split('\n').find((l) => l.includes('"intent"')), /"row": /);
+});
+
+// ── 1.3.2 ⑩ 경로 감시 제외 (라)(마) (spec 2026-10-22 3.⑩ D39·D48·D49) ──
+test('SKILL.md §5 경로 감시 제외 (라) 명령 실행기·시스템 실행 파일 · (마) 존재하지 않는 경로(잘린 후보는 디렉터리로 검사) · /etc/ 는 제외하지 않음 (1.3.2 AC⑩-1 · D48·D49)', () => {
+  const item = skillText().split('\n').find((l) => l.startsWith('- **경로 감시**'));
+  for (const s of ['(라)', '(마)', 'Running command', 'Command completed', '/bin/bash', '/usr/bin/', '/usr/local/lib/', '/usr/share/', '/opt/homebrew/', 'C:\\Windows\\', '[ -e ', '존재하지 않', '잘린', '...']) assert.ok(item.includes(s), s);
+  assert.match(item, /`\/etc\/`[^。\n]*제외하지 않는다/);
+  assert.match(item, /\(가\)~\(마\)|제외 5종/);
+  assert.match(item, /`cat`·`ls`로 열지 않는다/);
+});
+
+test('SKILL.md 터미널 요약: 「경로 감시 제외 n건(Codex 자체 a · 시스템 실행 파일 b · 존재하지 않는 경로 c)」 — §5 끝과 §8 둘 다 (1.3.2 AC⑩-2 · D39)', () => {
+  const skill = skillText();
+  const item = skill.split('\n').find((l) => l.startsWith('- **경로 감시**'));
+  const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
+  for (const t of [item, s8]) assert.ok(t.includes('경로 감시 제외 n건(Codex 자체 a · 시스템 실행 파일 b · 존재하지 않는 경로 c)'));
+  assert.ok(!skill.includes('Codex 자체 경로 n건 제외'));
 });
