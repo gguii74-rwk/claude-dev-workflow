@@ -791,9 +791,13 @@ test('URL 자격증명: 빈 사용자명·비번 속 `@`(권한부의 마지막 
     ['masked', 'https://u:p@ss@host/x', 'ss@host'],
     ['masked', 'https://a@b:AT_USER_SECRET@host/', 'AT_USER_SECRET'],
     ['masked', '{"a":"redis://:J_SECRET@h:1","b":"me@x.com"}', 'J_SECRET'],
+    ['masked', 'https://user:pa"QUOTE_SECRET@host/x', 'QUOTE_SECRET'],             // 비번 글자는 공백·`/` 전까지 — `?#"\` 도 비번 안(훅 — 좁히면 예전 규칙보다 덜 가린다)
+    ['masked', 'https://u:pa?Q_SECRET@host/', 'Q_SECRET'],
+    ['masked', 'https://u:pa#H_SECRET@h/', 'H_SECRET'],
+    ['masked', 'curl https://u:pa\\BS_SECRET@h/', 'BS_SECRET'],
   ]);
   assert.equal(maskTextWithCounts('https://u:p@ss@host/x', []).text, 'https://u:[masked:secret]@host/x');
-  assert.equal(maskTextWithCounts('{"a":"redis://:J@h:1","b":"me@x.com"}', []).text, '{"a":"redis://:[masked:secret]@h:1","b":"me@x.com"}');
+  assert.equal(maskTextWithCounts('redis://:J@h:1 next me@x.com', []).text, 'redis://:[masked:secret]@h:1 next me@x.com');   // 공백 뒤 이메일은 보존(공백 없이 이어지면 더 넓게 가린다 — 덜 가리는 것보다 안전)
   for (const t of ['ftp://user@host/x', 'https://host:8080/p?q=a@b', 'see https://example.com/a:b@c', 'mailto:me@x.com']) assert.deepEqual(maskTextWithCounts(t, []).residual, [], t);
   const s0 = Date.now();
   maskTextWithCounts('a'.repeat(200000) + ' ' + 'x://'.repeat(20000) + ' ' + ':@'.repeat(50000), []);
