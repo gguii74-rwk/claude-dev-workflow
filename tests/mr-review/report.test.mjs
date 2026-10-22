@@ -772,6 +772,20 @@ test('cleanup: 지울 수 없는 항목(권한)이 있어도 나머지 마스킹
   assert.deepEqual(readdirSync(work).filter((n) => n.endsWith('.masking') && n !== '.mr.json.masking'), []);
 });
 
+test('cleanup: 마스킹 사본 교체와 원문 삭제가 함께 실패하면(읽기 전용 W) 「지웠다」가 아니라 원문 잔존으로 보고한다 (1.3.1 R6-1)', { skip: process.getuid?.() === 0 && 'root 는 권한 오류가 나지 않는다' }, () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  rmSync(join(work, 'baseline'), { recursive: true, force: true });
+  chmodSync(work, 0o500);                                            // 새 파일도 못 쓰고 지우지도 못한다
+  let r;
+  try { r = runCli(['cleanup', '--adapter', adapter, '--work', work]); } finally { chmodSync(work, 0o700); }
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.doesNotMatch(r.first, /원문을 남기지 않고 지웠다/);
+  assert.match(r.first, /정리하지 못한 항목: .*review-claude\.json\([^)]*원문 잔존\)/);
+  assert.ok(existsSync(join(work, 'review-claude.json')));           // 실제로 남아 있다 — 보고와 일치
+});
+
 test('cleanup: 표지 ERR 의 항목 목록은 조회 실패(권한 등)를 「(없음)」으로 보고하지 않는다 — 없는 W 만 「(없음)」 (1.3.1 R3-1 · D33)', { skip: process.getuid?.() === 0 && 'root 는 권한 오류가 나지 않는다' }, () => {
   const root = tmp();
   const adapter = writeAdapter(root);

@@ -445,26 +445,27 @@ export function cleanup({ work, adapter }) {
   try { mrRaw = JSON.parse(fs.readFileSync(path.join(work, 'mr.json'), 'utf8')); } catch { /* 없거나 손상 — 스냅샷 SHA 만 보존 */ }
   const keep = knownShas({ mr: mrRaw, snapshot });   // 보존할 SHA = 구조화 칸의 실제 커밋만(8b FR1-2)
   let masked = 0;
-  const failed = [];
+  const failed = [];   // 마스킹 못 해 원문을 지운 것
+  const stuck = [];    // 지우지 못해 W 에 남은 것 — 원문일 수 있다. 보고는 실제 삭제 결과대로 한다(R6-1)
+  const dropRaw = (f, p, why) => { if (tryRm(p)) { if (why) failed.push(`${f}(${why})`); return true; } stuck.push(`${f}(${why || '파싱 불가'} — 원문 잔존)`); return false; };
   for (const f of MASKED_JSON) {
     const p = path.join(work, f);
     if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isFile()) continue;   // 없거나 일반 파일이 아니다(심볼릭 링크·디렉터리) — 따라가 읽거나 쓰지 않는다. 아래 허용 목록 정리가 링크만 지운다(1.3.1 R1-1)
     let obj;
-    try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { fs.rmSync(p); raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
+    try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { if (dropRaw(f, p, null)) raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
     let out;
-    try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { fs.rmSync(p); failed.push(`${f}(${e.message})`); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
+    try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { dropRaw(f, p, e.message); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
     // 기존 파일 실체(inode)는 고치지 않는다 — 새 파일에 쓰고 이름을 바꿔 교체한다. 하드 링크로 W 밖 원본과 실체를 공유해도 원본은 그대로다(R4-1), 검사 뒤 링크로 바뀌어도 따라가지 않는다(R1-1)
     const tmpFile = path.join(work, `.${f}.${randomBytes(6).toString('hex')}.masking`);   // 매번 새 이름 — W 에 이미 있는 항목과 부딪히지 않는다(R5-2)
     try {
       fs.writeFileSync(tmpFile, out, { flag: 'wx' });
       fs.renameSync(tmpFile, p);
-    } catch (e) { tryRm(tmpFile); tryRm(p); failed.push(`${f}(${e.message})`); continue; }   // 교체 실패도 원문을 남기지 않으려 지우고, 나머지 정리를 계속한다
+    } catch (e) { tryRm(tmpFile); dropRaw(f, p, e.code || e.message); continue; }   // 교체 실패도 원문을 남기지 않으려 지우고, 나머지 정리를 계속한다
     masked += 1;
   }
   // 허용 9종 밖은 이름을 몰라도 지운다(숨김 파일 포함). 심볼릭 링크는 링크만 — rmSync 는 링크 대상을 따라가지 않는다
   // 지울 수 없는 항목(권한 등)은 모아 두고 나머지를 끝까지 지운 뒤 ERR 로 남은 항목을 알린다 — 항목 하나가 정리 전체를 멈추지 않게(R5-2 잔존)
   const extra = [];
-  const stuck = [];
   for (const d of fs.readdirSync(work, { withFileTypes: true })) {
     if (KEEP.has(d.name) && d.isFile()) continue;
     const name = d.name + (d.isDirectory() ? '/' : '');
