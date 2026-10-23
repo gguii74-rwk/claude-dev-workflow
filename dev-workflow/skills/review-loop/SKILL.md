@@ -1,6 +1,6 @@
 ---
 name: review-loop
-description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적대검증을 돌린다. 목표는 "high 0"이 아니라 "미판정(unadjudicated) blocking 0" — 모든 critical/high/medium finding을 FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE 중 하나로 판정해 ledger에 닫는다. 초반 --auto-rounds회(기본 3)는 자동 모드 — FIXED 자동수정 + 위험군(critical·보안·방향전제) 외 ESCALATE는 batch로 모아 일괄 제시(사람 개입 최소화). 이후 정밀 모드. 매 반복 "커밋 후 리뷰". --max(기본 5)는 적대 라운드 상한이며 확인 라운드는 별도 예산(기본 2)이다.
+description: spec/plan/impl 단계 완료 후 변경을 커밋하고 codex 적대검증을 돌린다. 목표는 "high 0"이 아니라 "미판정(unadjudicated) blocking 0" — 모든 critical/high/medium finding을 FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE 중 하나로 판정해 ledger에 닫는다. 초반 --auto-rounds회(기본 3)는 자동 모드 — FIXED 자동수정 + 위험군(critical·보안·방향전제) 외 ESCALATE는 batch로 모아 일괄 제시(사람 개입 최소화). 이후 정밀 모드. 매 반복 "커밋 후 리뷰". --max(기본 5)는 적대 라운드 상한이며 확인 라운드는 별도 예산(기본 2)이다. 남의 MR(다른 사람의 GitLab merge request) 검토에는 트리거하지 않는다 — 그건 mr-review 다 (Does NOT trigger on reviewing someone else's MR; that is mr-review).
 ---
 
 # review-loop

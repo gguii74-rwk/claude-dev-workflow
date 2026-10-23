@@ -1596,3 +1596,11 @@ test('render 보완 문구 절 이름: 키 없음 = 「배경」 현행 바이�
   assert.equal(r({ why: true, what: true, section: '요약' }, ON), '');
   assert.ok(r({ why: false, what: false, source: 'none', section: null }, { contract: { backgroundSections: ['요약', '배경'] } }).includes('- 「요약」에 ① 왜'));
 });
+
+test('review-loop description 에 「남의 MR 은 mr-review」 안내 · mr-review description 의 「that is review-loop」 유지 (1.3.5 AC-A-1 · D97)', () => {
+  const desc = (f) => readFileSync(f, 'utf8').match(/^---\n[\s\S]*?^description: (.*)$/m)[1];
+  const rl = desc(join(CLI, '..', '..', '..', 'review-loop', 'SKILL.md'));
+  assert.match(rl, /mr-review/);
+  assert.match(rl, /someone else's MR/);
+  assert.match(desc(join(CLI, '..', '..', 'SKILL.md')), /that is review-loop/);
+});
