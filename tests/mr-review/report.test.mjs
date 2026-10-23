@@ -1330,3 +1330,112 @@ test('render: zip.excluded 2건 → 부록 A 에 「배포 제외 경로 2건(�
   for (const z of [{ ...d.zip, excluded: [] }, (({ excluded, ...rest }) => rest)(d.zip)]) assert.ok(!renderWith(tmp(), { ...d, zip: z }).includes('배포 제외 경로'));
   assert.match(s8Of(skillText()).split('\n').find((l) => l.startsWith('- **터미널 요약')), /배포 제외 경로 n건/);
 });
+
+// ── 1.3.5 ① 교차 검토 깊이 표지 (spec 2026-10-23 1.3.5 3.①-5~8 · D93·D103) ──
+const { codexStats } = await import(join(LIB, 'report.mjs'));
+const D69 = () => [
+  ...Array.from({ length: 68 }, (_, i) => ({ old_path: `src/main/java/app/m${i + 1}/C${i + 1}.java`, new_path: `src/main/java/app/m${i + 1}/C${i + 1}.java`, new_file: false, renamed_file: false, deleted_file: false })),
+  { old_path: 'src/main/java/app/OldName.java', new_path: 'src/main/java/app/NewName.java', new_file: false, renamed_file: true, deleted_file: false },
+];
+// 명령 16줄(2줄은 96자 절단 `...`) · 명령 로그에 변경 경로 8개 · 최종 JSON file 에 1개 · basename 만 같은 다른 경로 1개
+function codexOut(extraMentions = 0) {
+  const cmds = [
+    ...Array.from({ length: 8 }, (_, i) => `[codex] Running command: /bin/bash -lc "sed -n '1,200p' src/main/java/app/m${i + 1}/C${i + 1}.java"`),
+    '[codex] Running command: /bin/bash -lc "rg -n \'saveDraft\' src/main/java/app/m50/C50.ja...',
+    '[codex] Running command: /bin/bash -lc "sed -n \'1,400p\' src/main/java/app/m51/...',
+    '[codex] Running command: /bin/bash -lc "cat lib/C12.java"',
+    ...Array.from({ length: 5 }, (_, i) => `[codex] Running command: /bin/bash -lc "rg -n token${i}"`),
+  ];
+  const more = Array.from({ length: extraMentions }, (_, i) => `src/main/java/app/m${i + 20}/C${i + 20}.java`).join('\n');
+  return ['[codex] Starting', ...cmds, 'Command completed: 0', more, '```json', JSON.stringify({ reviewer: 'codex', findings: [{ file: 'src/main/java/app/NewName.java', title: 'x' }] }), '```', 'COMPANION_EXIT:0', ''].join('\n');
+}
+
+test('codexStats: 명령 줄 수 · 변경 파일 경로 집합(rename 은 둘 다) · 경로 그대로 언급한 수(명령 로그 + 최종 JSON, basename 만 같은 경로는 안 셈) · 1/4 미만이면 약함 (1.3.5 AC①-7 · D93)', () => {
+  assert.deepEqual(codexStats(codexOut(), D69()), { commands: 16, changedFiles: 70, filesMentioned: 9, weak: true });
+  assert.deepEqual(codexStats(codexOut(30), D69()), { commands: 16, changedFiles: 70, filesMentioned: 39, weak: false });
+  assert.deepEqual(codexStats(codexOut(), []), { commands: 16, changedFiles: 0, filesMentioned: 0, weak: false });
+  assert.equal(codexStats(codexOut(), [{ old_path: 'src/main/java/app/C12.java', new_path: 'src/main/java/app/C12.java' }]).filesMentioned, 0);   // `lib/C12.java` 는 basename 만 같다
+});
+
+test('CLI codex-stats: 첫 줄 CODEX_STATS commands=… changed=… mentioned=… weak=… + W/codex-stats.json · codex.out 없으면 ERR (1.3.5 AC①-8)', () => {
+  const root = tmp();
+  const work = fullWork(root, { fnd: findings([]), mr: { diffs: D69() } });
+  writeFileSync(join(work, 'codex.out'), codexOut());
+  const r = runCli(['codex-stats', '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(r.first, 'CODEX_STATS commands=16 changed=70 mentioned=9 weak=true');
+  assert.deepEqual(readJson(join(work, 'codex-stats.json')), { commands: 16, changedFiles: 70, filesMentioned: 9, weak: true });
+  rmSync(join(work, 'codex.out'));
+  const e = runCli(['codex-stats', '--work', work]);
+  assert.equal(e.code, 2);
+  assert.match(e.first, /^ERR /);
+});
+
+const STATS = (over = {}) => ({ codex: { commands: 16, changedFiles: 69, filesMentioned: 9, weak: true, ...over } });
+function renderFnd(root, fnd, name = 'r.md') {
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, name);
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  return { md: readFileSync(out, 'utf8'), work, adapter };
+}
+const judgeLine = (md) => md.match(/```text\n([\s\S]*?)\n```/)[1].split('\n').find((l) => l.startsWith('- [판독]'));
+
+test('render: reviewerStats.codex 약함 → 헤더 「있음(약함 — 변경 파일 69 중 9 언급 · 명령 16회)」 · [판독] 줄 「 · 교차 검토 약함」 · 부록 D 통계 1줄 / 약함 아님 → 헤더 수치만 · 실행 블록 변화 없음 / 통계 없음 → 현행 (1.3.5 AC①-9)', () => {
+  const { md } = renderFnd(tmp(), findings([], { reviewerStats: STATS() }));
+  assert.match(md, /^- 리뷰 모드: 전체 · 돈 모델: claude, codex · 교차 검토: 있음\(약함 — 변경 파일 69 중 9 언급 · 명령 16회\)$/m);
+  assert.ok(judgeLine(md).includes(' · 교차 검토 약함'), judgeLine(md));
+  assert.match(sectionOf(md, '## 부록 D'), /^## 부록 D — 병합 발견 상세 · 리뷰어 결정\n\n- Codex 검토 통계: 명령 16회 · 변경 파일 69 중 9 언급\(약함\)\n/);
+  const { md: md2 } = renderFnd(tmp(), findings([], { reviewerStats: STATS({ commands: 40, filesMentioned: 30, weak: false }) }));
+  assert.match(md2, /교차 검토: 있음\(변경 파일 69 중 30 언급 · 명령 40회\)$/m);
+  assert.ok(!judgeLine(md2).includes('약함'));
+  assert.match(sectionOf(md2, '## 부록 D'), /- Codex 검토 통계: 명령 40회 · 변경 파일 69 중 30 언급\n/);
+  const { md: md0 } = renderFnd(tmp(), findings([]));
+  assert.match(md0, /교차 검토: 있음$/m);
+  assert.doesNotMatch(md0, /Codex 검토 통계|교차 검토 약함/);
+  assert.equal(judgeLine(md0), judgeLine(md2));
+});
+
+test('render 단일 모델: crossChecked:false + reviewerStats.codex → 헤더 「없음」 현행 · [판독] 줄 현행 · 부록 D 통계 1줄 (1.3.5 AC①-13 · D103)', () => {
+  const { md } = renderFnd(tmp(), findings([], { validReviewers: ['claude'], crossChecked: false, reviewerStats: STATS() }));
+  assert.match(md, /· 돈 모델: claude · 교차 검토: 없음$/m);
+  assert.equal(judgeLine(md), `- [판독] base..head diff·변경 파일 전문 — head ${HEAD.slice(0, 7)} (돈 모델: claude · 교차 검토 없음)`);
+  assert.match(sectionOf(md, '## 부록 D'), /- Codex 검토 통계: 명령 16회 · 변경 파일 69 중 9 언급\(약함\)/);
+});
+
+test('verdict: reviewerStats 유무·weak 값은 판정 결과를 바꾸지 않는다 (1.3.5 AC①-10)', () => {
+  const c = baseCheck(); c.contract.incompleteLines = ['Base SHA'];
+  for (const list of [[], [F()], [F({ type: 'MISSING_EVIDENCE' })]]) {
+    const plain = V(findings(list), { check: c });
+    assert.deepEqual(V(findings(list, { reviewerStats: STATS() }), { check: c }), plain);
+    assert.deepEqual(V(findings(list, { reviewerStats: STATS({ weak: false }) }), { check: c }), plain);
+  }
+});
+
+test('cleanup: W/codex-stats.json 은 허용 9종 밖이라 extra 로 지우고 findings.json.reviewerStats 는 마스킹 사본에 남는다 (1.3.5 AC①-12)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([], { reviewerStats: STATS() }) });
+  writeFileSync(join(work, 'codex-stats.json'), JSON.stringify(STATS().codex));
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(r.out.split('\n')[1], 'extra: codex-stats.json');
+  assert.ok(!existsSync(join(work, 'codex-stats.json')));
+  assert.deepEqual(readJson(join(work, 'findings.json')).reviewerStats, STATS());
+});
+
+test('SKILL.md §5: 워크트리 안 문서는 팩 B 에 경로 포인터만 · 포인터는 현재 작업 디렉터리에서 읽어라 · codex-stats → reviewerStats · 「경로가 아니라 본문」·「팩 B 에 없는 경로」 없음 · 고정 첫머리 cwd 밖 금지 유지 · §8 교차 검토 약함 (1.3.5 AC①-11 · R1-1)', () => {
+  const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+  const s5 = skill.slice(skill.indexOf('## 5. 독립 병렬 검토'), skill.indexOf('## 6. 병합'));
+  assert.match(s5, /워크트리 안 문서는 팩 B 에 경로 포인터만/);
+  assert.match(s5, /포인터는 현재 작업 디렉터리에서 그 경로를 읽어라/);
+  assert.match(s5, /<CLI> codex-stats --work "\$W"/);
+  assert.match(s5, /reviewerStats\.codex/);
+  assert.match(s5, /유효든 무효든[^\n]*codex\.out/);
+  assert.doesNotMatch(skill, /경로가 아니라 본문|팩 B 에 없는 경로/);
+  assert.match(s5, /현재 작업 디렉터리\(워크트리\) 밖의 파일을 읽지 마라/);
+  const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
+  assert.match(s8, /돈 모델\/교차 검토[^\n]*교차 검토: 있음\(약함 — 변경 파일 n 중 m 언급 · 명령 k회\)/);
+});

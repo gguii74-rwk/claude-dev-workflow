@@ -1,7 +1,7 @@
 // pack 계약 테스트 (spec §5.3 · SC-3 pack.json) — 공통 문서(git) + 팀/개인 위키(MR_REVIEW_HOME) + 마스킹 fail-closed
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmp, writeAdapter, writeDocs, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
@@ -851,4 +851,116 @@ test('마스킹 입구가 NEL·U+2028·U+2029 도 줄바꿈으로 본다 — 그
   }
   const lf = '앞\n-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n뒤 password: hunter2';
   assert.equal(maskTextWithCounts(lf, []).text, maskText(lf, []));   // 그 문자가 없는 입력은 그대로
+});
+
+// ── 1.3.5 ① 팩 B 포인터 (spec 2026-10-23 1.3.5 3.① · D92·D102·D108·D109) ──
+// 워크트리 모드 픽스처: 가상 대상 저장소 wt 에 files 를 커밋하고 snapshot 을 worktree 모드로 바꾼다
+function withWorktree(s, files) {
+  const wt = join(s.root, 'wt');
+  mkdirSync(wt, { recursive: true });
+  git(wt, 'init', '-q', '-b', 'master');
+  for (const [p, c] of Object.entries(files)) { mkdirSync(join(wt, p, '..'), { recursive: true }); writeFileSync(join(wt, p), c); }
+  git(wt, 'add', '-A');
+  git(wt, 'commit', '-q', '-m', 'head');
+  const head = git(wt, 'rev-parse', 'HEAD');
+  writeFileSync(join(s.work, 'snapshot.json'), JSON.stringify({ mode: 'worktree', target_sha: 'b'.repeat(40), base_sha: 'b'.repeat(40), head_sha: head, checkout: wt, worktree: wt, attempts: 1, unrecovered: [], rebuilt: [] }));
+  const mr = readJson(join(s.work, 'mr.json')); mr.api_head = head; writeFileSync(join(s.work, 'mr.json'), JSON.stringify(mr));
+  return { wt, head, h7: head.slice(0, 7) };
+}
+const longDoc = (n, tag) => Array.from({ length: n }, (_, i) => `${tag} 줄 ${i + 1}${i + 1 === n ? ' LAST-LINE-UNIQUE' : ''}`).join('\n') + '\n';
+const runPack = (s, env = {}) => { const r = runCli(['pack', '--adapter', s.adapter, '--work', s.work], { ...s.env, ...env }); assert.equal(r.code, 0, r.out + r.err); return { p: readJson(join(s.work, 'pack.json')), a: readFileSync(join(s.work, 'pack-a.md'), 'utf8'), b: existsSync(join(s.work, 'pack-b.md')) ? readFileSync(join(s.work, 'pack-b.md'), 'utf8') : null }; };
+
+test('워크트리 모드의 repo: 문서는 팩 B 에 본문 대신 포인터 한 블록(경로@head7 · 경로 · 파일 전체 줄 수) · 팩 A 는 본문 · packB 표지 · B 헤더 「경로만」 (1.3.5 AC①-1·①-14 · D92·D102)', () => {
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md'], rules: [] } } });
+  const { wt, h7 } = withWorktree(s, { 'AGENTS.md': longDoc(450, 'AGENTS-BODY') });
+  const { p, a, b } = runPack(s);
+  const src = p.sources.find((x) => x.ref === `repo:AGENTS.md@${h7}`);
+  assert.equal(src.packB, 'pointer');
+  assert.equal(src.inPackB, true);
+  assert.equal(src.missing, false);
+  assert.equal(src.lines, 401);                                                            // 팩 A 발췌(400줄 + 생략 표지) 줄 수 — 현행(H-4)
+  assert.doesNotMatch(b, /AGENTS-BODY/);                                                    // 본문 문장이 팩 B 에 없다
+  assert.ok(b.includes(`### [${src.id}] doc · repo:AGENTS.md@${h7}\n\n(워크트리 문서 — 본문은 현재 작업 디렉터리에서 직접 읽어라: \`AGENTS.md\` · 450줄)\n`), b);
+  assert.ok(b.includes(`- [${src.id}] doc · repo:AGENTS.md@${h7} · (경로만 — 작업 디렉터리에서 직접 읽음)`), b);
+  assert.match(a, /AGENTS-BODY 줄 400\n\(… 상한으로 생략\)/);                                // 팩 A 는 발췌 본문(400줄 상한)
+  assert.doesNotMatch(a, /경로만|직접 읽어라/);                                              // 팩 A 헤더·본문에 포인터 표기 없음
+  // 팩 A 바이트 불변: 같은 blob 에서 포인터 조건만 깨면(작업 폴더 수정) 팩 B 는 본문으로 돌아가고 팩 A 는 바이트 동일
+  writeFileSync(join(wt, 'AGENTS.md'), 'DIRTY-WORKTREE-TEXT\n');
+  const again = runPack(s);
+  assert.equal(again.a, a);
+  assert.equal(again.p.sources.find((x) => x.ref === `repo:AGENTS.md@${h7}`).packB, 'body');
+  for (const x of p.sources.filter((y) => y.kind !== 'doc' || !y.ref.startsWith('repo:'))) assert.equal(x.packB, x.inPackB ? 'body' : 'none', x.ref);   // AC①-5 — 공통 문서·위키·어댑터·기준선은 본문(금지 위키는 none)
+});
+
+test('diff-only 모드는 repo: 문서도 팩 B 에 본문 그대로 · packB body (1.3.5 AC①-2 · D92)', () => {
+  const enc = (q) => encodeURIComponent(q).replace(/\./g, '%2E');
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md'], rules: [] } } });
+  const g = fakeGlab(s.root, [{ match: `^api projects/101/repository/files/${enc('AGENTS.md')}/raw\\?ref=${HEAD}$`, text: '# 규약\n\nDIFFONLY-AGENTS-TEXT\n' }]);
+  const { p, b } = runPack(s, g.env);
+  assert.equal(p.sources.find((x) => x.ref === `repo:AGENTS.md@${HEAD.slice(0, 7)}`).packB, 'body');
+  assert.match(b, /DIFFONLY-AGENTS-TEXT/);
+  assert.doesNotMatch(b, /경로만|직접 읽어라/);
+});
+
+test('repo: 문서가 head 에 심볼릭 링크·부재·절 없음이면 포인터가 아니라 현행 문구 · missing · packB body · 절 참조는 포인터에 「절 … 이하」 (1.3.5 AC①-3·①-4)', () => {
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:LINKED.md', 'repo:NOPE.md', 'repo:docs/x.md#5.', 'repo:docs/x.md#9.'], rules: [] } } });
+  const outside = join(s.root, 'outside.md');
+  writeFileSync(outside, 'OUTSIDE-LINK-TARGET\n');
+  const wt = join(s.root, 'wt');
+  mkdirSync(join(wt, 'docs'), { recursive: true });
+  symlinkSync(outside, join(wt, 'LINKED.md'));
+  const { h7 } = withWorktree(s, { 'docs/x.md': '# x\n\n## 4. 앞\n\n앞 본문\n\n## 5. 절\n\nSECTION-FIVE-TEXT\n' });
+  const { p, a, b } = runPack(s);
+  const by = (ref) => p.sources.find((x) => x.ref === ref);
+  for (const ref of [`repo:LINKED.md@${h7}`, `repo:NOPE.md@${h7}`, `repo:docs/x.md@${h7}#9.`]) { assert.equal(by(ref).missing, true, ref); assert.equal(by(ref).packB, 'body', ref); }
+  assert.match(b, /\(대상 저장소 문서 심볼릭 링크 — 링크 대상은 읽지 않는다\(F4\): LINKED\.md @ /);
+  assert.match(b, /\(대상 저장소 문서 없음: NOPE\.md @ /);
+  assert.match(b, /\(절 없음: docs\/x\.md#9\. — 문서 전체 생략\)/);
+  assert.doesNotMatch(a + b, /OUTSIDE-LINK-TARGET/);
+  const sec = by(`repo:docs/x.md@${h7}#5.`);
+  assert.equal(sec.packB, 'pointer');
+  assert.ok(b.includes(`(워크트리 문서 — 본문은 현재 작업 디렉터리에서 직접 읽어라: \`docs/x.md\` · 9줄 · 절 「5.」 이하)`), b);
+  assert.doesNotMatch(b, /SECTION-FIVE-TEXT/);
+  assert.match(a, /SECTION-FIVE-TEXT/);
+});
+
+test('포인터 직전 워크트리 실물 확인 — 그 파일이 링크 · 부모 디렉터리가 워크트리 밖 링크 · 내용이 blob 과 다름이면 포인터 없이 blob 본문 (1.3.5 AC①-15 · D109)', () => {
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md', 'repo:docs/x.md', 'repo:CLAUDE.md', 'repo:OUT.md'], rules: [] } } });
+  const agents = '# 규약\n\nBLOB-AGENTS-TEXT\n';
+  const x = '# x\n\nBLOB-X-TEXT\n';
+  const { wt, h7 } = withWorktree(s, { 'AGENTS.md': agents, 'docs/x.md': x, 'CLAUDE.md': '# c\n\nBLOB-CLAUDE-TEXT\n', 'OUT.md': '# o\n\nBLOB-OUT-TEXT\n', 'copy.md': agents });
+  // ⓐ 같은 내용의 워크트리 안 파일로 향하는 링크(lstat 만 걸린다)
+  rmSync(join(wt, 'AGENTS.md')); symlinkSync(join(wt, 'copy.md'), join(wt, 'AGENTS.md'));
+  // ⓐ' 워크트리 밖 다른 내용 파일로 향하는 링크
+  const outside = join(s.root, 'outside-private.md'); writeFileSync(outside, 'OUTSIDE-PRIVATE-TEXT\n');
+  rmSync(join(wt, 'OUT.md')); symlinkSync(outside, join(wt, 'OUT.md'));
+  // ⓑ 부모 디렉터리를 워크트리 밖 디렉터리 링크로(같은 바이트 — realpath 만 걸린다)
+  const outDir = join(s.root, 'outdocs'); mkdirSync(outDir); writeFileSync(join(outDir, 'x.md'), x);
+  rmSync(join(wt, 'docs'), { recursive: true }); symlinkSync(outDir, join(wt, 'docs'));
+  // ⓒ 미커밋 수정
+  writeFileSync(join(wt, 'CLAUDE.md'), '# c\n\nDIRTY-CLAUDE-TEXT\n');
+  const { p, a, b } = runPack(s);
+  for (const [ref, text] of [['AGENTS.md', 'BLOB-AGENTS-TEXT'], ['docs/x.md', 'BLOB-X-TEXT'], ['CLAUDE.md', 'BLOB-CLAUDE-TEXT'], ['OUT.md', 'BLOB-OUT-TEXT']]) {
+    const src = p.sources.find((y) => y.ref === `repo:${ref}@${h7}`);
+    assert.equal(src.packB, 'body', ref);
+    assert.equal(src.missing, false, ref);
+    assert.ok(b.includes(text), ref);                                                   // 팩 B 에 blob 에서 읽은 마스킹 본문
+  }
+  assert.doesNotMatch(b, /직접 읽어라|경로만/);
+  assert.doesNotMatch(a + b, /OUTSIDE-PRIVATE-TEXT|DIRTY-CLAUDE-TEXT/);
+});
+
+test('포인터 줄도 팩 B 마스킹을 거친다 — 경로가 어댑터 패턴에 걸리면 가려진 채 가고 applied 가 센다 · 잔존이면 지금처럼 팩 B 없음 (1.3.5 AC①-6)', () => {
+  const s = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:docs/internal-ops.md'], rules: [] }, mask: [{ name: 'opsname', pattern: 'internal-ops' }, { name: 'phone', pattern: '01[016789]-?\\d{3,4}-?\\d{4}' }] } });
+  withWorktree(s, { 'docs/internal-ops.md': '# ops\n\nOPS-BODY\n' });
+  const { p, b } = runPack(s);
+  assert.equal(p.sources.find((x) => x.ref.startsWith('repo:docs/')).packB, 'pointer');
+  assert.ok(b.includes('(워크트리 문서 — 본문은 현재 작업 디렉터리에서 직접 읽어라: `docs/[masked:opsname].md` · 3줄)'), b);
+  assert.ok(p.mask.applied.opsname >= 3, JSON.stringify(p.mask.applied));               // 출처 목록 줄 · 블록 머리 · 포인터 줄
+  assert.doesNotMatch(b, /internal-ops/);
+  const s2 = setup({ adapterPatch: { docsMap: { always: ['guide/policy.md#0.', 'repo:AGENTS.md'], rules: [] } }, description: '## 배경\n- 설정 password = "SECRETC1 닫는 따옴표 없음\n' });
+  withWorktree(s2, { 'AGENTS.md': '# a\n' });
+  const r2 = runPack(s2);
+  assert.equal(r2.p.codexSkipped, true);
+  assert.equal(r2.b, null);
 });

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // mr-review.mjs — mr-review 스킬의 결정적 단계 CLI(SC-6). 모든 오류는 stdout `ERR <메시지>` 한 줄 + exit 2.
-//   collect · check · deploy · pack · review-validate · verdict · render · cleanup — 각 lib 모듈이 구현(task-02~06).
+//   collect · check · deploy · pack · review-validate · codex-stats · verdict · render · cleanup — 각 lib 모듈이 구현(task-02~06 · codex-stats 1.3.5 ①).
 import { loadAdapter, parseArgs, AdapterError } from './lib/adapter.mjs';
 import { cmdCollect } from './lib/collect.mjs';
 import { cmdCheck } from './lib/check.mjs';
 import { cmdDeploy } from './lib/deploy.mjs';
 import { cmdPack } from './lib/pack.mjs';
-import { cmdReviewValidate, cmdVerdict, cmdRender, cmdCleanup } from './lib/report.mjs';
+import { cmdReviewValidate, cmdCodexStats, cmdVerdict, cmdRender, cmdCleanup } from './lib/report.mjs';
 import { setHost } from './lib/gitlab.mjs';
 
 export class CliError extends Error {
@@ -20,12 +20,13 @@ const COMMANDS = {
   deploy: cmdDeploy,
   pack: cmdPack,
   'review-validate': cmdReviewValidate,
+  'codex-stats': cmdCodexStats,
   verdict: cmdVerdict,
   render: cmdRender,
   cleanup: cmdCleanup,
 };
 
-const KNOWN = ['collect', 'check', 'deploy', 'pack', 'review-validate', 'verdict', 'render', 'cleanup'];
+const KNOWN = ['collect', 'check', 'deploy', 'pack', 'review-validate', 'codex-stats', 'verdict', 'render', 'cleanup'];
 const NEEDS_ADAPTER = new Set(['collect', 'check', 'deploy', 'pack', 'verdict', 'render', 'cleanup']);
 
 export async function main(argv) {

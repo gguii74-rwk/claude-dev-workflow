@@ -110,6 +110,19 @@ function zipLines(deploy) {
   return [`zip ${zips.length}개 합산(배치 ${z.layout}(${z.layout_source}))`, ...zips.map((x, i) => `- zip#${i + 1} ${x.attachment}(주석 ${x.comment_sha ? s7(x.comment_sha) : '없음'} · ${layoutNote(x)})`)].join('\n');
 }
 
+// ── 교차 검토 깊이 표지(1.3.5 ① — spec 2026-10-23 3.①-5 D93·D103) ──────────────────
+// Codex 실행 로그(codex.out 전문)에서 기계적으로 센 값 — 검토자 자기 신고가 아니다. 판정 입력이 아니다(computeVerdict 는 읽지 않는다).
+// filesMentioned = 변경 경로 집합 중 로그 전문(명령 + 최종 JSON)에 경로 문자열 그대로 나온 수 — basename 일치는 세지 않는다. companion 로그의 96자 절단으로 과소 집계될 수 있다(하한 표지 — 「약함」 쪽으로 보수적)
+export function codexStats(out, diffs) {
+  const text = String(out || '');
+  const commands = text.split('\n').filter((l) => l.startsWith('[codex] Running command:')).length;
+  const paths = new Set();
+  for (const d of diffs || []) for (const p of [d?.new_path, d?.old_path]) if (p) paths.add(p);
+  const filesMentioned = [...paths].filter((p) => text.includes(p)).length;
+  return { commands, changedFiles: paths.size, filesMentioned, weak: paths.size > 0 && filesMentioned < Math.ceil(paths.size / 4) };
+}
+const statsText = (c) => `변경 파일 ${c.changedFiles} 중 ${c.filesMentioned} 언급 · 명령 ${c.commands}회`;
+
 // ── §5.5-4 판정 ───────────────────────────────────────────────────────────
 export function machineEvidence({ check, snapshot, deploy }) {
   const out = [];
@@ -214,7 +227,7 @@ function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack, 
   if (!rows.length) rows = ['| (검증 표 없음) | UNKNOWN | - |'];
   const s1h = ['1. 의도 대조표', '| 수용기준·MR 주장 | 결과 | 코드 위치 |', '|---|---|---|'];
   const s2 = ['2. 검증 상태',
-    `- [판독] base..head diff·변경 파일 전문 — head ${s7(snapshot.head_sha)} (돈 모델: ${models}${findings?.crossChecked ? '' : ' · 교차 검토 없음'})`,
+    `- [판독] base..head diff·변경 파일 전문 — head ${s7(snapshot.head_sha)} (돈 모델: ${models}${findings?.crossChecked ? (findings?.reviewerStats?.codex?.weak === true ? ' · 교차 검토 약함' : '') : ' · 교차 검토 없음'})`,
     deploy?.applicable ? `- [실행] 배포본 zip 대조(스킬 직접 수행): ${[deploy.result, mismatchSummary(deploy)].filter(Boolean).join(' — ')}${skippedNote(deploy) ? ` · ${skippedNote(deploy)}` : ''}${excludedCount(deploy) ? ` · 배포 제외 경로 ${excludedCount(deploy)}건(참고)` : ''}` : '- 배포본: 비해당(운영 배포 대상 변경 없음)',
     '- [다른 주체 제공] 작성자 검증 표 결과 — 작성자 주장(이 스킬은 테스트·빌드를 실행하지 않는다)'];
   const evidenceItems = verdict.evidence.map((id) => byId[id] ? `${byId[id].title}` : (verdict.machineEvidence.find((m) => m.id === id)?.detail || id));
@@ -339,11 +352,14 @@ export function renderReport({ adapter, work, early = false }) {
   const adapterId = `${path.basename(adapter.file)}@${createHash('sha1').update(adapter.markdown).digest('hex').slice(0, 8)}`;
   const mode = early ? '조기 종료(결정적 검사만)' : `${check.rereview?.active ? '재리뷰' : '전체'}${snapshot.mode === 'diff-only' ? ' · diff-only' : ''}`;
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
+  // 교차 검토 깊이(1.3.5 ① D93) — 통계가 있고 교차 검토가 있을 때만 괄호 수치. 단일 모델 모드는 「없음」 그대로(D103 — 통계는 부록 D 에만)
+  const cstats = findings?.reviewerStats?.codex;
+  const cross = findings?.crossChecked ? `있음${cstats ? `(${cstats.weak === true ? '약함 — ' : ''}${statsText(cstats)})` : ''}` : '없음';
   const header = [
     `# mr-review 리포트 — ${mr.project.name} !${mr.iid} head ${s7(snapshot.head_sha)}`,
     '',
     `- MR: ${mr.title} · ${mr.web_url || ''}`,
-    `- 리뷰 모드: ${mode} · 돈 모델: ${models} · 교차 검토: ${findings?.crossChecked ? '있음' : '없음'}${pack?.codexSkipped ? ` (Codex 생략 — ${pack.codexSkipReason})` : ''}`,
+    `- 리뷰 모드: ${mode} · 돈 모델: ${models} · 교차 검토: ${cross}${pack?.codexSkipped ? ` (Codex 생략 — ${pack.codexSkipReason})` : ''}`,
     `- SHA: head ${snapshot.head_sha} · base ${snapshot.base_sha} · target ${snapshot.target_sha}${snapshot.mode === 'diff-only' && snapshot.unrecovered?.length ? ` · **불완전 diff-only 리뷰** — 미복원 ${snapshot.unrecovered.join(', ')}` : ''}`,
     `- 어댑터: ${adapterId} · 정책 버전: 계약 ${check.contract?.policyId || '(없음)'} / 판정 기준 ${adapter.policy.judgeId}`,
   ];
@@ -410,6 +426,7 @@ export function renderReport({ adapter, work, early = false }) {
     }
     // 부록 D — 병합 발견 상세: 실행 블록(40줄)이 생략한 근거·시나리오·전제·리뷰어 결정을 발견마다 보존한다(사람이 차단 판단을 검증할 수 있게)
     parts.push('## 부록 D — 병합 발견 상세 · 리뷰어 결정', '');
+    if (cstats) parts.push(`- Codex 검토 통계: 명령 ${cstats.commands}회 · 변경 파일 ${cstats.changedFiles} 중 ${cstats.filesMentioned} 언급${cstats.weak === true ? '(약함)' : ''}`);   // 교차 검토 유무와 무관(D103 — 단일 모델 모드에서 보이는 유일한 자리)
     const merged = findings?.findings || [];
     if (!merged.length && !(verdict?.machineEvidence || []).length) parts.push('(발견 없음)', '');
     for (const f of merged) {
@@ -555,6 +572,18 @@ export async function cmdVerdict(args, ctx) {
   }
   fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify(v, null, 2));
   return `VERDICT ${v.status} ${v.verdict || '-'}`;
+}
+
+// codex-stats(1.3.5 ① D103) — 어댑터 불필요. 값은 메인이 findings.json.reviewerStats.codex 로 옮겨 영속한다(codex-stats.json 은 허용 9종 밖 — cleanup 이 지운다)
+export async function cmdCodexStats(args) {
+  if (typeof args.work !== 'string') throw new ReportError('--work <작업 디렉터리> 가 필요하다');
+  const outFile = path.join(args.work, 'codex.out');
+  if (!fs.existsSync(outFile)) throw new ReportError('codex.out 이 없다 — Codex 를 띄운 실행에서만 호출한다');
+  const mr = readJson(args.work, 'mr.json');
+  if (!mr) throw new ReportError('mr.json 이 필요하다(collect 먼저)');
+  const st = codexStats(fs.readFileSync(outFile, 'utf8'), mr.diffs);
+  fs.writeFileSync(path.join(args.work, 'codex-stats.json'), JSON.stringify(st, null, 2));
+  return `CODEX_STATS commands=${st.commands} changed=${st.changedFiles} mentioned=${st.filesMentioned} weak=${st.weak}`;
 }
 
 export async function cmdRender(args, ctx) {

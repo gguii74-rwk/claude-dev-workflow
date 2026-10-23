@@ -484,11 +484,33 @@ function repoDocText(mr, snap, ref) {
   return sliceDoc(md, rel, anchor);
 }
 
-function renderSources(sources, texts, { onlyB }) {
+// 팩 B 포인터(1.3.5 ① — spec 2026-10-23 3.① D92·D102·D109) — 대상 저장소 head blob 출처(repo: 문서 · repo-path 기준선)는 워크트리 모드에서 팩 B 에 본문 대신 경로 포인터만 넣는다.
+// Codex 는 D4 대로 워크트리(cwd)를 직접 읽으므로 보내는 양만 준다(D4 축소 · D14·D16 불변). diff-only 는 cwd(W/blobs/head)에 변경 밖 문서가 없어 본문 그대로.
+// Codex 가 읽는 것은 커밋 트리가 아니라 디스크의 체크아웃 파일이다 — 직전에 실물 3가지를 확인한다: ⓐ 일반 파일(링크 아님) ⓑ 실제 경로가 워크트리 안(부모 링크 포함) ⓒ 바이트 = head blob.
+// 하나라도 어긋나거나 확인 중 오류면 null(현행 마스킹 본문 — 안전한 쪽). 줄 수 = head blob 파일 전체(자르기 전 — Codex 가 실제 읽을 양, D102)
+function worktreePointer(snap, rel, anchor = '') {
+  if (snap.mode !== 'worktree' || !snap.worktree) return null;
+  try {
+    const ls = spawnSync('git', ['-C', snap.worktree, 'ls-tree', snap.head_sha, '--', rel], { encoding: 'utf8' });
+    const mode = ls.status === 0 ? (ls.stdout.trim().split(/\s+/)[0] || '') : '';
+    if (mode !== '100644' && mode !== '100755') return null;
+    const blob = spawnSync('git', ['-C', snap.worktree, 'show', `${snap.head_sha}:${rel}`], { maxBuffer: 64 * 1024 * 1024 });
+    if (blob.status !== 0) return null;
+    const file = path.join(snap.worktree, rel);
+    if (!fs.lstatSync(file).isFile()) return null;
+    if (!inside(fs.realpathSync(file), fs.realpathSync(snap.worktree))) return null;
+    if (!fs.readFileSync(file).equals(blob.stdout)) return null;
+    const text = blob.stdout.toString('utf8');
+    const n = text === '' ? 0 : text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+    return `(워크트리 문서 — 본문은 현재 작업 디렉터리에서 직접 읽어라: \`${rel}\` · ${n}줄${anchor ? ` · 절 「${anchor}」 이하` : ''})`;
+  } catch { return null; }
+}
+
+function renderSources(sources, texts, { onlyB, pointers = new Map() }) {
   const parts = [];
   for (const s of sources) {
     if (onlyB && !s.inPackB) continue;
-    parts.push(`\n---\n### [${s.id}] ${s.kind} · ${s.ref}${s.note ? ` · ${s.note}` : ''}\n\n${texts.get(s.id)}\n`);
+    parts.push(`\n---\n### [${s.id}] ${s.kind} · ${s.ref}${s.note ? ` · ${s.note}` : ''}\n\n${(onlyB && pointers.get(s.id)) || texts.get(s.id)}\n`);
   }
   return parts.join('');
 }
@@ -499,12 +521,15 @@ export function pack({ adapter, work }) {
   const check = JSON.parse(fs.readFileSync(path.join(work, 'check.json'), 'utf8'));
   const sources = [];
   const texts = new Map();
+  const pointers = new Map();   // 팩 B 포인터 블록(1.3.5 ①) — 팩 A 는 언제나 texts
   let n = 0;
-  const add = (kind, ref, text, exportAllowed, missing = false, note = '') => {
+  const add = (kind, ref, text, exportAllowed, missing = false, note = '', pointer = null) => {
     n += 1;
     const id = `S${n}`;
-    sources.push({ id, kind, ref, exportAllowed, inPackB: exportAllowed, lines: text.split('\n').length, missing, ...(note ? { note } : {}) });
+    const ptr = exportAllowed && !missing ? pointer : null;
+    sources.push({ id, kind, ref, exportAllowed, inPackB: exportAllowed, packB: !exportAllowed ? 'none' : ptr ? 'pointer' : 'body', lines: text.split('\n').length, missing, ...(note ? { note } : {}) });
     texts.set(id, text);
+    if (ptr) pointers.set(id, ptr);
     return id;
   };
 
@@ -520,7 +545,7 @@ export function pack({ adapter, work }) {
     if (ref.startsWith('repo:')) {   // 대상 저장소 문서(R3-6) — 출처 = repo:<경로>@<head7>[#절]
       const [rel, anchor] = ref.slice('repo:'.length).split('#');
       const t = repoDocText(mr, snap, ref);
-      add('doc', `repo:${rel}@${snap.head_sha.slice(0, 7)}${anchor ? `#${anchor}` : ''}`, t.text, true, t.missing);
+      add('doc', `repo:${rel}@${snap.head_sha.slice(0, 7)}${anchor ? `#${anchor}` : ''}`, t.text, true, t.missing, '', t.missing ? null : worktreePointer(snap, rel, anchor));
       continue;
     }
     const [rel, anchor] = ref.split('#');
@@ -535,7 +560,9 @@ export function pack({ adapter, work }) {
   for (const l of check.baselineLinks || []) {
     if (l.status !== '확보' || !l.file) continue;
     const exportable = l.kind === 'body' || l.project === mr.project.name || (docsProject !== null && l.project === docsProject);
-    add(l.kind === 'issue' ? 'issue' : 'baseline', l.file, fs.readFileSync(path.join(work, l.file), 'utf8'), exportable, false, l.kind === 'issue' ? ISSUE_NOTE : '');
+    // 1.3.5 ⑤ 저장소 문서 경로 기준선(kind repo-path)은 같은 head blob 이라 ① 포인터 대상(D108) — URL 기준선(ref 가 head 와 다를 수 있다)·이슈·본문은 본문
+    const ptr = l.kind === 'repo-path' && l.ref === snap.head_sha ? worktreePointer(snap, l.path) : null;
+    add(l.kind === 'issue' ? 'issue' : 'baseline', l.file, fs.readFileSync(path.join(work, l.file), 'utf8'), exportable, false, l.kind === 'issue' ? ISSUE_NOTE : '', ptr);
   }
   // 2b. 재리뷰 이전 차단 발견(8b FR2-3) — Codex 에 줄 이전 발견 제목(댓글 + 이전 리포트 부록 D 에서 복원)도 팩 B 의 마스킹·잔존 관문을 거치게 출처로 넣는다(SKILL §7 — 이전 리포트 절을 Codex 프롬프트에 직접 복사하지 않는다)
   if (check.rereview?.active) add('rereview', `prior ${String(check.rereview.prior_head || '').slice(0, 7)} #${check.rereview.prior_note_id}`, (check.rereview.priorBlocking || []).map((b) => `- ${b.id || '-'} ${b.type || '-'} — ${b.title ?? '(미확보 — 이전 리포트 없음)'} (${b.source || '-'})`).join('\n') || '(이전 차단 발견 없음)', true);
@@ -552,12 +579,12 @@ export function pack({ adapter, work }) {
   const notesText = (mr.notes || []).filter((x) => !x.system).map((x) => `- (${x.author?.username || '?'} · ${x.created_at} · #${x.id})\n${x.body}`).join('\n\n');
   const body = `# MR !${mr.iid} ${mr.title}\n\nhead ${snap.head_sha} · base ${snap.base_sha}\n\n## 본문\n\n${mr.description || ''}\n\n## 댓글\n\n${notesText || '(없음)'}\n`;
 
-  const header = (label) => `# 컨텍스트 팩 ${label} — MR !${mr.iid} (${mr.project.name}) head ${snap.head_sha.slice(0, 7)}\n\n출처 목록:\n${sources.map((s) => `- [${s.id}] ${s.kind} · ${label === 'B' && !s.inPackB ? '(Codex 미제공)' : `${s.ref}${s.note ? ` · ${s.note}` : ''}${s.inPackB ? '' : ' · (Codex 미제공)'}`}${label === 'B' && !s.inPackB ? '' : s.missing ? ' · (누락 — 문서·절 없음)' : ''}`).join('\n')}\n`;
+  const header = (label) => `# 컨텍스트 팩 ${label} — MR !${mr.iid} (${mr.project.name}) head ${snap.head_sha.slice(0, 7)}\n\n출처 목록:\n${sources.map((s) => `- [${s.id}] ${s.kind} · ${label === 'B' && !s.inPackB ? '(Codex 미제공)' : `${s.ref}${s.note ? ` · ${s.note}` : ''}${s.inPackB ? '' : ' · (Codex 미제공)'}${label === 'B' && s.packB === 'pointer' ? ' · (경로만 — 작업 디렉터리에서 직접 읽음)' : ''}`}${label === 'B' && !s.inPackB ? '' : s.missing ? ' · (누락 — 문서·절 없음)' : ''}`).join('\n')}\n`;
   const packA = `${header('A')}\n## MR\n\n${body}\n## 근거 자료\n${renderSources(sources, texts, { onlyB: false })}`;
   fs.writeFileSync(path.join(work, 'pack-a.md'), packA);
 
   // 팩 B = 허용 출처만 + 마스킹(본문·댓글·발췌 전부에 적용 — D4) = 어댑터 개인정보 패턴 + 엔진 비밀값 패턴(SECRET_MASK — 리포트·cleanup 과 같은 maskText, R6-1). 잔존 검사도 두 규칙 모두. 잔존이면 B 없음.
-  const rawB = `${header('B')}\n## MR\n\n${body}\n## 근거 자료\n${renderSources(sources, texts, { onlyB: true })}`;
+  const rawB = `${header('B')}\n## MR\n\n${body}\n## 근거 자료\n${renderSources(sources, texts, { onlyB: true, pointers })}`;
   const masked = maskTextWithCounts(rawB, adapter.mask, knownShas({ mr, snapshot: snap }));
   const left = masked.residual;   // 복원 전 텍스트 기준(C2-1) — 보존된 SHA 를 개인정보로 재탐지하지 않는다
   const ok = left.length === 0;
