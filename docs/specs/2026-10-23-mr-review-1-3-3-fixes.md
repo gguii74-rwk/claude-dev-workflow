@@ -96,9 +96,9 @@
 
 **수정 방향(사용자 결정 2026-10-23 — D61)**
 
-1. **접기 전 head 트리 조회(워크트리 모드)**: 본문 경로 `zp`(④ 정규화 뒤 zip 경로)를 접으려 할 때, `zp` 로 사상될 수 있는 **소스 경로 후보 전부**를 head 에서 찾는다 — `L4 = maven-war` 기준 역사상: `src/main/webapp/<zp>` · `zp` 가 `WEB-INF/classes/<rest>` 꼴이면 `src/main/resources/<rest>`·`src/main/java/<rest>`(Java 폴더의 리소스)·**`src/main/java/<rest 의 .class 를 .java 로>`**(그 이름의 **살아 있는 소스**가 있으면 `Foo$X.class` 는 그 산출물이라 지우면 안 된다) · **모든 바깥 클래스의 소스** — `zp` 이름의 `$` 경계 **전부**(접힐 바깥 클래스보다 짧은 쪽 포함)마다 그 이름의 `src/main/java/<dir>/<경계 이름>.java`(R1-1·R2-1 — `Foo$Bar$1.class` 면 `Foo$Bar.java`·`Foo.java` 둘 다 본다. head 는 MR 을 적용한 트리라 이번 MR 이 지운 소스는 원래 잡히지 않으므로 따로 빼지 않는다 — 정상 삭제 MR 은 영향 없다. 경계 수는 `findOuterClass` 의 `INNER_MAX`(32) 상한 그대로) · 그리고 `zp` 그대로(그 밖 경로). 하나라도 `git ls-tree <head> -- <후보>` 에 항목이 있으면(모드 무관 — 파일·링크·서브모듈 전부 「있음」) **접지 않고** `{kind:"map_conflict", path:zp, detail:"삭제 지시가 head 의 실제 파일을 가리킴: <후보 경로>"}` → **「대조 불가」**. 없으면 지금처럼 접는다(AC⑨-7·R1-1·R4-2 불변).
+1. **접기 전 head 트리 조회(워크트리 모드)**: 본문 경로 `zp`(④ 정규화 뒤 zip 경로)를 접으려 할 때, `zp` 로 사상될 수 있는 **소스 경로 후보 전부**를 head 에서 찾는다 — `L4 = maven-war` 기준 역사상: `src/main/webapp/<zp>` · `zp` 가 `WEB-INF/classes/<rest>` 꼴이면 `src/main/resources/<rest>`·`src/main/java/<rest>`(Java 폴더의 리소스)·**`src/main/java/<rest 의 .class 를 .java 로>`**(그 이름의 **살아 있는 소스**가 있으면 `Foo$X.class` 는 그 산출물이라 지우면 안 된다) · **모든 바깥 클래스의 소스** — `zp` 이름의 `$` 경계 **전부**(접힐 바깥 클래스보다 짧은 쪽 포함)마다 그 이름의 `src/main/java/<dir>/<경계 이름>.java`(R1-1·R2-1 — `Foo$Bar$1.class` 면 `Foo$Bar.java`·`Foo.java` 둘 다 본다. head 는 MR 을 적용한 트리라 이번 MR 이 지운 소스는 원래 잡히지 않으므로 따로 빼지 않는다 — 정상 삭제 MR 은 영향 없다. 경계 수는 `findOuterClass` 의 `INNER_MAX`(32) 상한 그대로) · 그리고 `zp` 그대로(그 밖 경로). 하나라도 head 에 항목이 있으면(모드 무관 — 파일·링크·서브모듈 전부 「있음」) **접지 않고** `{kind:"map_conflict", path:zp, detail:"삭제 지시가 head 의 실제 파일을 가리킴: <head 의 실제 경로>"}` → **「대조 불가」**. 없으면 지금처럼 접는다(AC⑨-7·R1-1·R4-2 불변). **「head 에 있음」은 대소문자를 무시해 판정한다(R5-1)** — 대소문자를 구분하지 않는 배포 파일 시스템에서는 본문 `Foo$X.class` 삭제가 head 의 `Foo$x.class` 를 지운다(`readZip` 의 대소문자 무시 충돌 검사와 같은 기준). 조회 = head 트리의 경로 목록(`git ls-tree -r --name-only <head>` — 파일·링크·서브모듈 항목, 한 번 읽어 캐시)과 후보를 **소문자로** 비교하고, 맞으면 detail 에 head 의 실제 경로를 적는다(폴더 이름의 대소문자 차이도 같이 잡힌다).
 2. **diff-only**: 트리 조회를 하지 않는다(D22 유지). 접기가 **성립하는 경우**(본문 경로가 기대 삭제 목록에 없고, `findOuterClass` 가 바깥 클래스를 찾았으며 그 바깥 클래스가 기대 삭제·본문 양쪽에 있어 — R4-2 — 지금이라면 접혔을 경우)에는 접지 않고 `{kind:"map_conflict", path:zp, detail:"head 존재 확인 불가(diff-only) — 내부 클래스 삭제 지시를 확인할 수 없음"}` → 「대조 불가」. 접기가 필요 없는 본문(내부 클래스를 적지 않음)은 지금과 같다.
-3. 조회 결과는 `deploy.json` 에 따로 적지 않는다(`map_conflict` 의 `detail` 로 충분). 호출 수 = 접기가 성립하는 본문 경로 수 × 후보 수(고정 5 + `$` 경계 수 — 통상 1~2) — 내부 클래스 수만큼이라 작다.
+3. 조회 결과는 `deploy.json` 에 따로 적지 않는다(`map_conflict` 의 `detail` 로 충분). git 호출 = 접기가 성립하는 본문 경로가 하나라도 있을 때 head 트리 목록 1회(캐시) · 비교 수 = 그 경로 수 × 후보 수(고정 5 + `$` 경계 수 — 통상 1~2).
 
 - 기각: diff-only 도 GitLab 파일 API 로 존재 조회 — D22 변경·API 호출 증가, 폴백(대조 불가)이 fail-closed 로 충분. 접기 규칙 폐기 — D38·AC⑨-7·R4-2 변경(정상 MR 이 불일치).
 - 알려진 한계(§6): 기대 삭제 `Foo.class` 자체와 같은 이름의 리소스(`src/main/resources/p/Foo.class`)는 이 검사 대상이 아니다(접기가 아니라 기대 목록 일치 — 배포 도구 몫).
@@ -111,6 +111,7 @@
 - AC-S1-4. 기대 삭제 목록에 **이미 있는** 이름(`expDel.has(zp)`)은 조회하지 않는다 — `Foo$Bar.java` 삭제 ↔ 본문 `Foo$Bar.class`(R1-1 테스트) 불변.
 - AC-S1-5. (중간 바깥 클래스 — R1-1) head 에 `src/main/java/com/example/acct/Foo$Bar.java`(MR 이 안 건드림)가 있고 MR 이 `Foo.java` 만 지우며 본문 삭제 = `…/Foo.class`·`…/Foo$Bar$1.class` → `{kind:"map_conflict", path:"WEB-INF/classes/com/example/acct/Foo$Bar$1.class"}`(detail 에 `src/main/java/com/example/acct/Foo$Bar.java`) · `대조 불가` · head 에 `Foo$Bar.java` 가 없으면 `일치` · MR 이 `Foo$Bar.java` 도 지우고 본문에 `…/Foo$Bar.class` 도 있으면 `Foo$Bar$1.class` 는 `Foo$Bar.class` 로 접히고 `Foo$Bar.java`·`Foo.java` 가 head 에 없으므로 `일치`(R2-2 불변).
 - AC-S1-6. (짧은 쪽 바깥 소스 — R2-1) MR 이 `src/main/java/com/example/acct/Foo$Bar.java` 를 지우고 `Foo.java`(head 에 살아 있음 — 수정·무변경 무관)를 남기며 본문 삭제 = `…/Foo$Bar.class`·`…/Foo$Bar$1.class` → `Foo$Bar$1.class` 는 `Foo$Bar.class` 로 접힐 후보지만 head 에 `Foo.java` 가 있어 `{kind:"map_conflict", path:"WEB-INF/classes/com/example/acct/Foo$Bar$1.class"}`(detail 에 `src/main/java/com/example/acct/Foo.java`) · `대조 불가`.
+- AC-S1-7. (대소문자 — R5-1) head 에 `src/main/resources/com/example/acct/Foo$x.class`(소문자 `x`, MR 이 안 건드림)가 있고 MR 이 `Foo.java` 를 지우며 본문 삭제 = `…/Foo.class`·`…/Foo$X.class`(대문자 `X`) → `{kind:"map_conflict", path:"WEB-INF/classes/com/example/acct/Foo$X.class"}`(detail 에 head 의 실제 경로 `src/main/resources/com/example/acct/Foo$x.class`) · `대조 불가`.
 
 ### 3.⑭ 의도 대조표 셀의 `|` 를 이스케이프하지 않아 검증 표 행 원문이 들어오면 리포트 표가 깨진다
 
@@ -181,14 +182,14 @@
 | SC-2 어댑터 계약 | `projects.<이름>.deployLayout` **의미 변경**(고정 → 판별 못 할 때의 기본값·삭제 전용 MR 의 ④ 배치). 값·형식·검증·기본값 불변. plan SC-2 문장 정정은 impl 트랙(「1.3.3에서 변경」), 이 spec 이 정본 |
 | SC-3 `deploy.json` | `zip` 요약에 `layout_source`·`prefix` 추가, `layout` 에 `"mixed"` 값 · `attachment` 가 여러 이름(`, ` 연결) 가능 · `comment_sha` = head 와 일치하는 주석(없으면 `null`) · 주석 규칙 「최소 한 zip」(D63) · 새 배열 `zips[]` · zip 저장 `W/zip/<순번>-<이름>` · `mismatches.kind` 에 `layout_ambiguous`·`zip_conflict`(둘 다 대조 불가군) · `map_conflict` 의 새 detail 2종(S1) — plan SC-3 정정도 impl 트랙 |
 | `adapter.mjs` | 변경 없음(검증·resolved 그대로). 주석의 「고정」 문구만 정정 |
-| `deploy.mjs` | zip 전부 수집·접두 제거·표지/시험 판별·zip 별 ②③·합산·`zip_conflict`(같은 경로 다른 바이트 + 합산 경로 충돌 R1-2)·`layout_ambiguous`·④ `L4` 선택·S1 head 트리 조회(`gitType` 류 `git ls-tree` 재사용, `$` 경계 전부의 `.java` 포함 R1-1·R2-1)·diff-only 폴백 |
+| `deploy.mjs` | zip 전부 수집·접두 제거·표지/시험 판별·zip 별 ②③·합산·`zip_conflict`(같은 경로 다른 바이트 + 합산 경로 충돌 R1-2)·`layout_ambiguous`·④ `L4` 선택·S1 head 트리 조회(`git ls-tree -r --name-only` 1회 캐시·대소문자 무시 비교 R5-1, `$` 경계 전부의 `.java` 포함 R1-1·R2-1)·diff-only 폴백 |
 | `report.mjs` | `cell()` 이스케이프(의도 대조표·검사표 — 순서 = 원문 `fieldMask` → 줄바꿈 평탄화 → 재 `fieldMask` → `|` 이스케이프, R3-2·R4-1) · 부록 A zip 줄(배치·근거·접두, zip 별) · `mismatchSummary` 종류 분류 2종 추가 |
 | SKILL.md | §5 Claude 검토자 프롬프트 「W 아래에만」 + `root-before.txt` 기록 · §5 경로 감시 「한계」 문단 · §6-5 `criterion` = 첫 칸 · §8 터미널 요약(배치·합산·경로 감시 한계)·자가 점검 F7(W 밖 새 항목)·리포트 구성 문구(부록 A zip 줄) |
 | README 3종 | 1.3.3 한 줄(결함 4건 + 보안 1건) + 어댑터 안내 `deployLayout` 문장 정정(「… 를 적는다」 → 「… 는 판별 못 할 때의 기본값」) |
 | plugin.json·marketplace.json | 1.3.2 → 1.3.3 |
 | 1.3.2 spec D37 | impl 트랙이 D37 행 끝에 「1.3.3 D59 로 의미 변경(힌트) — spec `2026-10-23-mr-review-1-3-3-fixes.md` 3.⑬」 부기(재론 아님) |
 | 어댑터 문서(프로젝트 쪽) | 변경 불요. WAR 프로젝트는 키 없이도 zip 표지로 동작하고, 삭제 전용 MR 을 위해 두고 싶으면 그대로 둔다 |
-| `tests/mr-review` | deploy(⑬ 15건·S1 6건)·report(⑭ 5건·⑬-12·⑮·⑯ 문구)·adapter(⑬-13) — 기존 전부 불변(AC⑬-11) |
+| `tests/mr-review` | deploy(⑬ 15건·S1 7건)·report(⑭ 5건·⑬-12·⑮·⑯ 문구)·adapter(⑬-13) — 기존 전부 불변(AC⑬-11) |
 
 ## 5. 검증 · 완료 조건
 
@@ -236,7 +237,7 @@
 | D58 | ⑬ 모호 = 혼합(두 표지) → `layout_ambiguous` **대조 불가**. 표지 없음 + 시험 실패 → 어댑터 힌트 → 없으면 `source` 로 대조해 **불일치**(목록 노출). `layout_source` 기록. 전부 대조 불가·전부 source 는 기각 | 사용자 지시로 메인이 추천안 입력(Q6) — D34 우선순위 유지, 흔한 1건 누락은 작성자가 고칠 수 있게 |
 | D59 | ⑬ 어댑터 키 `deployLayout` **유지, 의미 = 판별 못 할 때의 기본값(힌트)** — 시험 폴백·zip 없는 ④ 정규화에만. 표지가 힌트보다 우선. 값·형식·검증·기본값 불변. **1.3.2 D37(프로젝트별 고정) 변경**. 폐기·`"auto"` 추가는 기각 | 사용자 지시로 메인이 추천안 입력(Q7) — 기존 어댑터 무변경, WAR 프로젝트 삭제 전용 MR 보호 |
 | D60 | ⑬ 다중 zip = **본문 zip 전부 합산**(없으면 댓글 마지막 1개). 기대 경로는 어느 zip 에서든 충족, 같은 zip 경로 다른 바이트 = `zip_conflict` 대조 불가(같으면 한 번 대조), 바이트 대조된 소스의 `.class` 는 `bytes_skipped` 제외, `comment_sha`·`download`·`corrupt` 는 zip 마다, ④ `L4` = 하나라도 WAR 면 WAR. `deploy.json.zip` 요약 유지 + `zips[]`. 마지막 1개·댓글 포함 합산은 기각. **보강(review-loop(spec) R1-2, 추천 자동 채택(위임))**: 합산 경로에도 `readZip` 의 대소문자·파일/폴더 충돌 검사를 zip 사이에 적용 → `zip_conflict` 대조 불가 | 사용자 지시로 메인이 추천안 입력(Q8) — 표본 (다), 낡은 댓글 zip 오탐 회피 |
-| D61 | S1 = 접기 전 **head 트리 조회**(워크트리 — 역사상 후보(고정 5 — 3.S1-1 목록) + **`$` 경계 전부의 바깥 클래스 `.java`**(review-loop(spec) R1-1·R2-1 보강, 추천 자동 채택(위임))를 `git ls-tree`, 하나라도 있으면 `map_conflict` 대조 불가) · **diff-only 는 접지 않고 `map_conflict` 대조 불가**(D22 유지). GitLab 파일 API 조회·접기 규칙 폐기는 기각 | 사용자 지시로 메인이 추천안 입력(Q9) — fail-closed, D38·AC⑨-7·R4-2 워크트리 불변 |
+| D61 | S1 = 접기 전 **head 트리 조회**(워크트리 — 역사상 후보(고정 5 — 3.S1-1 목록) + **`$` 경계 전부의 바깥 클래스 `.java`**(review-loop(spec) R1-1·R2-1 보강, 추천 자동 채택(위임))를 head 트리 목록(`git ls-tree -r`)과 **대소문자 무시**로 대조(R5-1 보강, 추천 자동 채택(위임)), 하나라도 있으면 `map_conflict` 대조 불가) · **diff-only 는 접지 않고 `map_conflict` 대조 불가**(D22 유지). GitLab 파일 API 조회·접기 규칙 폐기는 기각 | 사용자 지시로 메인이 추천안 입력(Q9) — fail-closed, D38·AC⑨-7·R4-2 워크트리 불변 |
 | D62 | 이 세션(spec·harden)은 코드·테스트·SKILL.md·plan·README 를 수정하지 않는다. plan SC-2·SC-3·1.3.2 D37 부기·README 는 impl 트랙 몫 | 트랙 프롬프트 편집 범위(1.3.2 D42 방식) |
 
 harden-spec(2026-10-23 08:1x~08:2x, 이 세션)에서 확정 — 판단 갭 5건 전부 사용자 지시로 메인이 추천안 입력.
