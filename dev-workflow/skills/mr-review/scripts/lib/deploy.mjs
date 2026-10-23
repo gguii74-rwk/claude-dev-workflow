@@ -106,7 +106,9 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 const hasInvisible = (name) => INVISIBLE.test(name);
 // 거부한 이름의 표시용 꼴(R1-1·D87) — JSON.stringify 가 남기는 범주 문자(NEL·U+2028·양방향 등)까지 \uXXXX 로 — 진단이 원문 문자를 다시 실어 나르지 않는다
-const showName = (s) => JSON.stringify(s).replace(new RegExp(INVISIBLE.source, 'gu'), (c) => `\\u${c.codePointAt(0).toString(16).padStart(4, '0')}`);
+// 첨부 파일명 칸·다중 zip 앞머리(review-loop(impl) R1-3)는 따옴표 없이 범주 문자만 — 정상 이름은 바이트 그대로
+const showText = (s) => (s == null ? s : String(s).replace(new RegExp(INVISIBLE.source, 'gu'), (c) => `\\u${c.codePointAt(0).toString(16).padStart(4, '0')}`));
+const showName = (s) => showText(JSON.stringify(s));
 function zipName(raw, flags) {
   if (!(flags & 0x0800) && raw.some((b) => b >= 0x80)) throw new Error(`zip 파일명이 UTF-8 표시 없이 비ASCII(표준 리더와 이름이 달라짐): ${showName(raw.toString('latin1'))}`);
   let name;
@@ -355,6 +357,7 @@ function stripPrefix(entries, deployList) {
   return { list: d ? live.map((i) => ({ ...entries[i], name: name(i, d) })) : entries, prefix: d ? segs[live[0]].slice(0, d).join('/') + '/' : '', bad: null };
 }
 // 목록 대조(②) — 배치 L 로 이 zip 의 파일 항목을 기대와 맞춘다. 기대에 안 걸린 항목 중 접두 뗀 경로 원문이 어댑터 deploy.excludes 에 걸리면 excluded(참고 — 판정 입력 아님), 아니면 extra(1.3.4 ⑱ D72)
+// maven-war 배치는 참고 분류를 하지 않는다(review-loop(impl) I-2) — WAR zip 경로는 서버에 올라가 서빙되는 경로라 저장소 경로 기준 excludes(`docs/**`·`README*`)에 걸려도 배포 제외가 아니다(웹 루트 `docs/evil.jsp` 가 「참고」로 빠져 일치가 되던 구멍)
 function listCheck(layout, deployList, files, excludes) {
   const { map } = expectedMap(layout, deployList);
   const names = new Set(files.map((e) => e.name));
@@ -362,8 +365,9 @@ function listCheck(layout, deployList, files, excludes) {
   for (const [zp, exp] of map) if (exp && names.has(zp)) covered.add(exp.source);
   const missing = [...map].filter(([zp, exp]) => exp && !names.has(zp));
   const unmatched = files.filter((e) => !lookupIn(layout, map, e.name).hit).map((e) => e.name).sort();
-  const excluded = unmatched.filter((n) => matchesAny(n, excludes));
-  const extra = unmatched.filter((n) => !matchesAny(n, excludes));
+  const isExcluded = (n) => layout !== 'maven-war' && matchesAny(n, excludes);
+  const excluded = unmatched.filter(isExcluded);
+  const extra = unmatched.filter((n) => !isExcluded(n));
   return { map, covered, missing, extra, excluded };
 }
 // 배치 판별(D57·D58·D64) — 접두 뗀 파일 항목의 첫 조각: WEB-INF·META-INF = WAR 표지 · src = 소스 표지. 둘 다면 혼합(null), 둘 다 없으면 기대 목록 시험 → 힌트 → source
@@ -423,10 +427,10 @@ export function deploy({ adapter, work }) {
     else {
       const many = atts.length > 1;
       // zip 식별 표기 — 1개면 지금처럼(파일명 없이·파일명만), 여럿이면 `zip#<순번> <파일명>`
-      const lab = (i) => (many ? `zip#${i + 1} ${atts[i].filename}` : `zip ${atts[i].filename}`);
+      const lab = (i) => (many ? `zip#${i + 1} ${showText(atts[i].filename)}` : `zip ${showText(atts[i].filename)}`);
       const tag = (i, detail) => (many ? `${lab(i)}: ${detail}` : detail);
       const zs = atts.map((att, i) => {
-        const zr = { attachment: att.filename, downloaded: false, comment_sha: null, entries: [], layout: null, layout_source: null, prefix: null, bytes_skipped: [], excluded: [] };
+        const zr = { attachment: showText(att.filename), downloaded: false, comment_sha: null, entries: [], layout: null, layout_source: null, prefix: null, bytes_skipped: [], excluded: [] };
         const st = { i, zr, z: null, files: [], all: [], commentOk: false, hasComment: false };
         const name = uploadName(att);
         let buf = null;
@@ -588,7 +592,7 @@ export function deploy({ adapter, work }) {
       for (const [st, list] of skippedBy) st.zr.bytes_skipped = list.filter((x) => !compared.has(x.source)).map((x) => x.name).sort();
       // 합산 요약(SC-3 zip — 기존 소비자 불변) + zip 별 상세 zips[]
       out.zips = zs.map((st) => st.zr);
-      out.zip.attachment = atts.map((a) => a.filename).join(', ');
+      out.zip.attachment = atts.map((a) => showText(a.filename)).join(', ');
       out.zip.downloaded = zs.every((st) => st.zr.downloaded);
       out.zip.comment_sha = many ? (read.find((st) => st.commentOk)?.zr.comment_sha ?? null) : zs[0].zr.comment_sha;
       out.zip.entries = [...new Set(zs.flatMap((st) => st.zr.entries))].sort();

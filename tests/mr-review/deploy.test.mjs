@@ -1393,6 +1393,26 @@ test('S2 첨부 파일명(디코딩 뒤)에 Cc·Cf·Zl·Zp 문자가 있으면 �
   assert.equal(uploadName({ filename: '배포본_v2.zip', secret: SECRET }), '배포본_v2.zip');
 });
 
+test('S2 첨부가 둘 이상일 때도 진단 앞머리(zip#n <이름>)와 첨부 이름 칸(zip.attachment·zips[i].attachment)에 숨은 문자 원문이 없다 — \\uXXXX 표시 · 정상 이름은 그대로 (1.3.4 review-loop(impl) R1-3 · D78·D87)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const desc = '## 배포·롤백\n- 배포본: 첨부\n  - 삭제: src/main/java/app/Old.java\n';
+  const g = fakeGlab(root, [{ match: 'uploads', text: 'NOT A ZIP' }]);
+  const atts = ['\u202epiz.lived', 'd\u200b.zip', 'ok.zip'].map((filename) => ({ url: `/uploads/${SECRET}/x`, kind: 'zip', filename, secret: SECRET, where: 'body' }));
+  const work = workdir(root, { checkout, baseSha, headSha, attachments: atts, description: desc, name: 'multi' });
+  const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
+  assert.equal(r.first, 'DEPLOY 대조 불가');
+  const raw = readFileSync(join(work, 'deploy.json'), 'utf8');
+  assert.ok(!HIDDEN.test(raw), raw);
+  const d = JSON.parse(raw);
+  const dls = d.mismatches.filter((m) => m.kind === 'download' && m.detail.includes('안전하지 않아'));
+  assert.equal(dls.length, 2, JSON.stringify(d.mismatches));
+  assert.ok(dls[0].detail.startsWith('zip#1 \\u202epiz.lived: ') && dls[1].detail.startsWith('zip#2 d\\u200b.zip: '), JSON.stringify(dls));
+  assert.deepEqual(d.zips.map((z) => z.attachment), ['\\u202epiz.lived', 'd\\u200b.zip', 'ok.zip']);
+  assert.equal(d.zip.attachment, '\\u202epiz.lived, d\\u200b.zip, ok.zip');
+});
+
 // ── 1.3.4 ⑰ data descriptor(bit 3) 형식 zip 수용 — 목차 기준 + 서명 있는 꼬리표만 (spec 2026-10-23 1.3.4 3.⑰ · D70·D71·D75·D85·D86) ──
 const FOO = { [J]: WAR4[J] };
 const ddFoo = (o = {}) => [{ name: J, data: WAR4[J], method: 8, dd: true, ...o }];
@@ -1561,30 +1581,32 @@ test('⑱ 접두 app/ 를 뗀 경로로 excludes 대조 (1.3.4 AC⑱-3)', () => 
   assert.deepEqual(d.zip.excluded, ['docs/a.md']);
 });
 
-test('⑱ 표지 없는 zip 의 기대 목록 시험은 excluded 를 세지 않는다 — maven-war(probe) 일치 (1.3.4 AC⑱-4)', () => {
+test('⑱ 표지 없는 zip 의 maven-war 시험은 excludes 경로를 참고로 빼지 않는다 — 웹 루트 docs/a.md 가 섞이면 시험 실패 → 기본값 source 불일치 (1.3.4 AC⑱-4 · review-loop(impl) I-2 로 단언 변경 — 이전: maven-war(probe) 일치)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: GAMMA, ...EXC });
   const repo = warRepo(root, { add: { [H]: WAR4[H] } });
   const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E({ 'html/a.html': WAR4[H], 'docs/a.md': '# a\n' }) }] });
-  assert.equal(r.first, 'DEPLOY 일치', JSON.stringify(d.mismatches));
-  assert.equal(d.zip.layout, 'maven-war');
-  assert.equal(d.zip.layout_source, 'probe');
-  assert.deepEqual(d.zip.excluded, ['docs/a.md']);
+  assert.equal(r.first, 'DEPLOY 불일치', JSON.stringify(d.mismatches));
+  assert.equal(d.zip.layout, 'source');
+  assert.equal(d.zip.layout_source, 'default');
+  assert.deepEqual(kp(d), [['missing_in_zip', H], ['extra_in_zip', 'html/a.html']]);
 });
 
-test('⑱ zip 2개 — zip.excluded = 합집합(정렬·중복 제거) · zips[i].excluded 는 zip 별 · 제외 항목도 zip 사이 충돌 검사 대상 (1.3.4 AC⑱-5)', () => {
+test('⑱ zip 2개 — zip.excluded = 합집합(정렬·중복 제거) · zips[i].excluded 는 zip 별(maven-war zip 은 참고 분류 없음 — review-loop(impl) I-2) · 제외 항목도 zip 사이 충돌 검사 대상 (1.3.4 AC⑱-5)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: GAMMA, ...EXC });
   const repo = warRepo(root, { add: SRC2 });
   const two = (b2, name) => zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E({ ...SRC2, 'docs/a.md': '# a\n' }) }, { filename: 'classes.zip', entries: [...CLASSES(), ...E({ 'docs/a.md': b2, 'AGENTS.md': '# agents\n' })] }], name });
   const a = two('# a\n', 'a');
-  assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
-  assert.deepEqual(a.d.zip.excluded, ['AGENTS.md', 'docs/a.md']);
+  // review-loop(impl) I-2 — classes.zip 은 maven-war 라 참고 분류 없음(그 안의 docs/a.md·AGENTS.md 는 서빙 경로 → extra_in_zip) · 이전 단언: 일치 · zips[1].excluded 2건
+  assert.equal(a.r.first, 'DEPLOY 불일치', JSON.stringify(a.d.mismatches));
+  assert.deepEqual(kp(a.d), [['extra_in_zip', 'AGENTS.md'], ['extra_in_zip', 'docs/a.md']]);
+  assert.deepEqual(a.d.zip.excluded, ['docs/a.md']);
   assert.deepEqual(a.d.zips[0].excluded, ['docs/a.md']);
-  assert.deepEqual(a.d.zips[1].excluded, ['AGENTS.md', 'docs/a.md']);
+  assert.deepEqual(a.d.zips[1].excluded, []);
   const b = two('# other\n', 'b');
   assert.equal(b.r.first, 'DEPLOY 대조 불가');
-  assert.deepEqual(kp(b.d), [['zip_conflict', 'docs/a.md']]);
+  assert.deepEqual(kp(b.d), [['extra_in_zip', 'AGENTS.md'], ['extra_in_zip', 'docs/a.md'], ['zip_conflict', 'docs/a.md']]);
 });
 
 test('⑱ excludes 대조는 SC-2 glob 그대로 — 대소문자 구분(Docs/a.md 는 extra_in_zip) · README* 에 README.md·README.ko.md (1.3.4 AC⑱-6)', () => {
@@ -1599,24 +1621,38 @@ test('⑱ excludes 대조는 SC-2 glob 그대로 — 대소문자 구분(Docs/a.
   assert.deepEqual(b.d.zip.excluded, ['README.ko.md', 'README.md']);
 });
 
-test('⑱ 배치 표지 판별은 excludes 에 걸리지 않는 항목만 — WAR zip + src/test/** 는 maven-war(signature) 일치 · 제외 아닌 src/ 가 섞이면 혼합 대조 불가 · src/ 가 전부 제외면 시험으로 (1.3.4 AC⑱-9 · D83)', () => {
+test('⑱ 배치 표지 판별은 excludes 에 걸리지 않는 항목만 — WAR zip + src/test/** 는 maven-war(signature) · 그 파일은 extra_in_zip 불일치(WAR 는 참고 분류 없음) · 제외 아닌 src/ 가 섞이면 혼합 대조 불가 · src/ 가 전부 제외면 시험으로 (1.3.4 AC⑱-9 · D83 · review-loop(impl) I-2 로 단언 변경 — 이전: 일치·excluded)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: GAMMA });
   const repo = warRepo(root, { add: FOO });
   const T = 'src/test/java/com/example/acct/FooTest.java';
   const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E({ [`${CLS}Foo.class`]: Buffer.from([0xca, 0xfe]), [T]: 'class FooTest {}\n' }) }], name: 'a' });
-  assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
+  assert.equal(a.r.first, 'DEPLOY 불일치', JSON.stringify(a.d.mismatches));
   assert.equal(a.d.zip.layout, 'maven-war');
   assert.equal(a.d.zip.layout_source, 'signature');
   assert.deepEqual(a.d.zip.bytes_skipped, [`${CLS}Foo.class`]);
-  assert.deepEqual(a.d.zip.excluded, [T]);
+  assert.deepEqual(kp(a.d), [['extra_in_zip', T]]);
+  assert.deepEqual(a.d.zip.excluded, []);
   const b = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E({ [`${CLS}Foo.class`]: Buffer.from([0xca, 0xfe]), [T]: 'x\n', 'src/main/java/com/example/acct/Other.java': 'y\n' }) }], name: 'b' });
   assert.equal(b.r.first, 'DEPLOY 대조 불가');
   assert.ok(b.d.mismatches.some((m) => m.kind === 'layout_ambiguous'), JSON.stringify(b.d.mismatches));
   const repo2 = warRepo(join(root, 'h'), { add: { [H]: WAR4[H] } });
   const c = zipsDeploy(join(root, 'h'), adapter, { repo: repo2, zips: [{ filename: 'd.zip', entries: E({ 'html/a.html': WAR4[H], [T]: 'x\n' }) }], name: 'c' });
-  assert.equal(c.r.first, 'DEPLOY 일치', JSON.stringify(c.d.mismatches));
-  assert.equal(c.d.zip.layout_source, 'probe');
+  assert.equal(c.r.first, 'DEPLOY 불일치', JSON.stringify(c.d.mismatches));
+  assert.equal(c.d.zip.layout_source, 'default');
+  assert.ok(!c.d.mismatches.some((m) => m.kind === 'layout_ambiguous'), JSON.stringify(c.d.mismatches));
+});
+
+test('⑱ WAR 배치로 판정된 zip 은 excludes 참고 분류를 하지 않는다 — zip 경로 = 서빙 경로라 웹 루트의 docs/evil.jsp·README.jsp 는 extra_in_zip 불일치 · zip.excluded 빈 배열 (1.3.4 review-loop(impl) I-2 · D72 보강)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: FOO });
+  const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E({ [`${CLS}Foo.class`]: Buffer.from([0xca, 0xfe]), 'docs/evil.jsp': '<% evil %>\n', 'README.jsp': '<% evil %>\n' }) }], name: 'war' });
+  assert.equal(r.first, 'DEPLOY 불일치', JSON.stringify(d.mismatches));
+  assert.equal(d.zip.layout, 'maven-war');
+  assert.deepEqual(d.mismatches.filter((m) => m.kind === 'extra_in_zip').map((m) => m.path).sort(), ['README.jsp', 'docs/evil.jsp']);
+  assert.deepEqual(d.zip.excluded, []);
+  assert.deepEqual(d.zips[0].excluded, []);
 });
 
 test('⑱ zip.excluded 는 해당 없음·zip 누락에도 [] 로 기록 · ⑰ 정상 꼬리표 배포 제외 항목은 excluded 1건으로 일치 (1.3.4 SC-3 · AC⑰-9 (가) 정상 쪽)', () => {
