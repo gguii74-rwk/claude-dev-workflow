@@ -334,6 +334,23 @@ base `6e7bef3`(= origin/main, 1.3.4 릴리스) · 예산 `--max 5` · `--confirm
 
 **종결(2026-10-23)**: review-loop(spec) **성공 종료** — 적대 3(R1·R2 일반 2/5 + 복귀 R3 예약분) · 확인 3(C1·C3 일반 2/2 + 재진입 C2 예약분) · 복귀 사용 · 전환 = R2 뒤 신호 2(수정 큐 소진) · blocking 10건 전부 FIXED(루프 판정 4 = R1-3(→ 감사 이의 재판정)·R1-4·R1-5·R1-6 · 추천 자동 채택(위임) 7 = 대장 #1~#7 — R1-3 은 두 쪽에 걸침) · ACCEPTED·DEFERRED_TO_IMPL·OUT_OF_SCOPE·DUPLICATE 0 · low 0 · 신설 D109~D112(D92·D94·D95·D96 정정 표기) · ⑤ 경로 추출 계열 4회(R1-3 → C1 잔존 → R3-1 → C2-1)는 D112 허용 구분자 방식으로 C3 에서 닫힘 · C2 의 「새 세션 whole-branch 리뷰 권고」는 8 review-loop(impl)(base 대비 전체 브랜치 diff)로 갈음 · 감사 미수행 0건 · **미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict pass**(C3 merge-ready: yes).
 
+## 적대검증 ledger (impl)
+
+보안 크리티컬: yes (호출자 지정) — 접촉면 = ① Codex 전송 경계 축소(포인터 대상 조건·실물 확인 3가지 D109·마스킹 순서) · ④ 병합 fail-closed · ⑤ 경로 후보 추출(D112)·head blob 모드 · 키 없는 기존 어댑터 출력 바이트 불변 · 새 표시 줄의 D84 마스킹 입구·D88 평탄화
+
+base `6e7bef3`(6e7bef3081e260aec28f0e9d206f576f31a0ef4a = origin/main, 1.3.4 릴리스) · 착수 HEAD `810fe68` · 입도 = 통합 1회(브랜치 전체 diff — spec ledger C2 의 「새 세션 whole-branch 리뷰 권고」 갈음) · 예산 `--max 5` · `--confirm-rounds 2` · `--auto-rounds 1` · 모드 위임(`DEV_WORKFLOW_MODE=delegated`) · 승계 대장 대기 0건 · 사전 게이트(SC-7, HEAD `810fe68`) T1 293/293 · T2 0 · T3 56/56 · T4 0 · T4a 2 · T4b 1 · T5 0 · T6 0 · T7 0 · 숨은 문자 원문 0 · codex companion 1.0.6.
+
+| fingerprint | severity | disposition | 근거 · 커밋 |
+|---|---|---|---|
+| R1-1 | report.mjs `supplementRequests` · 절이 없을 때(`reason.section:null`) 쓰는 첫 별칭 = 어댑터 `contract.backgroundSections[0]` 원문 — 렌더의 `lines()` 를 거치지 않아 줄바꿈 별칭이 독립 제목(`## FORGED-APPROVAL`)을 만들고 줄로 나뉜 비밀값이 남음 · 폴백 별칭에 `mline()` | medium | FIXED (루프 판정) | 렌더가 `bgDefault = mline(첫 별칭)` 을 넘김(기본 「배경」 바이트 동일) · 테스트 LF·CR·NEL·U+2028·U+2029 제목 주입 + `--password⏎값` · `3c9d9a4` |
+| L-1 | report.mjs `computeVerdict` · (루프 발견 — 트랙 프롬프트 지정 빌더 결정 ⑩ 판정) 배열이 아닌 `coveredBy`(문자열·객체·숫자)는 병합하지 않지만 spec 3.④-2 「어긋나면 무시 + `reasons` 1줄」의 사유 줄이 없음 · 형식 오류 사유 1줄 | medium | FIXED (루프 판정) | `coveredBy 무시: <id> → 형식 오류(배열 아님)` · `null`·없음·빈 배열은 사유 없음(정상 생략) · fail-closed(미병합)는 원래 유지 · AC④-2 테스트 확장 · `3c9d9a4` |
+
+**빌더 결정 판정(트랙 프롬프트 §3 — R1 필수)**: ⑩ → L-1 FIXED(위). ⑦(repo-path 기준선 포인터에 「링크 `ref` === head」 조건 추가) → **결함 아님(루프 판정)** — `resolveRepoPath` 가 만드는 `repo-path` 링크는 언제나 `ref = head` 라 정상 흐름에서 조건은 항상 참이고, 어긋나는 경우(손상된 `check.json`)에는 본문으로 가는 안전한 쪽이다(D92 「대상 저장소 head blob」 규칙을 좁힐 뿐 넓히지 않는다). 나머지 ①~⑥·⑧·⑨·⑪·⑫ 는 R1 적대 리뷰에서 지목 없음.
+
+**라운드 기록**
+
+- **R1(적대 1/5, 자동 모드 — 대상 HEAD `810fe68`)**: 유효(명령 로그 29건 · verdict needs-attention) · 신규 blocking 1(medium — R1-1, ⓔ 표시 줄 평탄화 계열) + 루프 발견 1(medium — L-1, 빌더 결정 ⑩) · DUPLICATE 0 · low 0 · **전환용 score = 2**(산식 = 분류 직후·수정 전, 미확인 FIXED 큐 제외 — FIXED 후보 medium 2) · 위험군 질문 0 · 적대 소진 1 = auto-rounds → batch flush(적재 0건) · 이후 정밀 모드 · 수정 `3c9d9a4`(게이트 T1 294/294 · T2 0 · T3 56/56 · T4 0 · T4a 2 · T4b 1 · T5 0 · T6 0 · 숨은 문자 원문 0) · 미확인 FIXED 큐 2(R1-1 · L-1).
+
 ## 확인 대기 대장
 
 | # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
