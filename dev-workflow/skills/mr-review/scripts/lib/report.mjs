@@ -94,7 +94,7 @@ const skippedNote = (deploy) => ((deploy?.zip?.bytes_skipped || []).length ? `�
 // 배포 제외 경로 표시(1.3.4 ⑱ — spec 2026-10-23 3.⑱-5 D72·D80) — 같은 자리·같은 규칙(헤더 없음). 키가 없는 1.3.3 이전 deploy.json 은 0건
 const excludedCount = (deploy) => (deploy?.zip?.excluded || []).length;
 // 마크다운 표 셀(1.3.3 ⑭ — spec 2026-10-23 3.⑭ D56) — 줄바꿈(`\r\n`·단독 `\r`·`\n`, R6-1)은 공백 하나로, 이스케이프 안 된 `|` 는 `\|` 로(이미 `\|` 면 그대로).
-// 마스킹 순서(R3-2·R4-1) = 원문 fieldMask(renderReport) → 평탄화 → 재 fieldMask → 이 함수. renderReport 의 `tc` 가 그 순서로 부른다
+// 마스킹 순서(R3-2·R4-1) = 원문 fieldMask(renderReport 의 `lines`) → 평탄화 → 재 fieldMask → 이 함수. renderReport 의 `tc` 가 그 순서로 부른다
 // 줄바꿈 집합(1.3.4 S2 — spec 2026-10-23 3.S2-3 R1-1) = CR·LF·NEL·줄 구분·단락 구분 — 편집기·터미널·일부 뷰어가 줄 경계로 본다. 표 셀·표 밖 줄(`line`)·마스킹 입구(pack.mjs D84)가 같은 집합을 쓴다
 const NL = /\r\n|[\r\n\u0085\u2028\u2029]/g;
 export const cell = (s) => String(s).replace(NL, ' ').replace(/(?<!\\)\|/g, '\\|');
@@ -317,20 +317,14 @@ export function renderReport({ adapter, work, early = false }) {
     else if (verdict.head_sha !== snapshot.head_sha) verdict = failed(`verdict.json 의 head ${s7(verdict.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 판정은 쓰지 않는다(verdict 를 다시 실행)`);
     else if (findings?.head_sha && findings.head_sha !== snapshot.head_sha) verdict = failed(`findings.json 의 head ${s7(findings.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 검토 결과는 쓰지 않는다`);
   }
-  findings = fieldMask(findings, adapter.mask, keep);
-  verdict = fieldMask(verdict, adapter.mask, keep);
-  mr.title = fieldMask(mr.title, adapter.mask, keep);
   // 리포트 재료는 전부 필드 단위로 먼저 가린다(8b FR2-3 FC1 재판정) — 잔존 필드는 통째로 `[masked:unmaskable]`(maskText). 조립본 전체 검사는 아래에서 한 번 더.
-  mr.web_url = fieldMask(mr.web_url, adapter.mask, keep);
-  if (mr.project) mr.project.name = fieldMask(mr.project.name, adapter.mask, keep);
-  check = fieldMask(check, adapter.mask, keep);
-  deploy = fieldMask(deploy, adapter.mask, keep);
-  pack = fieldMask(pack, adapter.mask, keep);
-  // 표 밖 줄 값(1.3.4 S2 — spec 2026-10-23 3.S2-3 D73·D88): 위 원문 마스킹 뒤 줄바꿈을 펴고, 편 값이 달라졌으면 다시 가린다(줄로 나뉘어 있던 `--password⏎x` 가 펴져 `--password x` 가 되어도 여기서 가려진다).
+  // 표 밖 줄 값(1.3.4 S2 — spec 2026-10-23 3.S2-3 D73·D88): 원문 마스킹 뒤 줄바꿈을 펴고, 편 값이 달라졌으면 다시 가린다(줄로 나뉘어 있던 `--password⏎x` 가 펴져 `--password x` 가 되어도 여기서 가려진다).
   // 렌더가 조립하는 줄에 들어가는 파일·외부 도구·검토자 출력 유래 문자열은 전부 거친다(D88 원칙) — 조립 자리마다 거는 대신 렌더 입력의 문자열 값 전부에 건다(`lines`). 줄바꿈이 없는 값은 그대로(바이트 동일)
+  // 원문 가림은 `lines` 안에서 문자열마다 먼저 한다(review-loop(impl) R1-2 — 앞단 가림에서 빠진 입력(snapshot)이 펴진 뒤에야 가려져 잘린 PEM 본문이 남던 순서 회귀) · 객체 키도 값과 같이(R1-1 — 검토자 출력 fixableInDesignClaims 의 키)
   const line = (v) => { const raw = String(v); const flat = raw.replace(NL, ' '); return flat === raw ? raw : fieldMask(flat, adapter.mask, keep); };
-  const lines = (v) => (typeof v === 'string' ? line(v) : Array.isArray(v) ? v.map(lines) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, lines(x)])) : v);
-  // 표 셀 값(⑭ — R3-2·R4-1): `line` 과 같은 순서 뒤 `cell()` 로 `|` 를 처리한다
+  const mline = (v) => line(fieldMask(String(v), adapter.mask, keep));
+  const lines = (v) => (typeof v === 'string' ? mline(v) : Array.isArray(v) ? v.map(lines) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [mline(k), lines(x)])) : v);
+  // 표 셀 값(⑭ — R3-2·R4-1): `lines` 를 거친 값에 `line` 뒤 `cell()` 로 `|` 를 처리한다
   const tc = (v) => cell(line(v));
   findings = lines(findings);
   verdict = lines(verdict);
@@ -339,7 +333,7 @@ export function renderReport({ adapter, work, early = false }) {
   pack = lines(pack);
   snapshot = lines(snapshot);
   for (const k of ['title', 'web_url', 'approved_by', 'reviewers']) mr[k] = lines(mr[k]);   // mr 은 렌더하는 칸만(본문·diff 는 리포트에 넣지 않는다)
-  if (mr.project) mr.project.name = line(mr.project.name);
+  if (mr.project) mr.project.name = mline(mr.project.name);
   const adapterId = `${path.basename(adapter.file)}@${createHash('sha1').update(adapter.markdown).digest('hex').slice(0, 8)}`;
   const mode = early ? '조기 종료(결정적 검사만)' : `${check.rereview?.active ? '재리뷰' : '전체'}${snapshot.mode === 'diff-only' ? ' · diff-only' : ''}`;
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
@@ -407,7 +401,7 @@ export function renderReport({ adapter, work, early = false }) {
       let r = null;
       // 파싱 오류 메시지는 적지 않는다(1.3.4 D88) — Node 가 입력 일부를 인용해 가짜 줄·마스킹 우회가 된다. 원문은 리뷰어가 review-<name>.json 을 직접 연다
       try { r = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { parts.push('(무효 결과 — JSON 파싱 실패)', ''); continue; }
-      r = lines(fieldMask(r, adapter.mask, keep));
+      r = lines(r);
       if (!(findings?.validReviewers || []).includes(name) || !Array.isArray(r?.findings)) { parts.push(`(무효 결과 — 스키마 검증 실패 또는 유효 검토자 아님: findings=${Array.isArray(r?.findings) ? `${r.findings.length}건` : typeof r?.findings})`, ''); continue; }
       // §5.7 원본 발견 보존 — 근거·실패 시나리오·설계 내 수정 가능 여부·깨진 전제까지(마스킹은 아래 전체 적용). 필드마다 줄을 나눈다(impl R4-2 — 따옴표 없는 비밀값은 줄 끝까지 가려지므로 근거의 `password: …` 가 같은 줄 시나리오·권고까지 지우지 않게)
       parts.push(...(r.findings.flatMap((f) => [`- [${f?.lens}] ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'}) · 확신 ${f?.confidence}`, `  - 근거: ${f?.evidence || '-'}`, `  - 시나리오: ${f?.scenario || '-'}`, `  - 설계 내 수정: ${f?.fixableInDesign || '-'}${f?.fixableInDesign === 'no' ? ` · 깨진 전제: ${f?.brokenPremise || '-'}` : ''}`, `  - 권고: ${f?.recommendation || ''}`])), r.findings.length ? '' : '(발견 없음)', '');

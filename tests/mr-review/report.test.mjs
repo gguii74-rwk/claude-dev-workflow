@@ -1265,6 +1265,35 @@ test('render: NEL·U+2028·U+2029 로 나뉜 잘린 PEM 본문은 평탄화 줄(
   }
 });
 
+test('render: 검토자 출력 객체의 키(fixableInDesignClaims)도 가리고 편다 — 키의 줄바꿈이 가짜 제목을 만들지 못하고 키의 비밀값 꼴도 남지 않는다 (1.3.4 review-loop(impl) R1-1 · D88)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const fnd = findings([F({ unresolved: true, fixableInDesign: null, fixableInDesignClaims: { 'claude\n## KEYINJ\n': 'yes', 'codex password=hunter2pass': 'no' } })]);
+  const work = fullWork(join(root, 'a'), { fnd });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'a.md');
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  const md = readFileSync(out, 'utf8');
+  assert.ok(md.includes('KEYINJ'));
+  assert.ok(!md.split('\n').some((l) => l.startsWith('## KEYINJ') || l.startsWith('KEYINJ')), md);
+  assert.ok(!md.includes('hunter2pass'));
+});
+
+test('render: 스냅샷 값(diff-only 미복원 경로)도 원문을 먼저 가린 뒤 편다 — 줄로 나뉜 잘린 PEM 본문이 헤더에 남지 않는다 (1.3.4 review-loop(impl) R1-2 · D84·D88)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const snap = { ...baseSnap(), mode: 'diff-only', unrecovered: ['src/-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\nabcd'] };
+  const work = fullWork(join(root, 'a'), { snap, fnd: findings([F()]) });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'a.md');
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  const md = readFileSync(out, 'utf8');
+  assert.ok(md.includes('불완전 diff-only 리뷰'), md.slice(0, 800));
+  assert.ok(!md.includes('MIIEow') && !md.includes('abcd'), md.split('\n').filter((l) => l.includes('MIIEow') || l.includes('abcd')).join('\n'));
+});
+
 // ── 1.3.4 ⑱ 배포 제외 경로(참고) 표시 — D47 자리 3곳 (spec 2026-10-23 1.3.4 3.⑱-5 · D72·D80) ──
 test('render: zip.excluded 2건 → 부록 A 에 「배포 제외 경로 2건(참고 — 어댑터 deploy.excludes):」 + 경로 각 1줄 · 실행 블록 「2. 검증 상태」 배포본 줄 끝 · bytes_skipped 와 둘 다면 둘 다 · 0건·키 없음은 문구 없음 · 헤더·보완 문안 없음 · SKILL §8 터미널 요약 (1.3.4 AC⑱-7)', () => {
   const EX = ['docs/a.md', 'AGENTS.md'];
