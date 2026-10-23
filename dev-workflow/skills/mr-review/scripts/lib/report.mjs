@@ -91,6 +91,8 @@ export function mismatchSummary(deploy) {
 }
 // 컴파일 산출물 존재 대조 표시(1.3.2 ⑨ D38·D47) — 실행 블록 「2. 검증 상태」·부록 A(헤더에는 넣지 않는다)
 const skippedNote = (deploy) => ((deploy?.zip?.bytes_skipped || []).length ? `바이트 대조 생략 ${deploy.zip.bytes_skipped.length}건(컴파일 산출물 — 존재만 확인)` : '');
+// 배포 제외 경로 표시(1.3.4 ⑱ — spec 2026-10-23 3.⑱-5 D72·D80) — 같은 자리·같은 규칙(헤더 없음). 키가 없는 1.3.3 이전 deploy.json 은 0건
+const excludedCount = (deploy) => (deploy?.zip?.excluded || []).length;
 // 마크다운 표 셀(1.3.3 ⑭ — spec 2026-10-23 3.⑭ D56) — 줄바꿈(`\r\n`·단독 `\r`·`\n`, R6-1)은 공백 하나로, 이스케이프 안 된 `|` 는 `\|` 로(이미 `\|` 면 그대로).
 // 마스킹 순서(R3-2·R4-1) = 원문 fieldMask(renderReport) → 평탄화 → 재 fieldMask → 이 함수. renderReport 의 `tc` 가 그 순서로 부른다
 // 줄바꿈 집합(1.3.4 S2 — spec 2026-10-23 3.S2-3 R1-1) = CR·LF·NEL·줄 구분·단락 구분 — 편집기·터미널·일부 뷰어가 줄 경계로 본다. 표 셀·표 밖 줄(`line`)·마스킹 입구(pack.mjs D84)가 같은 집합을 쓴다
@@ -213,7 +215,7 @@ function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack, 
   const s1h = ['1. 의도 대조표', '| 수용기준·MR 주장 | 결과 | 코드 위치 |', '|---|---|---|'];
   const s2 = ['2. 검증 상태',
     `- [판독] base..head diff·변경 파일 전문 — head ${s7(snapshot.head_sha)} (돈 모델: ${models}${findings?.crossChecked ? '' : ' · 교차 검토 없음'})`,
-    deploy?.applicable ? `- [실행] 배포본 zip 대조(스킬 직접 수행): ${[deploy.result, mismatchSummary(deploy)].filter(Boolean).join(' — ')}${skippedNote(deploy) ? ` · ${skippedNote(deploy)}` : ''}` : '- 배포본: 비해당(운영 배포 대상 변경 없음)',
+    deploy?.applicable ? `- [실행] 배포본 zip 대조(스킬 직접 수행): ${[deploy.result, mismatchSummary(deploy)].filter(Boolean).join(' — ')}${skippedNote(deploy) ? ` · ${skippedNote(deploy)}` : ''}${excludedCount(deploy) ? ` · 배포 제외 경로 ${excludedCount(deploy)}건(참고)` : ''}` : '- 배포본: 비해당(운영 배포 대상 변경 없음)',
     '- [다른 주체 제공] 작성자 검증 표 결과 — 작성자 주장(이 스킬은 테스트·빌드를 실행하지 않는다)'];
   const evidenceItems = verdict.evidence.map((id) => byId[id] ? `${byId[id].title}` : (verdict.machineEvidence.find((m) => m.id === id)?.detail || id));
   const s3 = ['3. 통과해야 할 테스트', evidenceItems.length ? `- 머지 전: ${evidenceItems.map((t) => `[ ] ${t}`).join(' · ')}` : '- 머지 전: 없음', '- 배포 후: —(릴리즈 게이트 이관)'];
@@ -392,7 +394,7 @@ export function renderReport({ adapter, work, early = false }) {
     parts.push('');
   }
   parts.push('## 부록 A — 작성 규칙 검사표 · 배포본 대조', '', checkTable(check, deploy, tc), '');
-  if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · ${zipLines(deploy)}${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}${skippedNote(deploy) ? `\n${skippedNote(deploy)}:\n${deploy.zip.bytes_skipped.map((p) => `- ${p}`).join('\n')}` : ''}`, '');
+  if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · ${zipLines(deploy)}${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}${skippedNote(deploy) ? `\n${skippedNote(deploy)}:\n${deploy.zip.bytes_skipped.map((p) => `- ${p}`).join('\n')}` : ''}${excludedCount(deploy) ? `\n배포 제외 경로 ${excludedCount(deploy)}건(참고 — 어댑터 deploy.excludes):\n${deploy.zip.excluded.map((p) => `- ${p}`).join('\n')}` : ''}`, '');
   if (!early) {
     parts.push('## 부록 B — 근거 출처', '');
     parts.push(...((pack?.sources || []).map((s) => `- [${s.id}] ${s.kind} · ${s.ref}${s.inPackB ? '' : ' · (Codex 미제공)'}`)), '');

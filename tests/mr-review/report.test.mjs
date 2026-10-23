@@ -1137,7 +1137,7 @@ const INJ = ['\n## ZZINJ\n', '\r\n## ZZINJ\r\n', '\u2028## ZZINJ\u2029', '\u0085
 // 장면 A(판정 확정 · diff-only · 재리뷰) — 헤더·실행 블록·기준선/보완 문안·리뷰어 결정·부록 A~D
 const S2_FIELDS_A = ['mr.title', 'mr.web_url', 'snapshot.unrecovered[0]', 'check.rereview.prior_verdict', 'check.baselineLinks[0].raw', 'check.baselineLinks[0].reason',
   'pack.codexSkipReason', 'pack.sources[0].kind', 'pack.sources[0].ref',
-  'deploy.zip.attachment', 'deploy.zips[0].prefix', 'deploy.zips[0].layout', 'deploy.zips[0].layout_source', 'deploy.mismatches[0].path', 'deploy.mismatches[0].detail', 'deploy.zip.bytes_skipped[0]',
+  'deploy.zip.attachment', 'deploy.zips[0].prefix', 'deploy.zips[0].layout', 'deploy.zips[0].layout_source', 'deploy.mismatches[0].path', 'deploy.mismatches[0].detail', 'deploy.zip.bytes_skipped[0]', 'deploy.zip.excluded[0]',
   'findings[0].title', 'findings[0].file', 'findings[0].line_start', 'findings[0].recommendation', 'findings[0].evidence', 'findings[0].scenario', 'findings[0].source', 'findings[0].confidence', 'findings[0].lens', 'findings[0].brokenPremise', 'findings[0].dismissReason', 'findings[0].fixableInDesignClaims.claude',
   'intent[0].criterion', 'intent[0].result', 'intent[0].location', 'intent[0].basis', 'outsideWorktreePaths[0]',
   'review-claude.lens', 'review-claude.title', 'review-claude.file', 'review-claude.line_start', 'review-claude.confidence', 'review-claude.evidence', 'review-claude.scenario', 'review-claude.brokenPremise', 'review-claude.recommendation'];
@@ -1161,7 +1161,7 @@ function s2Render(root, scene, s, name) {
     c.rereview = { active: true, prior_head: 'c'.repeat(40), prior_verdict: I('CHANGES_REQUESTED'), prior_note_id: 12, priorReport: null, priorBlocking: [], priorBlockingComplete: true };
     c.baselineLinks = [{ kind: 'issue', status: '미확보', raw: I('#55'), reason: I('권한 없음') }];
     pack = { ...pack, codexSkipped: true, codexSkipReason: I('잔존'), sources: [{ ...pack.sources[0], kind: I('doc'), ref: I('guide/policy.md@abc#5.') }] };
-    deploy = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/app/A.java'], deleted: [] }, zip: { attachment: I('d.zip'), downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'blobs', layout: 'source', layout_source: 'signature', prefix: '', bytes_skipped: [I('WEB-INF/classes/app/A.class')] }, zips: [{ attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], layout: I('source'), layout_source: I('signature'), prefix: I('app/'), bytes_skipped: [] }], result: '불일치', mismatches: [{ kind: 'extra_in_zip', path: I('extra.txt'), detail: I('zip 에 있으나 배포 목록에 없음') }] };
+    deploy = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/app/A.java'], deleted: [] }, zip: { attachment: I('d.zip'), downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'blobs', layout: 'source', layout_source: 'signature', prefix: '', bytes_skipped: [I('WEB-INF/classes/app/A.class')], excluded: [I('docs/a.md')] }, zips: [{ attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], layout: I('source'), layout_source: I('signature'), prefix: I('app/'), bytes_skipped: [] }], result: '불일치', mismatches: [{ kind: 'extra_in_zip', path: I('extra.txt'), detail: I('zip 에 있으나 배포 목록에 없음') }] };
     const f1 = F({ title: I('제목'), file: I('src/A.java'), line_start: I(3), recommendation: I('권고'), evidence: I('근거'), scenario: I('시나리오'), source: I('both'), confidence: I('high'), lens: I('L5'), brokenPremise: I('전제'), dismissReason: I('결정 근거'), resolution: 'confirmed', fixableInDesignClaims: { claude: I('yes'), codex: 'yes' } });
     fnd = findings([f1, F({ id: 'F2', type: 'MISSING_EVIDENCE', title: '회귀 결과 없음' }), F({ id: 'F3', type: 'FOLLOW_UP', blocking: false, title: '주석 정리' })], { intent: [{ criterion: I('V1 빌드'), result: I('UNKNOWN'), location: I('a.java:3'), basis: I('작성자 주장') }], outsideWorktreePaths: [I('/tmp/x')] });
     review = { reviewer: 'claude', head_sha: HEAD, findings: [{ lens: I('L5'), type: 'DEFECT', title: I('원본 제목'), file: I('src/B.java'), line_start: I(9), line_end: 9, evidence: I('원본 근거'), scenario: I('원본 시나리오'), confidence: I('high'), recommendation: I('원본 권고'), fixableInDesign: 'no', brokenPremise: I('원본 전제') }], intent: [], baselineCandidateRelevant: true };
@@ -1219,12 +1219,13 @@ test('render: 검증되지 않는 검토자 필드 source 의 줄바꿈도 가�
 });
 
 test('render: 부록 A zip 줄·불일치 줄·바이트 대조 생략 목록과 실행 블록·부록 D·보완 문안의 배포본 요약은 각각 한 줄 (1.3.4 AC-S2-4)', () => {
-  const d = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/app/A.java'], deleted: [] }, zip: { attachment: 'd\n.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'source', layout_source: 'signature', prefix: 'app\n/', bytes_skipped: ['p\nq.class'] }, zips: [{ attachment: 'd\n.zip', downloaded: true, comment_sha: HEAD, entries: [], layout: 'source', layout_source: 'signature', prefix: 'app\n/', bytes_skipped: ['p\nq.class'] }], result: '불일치', mismatches: [{ kind: 'extra_in_zip', path: 'a\nb', detail: 'c\nd' }] };
+  const d = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/app/A.java'], deleted: [] }, zip: { attachment: 'd\n.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'source', layout_source: 'signature', prefix: 'app\n/', bytes_skipped: ['p\nq.class'], excluded: ['docs/e\nf.md'] }, zips: [{ attachment: 'd\n.zip', downloaded: true, comment_sha: HEAD, entries: [], layout: 'source', layout_source: 'signature', prefix: 'app\n/', bytes_skipped: ['p\nq.class'] }], result: '불일치', mismatches: [{ kind: 'extra_in_zip', path: 'a\nb', detail: 'c\nd' }] };
   const md = renderWith(tmp(), d);
   const lines = md.split('\n');
   const appA = sectionOf(md, '## 부록 A', '## 부록 B').split('\n');
   assert.ok(appA.some((l) => l.includes('zip d .zip(주석 ') && l.includes('접두 app /')), appA.join('\n'));
   assert.ok(appA.includes('- p q.class'), appA.join('\n'));
+  assert.ok(appA.includes('- docs/e f.md'), appA.join('\n'));
   assert.ok(appA.includes('- extra_in_zip a b: c d'), appA.join('\n'));
   const block = md.match(/```text\n([\s\S]*?)\n```/)[1].split('\n');
   assert.ok(block.some((l) => l.startsWith('- [실행] 배포본 zip 대조') && l.includes('extra_in_zip 1건(a b)')), block.join('\n'));
@@ -1262,4 +1263,27 @@ test('render: NEL·U+2028·U+2029 로 나뉜 잘린 PEM 본문은 평탄화 줄(
     assert.ok(!md.includes('MIIEow'), JSON.stringify(sep));
     assert.equal(cellsOf(intentRows(md)[0]).length, 3);
   }
+});
+
+// ── 1.3.4 ⑱ 배포 제외 경로(참고) 표시 — D47 자리 3곳 (spec 2026-10-23 1.3.4 3.⑱-5 · D72·D80) ──
+test('render: zip.excluded 2건 → 부록 A 에 「배포 제외 경로 2건(참고 — 어댑터 deploy.excludes):」 + 경로 각 1줄 · 실행 블록 「2. 검증 상태」 배포본 줄 끝 · bytes_skipped 와 둘 다면 둘 다 · 0건·키 없음은 문구 없음 · 헤더·보완 문안 없음 · SKILL §8 터미널 요약 (1.3.4 AC⑱-7)', () => {
+  const EX = ['docs/a.md', 'AGENTS.md'];
+  const d = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/com/example/acct/Foo.java'], deleted: [] }, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'source', bytes_skipped: [], excluded: EX }, result: '일치', mismatches: [] };
+  const md = renderWith(tmp(), d);
+  const appA = sectionOf(md, '## 부록 A', '## 부록 B').split('\n');
+  const i = appA.indexOf('배포 제외 경로 2건(참고 — 어댑터 deploy.excludes):');
+  assert.ok(i >= 0, appA.join('\n'));
+  assert.deepEqual(appA.slice(i + 1, i + 3), ['- docs/a.md', '- AGENTS.md']);
+  const s2 = md.match(/```text\n([\s\S]*?)\n```/)[1].split('\n').find((l) => l.startsWith('- [실행] 배포본 zip 대조'));
+  assert.ok(s2.endsWith(' · 배포 제외 경로 2건(참고)'), s2);
+  assert.ok(!sectionOf(md, '# mr-review', '## 판정 초안').includes('배포 제외'));
+  assert.ok(!md.includes('M-deploy') && !md.includes('## 작성자 보완 요청 문안\n\n- 배포본'));
+  const SK = ['WEB-INF/classes/com/example/acct/Foo.class'];
+  const both = renderWith(tmp(), { ...d, zip: { ...d.zip, bytes_skipped: SK } });
+  const s2b = both.match(/```text\n([\s\S]*?)\n```/)[1].split('\n').find((l) => l.startsWith('- [실행] 배포본 zip 대조'));
+  assert.ok(s2b.endsWith('바이트 대조 생략 1건(컴파일 산출물 — 존재만 확인) · 배포 제외 경로 2건(참고)'), s2b);
+  const appB = sectionOf(both, '## 부록 A', '## 부록 B');
+  assert.ok(appB.indexOf('바이트 대조 생략 1건') < appB.indexOf('배포 제외 경로 2건'));
+  for (const z of [{ ...d.zip, excluded: [] }, (({ excluded, ...rest }) => rest)(d.zip)]) assert.ok(!renderWith(tmp(), { ...d, zip: z }).includes('배포 제외 경로'));
+  assert.match(s8Of(skillText()).split('\n').find((l) => l.startsWith('- **터미널 요약')), /배포 제외 경로 n건/);
 });

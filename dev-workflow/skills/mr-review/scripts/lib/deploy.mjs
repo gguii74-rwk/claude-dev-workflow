@@ -354,24 +354,27 @@ function stripPrefix(entries, deployList) {
   }
   return { list: d ? live.map((i) => ({ ...entries[i], name: name(i, d) })) : entries, prefix: d ? segs[live[0]].slice(0, d).join('/') + '/' : '', bad: null };
 }
-// 목록 대조(②) — 배치 L 로 이 zip 의 파일 항목을 기대와 맞춘다
-function listCheck(layout, deployList, files) {
+// 목록 대조(②) — 배치 L 로 이 zip 의 파일 항목을 기대와 맞춘다. 기대에 안 걸린 항목 중 접두 뗀 경로 원문이 어댑터 deploy.excludes 에 걸리면 excluded(참고 — 판정 입력 아님), 아니면 extra(1.3.4 ⑱ D72)
+function listCheck(layout, deployList, files, excludes) {
   const { map } = expectedMap(layout, deployList);
   const names = new Set(files.map((e) => e.name));
   const covered = new Set();
   for (const [zp, exp] of map) if (exp && names.has(zp)) covered.add(exp.source);
   const missing = [...map].filter(([zp, exp]) => exp && !names.has(zp));
-  const extra = files.filter((e) => !lookupIn(layout, map, e.name).hit).map((e) => e.name).sort();
-  return { map, covered, missing, extra };
+  const unmatched = files.filter((e) => !lookupIn(layout, map, e.name).hit).map((e) => e.name).sort();
+  const excluded = unmatched.filter((n) => matchesAny(n, excludes));
+  const extra = unmatched.filter((n) => !matchesAny(n, excludes));
+  return { map, covered, missing, extra, excluded };
 }
 // 배치 판별(D57·D58·D64) — 접두 뗀 파일 항목의 첫 조각: WEB-INF·META-INF = WAR 표지 · src = 소스 표지. 둘 다면 혼합(null), 둘 다 없으면 기대 목록 시험 → 힌트 → source
-function judgeLayout(files, deployList, hint) {
-  const tops = new Set(files.map((e) => e.name.split('/')[0]));
+// 표지는 deploy.excludes 에 걸리지 않는 항목만으로 본다(1.3.4 D83 — WAR zip 의 src/test/** 가 소스 표지를 만들지 않게). 시험의 「불일치 0」은 excluded 를 세지 않는다
+function judgeLayout(files, deployList, hint, excludes) {
+  const tops = new Set(files.filter((e) => !matchesAny(e.name, excludes)).map((e) => e.name.split('/')[0]));
   const war = tops.has('WEB-INF') || tops.has('META-INF');
   const src = tops.has('src');
   if (war && src) return { layout: null, layout_source: 'signature', ambiguous: true };
   if (war || src) return { layout: war ? 'maven-war' : 'source', layout_source: 'signature' };
-  const zero = LAYOUTS.filter((l) => { const c = listCheck(l, deployList, files); return c.missing.length + c.extra.length === 0; });
+  const zero = LAYOUTS.filter((l) => { const c = listCheck(l, deployList, files, excludes); return c.missing.length + c.extra.length === 0; });
   if (zero.length === 1) return { layout: zero[0], layout_source: 'probe' };
   if (zero.length === 2) return { layout: 'source', layout_source: 'probe' };
   return { layout: hint.layout, layout_source: hint.source };
@@ -382,9 +385,10 @@ export function deploy({ adapter, work }) {
   const snap = JSON.parse(fs.readFileSync(path.join(work, 'snapshot.json'), 'utf8'));
   const check = JSON.parse(fs.readFileSync(path.join(work, 'check.json'), 'utf8'));
   const keep = knownShas({ mr, snapshot: snap });
+  const excludes = adapter.deploy?.excludes || [];
   const hintKey = adapter.projects?.[mr.project?.name]?.deployLayout;
   const hint = { layout: hintKey || adapter.resolved?.projects?.[mr.project?.name]?.deployLayout || 'source', source: hintKey ? 'adapter' : 'default' };
-  const out = { applicable: false, reason: null, expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [], bytes_source: null, layout: hint.layout, layout_source: hint.source, prefix: null, bytes_skipped: [] }, zips: [], bodyDeletedList: parseDeletedList(mr.description || ''), result: '해당 없음', mismatches: [] };
+  const out = { applicable: false, reason: null, expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [], bytes_source: null, layout: hint.layout, layout_source: hint.source, prefix: null, bytes_skipped: [], excluded: [] }, zips: [], bodyDeletedList: parseDeletedList(mr.description || ''), result: '해당 없음', mismatches: [] };
   const exempt = check.deployExempt === true || mr.project?.deployExempt === true;
   if (exempt) { out.reason = '어댑터 배포 제외 프로젝트'; return finish(work, out); }
   out.expected = expectedLists({ adapter, mr, snap });
@@ -422,7 +426,7 @@ export function deploy({ adapter, work }) {
       const lab = (i) => (many ? `zip#${i + 1} ${atts[i].filename}` : `zip ${atts[i].filename}`);
       const tag = (i, detail) => (many ? `${lab(i)}: ${detail}` : detail);
       const zs = atts.map((att, i) => {
-        const zr = { attachment: att.filename, downloaded: false, comment_sha: null, entries: [], layout: null, layout_source: null, prefix: null, bytes_skipped: [] };
+        const zr = { attachment: att.filename, downloaded: false, comment_sha: null, entries: [], layout: null, layout_source: null, prefix: null, bytes_skipped: [], excluded: [] };
         const st = { i, zr, z: null, files: [], all: [], commentOk: false, hasComment: false };
         const name = uploadName(att);
         let buf = null;
@@ -450,7 +454,7 @@ export function deploy({ adapter, work }) {
         st.all = sp.list;
         st.files = sp.list.filter((e) => !e.name.endsWith('/'));
         zr.entries = st.files.map((e) => e.name).sort();
-        const j = judgeLayout(st.files, dl, hint);
+        const j = judgeLayout(st.files, dl, hint, excludes);
         zr.layout_source = j.layout_source;
         if (j.ambiguous) { mm.push({ kind: 'layout_ambiguous', path: null, detail: `${lab(i)}: WAR 표지(WEB-INF/·META-INF/)와 소스 표지(src/)가 함께 있음 — 배치를 정할 수 없음` }); return st; }
         zr.layout = j.layout;
@@ -472,7 +476,8 @@ export function deploy({ adapter, work }) {
       const maps = new Map();
       for (const st of judged) if (!maps.has(st.layout)) { const em = expectedMap(st.layout, dl); maps.set(st.layout, em.map); for (const [zp, list] of em.conflicts) push({ kind: 'map_conflict', path: zp, detail: `소스 두 경로가 같은 배포 경로로 사상됨: ${list.map((x) => x.source).join(', ')}` }); }
       // ② 목록 — 기대 경로는 어느 zip 에서든 충족(D60). 대조하지 못한 zip(손상·혼합·다운로드 실패)이 있으면 그 zip 에 있었을 경로를 「누락」으로 단정하지 않는다
-      const checks = judged.map((st) => ({ st, c: listCheck(st.layout, dl, st.files) }));
+      const checks = judged.map((st) => ({ st, c: listCheck(st.layout, dl, st.files, excludes) }));
+      for (const { st, c } of checks) st.zr.excluded = c.excluded;
       if (judged.length === zs.length) {
         const covered = new Set(checks.flatMap(({ c }) => [...c.covered]));
         const layouts = [...new Set(judged.map((st) => st.layout))];
@@ -588,6 +593,7 @@ export function deploy({ adapter, work }) {
       out.zip.comment_sha = many ? (read.find((st) => st.commentOk)?.zr.comment_sha ?? null) : zs[0].zr.comment_sha;
       out.zip.entries = [...new Set(zs.flatMap((st) => st.zr.entries))].sort();
       out.zip.bytes_skipped = [...new Set(zs.flatMap((st) => st.zr.bytes_skipped))].sort();
+      out.zip.excluded = [...new Set(zs.flatMap((st) => st.zr.excluded))].sort();
       out.zip.prefix = many ? null : zs[0].zr.prefix;
       if (judged.length) {
         const ls = new Set(judged.map((st) => st.layout));
