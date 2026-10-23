@@ -1008,6 +1008,11 @@ test('⑬ zip 사이 충돌은 경로마다 1건 — zip 이 많아도 충돌 �
   const b = zipsDeploy(root, adapter, { repo, zips: zips((i) => [i % 2 ? { name: 'WEB-INF/classes/config/app.properties', data: 'k=v\n' } : { name: 'WEB-INF/classes/config', data: 'x\n' }]), name: 'w2' });
   assert.equal(b.r.first, 'DEPLOY 대조 불가', JSON.stringify(b.d.mismatches));
   assert.equal(b.d.mismatches.filter((m) => m.kind === 'zip_conflict').length, 1, JSON.stringify(b.d.mismatches));
+  // 첫 항목과만 비교해도 뒤쪽의 충돌을 잡는다 — 폴더 config/ 두 zip 뒤에 파일 config (R5-1)
+  const dirZ = [{ name: 'WEB-INF/classes/config/', data: '' }, { name: 'WEB-INF/classes/config/app.properties', data: 'k=v\n' }];
+  const c = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', entries: dirZ }, { filename: 'b.zip', entries: dirZ }, { filename: 'c.zip', entries: [{ name: 'WEB-INF/classes/config', data: 'x\n' }] }], name: 'w3' });
+  assert.equal(c.r.first, 'DEPLOY 대조 불가', JSON.stringify(c.d.mismatches));
+  assert.ok(c.d.mismatches.some((m) => m.kind === 'zip_conflict' && /zip#3 c\.zip/.test(m.detail)), JSON.stringify(c.d.mismatches));
 });
 
 test('⑬ zip 3개 같은 경로 — 첫 zip 의 내용을 기준으로 뒤 zip 마다 비교(다른 쪽만 zip_conflict, 같은 쪽은 한 번 대조) (1.3.3 review-loop(impl) R2-1 · D60·D66)', () => {

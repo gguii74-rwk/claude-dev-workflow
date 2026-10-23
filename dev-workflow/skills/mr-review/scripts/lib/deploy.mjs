@@ -465,8 +465,10 @@ export function deploy({ adapter, work }) {
           if (dirA && dirB) return false;
           return !(!dirA && !dirB && a.e.name === b.e.name);   // 같은 이름 파일 둘은 같은 경로 규칙(아래)
         };
+        // 한 zip 안에서 같은 키는 readZip 이 거부하므로 목록의 항목은 모두 다른 zip 것이다 — 첫 항목이 누구와도 충돌하지 않으면 나머지는 전부 폴더이거나 전부 같은 이름 파일이라 충돌이 없다. 첫 항목과만 비교한다(R5-1)
         for (const list of keyed.values()) {
-          outer: for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) if (clash(list[x], list[y])) { conflict(list[x], list[y]); break outer; }
+          const b = list.find((y, i) => i > 0 && clash(list[0], y));
+          if (b) conflict(list[0], b);
         }
         const under = new Set();   // (나) 하위 항목 키마다 1건
         for (const st of read) for (const e of st.all) {
