@@ -1,6 +1,6 @@
 # mr-review 1.3.4 — 4차 실사용에서 드러난 엔진 결함 2건 + 1.3.3 보안 지적 1건 수정
 
-> 상태: **impl 완료**(2026-10-23 21:0x — 7 impl 위임 트랙 · impl HEAD `e44931f`(fix 5 + docs 2) · 게이트 SC-7 T1 253/253·T2~T7 0·T3 56/56 · 다음 = 8 review-loop(impl, 보안 yes)) · 이전: **review-loop(spec) 종결**(2026-10-23 20:3x — 확인 C2 대상 HEAD `528a13c` · merge-ready yes · 적대 5+복귀 1 · 확인 1+재진입 1 · blocking 13건 전부 FIXED → D83~D89 추가 · 확인 대기 대장 8건 · ledger = 말미 `## 적대검증 ledger (spec)`) · 이전: **spec 확정·harden 완료**(2026-10-23 19:0x — 3 harden-spec 수동 트랙 · 설계 질의 4건(Q1~Q4) + harden 판단 갭 8건(H-1~H-8) = 사용자 지시로 메인이 추천안 입력 · 사실 갭은 코드·실측 조회로 닫음 · DEFERRED 0건) · 이전: spec 초안(18:4x) · 작성 2026-10-23 · 버전 **1.3.4 패치** · 다음 = 4 review-loop(spec, 보안 yes) → 7 impl → 8 review-loop(impl, 보안 yes) → 9 릴리스(push·머지·릴리스는 사용자 확인)
+> 상태: **review-loop(impl) 종결**(2026-10-23 21:3x — 적대 3 + 확인 1 · C1 대상 HEAD `5813679` merge-ready yes · FIXED 5·ACCEPTED 1 · 대장 #9~#14 확인 대기 · ledger = 말미 `## 적대검증 ledger (impl)` · 다음 = 9 릴리스(push·머지·릴리스는 사용자 확인)) · 이전: **impl 완료**(2026-10-23 21:0x — 7 impl 위임 트랙 · impl HEAD `e44931f`(fix 5 + docs 2) · 게이트 SC-7 T1 253/253·T2~T7 0·T3 56/56 · 다음 = 8 review-loop(impl, 보안 yes)) · 이전: **review-loop(spec) 종결**(2026-10-23 20:3x — 확인 C2 대상 HEAD `528a13c` · merge-ready yes · 적대 5+복귀 1 · 확인 1+재진입 1 · blocking 13건 전부 FIXED → D83~D89 추가 · 확인 대기 대장 8건 · ledger = 말미 `## 적대검증 ledger (spec)`) · 이전: **spec 확정·harden 완료**(2026-10-23 19:0x — 3 harden-spec 수동 트랙 · 설계 질의 4건(Q1~Q4) + harden 판단 갭 8건(H-1~H-8) = 사용자 지시로 메인이 추천안 입력 · 사실 갭은 코드·실측 조회로 닫음 · DEFERRED 0건) · 이전: spec 초안(18:4x) · 작성 2026-10-23 · 버전 **1.3.4 패치** · 다음 = 4 review-loop(spec, 보안 yes) → 7 impl → 8 review-loop(impl, 보안 yes) → 9 릴리스(push·머지·릴리스는 사용자 확인)
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16 승계) · 1.3.1 spec `docs/specs/2026-10-22-mr-review-1-3-1-fixes.md`(D17~D34 승계 — D34 배포본 결과 우선순위) · 1.3.2 spec `docs/specs/2026-10-22-mr-review-1-3-2-fixes.md`(D35~D51 승계 — D38 `.class` 존재 대조·D40 부록 A 단일 목록·D47 표시 자리) · **1.3.3 spec `docs/specs/2026-10-23-mr-review-1-3-3-fixes.md`**(D52~D67 승계 — ⑰ 은 1.3.3 ⑬ 의 접두 제거·배치 판별·다중 zip 합산 **아래층**(`readZip`)을 고치고, ⑱ 은 ⑬ 의 목록 대조 `listCheck`·시험 `judgeLayout` 위에 얹히며, S2 는 ⑭ `cell()`/`tc()` 순서를 표 밖 줄로 넓힌다) · plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-2 어댑터 계약·SC-3 `deploy.json` 계약·SC-7 게이트 · ledger(impl) zip 해석 차이 계열 S-5·R2-1·R3-2·R4-1·R4-4·R5-2·C1-2·R6-3 + 8b FR1-3·FR2-1·FR3-5 = ⑰ 설계의 방어선)
 > 경로: **경량 — 단 4단계(spec 적대검증)는 유지, 5 plan·6 plan 적대검증 생략**(dev-cycle 1차 판정 + 사용자 지시로 메인이 추천안 입력 2026-10-23 18:4x — 접촉 표면 무신호: 스키마·마이그레이션·권한·인증·외부 연동 신설 없음, 도구는 읽기 전용이라 데이터 손상·비가역 없음. ⑰·S2 는 「우리 zip 리더가 표준 도구와 다른 바이트·이름을 볼 수 있는가」라는 zip 해석 차이 계열 접촉면이라 1.3.3 D53 과 같이 spec 적대검증만 남긴다 — D69)
 
@@ -299,12 +299,16 @@ harden-spec(2026-10-23 18:5x~19:0x, 이 세션)에서 확정 — 판단 갭 8건
 | R1 적대(자동) | `63d2991` | needs-attention | 0/2/3(codex 3 + 루프 입력 2) | 9 | 0 → 4 (R1-1·R1-2·R1-3·I-2) |
 | R2 적대(정밀) | `8f68431` | needs-attention | 0/0/1 | 1 | 4 → 5 (+R2-1) · R1-1·R1-2·R1-3·I-2 적대 비재출현(R2) — 큐 유지 |
 | R3 적대(정밀) | `a151ae8` | approve | 0/0/0 | 0 | 5 · R1-1·R1-2·R1-3·I-2·R2-1 적대 비재출현(R3) — 큐 유지 |
+| C1 확인(1/2) | `5813679` | merge-ready: yes | 0/0/0 | — | 5 → 0 (소멸 5) |
 
 - score 산식 = 수정 전 스냅샷 · 미확인 FIXED 큐 제외(review-loop §blocking score). 보안 트랙이라 신호 1(정체)은 무시한다.
 - R1 응답 뒤 적대 소진 1 = auto-rounds → batch flush(적재 0건 — 5건 전부 위험군 즉시 질문) → 정밀 모드. 질문 5건(R1-1·R1-2·R1-3·I-1·I-2)의 답은 메인 TUI 대리(사용자 지시 「진행상황 보고 수정사항이 나오면 수정 진행해주세요」 2026-10-23 18:1x) = 출처 추천 자동 채택(위임).
 - **R3 = 수정 큐 소진(전환 신호 2)** → batch 적재 0건 → 확인 모드(예산 2). 미확인 FIXED 큐 5건(R1-1·R1-2·R1-3·I-2·R2-1) · 감사 대상 6건(전부 추천 자동 채택(위임) — R1-1·R1-2·R1-3·I-1·I-2·R2-1).
+- **C1(확인 1/2, 완전 응답 — 대상 HEAD `5813679`)**: 소멸 확인 = R1-1·R1-2·R1-3·I-2·R2-1(전부 명시 「소멸」) → 미확인 FIXED 큐 0 · 감사 6건(R1-1·R1-2·R1-3·I-1·I-2·R2-1 — 전부 추천 자동 채택(위임)) 이의 없음(I-2: AC⑱-4·⑱-5·⑱-9 변경은 결정의 직접 귀결 · 표본 (나) 소스 배치 참고 분류 유지 확인 · I-1: ACCEPTED 비례적·보완 단계 타당) · 회귀 없음 · 신규 0 · verdict **merge-ready: yes**.
 - R2 수정 게이트(SC-7, HEAD `6a54c2a`): T1 258/258 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0 · 숨은 문자 원문 0. R2-1 답 = 메인 TUI 대리(출처 추천 자동 채택(위임)).
 - R1 수정 게이트(SC-7, HEAD `82ca255`): T1 257/257 · T2 0 · T3 56/56 · T4 0 · T5 0 · T6 0 · T7 0 · 숨은 문자 원문 0(테스트에 들어간 원문 2개 — 도구 입력의 `\u` 표기가 실제 문자로 바뀐 R4-3 계열 — 커밋 전 `\uXXXX` 로 정정).
+
+**종결(2026-10-23)**: review-loop(impl) 성공 종료 — 적대 3(R1~R3, R3 에서 수정 큐 소진 = 전환 신호 2) · 확인 1(C1 — 일반 예산 1/2) · 복귀 미사용 · FIXED 5(R1-1·R1-2·R1-3·I-2·R2-1, 전부 소멸 확인(C1) — 코드 `a15fb16`·`82ca255`·`6a54c2a`) · ACCEPTED 1(I-1) · DEFERRED_TO_IMPL·OUT_OF_SCOPE·DUPLICATE 0 · ESCALATE 미결 0 · low 0 · 추천 자동 채택(위임) 6건(대장 #9~#14, 감사 미수행 0 — C1 감사 이의 0) · AC 단언 변경 3건(AC⑱-4·⑱-5·⑱-9 — I-2 귀결) + 회귀 테스트 5건 추가 · 미확인 FIXED 큐 0 · 미판정 blocking 0 · 최종 verdict pass(C1 `merge-ready: yes`). **릴리스 인계**: ① 대장 #9~#14 사용자 확인(특히 #13 — ⑱ 정책 적용 범위를 소스 배치 zip 으로 좁힘) ② spec 본문 §3.⑱·AC⑱-4·AC⑱-9·D72 문면은 I-2 이전 문면 — 정본은 I-2 행·§6·plan SC-3(필요하면 릴리스 트랙에서 본문 정정) ③ I-1(꼬리표 zip 누적 CPU)은 9 릴리스 실측에서 문제가 보이면 별도 트랙.
 
 ## 확인 대기 대장
 
