@@ -350,6 +350,7 @@ base `6e7bef3`(6e7bef3081e260aec28f0e9d206f576f31a0ef4a = origin/main, 1.3.4 릴
 **라운드 기록**
 
 - **R1(적대 1/5, 자동 모드 — 대상 HEAD `810fe68`)**: 유효(명령 로그 29건 · verdict needs-attention) · 신규 blocking 1(medium — R1-1, ⓔ 표시 줄 평탄화 계열) + 루프 발견 1(medium — L-1, 빌더 결정 ⑩) · DUPLICATE 0 · low 0 · **전환용 score = 2**(산식 = 분류 직후·수정 전, 미확인 FIXED 큐 제외 — FIXED 후보 medium 2) · 위험군 질문 0 · 적대 소진 1 = auto-rounds → batch flush(적재 0건) · 이후 정밀 모드 · 수정 `3c9d9a4`(게이트 T1 294/294 · T2 0 · T3 56/56 · T4 0 · T4a 2 · T4b 1 · T5 0 · T6 0 · 숨은 문자 원문 0) · 미확인 FIXED 큐 2(R1-1 · L-1).
+- **R2(적대 2/5, 정밀 모드 — 대상 HEAD `5e53f21`)**: 유효(명령 로그 31건 · verdict approve — 「base 대비 판정 288조합·리포트 40조합 비교 통과」) · 신규 blocking 0 · DUPLICATE 0 · low 0 · R1-1·L-1 적대 비재출현(R2 — 참고 신호, 큐 유지) · **전환용 score = 0** · **전환 신호 2(수정 큐 소진)** → batch flush(적재 0건) → 확인 모드 진입(미확인 FIXED 큐 2 + 루프 판정 ⑦ — 확인 필수).
 
 ## 확인 대기 대장
 
