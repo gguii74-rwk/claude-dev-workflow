@@ -1294,6 +1294,20 @@ test('render: 스냅샷 값(diff-only 미복원 경로)도 원문을 먼저 가�
   assert.ok(!md.includes('MIIEow') && !md.includes('abcd'), md.split('\n').filter((l) => l.includes('MIIEow') || l.includes('abcd')).join('\n'));
 });
 
+test('render: 구조 키는 원형 보존 — 가림이 바꾼 키(리터럴 \\u0064)가 id·title 등 기존 필드를 덮어써 차단 발견이 게시 블록에서 사라지지 않는다 (1.3.4 review-loop(impl) R2-1 · R1-1 회귀)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const fnd = findings([{ ...F(), ['i' + '\\' + 'u0064']: 'F2' }]);
+  const work = fullWork(join(root, 'a'), { fnd });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'a.md');
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  const md = readFileSync(out, 'utf8');
+  const block = md.match(/```text\n([\s\S]*?)\n```/)[1];
+  assert.ok(block.includes('F1') && block.includes('비밀번호 평문 로그'), block);
+});
+
 // ── 1.3.4 ⑱ 배포 제외 경로(참고) 표시 — D47 자리 3곳 (spec 2026-10-23 1.3.4 3.⑱-5 · D72·D80) ──
 test('render: zip.excluded 2건 → 부록 A 에 「배포 제외 경로 2건(참고 — 어댑터 deploy.excludes):」 + 경로 각 1줄 · 실행 블록 「2. 검증 상태」 배포본 줄 끝 · bytes_skipped 와 둘 다면 둘 다 · 0건·키 없음은 문구 없음 · 헤더·보완 문안 없음 · SKILL §8 터미널 요약 (1.3.4 AC⑱-7)', () => {
   const EX = ['docs/a.md', 'AGENTS.md'];

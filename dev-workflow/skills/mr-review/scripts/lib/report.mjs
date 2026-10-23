@@ -320,12 +320,14 @@ export function renderReport({ adapter, work, early = false }) {
   // 리포트 재료는 전부 필드 단위로 먼저 가린다(8b FR2-3 FC1 재판정) — 잔존 필드는 통째로 `[masked:unmaskable]`(maskText). 조립본 전체 검사는 아래에서 한 번 더.
   // 표 밖 줄 값(1.3.4 S2 — spec 2026-10-23 3.S2-3 D73·D88): 원문 마스킹 뒤 줄바꿈을 펴고, 편 값이 달라졌으면 다시 가린다(줄로 나뉘어 있던 `--password⏎x` 가 펴져 `--password x` 가 되어도 여기서 가려진다).
   // 렌더가 조립하는 줄에 들어가는 파일·외부 도구·검토자 출력 유래 문자열은 전부 거친다(D88 원칙) — 조립 자리마다 거는 대신 렌더 입력의 문자열 값 전부에 건다(`lines`). 줄바꿈이 없는 값은 그대로(바이트 동일)
-  // 원문 가림은 `lines` 안에서 문자열마다 먼저 한다(review-loop(impl) R1-2 — 앞단 가림에서 빠진 입력(snapshot)이 펴진 뒤에야 가려져 잘린 PEM 본문이 남던 순서 회귀) · 객체 키도 값과 같이(R1-1 — 검토자 출력 fixableInDesignClaims 의 키)
+  // 원문 가림은 `lines` 안에서 문자열마다 먼저 한다(review-loop(impl) R1-2 — 앞단 가림에서 빠진 입력(snapshot)이 펴진 뒤에야 가려져 잘린 PEM 본문이 남던 순서 회귀).
+  // 객체 키는 원형 그대로 둔다(R2-1 — 가림이 키를 바꾸면 `id`·`title` 같은 구조 필드를 덮어쓴다) — 키가 리포트에 찍히는 자리(`claimsText` — 검토자 출력 fixableInDesignClaims)에서만 가리고 편다(R1-1)
   const line = (v) => { const raw = String(v); const flat = raw.replace(NL, ' '); return flat === raw ? raw : fieldMask(flat, adapter.mask, keep); };
   const mline = (v) => line(fieldMask(String(v), adapter.mask, keep));
-  const lines = (v) => (typeof v === 'string' ? mline(v) : Array.isArray(v) ? v.map(lines) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [mline(k), lines(x)])) : v);
+  const lines = (v) => (typeof v === 'string' ? mline(v) : Array.isArray(v) ? v.map(lines) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, lines(x)])) : v);
   // 표 셀 값(⑭ — R3-2·R4-1): `lines` 를 거친 값에 `line` 뒤 `cell()` 로 `|` 를 처리한다
   const tc = (v) => cell(line(v));
+  const claimsText = (c) => Object.entries(c).map(([k, v]) => `${mline(k)}=${v}`).join(' / ');
   findings = lines(findings);
   verdict = lines(verdict);
   check = lines(check);
@@ -374,7 +376,7 @@ export function renderReport({ adapter, work, early = false }) {
       const f = (findings?.findings || []).find((x) => x.id === id);
       const b = verdict.branches[id];
       const keys = Object.keys(b);   // 상충(R6-3)이면 confirmed:fixable / confirmed:design / dismissed 세 갈래 — 그 밖은 확인/기각 두 갈래 그대로
-      parts.push(`- **${id}** ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'} · 출처 ${f?.source} · 확신 ${f?.confidence})`, `  - 주장: ${f?.scenario || f?.evidence || ''}${f?.fixableInDesignClaims ? ` · 설계 내 수정 가능 주장: ${Object.entries(f.fixableInDesignClaims).map(([k, v]) => `${k}=${v}`).join(' / ')}${f?.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
+      parts.push(`- **${id}** ${f?.type} — ${f?.title} (${f?.file || '-'}:${f?.line_start || '-'} · 출처 ${f?.source} · 확신 ${f?.confidence})`, `  - 주장: ${f?.scenario || f?.evidence || ''}${f?.fixableInDesignClaims ? ` · 설계 내 수정 가능 주장: ${claimsText(f.fixableInDesignClaims)}${f?.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
         b.confirmed !== undefined ? `  - 확인 시 ${b.confirmed} / 기각 시 ${b.dismissed}` : `  - ${keys.map((k) => `${k} → ${b[k]}`).join(' / ')}`,
         `  - 실행: ${keys.map((k) => `\`verdict --resolve ${id}=${k}\``).join(' 또는 ')}`);
     }
@@ -412,7 +414,7 @@ export function renderReport({ adapter, work, early = false }) {
     if (!merged.length && !(verdict?.machineEvidence || []).length) parts.push('(발견 없음)', '');
     for (const f of merged) {
       parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? ' (차단)' : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}`,
-        `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${Object.entries(f.fixableInDesignClaims).map(([k, v]) => `${k}=${v}`).join(' / ')}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
+        `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${claimsText(f.fixableInDesignClaims)}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
         `  - 권고: ${f.recommendation || '-'}`,
         `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);
     }
