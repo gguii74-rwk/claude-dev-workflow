@@ -977,6 +977,26 @@ test('⑬ zip 2개 충돌: 같은 zip 경로 다른 바이트 → zip_conflict �
   assert.equal(crossOk.r.first, 'DEPLOY 일치', JSON.stringify(crossOk.d.mismatches));
 });
 
+test('⑬ zip 2개 같은 경로·같은 바이트여도 뒤 zip 항목의 유형 검사는 한다 — 심볼릭 링크 중복은 zip 순서와 무관하게 type 불일치 (1.3.3 review-loop(impl) R1-1 · AC⑨-9)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const LINK = (0o120777 << 16) >>> 0;
+  const cls = (ext) => ({ name: `${CLS}Foo.class`, data: Buffer.from([1]), ...(ext ? { ext } : {}) });
+  const html = (ext) => ({ name: 'html/a.html', data: SRC2[H], ...(ext ? { ext } : {}) });
+  const cases = [
+    ['w1', [cls(), html()], [cls(LINK)], `${CLS}Foo.class`],
+    ['w2', [cls(LINK), html()], [cls()], `${CLS}Foo.class`],
+    ['w3', [cls(), html()], [cls(), html(LINK)], H],   // b.zip 에도 같은 바이트 Foo.class — WAR 표지
+    ['w4', [cls(), html(LINK)], [cls(), html()], H],
+  ];
+  for (const [name, a, b, path] of cases) {
+    const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', entries: a }, { filename: 'b.zip', entries: b }], name });
+    assert.notEqual(r.first, 'DEPLOY 일치', `${name} ${JSON.stringify(d.mismatches)}`);
+    assert.ok(d.mismatches.some((m) => m.kind === 'type' && m.path === path), `${name} ${JSON.stringify(d.mismatches)}`);
+  }
+});
+
 test('⑬ zip 2개 주석(D63): 한 zip 이라도 head 와 일치하면 통과 · 주석 없는 zip 은 comment_sha null 만 · 다른 SHA 는 불일치 · 전부 없음은 불일치 1건 · zip 1개 주석 없음은 불일치 (1.3.3 AC⑬-8)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: GAMMA });

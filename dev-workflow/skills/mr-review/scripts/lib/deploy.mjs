@@ -479,21 +479,23 @@ export function deploy({ adapter, work }) {
         const skipped = [];
         const toCompare = [];
         for (const e of st.files) {
-          if (handled.has(e)) continue;
+          const dup = handled.has(e);   // 같은 바이트의 뒤 zip 항목 — 유형 검사는 항목마다 하고 바이트 대조만 한 번(R1-1)
           const { exp } = lookupIn(st.layout, map, e.name);
           if (!exp) continue;
           if (exp.compare === 'exists') {
             if (e.type !== 'file') { mm.push({ kind: 'type', path: e.name, detail: tag(st.i, `컴파일 산출물 zip 항목 유형 ${e.type} — 일반 파일만 인정`) }); continue; }
+            if (dup) continue;
             try { st.z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: e.name, detail: tag(st.i, err.message) }); continue; }
             skipped.push({ name: e.name, source: exp.source });
-          } else toCompare.push({ e, src: exp.source });
+          } else toCompare.push({ e, src: exp.source, dup });
         }
         skippedBy.set(st, skipped);
-        for (const { e, src } of toCompare) {
+        for (const { e, src, dup } of toCompare) {
           compared.add(src);
           if (snap.mode === 'worktree') {
             const gt = gitType(snap.checkout, snap.head_sha, src);
             if (e.type !== gt) { mm.push({ kind: 'type', path: src, detail: tag(st.i, `zip 항목 유형 ${e.type} ≠ head 의 git 유형 ${gt}`) }); continue; }
+            if (dup) continue;
             let zb;
             try { zb = st.z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: src, detail: tag(st.i, err.message) }); continue; }
             const gb = gitShow(snap.checkout, snap.head_sha, src);
@@ -502,6 +504,7 @@ export function deploy({ adapter, work }) {
             // diff-only(1.3.1 ③ — spec 2026-10-22 3.③) — collect 가 받은 head 원문 `W/blobs/head/` 와 대조한다. 유형은 zip 쪽만 본다(일반 파일만 대조 — tree API 유형 대조는 안 함, D22).
             // 원문을 못 받은 경로(unrecovered·blob 없음)는 경로별 대조 불가. blob 경로는 복원 루트 안으로만 해소한다(경로는 소스 경로 — 1.3.2 ⑨ 매핑 뒤에도 같다)
             if (e.type !== 'file') { mm.push({ kind: 'type', path: src, detail: tag(st.i, `diff-only — zip 항목 유형 ${e.type} 확인 불가(일반 파일만 대조)`) }); continue; }
+            if (dup) continue;
             const blob = insideRoot(headRoot, src);
             if (unrecovered.has(src) || !blob || !fs.lstatSync(blob, { throwIfNoEntry: false })?.isFile()) { push({ kind: 'bytes_unavailable', path: src, detail: 'head 원문 미확보 — 바이트 대조 불가' }); continue; }
             let zb;
