@@ -126,6 +126,12 @@ function notCanonical(name) {
   return name.startsWith('/') || /^[A-Za-z]:/.test(name) || name.includes('\\') || name.replace(/\/$/, '').split('/').some((s) => s === '' || s === '.' || s === '..');
 }
 
+// local 헤더 crc·csize·usize = 목차 — bit 3 항목은 각각 0 도(Info-ZIP 스트리밍은 usize 만 실제값 · Java·Python 은 셋 다 0 — 1.3.4 D70)
+function localMatches(buf, at, e) {
+  const dd = (e.flags & 0x0008) !== 0;
+  return [[14, e.crc], [18, e.csize], [22, e.usize]].every(([o, v]) => { const l = buf.readUInt32LE(at + o); return l === v || (dd && l === 0); });
+}
+
 function checkExtra(buf, start, len, name, where) {
   let q = start;
   const end = start + len;
@@ -186,26 +192,48 @@ export function readZip(buf) {
   if (p !== eocd) throw new Error(`zip EOCD 목차 크기 불일치(파싱한 목차 끝 ${p} ≠ EOCD ${eocd})`);
   // 허용 레이아웃(8b FR1-3, 추천 자동 채택(위임)) — 거부 목록을 늘리는 대신 허용하는 배치만 통과시킨다: 파일 맨 앞(0)부터 local 레코드(헤더 + 이름 + 확장 + 데이터)가 오프셋 순으로
   // 빈틈·겹침 없이 이어지고 마지막 레코드 끝이 목차 시작과 같아야 한다. 목차에 없는 local 항목(앞에 끼운 항목·항목 사이 바이트·prepend 데이터)은 순차 리더(funzip·ZipInputStream 등)만
-  // 푸는 내용이라 「일치」로 보증하지 않는다. data descriptor(bit 3)는 레코드 끝을 local 헤더로 확정할 수 없어 여기서 거부한다(git archive 는 쓰지 않음 — impl R4-1 실측).
+  // 푸는 내용이라 「일치」로 보증하지 않는다.
+  // data descriptor(bit 3 — 1.3.4 ⑰, spec 2026-10-23 3.⑰ D70·D71·D75·D85·D86): 목차 기준 + 서명 있는 16바이트 꼬리표만 받는다(impl R4-1 「거부」 변경) — deflate 만(stored 는 스트리밍 리더가 경계를 정할 수 없음) ·
+  // local crc·csize·usize 는 각각 0 또는 목차 값 · 목차 csize 뒤에 꼬리표(서명·CRC·두 크기 = 목차) · 그 뒤 다음 항목이 빈틈 없이 연속 · 파일 항목은 여기서 바로 풀어 스트림이 정확히 목차 csize 에서 끝나는지 본다
+  // (짧은 스트림 뒤 빈자리에 「꼬리표 + 숨은 local 레코드」를 넣으면 순차 리더만 푸는 파일이 생긴다 — 읽지 않는 항목(초과·배포 제외)까지 전수, 풀린 내용은 버린다)
   let at = 0;
   for (const e of [...entries].sort((a, b) => a.lho - b.lho)) {
     if (e.lho !== at) throw new Error(`zip 레이아웃 불일치 — 목차에 없는 데이터 또는 겹침(오프셋 ${at} ≠ 항목 시작 ${e.lho}): ${e.name}`);
-    if (e.flags & 0x0008) throw new Error(`zip data descriptor(bit 3) 항목(미지원): ${e.name}`);
+    const dd = (e.flags & 0x0008) !== 0;
+    const dir = e.name.endsWith('/');
+    if (dd && e.method === 0) throw new Error(`zip data descriptor 가 있는 stored 항목(스트리밍 리더가 경계를 정할 수 없음): ${e.name}`);
     if (at + 30 > cdOff || buf.readUInt32LE(at) !== 0x04034b50) throw new Error(`zip local header 손상: ${e.name}`);
     // 모든 항목(폴더 포함)의 local 헤더를 목차와 먼저 대조한다(8b FR2-1, 추천 자동 채택(위임)) — 폴더는 read() 를 거치지 않으므로, 목차엔 빈 폴더 `padding/` · local 엔 `evil.jsp` + 내용인
-    // 항목이 순차 리더에서만 파일로 풀린다. 이름(원시 바이트)·플래그·압축 방식·CRC·두 크기가 같아야 하고, 폴더는 두 크기가 0 이어야 한다.
+    // 항목이 순차 리더에서만 파일로 풀린다. 이름(원시 바이트)·플래그·압축 방식·CRC·두 크기가 같아야 한다(bit 3 이면 local 값 0 도 — D70). 폴더 크기는 아래(D71).
     const lnLen = buf.readUInt16LE(at + 26);
     const leLen = buf.readUInt16LE(at + 28);
     if (!buf.subarray(at + 30, at + 30 + lnLen).equals(e.raw)) throw new Error(`zip local header 파일명 불일치: ${e.name}`);
     if (buf.readUInt16LE(at + 6) !== e.flags || buf.readUInt16LE(at + 8) !== e.method) throw new Error(`zip local header 플래그·압축 방식 불일치: ${e.name}`);
-    if (buf.readUInt32LE(at + 14) !== e.crc || buf.readUInt32LE(at + 18) !== e.csize || buf.readUInt32LE(at + 22) !== e.usize) throw new Error(`zip local header CRC·크기 불일치(목차와 다름): ${e.name}`);
-    if (e.name.endsWith('/') && e.csize !== 0) throw new Error(`zip 폴더 항목에 데이터가 있음(${e.csize}바이트): ${e.name}`);
+    if (!localMatches(buf, at, e)) throw new Error(`zip local header CRC·크기 불일치(목차와 다름): ${e.name}`);
     // 허용 검증은 모든 항목(폴더 포함)에 공통(8b FR3-4, 추천 자동 채택(위임)) — read() 를 거치지 않는 폴더도 암호화·미지원 압축 방식·CRC 있는 빈 폴더면 표준 리더가 거부하는 zip 이다
     if (e.flags & 0x0041) throw new Error(`zip 암호화 플래그(미지원): ${e.name}`);
     if (e.method !== 0 && e.method !== 8) throw new Error(`지원하지 않는 압축 방식(${e.method}): ${e.name}`);
     if (e.name.endsWith('/') && e.crc !== 0) throw new Error(`zip 폴더 항목에 CRC 가 있음(${e.crc.toString(16)}): ${e.name}`);
     checkExtra(buf, at + 30 + lnLen, leLen, e.name, 'local');
-    at += 30 + lnLen + leLen + e.csize;
+    const data = at + 30 + lnLen + leLen;
+    const end = data + e.csize;
+    if (dd && (end + 16 > cdOff || buf.readUInt32LE(end) !== 0x08074b50 || buf.readUInt32LE(end + 4) !== e.crc || buf.readUInt32LE(end + 8) !== e.csize || buf.readUInt32LE(end + 12) !== e.usize)) throw new Error(`zip data descriptor 없음 또는 값이 목차와 다름(서명·CRC·크기): ${e.name}`);
+    // 폴더(D71·D85): 압축 크기 0 또는 풀면 0바이트가 되는 deflate 빈 스트림(≤ 64바이트 · 전부 소비 — Java·Python 이 쓰는 꼴). bit 3 폴더는 스트리밍 리더가 헤더 바로 뒤를 deflate 로 풀므로 빈 스트림이 실제로 있어야 한다
+    if (dir && dd && e.csize === 0) throw new Error(`zip data descriptor 항목의 압축 스트림 경계가 목차와 다름(숨은 레코드 가능): ${e.name}`);
+    if (dir && e.csize !== 0) {
+      let r = null;
+      if (e.method === 8 && e.csize <= 64) { try { r = zlib.inflateRawSync(buf.subarray(data, end), { maxOutputLength: 1, info: true }); } catch { r = null; } }
+      if (!r || r.buffer.length !== 0 || r.engine.bytesWritten !== e.csize) throw new Error(`zip 폴더 항목에 데이터가 있음(${e.csize}바이트): ${e.name}`);
+    }
+    // stored 크기 일치(D86) — 순차 리더는 stored 경계를 비압축 크기로 정하므로 남는 바이트에 숨긴 레코드는 그 리더만 푼다(읽지 않는 항목 포함 전수 — 숫자 비교 1회)
+    if (e.method === 0 && e.csize !== e.usize) throw new Error(`zip stored 항목의 압축·비압축 크기가 다름(숨은 레코드 가능): ${e.name}`);
+    if (dd && !dir) {
+      if (e.usize > MAX_ENTRY) throw new Error(`zip 항목 비압축 크기 상한 초과(${e.usize} > ${MAX_ENTRY}): ${e.name}`);
+      let r = null;
+      try { r = zlib.inflateRawSync(buf.subarray(data, end), { maxOutputLength: Math.max(1, e.usize), info: true }); } catch { r = null; }
+      if (!r || r.engine.bytesWritten !== e.csize || r.buffer.length !== e.usize) throw new Error(`zip data descriptor 항목의 압축 스트림 경계가 목차와 다름(숨은 레코드 가능): ${e.name}`);
+    }
+    at = end + (dd ? 16 : 0);
   }
   if (at !== cdOff) throw new Error(`zip 레이아웃 불일치 — 마지막 항목 끝 ${at} ≠ 목차 시작 ${cdOff}(목차에 없는 데이터)`);
   // 경로 충돌(impl C1 N2) — 파일과 같은 경로의 폴더 항목(`a.txt/`)이나 파일 아래 항목(`a.txt/b`)은 표준 리더가 충돌로 실패하거나 다르게 푼다(폴더는 대조에서 빠지므로 우리만 「일치」)
@@ -237,10 +265,8 @@ export function readZip(buf) {
     const lFlags = buf.readUInt16LE(h + 6);
     if (lFlags !== e.flags) throw new Error(`zip local header 플래그 불일치(${lFlags} ≠ ${e.flags}): ${e.name}`);
     if (e.flags & 0x0041) throw new Error(`zip 암호화 플래그(미지원): ${e.name}`);
-    // local 크기·CRC 대조(impl R4-1) — 표준 리더는 local 값으로 풀 수 있어 목차와 다르면 다른 바이트가 나온다. data descriptor(bit 3)는 local 값이 비어 경계를 확정할 수 없어 거부(git archive 는 쓰지 않음 — 실측)
-    if (e.flags & 0x0008) throw new Error(`zip data descriptor(bit 3) 항목(미지원): ${e.name}`);
-    if (buf.readUInt32LE(h + 14) !== e.crc) throw new Error(`zip local header CRC 불일치(목차와 다름): ${e.name}`);
-    if (buf.readUInt32LE(h + 18) !== e.csize || buf.readUInt32LE(h + 22) !== e.usize) throw new Error(`zip local header 크기 불일치(목차와 다름): ${e.name}`);
+    // local 크기·CRC 대조(impl R4-1) — 표준 리더는 local 값으로 풀 수 있어 목차와 다르면 다른 바이트가 나온다. data descriptor(bit 3)는 각각 0 도 허용하고 목차 값으로 푼다(1.3.4 D70 — 꼬리표는 레이아웃 검사가 대조)
+    if (!localMatches(buf, h, e)) throw new Error(`zip local header CRC·크기 불일치(목차와 다름): ${e.name}`);
     const start = h + 30 + nLen + eLen;
     if (start + e.csize > buf.length) throw new Error(`zip 데이터 범위 초과: ${e.name}`);
     const data = buf.subarray(start, start + e.csize);

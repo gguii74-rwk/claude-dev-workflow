@@ -244,26 +244,33 @@ test('대조 불가: 다운로드 실패 · 손상 zip · diff-only 모드의 �
 });
 
 // 최소 zip 작성기(테스트 전용) — entries = [{ name(문자열|Buffer), data, method = 0|8, usize?, made?, ext?, flags?, tail? }]
+// 1.3.4 ⑰ — comp?(압축 영역 그대로) · crc?(목차 CRC) · dd?(bit 3 + local crc·csize·usize = ddLocal ?? [0, 0, ddLocalUsize === 'real' ? usize : 0] + 데이터 뒤 꼬리표 desc ?? 서명 있는 16바이트(목차 값))
+const ddesc = (crc, csize, usize) => { const b = Buffer.alloc(16); b.writeUInt32LE(0x08074b50, 0); b.writeUInt32LE(crc, 4); b.writeUInt32LE(csize, 8); b.writeUInt32LE(usize, 12); return b; };
 function mkZip(entries, comment = '') {
   const locals = [];
   const cds = [];
   let off = 0;
   for (const e of entries) {
     const raw = Buffer.from(e.data);
-    const comp = Buffer.concat([e.method === 8 ? zlib.deflateRawSync(raw) : raw, Buffer.from(e.tail || '')]);   // tail = 압축 스트림 뒤 덧붙인 바이트(크기 칸에 포함)
+    const comp = e.comp || Buffer.concat([e.method === 8 ? zlib.deflateRawSync(raw) : raw, Buffer.from(e.tail || '')]);   // tail = 압축 스트림 뒤 덧붙인 바이트(크기 칸에 포함)
+    const crc = e.crc ?? crc32(raw);
+    const usize = e.usize ?? raw.length;
+    const flags = (e.flags || 0) | (e.dd ? 0x0008 : 0);
+    const loc = e.dd ? (e.ddLocal || [0, 0, e.ddLocalUsize === 'real' ? usize : 0]) : [crc, comp.length, usize];
+    const desc = e.dd ? (e.desc ?? ddesc(crc, comp.length, usize)) : Buffer.alloc(0);
     const name = Buffer.isBuffer(e.name) ? e.name : Buffer.from(e.name, 'utf8');
     const lx = e.localExtra || Buffer.alloc(0);
     const cx = e.centralExtra || Buffer.alloc(0);
     const lh = Buffer.alloc(30);
-    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(e.flags || 0, 6); lh.writeUInt16LE(e.method || 0, 8);
-    lh.writeUInt32LE(crc32(raw), 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(e.usize ?? raw.length, 22); lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(lx.length, 28);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(flags, 6); lh.writeUInt16LE(e.method || 0, 8);
+    lh.writeUInt32LE(loc[0], 14); lh.writeUInt32LE(loc[1], 18); lh.writeUInt32LE(loc[2], 22); lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(lx.length, 28);
     const cd = Buffer.alloc(46);
-    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(e.made ?? 0x0314, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(e.flags || 0, 8); cd.writeUInt16LE(e.method || 0, 10);
-    cd.writeUInt32LE(crc32(raw), 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(e.usize ?? raw.length, 24); cd.writeUInt16LE(name.length, 28); cd.writeUInt16LE(cx.length, 30);
+    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(e.made ?? 0x0314, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(flags, 8); cd.writeUInt16LE(e.method || 0, 10);
+    cd.writeUInt32LE(crc, 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(usize, 24); cd.writeUInt16LE(name.length, 28); cd.writeUInt16LE(cx.length, 30);
     cd.writeUInt32LE(e.ext ?? ((0o100644 << 16) >>> 0), 38); cd.writeUInt32LE(off, 42);
-    locals.push(lh, name, lx, comp);
+    locals.push(lh, name, lx, comp, desc);
     cds.push(cd, name, cx);
-    off += 30 + name.length + lx.length + comp.length;
+    off += 30 + name.length + lx.length + comp.length + desc.length;
   }
   const cdBuf = Buffer.concat(cds);
   const c = Buffer.from(comment, 'utf8');
@@ -276,7 +283,7 @@ function mkZip(entries, comment = '') {
 test('압축 폭탄: 선언 크기를 넘게 풀리는 항목은 할당 전에 멈춘다 — corrupt (impl SDD 이월 T04① + R1-7, 사용자 판정)', () => {
   const z = readZip(mkZip([{ name: 'src/main/java/app/A.java', data: Buffer.alloc(8 << 20), method: 8, usize: 1 }]));
   assert.throws(() => z.read(z.entries[0]), /선언 크기/);
-  const big = readZip(mkZip([{ name: 'x.bin', data: Buffer.alloc(4), method: 0, usize: 0x7fffffff }]));
+  const big = readZip(mkZip([{ name: 'x.bin', data: Buffer.alloc(4), method: 8, usize: 0x7fffffff }]));   // 1.3.4 AC⑰-6 — stored 는 D86(크기 일치)이 목록 단계에서 먼저 거부하므로 deflate(bit 3 없음 — 목록 단계에서 풀지 않음)로
   assert.throws(() => big.read(big.entries[0]), /상한/);
   assert.equal(readZip(mkZip([{ name: 'ok.txt', data: 'hello', method: 8 }])).read(readZip(mkZip([{ name: 'ok.txt', data: 'hello', method: 8 }])).entries[0]).toString(), 'hello');
 });
@@ -371,7 +378,7 @@ test('zip local header 의 CRC·압축 크기·원본 크기가 목차와 다르
     b.writeUInt32LE(b.readUInt32LE(off) + 1, off);
     assert.throws(() => readZip(b), /local header/, `offset ${off}`);              // 목록 단계에서 거부(8b FR2-1)
   }
-  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'reviewed', flags: 0x0008 }])), /data descriptor/);   // 레이아웃 검사가 목록 단계에서 거부(8b FR1-3)
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'reviewed', flags: 0x0008 }])), /data descriptor/);   // stored + bit 3(꼬리표 없음) — 레이아웃 검사가 목록 단계에서 거부(8b FR1-3 · 1.3.4 D70 (a))
 });
 
 test('zip 파일명: 해독 결과를 다시 UTF-8 로 바꾼 바이트가 원래와 다르면(BOM 제거 등) 거부 (impl R4-4 훅, 추천 자동 채택(위임))', () => {
@@ -1375,4 +1382,131 @@ test('S2 첨부 파일명(디코딩 뒤)에 Cc·Cf·Zl·Zp 문자가 있으면 �
   }
   assert.equal(uploadName({ filename: 'd.zip', secret: SECRET }), 'd.zip');
   assert.equal(uploadName({ filename: '배포본_v2.zip', secret: SECRET }), '배포본_v2.zip');
+});
+
+// ── 1.3.4 ⑰ data descriptor(bit 3) 형식 zip 수용 — 목차 기준 + 서명 있는 꼬리표만 (spec 2026-10-23 1.3.4 3.⑰ · D70·D71·D75·D85·D86) ──
+const FOO = { [J]: WAR4[J] };
+const ddFoo = (o = {}) => [{ name: J, data: WAR4[J], method: 8, dd: true, ...o }];
+const HIDDEN_LOCAL = (() => { const z = mkZip([{ name: 'WEB-INF/evil.jsp', data: '<% evil %>' }]); return z.subarray(0, z.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))); })();   // 목차에 없는 local 레코드(순차 리더만 푸는 파일)
+const DD_HIDDEN = (() => { const d = zlib.deflateRawSync(Buffer.from('<% evil %>')); return Buffer.concat([HIDDEN_LOCAL.subarray(0, 30 + 'WEB-INF/evil.jsp'.length), d, ddesc(crc32(Buffer.from('<% evil %>')), d.length, 10)]); })();
+
+test('⑰ bit 3 + 서명 있는 꼬리표 deflate 항목은 통과 — read() 바이트 = 원문 · deploy 일치 · 표본 (가) 꼴(접두 app/ + WAR + 내부 클래스, 전 항목 dd) 도 일치 (1.3.4 AC⑰-1)', () => {
+  const z = readZip(mkZip(ddFoo()));
+  assert.equal(z.read(z.entries[0]).toString(), WAR4[J]);
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: FOO });
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: ddFoo() }], name: 'a' });
+  assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
+  const repo2 = warRepo(join(root, 'g'), { add: { [J]: WAR4[J], [H]: WAR4[H] } });
+  const entries = [{ name: `app/${CLS}Foo.class`, data: Buffer.from([0xca, 0xfe, 1]) }, { name: `app/${CLS}Foo$1.class`, data: Buffer.from([0xca, 0xfe, 2]) }, { name: 'app/html/a.html', data: WAR4[H] }].map((e) => ({ ...e, method: 8, dd: true }));
+  const b = zipsDeploy(join(root, 'g'), adapter, { repo: repo2, zips: [{ filename: 'd.zip', entries }], name: 'b' });
+  assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
+  assert.equal(b.d.zip.layout, 'maven-war');
+  assert.equal(b.d.zip.layout_source, 'signature');
+  assert.equal(b.d.zip.prefix, 'app/');
+  assert.deepEqual(b.d.zip.bytes_skipped, [`${CLS}Foo$1.class`, `${CLS}Foo.class`]);
+});
+
+test('⑰ 꼬리표 값(crc·csize·usize)이 목차와 다르거나 서명이 없거나(12바이트)·빠지거나·뒤에 바이트가 있거나·ZIP64 꼴(24바이트)이면 거부 → corrupt 대조 불가 (1.3.4 AC⑰-2)', () => {
+  const raw = Buffer.from(WAR4[J]);
+  const comp = zlib.deflateRawSync(raw);
+  const [crc, cs, us] = [crc32(raw), comp.length, raw.length];
+  for (const [k, desc] of [['crc', ddesc(crc + 1, cs, us)], ['csize', ddesc(crc, cs + 1, us)], ['usize', ddesc(crc, cs, us + 1)], ['nosig', ddesc(crc, cs, us).subarray(4)]]) {
+    assert.throws(() => readZip(mkZip(ddFoo({ desc }))), /data descriptor/, k);
+  }
+  assert.throws(() => readZip(mkZip([...ddFoo({ desc: Buffer.alloc(0) }), { name: 'src/main/B.txt', data: 'b' }])), /레이아웃|data descriptor/);   // 꼬리표 누락(바로 다음 local 헤더)
+  assert.throws(() => readZip(mkZip(ddFoo({ desc: Buffer.alloc(0) }))), /레이아웃|data descriptor/);
+  assert.throws(() => readZip(mkZip([...ddFoo({ desc: Buffer.concat([ddesc(crc, cs, us), Buffer.from([0])]) }), { name: 'src/main/B.txt', data: 'b' }])), /레이아웃/);   // 꼬리표 뒤 바이트 1개
+  const z64 = Buffer.alloc(24); z64.writeUInt32LE(0x08074b50, 0); z64.writeUInt32LE(crc, 4); z64.writeUInt32LE(cs, 8); z64.writeUInt32LE(us, 16);
+  assert.throws(() => readZip(mkZip([...ddFoo({ desc: z64 }), { name: 'src/main/B.txt', data: 'b' }])));
+  assert.throws(() => readZip(mkZip(ddFoo({ desc: z64 }))));
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: FOO });
+  const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: ddFoo({ desc: ddesc(crc + 1, cs, us) }) }] });
+  assert.equal(r.first, 'DEPLOY 대조 불가');
+  assert.ok(d.mismatches.some((m) => m.kind === 'corrupt' && /data descriptor/.test(m.detail)), JSON.stringify(d.mismatches));
+});
+
+test('⑰ bit 3 항목의 local crc·csize·usize 는 각각 0 또는 목차 값만 — Info-ZIP 꼴(usize 실제값)·세 값 모두 목차 값은 통과 · 그 밖은 local header 불일치 (1.3.4 AC⑰-3)', () => {
+  const raw = Buffer.from(WAR4[J]);
+  const comp = zlib.deflateRawSync(raw);
+  const z = readZip(mkZip(ddFoo({ ddLocalUsize: 'real' })));
+  assert.equal(z.read(z.entries[0]).toString(), WAR4[J]);
+  const all = readZip(mkZip(ddFoo({ ddLocal: [crc32(raw), comp.length, raw.length] })));
+  assert.equal(all.read(all.entries[0]).toString(), WAR4[J]);
+  assert.throws(() => readZip(mkZip(ddFoo({ ddLocal: [0, 0, raw.length + 5] }))), /local header/);
+  assert.throws(() => readZip(mkZip(ddFoo({ ddLocal: [1, 0, 0] }))), /local header/);
+});
+
+test('⑰ stored + bit 3 은 거부(스트리밍 리더가 경계를 정할 수 없음) · bit 3 없는 stored 는 통과 (1.3.4 AC⑰-4)', () => {
+  assert.throws(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'x', method: 0, dd: true }])), /stored/);
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'src/main/A.txt', data: 'x' }])));
+});
+
+test('⑰ 폴더 항목: csize 0 또는 풀면 0바이트인 deflate 빈 스트림(≤ 64바이트) — bit 3 폴더는 빈 스트림 필수(D85) · 1바이트를 풀거나 65바이트·stored+bit 3 은 거부 (1.3.4 AC⑰-5 · D71·D85)', () => {
+  const file = { name: 'app/x.txt', data: 'x', method: 8, dd: true };
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'app/', data: '', method: 8, dd: true }, file])));
+  assert.equal(zlib.deflateRawSync(Buffer.alloc(0)).length, 2);
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'app/', data: '', method: 8 }, file])));
+  for (const dd of [false, true]) assert.throws(() => readZip(mkZip([{ name: 'app/', data: 'X', method: 8, usize: 0, crc: 0, dd }, file])), /폴더 항목/, `dd ${dd}`);
+  assert.throws(() => readZip(mkZip([{ name: 'app/', data: '', method: 8, tail: Buffer.alloc(63) }, file])), /폴더 항목/);
+  assert.throws(() => readZip(mkZip([{ name: 'app/', data: '', method: 0, dd: true }, file])), /stored/);
+  assert.throws(() => readZip(mkZip([{ name: 'dir/', data: '', method: 8, dd: true, comp: Buffer.alloc(0) }, { name: J, data: WAR4[J] }])), /경계/);   // D85 — 압축 데이터 없이 꼬리표만
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'dir/', data: '', method: 8, comp: Buffer.alloc(0) }, { name: J, data: WAR4[J] }])));
+});
+
+test('⑰ bit 3 파일 항목은 목록 단계에서 전수 inflate 경계 확인 — 숨은 레코드·조기 종료 스트림·출력 크기 불일치는 경계 오류, 선언 크기 상한은 할당 전 · bit 3 없는 항목은 현행 (1.3.4 AC⑰-9 · D75)', () => {
+  // (가) 배포 제외 항목의 압축 영역 = [짧은 스트림][그 꼬리표][숨은 local 레코드 + 데이터 + 꼬리표] — 영역 끝 꼬리표·목차 값은 영역 전체 기준
+  const short = zlib.deflateRawSync(Buffer.from('notes'));
+  const area = Buffer.concat([short, ddesc(crc32(Buffer.from('notes')), short.length, 5), DD_HIDDEN]);
+  const evilZip = [...ddFoo(), { name: 'docs/notes.md', data: 'notes', method: 8, dd: true, comp: area }];
+  assert.throws(() => readZip(mkZip(evilZip)), /경계/);
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: FOO });
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: evilZip }], name: 'a' });
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  assert.ok(a.d.mismatches.some((m) => m.kind === 'corrupt' && /경계/.test(m.detail)));
+  assert.doesNotThrow(() => readZip(mkZip([...ddFoo(), { name: 'docs/notes.md', data: 'notes', method: 8, dd: true }])));
+  // (나) 기대 밖 항목의 스트림 뒤 패딩(목차 csize 에 포함)
+  assert.throws(() => readZip(mkZip([...ddFoo(), { name: 'extra.txt', data: 'e', method: 8, dd: true, tail: 'PAD' }])), /경계/);
+  // (다) 목차 usize = 실제 + 1
+  assert.throws(() => readZip(mkZip(ddFoo({ usize: Buffer.byteLength(WAR4[J]) + 1 }))), /경계/);
+  // (라) 선언 크기 상한(압축 폭탄) — 목록 단계에서
+  assert.throws(() => readZip(mkZip(ddFoo({ usize: 0x7fffffff }))), /상한/);
+  // (마) bit 3 없는 항목의 같은 패딩은 목록 단계 통과(대조 항목이면 read() 의 FR3-5 가 잡는다)
+  assert.doesNotThrow(() => readZip(mkZip([{ name: 'extra.txt', data: 'e', method: 8, tail: 'PAD' }])));
+});
+
+test('⑰ stored 항목은 bit 3 과 무관하게 압축 크기 = 비압축 크기 — 남는 바이트에 숨긴 local 레코드(배포 제외 항목·WAR .class)는 목록 단계에서 거부 · 정상 stored 는 통과 (1.3.4 AC⑰-10 · D86)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: FOO });
+  const evil = [{ name: J, data: WAR4[J] }, { name: 'docs/notes.md', data: 'A', comp: Buffer.concat([Buffer.from('A'), HIDDEN_LOCAL]) }];
+  assert.throws(() => readZip(mkZip(evil)), /stored 항목의 압축·비압축 크기/);
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: evil }], name: 'a' });
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  assert.ok(a.d.mismatches.some((m) => m.kind === 'corrupt' && /stored 항목의 압축·비압축 크기/.test(m.detail)));
+  const cls = Buffer.from([0xca, 0xfe, 1]);
+  assert.throws(() => readZip(mkZip([{ name: `${CLS}Foo.class`, data: cls, comp: Buffer.concat([cls, HIDDEN_LOCAL]) }])), /stored 항목의 압축·비압축 크기/);
+  assert.doesNotThrow(() => readZip(mkZip([{ name: J, data: WAR4[J] }, { name: 'docs/notes.md', data: 'A' }])));
+});
+
+// 실물 픽스처(이 머신 생성 — 입력은 가상 값: app/html/a.html · app/WEB-INF/classes/com/example/acct/Foo.class · Foo$1.class)
+//   dd-infozip.zip       : Info-ZIP Zip 3.0 스트리밍 `zip -X -r - app | cat > dd-infozip.zip` — 파일 항목 bit 3 · local (crc 0, csize 0, usize 실제값) · 서명 있는 꼬리표 · 폴더는 bit 3 없이 stored 0
+//   dd-python.zip        : Python 3.12 zipfile 비탐색 스트림(`ZipFile(sys.stdout.buffer, 'w', ZIP_DEFLATED)` → `| cat`) · 폴더도 writestr(deflate 빈 스트림 03 00) — 모든 항목 bit 3 · local 세 값 0 · 서명 있는 꼬리표
+//   dd-python-stored.zip : 위 + `app/html/b.txt` 를 compress_type=ZIP_STORED 로(stored + bit 3)
+const FX = (n) => readFileSync(new URL(`./fixtures/${n}`, import.meta.url));
+test('⑰ 실물 픽스처: Info-ZIP 스트리밍·Python 비탐색 스트림 zip 은 판독되고 항목·바이트가 기대와 같다 · Python stored+bit 3 은 거부 (1.3.4 AC⑰-7)', () => {
+  const cls = Buffer.concat([Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 0x34]), Buffer.from('foo')]);
+  const files = (z) => Object.fromEntries(z.entries.filter((e) => !e.name.endsWith('/')).map((e) => [e.name, z.read(e)]));
+  const iz = readZip(FX('dd-infozip.zip'));
+  assert.deepEqual(files(iz), { 'app/html/a.html': Buffer.from('<p>a</p>\n'), [`app/${CLS}Foo.class`]: cls, [`app/${CLS}Foo$1.class`]: Buffer.concat([Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 0x34]), Buffer.from('inner')]) });
+  assert.ok(iz.entries.some((e) => e.flags & 0x0008));
+  const py = readZip(FX('dd-python.zip'));
+  assert.deepEqual(files(py), { 'app/html/a.html': Buffer.from('<p>a</p>\n'), [`app/${CLS}Foo.class`]: cls });
+  assert.deepEqual(py.entries.filter((e) => e.name.endsWith('/')).map((e) => [e.name, e.method, e.csize, !!(e.flags & 0x0008)]), [['app/', 8, 2, true], ['app/html/', 8, 2, true], ['app/WEB-INF/', 8, 2, true]]);
+  assert.throws(() => readZip(FX('dd-python-stored.zip')), /stored/);
 });
