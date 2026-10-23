@@ -9,6 +9,7 @@ import { insideRoot } from './collect.mjs';
 
 const MAX_BUFFER = 512 * 1024 * 1024;
 const MAX_ENTRY = 256 * 1024 * 1024;   // 항목 하나의 비압축 상한(압축 폭탄 — impl SDD 이월 T04①). 소스·리소스 배포본 범위
+const MAX_DEPTH = 64;   // zip 항목 이름의 조각 수 상한 — 경로 깊이에 비례하는 검사(경로 충돌·접두 제거·zip 사이 충돌)의 계산량을 묶는다(1.3.3 review-loop(impl) R4-1). 배포본 경로는 보통 20 조각 안팎
 
 function gitZ(cwd, args) {
   const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', maxBuffer: MAX_BUFFER });
@@ -109,6 +110,7 @@ function zipName(raw, flags) {
   // 제어문자(impl R5-2) — NUL 에서 이름을 자르는 리더는 `x.js\0/`(우리에겐 폴더)를 일반 파일 `x.js` 로 푼다
   if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error(`zip 파일명에 제어문자(NUL 등): ${JSON.stringify(name)}`);
   if (notCanonical(name)) throw new Error(`zip 파일명이 정규형이 아님: ${JSON.stringify(name)}`);
+  if (name.replace(/\/$/, '').split('/').length > MAX_DEPTH) throw new Error(`zip 파일명 경로 깊이 상한 초과(${MAX_DEPTH} 조각): ${name.slice(0, 120)}…`);
   return name;
 }
 
@@ -299,22 +301,26 @@ function lookupIn(layout, expectedZip, name) {
 }
 // 공통 최상위 폴더 접두 제거(D57·R2-2·R3-1) — 래퍼 폴더 항목 `P/` 외 모든 항목(폴더 포함)이 `P/` 아래 · 파일 1개 이상 · P 가 표지 이름이 아님 · 어느 배치의 기대 경로도 `P/` 로 시작하지 않을 때만, 반복.
 // 뗄 때마다 남은 이름을 정규형으로 다시 검사한다(`app/C:/…` 의 드러난 드라이브 접두) — 걸리면 { bad } (그 zip 은 대조 불가)
+// 이름은 한 번만 조각으로 나누고 뗀 조각 수 d 만 늘린다 — 반복마다 이름 전체를 다시 자르지 않는다(R4-1). 최종 이름은 끝에 한 번 만든다
 function stripPrefix(entries, deployList) {
-  let list = entries;
-  let prefix = '';
+  const segs = entries.map((e) => e.name.split('/'));   // 폴더 항목은 끝 조각이 ''
+  const expTops = new Set(deployList.flatMap((p) => LAYOUTS.map((l) => zipPathFor(l, p).zip)).filter((z) => z.includes('/')).map((z) => z.split('/')[0]));
+  const name = (i, d) => segs[i].slice(d).join('/');
+  let live = entries.map((_, i) => i);   // 버린 래퍼 폴더 항목을 뺀 항목
+  let d = 0;
   for (;;) {
-    const top = list.length ? list[0].name.split('/')[0] : '';
+    const top = live.length ? segs[live[0]][d] : '';
     if (!top || RESERVED_TOP.has(top.toLowerCase())) break;
-    const wrap = `${top}/`;
-    const rest = list.filter((e) => e.name !== wrap);
-    if (!rest.length || !rest.every((e) => e.name.startsWith(wrap)) || !rest.some((e) => !e.name.endsWith('/'))) break;
-    if (deployList.some((p) => LAYOUTS.some((l) => zipPathFor(l, p).zip.startsWith(wrap)))) break;
-    list = rest.map((e) => ({ ...e, name: e.name.slice(wrap.length) }));
-    prefix += wrap;
-    const bad = list.find((e) => notCanonical(e.name));
-    if (bad) return { list, prefix, bad: bad.name };
+    const rest = live.filter((i) => !(segs[i].length === d + 2 && segs[i][d] === top && segs[i][d + 1] === ''));   // 래퍼 폴더 항목 `top/`
+    if (!rest.length || !rest.every((i) => segs[i].length > d + 1 && segs[i][d] === top) || !rest.some((i) => segs[i][segs[i].length - 1] !== '')) break;
+    if (expTops.has(top)) break;
+    live = rest;
+    d += 1;
+    // 뗄 때마다 드러난 맨 앞 조각을 다시 검사한다 — 이름 전체는 readZip 이 이미 정규형으로 검사했으므로 새로 드러날 수 있는 것은 맨 앞의 드라이브 접두뿐(R3-1)
+    const bad = live.find((i) => notCanonical(segs[i][d]));
+    if (bad !== undefined) return { list: live.map((i) => ({ ...entries[i], name: name(i, d) })), prefix: segs[live[0]].slice(0, d).join('/') + '/', bad: name(bad, d) };
   }
-  return { list, prefix, bad: null };
+  return { list: d ? live.map((i) => ({ ...entries[i], name: name(i, d) })) : entries, prefix: d ? segs[live[0]].slice(0, d).join('/') + '/' : '', bad: null };
 }
 // 목록 대조(②) — 배치 L 로 이 zip 의 파일 항목을 기대와 맞춘다
 function listCheck(layout, deployList, files) {

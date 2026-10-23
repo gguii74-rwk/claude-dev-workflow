@@ -977,6 +977,23 @@ test('⑬ zip 2개 충돌: 같은 zip 경로 다른 바이트 → zip_conflict �
   assert.equal(crossOk.r.first, 'DEPLOY 일치', JSON.stringify(crossOk.d.mismatches));
 });
 
+test('⑬ zip 항목 이름이 64 조각을 넘으면 zip 판독 실패(corrupt) → 대조 불가 · 64 조각은 판독 · 깊은 접두(app/ 반복)도 64 안이면 뗀다 (1.3.3 review-loop(impl) R4-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const base = [{ name: `${CLS}Foo.class`, data: Buffer.from([1]) }, { name: 'html/a.html', data: SRC2[H] }];
+  const deep = (n) => ({ name: `${'a/'.repeat(n - 1)}x.txt`, data: 'x\n' });   // n 조각
+  const over = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: [...base, deep(65)] }], name: 'w1' });
+  assert.equal(over.r.first, 'DEPLOY 대조 불가', JSON.stringify(over.d.mismatches));
+  assert.ok(over.d.mismatches.some((m) => m.kind === 'corrupt' && /깊이/.test(m.detail)), JSON.stringify(over.d.mismatches));
+  const at = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: [...base, deep(64)] }], name: 'w2' });
+  assert.ok(!at.d.mismatches.some((m) => m.kind === 'corrupt'), JSON.stringify(at.d.mismatches));
+  const P = 'app/'.repeat(40);
+  const wrapped = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: base.map((e) => ({ ...e, name: P + e.name })) }], name: 'w3' });
+  assert.equal(wrapped.r.first, 'DEPLOY 일치', JSON.stringify(wrapped.d.mismatches));
+  assert.equal(wrapped.d.zip.prefix, P);
+});
+
 test('⑬ zip 사이 충돌은 경로마다 1건 — zip 이 많아도 충돌 기록이 zip 쌍 수만큼 늘지 않는다 (1.3.3 review-loop(impl) R3-1 · AC⑬-16)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: GAMMA });
