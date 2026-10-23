@@ -288,12 +288,16 @@ function confirmLiteral(adapter) {
   return adapter.comments.baselineConfirm.replace(/[\^$\\]/g, '').replace(/\(.*?\)|\[.*?\]|[+*?]/g, '').trim() || '기준선 확인';
 }
 
-function supplementRequests({ check, snapshot, deploy }) {
+function supplementRequests({ check, snapshot, deploy, adapter }) {
   const items = [];
   for (const n of check.contract?.incompleteLines || []) items.push(`Review Contract 「${n}」 줄을 실제 값으로 채워 주세요(자리표시자·빈칸 불가).`);
   if (check.baselineType === '빈칸·자리표시자' || check.baselineType === '칸 없음') items.push('Baseline 칸에 이 변경을 승인한 근거(이슈·spec·결정 기록 링크 또는 「MR 본문 「배경」」)를 적어 주세요.');
-  if (!check.reason?.why) items.push('「배경」에 ① 왜(관찰한 현상·요청 근거)를 적어 주세요.');
-  if (!check.reason?.what) items.push('「배경」에 ② 무엇을(원인·수정 위치·적용 범위)을 적어 주세요.');
+  // 1.3.5 ⑤ D100 — 글롭에 맞지만 head 에 일반 파일로 없는 Baseline 경로(기준선 링크 아님 · 판정 불변)는 작성자에게만 알린다
+  for (const p of check.baselineRepoPathMisses || []) items.push(`Baseline 에 적은 경로 「${p}」 가 head 에 일반 파일로 없습니다(오타·삭제·심볼릭 링크) — 경로를 확인해 주세요.`);
+  // 1.3.5 ⑥ D110 — 절 이름 = 일치한 별칭 이름(check.reason.section), 절이 없으면 첫 별칭. 기본 어댑터 = 「배경」(현행 바이트)
+  const bg = check.reason?.section ?? adapter?.contract?.backgroundSections?.[0] ?? '배경';
+  if (!check.reason?.why) items.push(`「${bg}」에 ① 왜(관찰한 현상·요청 근거)를 적어 주세요.`);
+  if (!check.reason?.what) items.push(`「${bg}」에 ② 무엇을(원인·수정 위치·적용 범위)을 적어 주세요.`);
   if (check.attachmentClaimedButMissing) items.push('「배포본」에 첨부했다고 적혀 있지만 업로드 링크가 없습니다 — zip 을 첨부해 주세요.');
   if (deploy?.applicable && deploy.result !== '일치') items.push(`배포본 대조 결과 「${deploy.result}」${mismatchSummary(deploy) ? ' — ' + mismatchSummary(deploy) : ''}. 최신 head 기준으로 zip·삭제 목록을 다시 만들어 주세요.`);
   for (const l of check.baselineLinks || []) if (l.status === '미확보') items.push(`Baseline 원문을 받을 수 없습니다(${l.raw || l.kind}: ${l.reason}). 접근 가능한 링크로 바꿔 주세요.`);
@@ -308,7 +312,9 @@ function checkTable(check, deploy, tc) {
   for (const l of check.contract?.lines || []) rows.push(`| 계약 · ${tc(l.name)} | ${tc(l.status)} |`);
   rows.push(`| 트랙 | ${tc(check.track)} |`);
   rows.push(`| 기준선 확인 댓글 | ${tc(`${check.baselineConfirm?.status}${check.baselineConfirm?.status === '낡음' ? `(본문 변경 ${check.baselineConfirm.changed_at})` : ''}`)} |`);
-  rows.push(`| Baseline 유형 | ${tc(check.baselineType)} |`);
+  // 1.3.5 ⑤ 접미 — repo-path 기준선을 같은 MR 에서 고쳤으면 「이 MR 에서 수정됨」, head 에 없는 경로 후보가 있으면 「경로 미확인 n건」(표시만 — 판정 입력 아님). 둘 다 없으면 현행 바이트
+  const btSuffix = [...((check.baselineLinks || []).some((l) => l.kind === 'repo-path' && l.inDiff === true) ? ['이 MR 에서 수정됨'] : []), ...((check.baselineRepoPathMisses || []).length ? [`경로 미확인 ${check.baselineRepoPathMisses.length}건`] : [])];
+  rows.push(`| Baseline 유형 | ${tc(check.baselineType)}${btSuffix.length ? `(${btSuffix.join(' · ')})` : ''} |`);
   rows.push(`| 변경 사유 ①② | ①${check.reason?.why ? '있음' : '없음'} ②${check.reason?.what ? '있음' : '없음'} (${tc(check.reason?.source)}) |`);
   rows.push(`| 변경 파일 속 문서(후보) | ${tc((check.baselineCandidateFiles || []).join(', ') || '없음')} |`);
   rows.push(`| 첨부 | ${tc((check.attachments || []).map((a) => `${a.kind}:${a.filename}`).join(', ') || '없음')}${check.attachmentClaimedButMissing ? ' · **첨부 누락**' : ''} |`);
@@ -411,7 +417,7 @@ export function renderReport({ adapter, work, early = false }) {
   if (check.track === '경량' && (check.baselineConfirm?.status === '없음' || check.baselineConfirm?.status === '낡음')) {
     parts.push('## 리뷰어가 먼저 게시할 기준선 확인 문안', '', '```text', `${confirmLiteral(adapter)} — 배경 ①②(③)·검증 표 수용기준 동의 (head ${s7(snapshot.head_sha)})${check.baselineConfirm.status === '낡음' ? ` — 본문이 ${check.baselineConfirm.changed_at} 에 바뀌어 재확인` : ''}`, '```', '');
   }
-  const sup = supplementRequests({ check, snapshot, deploy });
+  const sup = supplementRequests({ check, snapshot, deploy, adapter });
   if (sup.length) parts.push('## 작성자 보완 요청 문안', '', ...sup.map((s) => `- ${s}`), '');
   if (verdict?.status === 'undetermined') {
     parts.push('## 리뷰어 확인 필요', '');

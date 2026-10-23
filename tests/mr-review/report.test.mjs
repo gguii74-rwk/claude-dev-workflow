@@ -1543,3 +1543,56 @@ test('SKILL.md §6: 1b coveredBy 단계 — MISSING_EVIDENCE 만 · 「DEFECT·D
   assert.match(s6, /DEFECT·DESIGN_DRIFT·FOLLOW_UP 에는 적지 않는다/);
   assert.match(s6, /"coveredBy"/);
 });
+
+// ── 1.3.5 ⑤ 검사표 접미·경로 미확인 보완 문안 · ⑥ 보완 문구 절 이름 (spec 2026-10-23 1.3.5 3.⑤-6 · 3.⑥-4 · D100·D110) ──
+function renderAd(check, adapterPatch = {}) {
+  const root = tmp();
+  const adapter = writeAdapter(root, adapterPatch);
+  const work = fullWork(root, { fnd: findings([]), check });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'r.md');
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  return { md: readFileSync(out, 'utf8'), v: readJson(join(work, 'verdict.json')) };
+}
+const SP = 'docs/specs/2026-10-06-auto-ingest-design.md';
+const rp = (inDiff, p = SP) => ({ raw: p, kind: 'repo-path', project: 'alpha', ref: HEAD, path: p, pinned: true, resolved_sha: HEAD, status: '확보', reason: '', file: 'baseline/1.md', version: HEAD, inDiff });
+const typeRow = (md) => md.split('\n').find((l) => l.startsWith('| Baseline 유형 |'));
+const supOf = (md) => sectionOf(md, '## 작성자 보완 요청 문안', '\n## ');
+
+test('render 검사표 Baseline 유형: 저장소 문서 경로 + 이 MR 에서 수정됨 · 경로 미확인 n건 접미 · 현행 유형은 바이트 불변 (1.3.5 AC⑤-9·⑤-5)', () => {
+  const ck = (type, links, misses) => ({ ...baseCheck(), baselineType: type, baselineLinks: links, ...(misses ? { baselineRepoPathMisses: misses } : {}) });
+  assert.equal(typeRow(renderAd(ck('저장소 문서 경로', [rp(true)])).md), '| Baseline 유형 | 저장소 문서 경로(이 MR 에서 수정됨) |');
+  assert.equal(typeRow(renderAd(ck('저장소 문서 경로', [rp(false)], [])).md), '| Baseline 유형 | 저장소 문서 경로 |');
+  assert.equal(typeRow(renderAd(ck('저장소 문서 경로', [rp(true)], ['docs/specs/b.md'])).md), '| Baseline 유형 | 저장소 문서 경로(이 MR 에서 수정됨 · 경로 미확인 1건) |');
+  const miss = renderAd(ck('서술만', [], [SP])).md;
+  assert.equal(typeRow(miss), '| Baseline 유형 | 서술만(경로 미확인 1건) |');
+  assert.ok(supOf(miss).includes(`- Baseline 에 적은 경로 「${SP}」 가 head 에 일반 파일로 없습니다(오타·삭제·심볼릭 링크) — 경로를 확인해 주세요.\n`), supOf(miss));
+  const cur = renderAd(baseCheck()).md;
+  assert.equal(typeRow(cur), '| Baseline 유형 | MR 본문 배경 |');
+  assert.equal(renderAd(ck('MR 본문 배경', baseCheck().baselineLinks, [])).md.replace(/\n- 어댑터: [^\n]*/, ''), cur.replace(/\n- 어댑터: [^\n]*/, ''));   // 빈 배열도 바이트 불변(어댑터 해시 줄 제외 — 임시 경로가 다르다)
+});
+
+test('verdict: 저장소 문서 경로 · 경로 미확인은 기준선 없음(RETURN_TO_DESIGN)·기계 증거를 만들지 않는다 (1.3.5 AC⑤-10·⑤-5)', () => {
+  const c = { ...baseCheck(), baselineType: '저장소 문서 경로', baselineLinks: [rp(true)] };
+  const v = V(findings([]), { check: c });
+  assert.equal(v.baselineMissing, false);
+  assert.equal(v.verdict, 'APPROVE');
+  const m = { ...baseCheck(), baselineType: '서술만', baselineLinks: [], baselineRepoPathMisses: [SP] };
+  const vm = V(findings([]), { check: m });
+  assert.deepEqual(vm.machineEvidence, []);
+  assert.equal(vm.verdict, V(findings([]), { check: { ...m, baselineRepoPathMisses: undefined } }).verdict);
+});
+
+test('render 보완 문구 절 이름: 키 없음 = 「배경」 현행 바이트 · 켬 + 「요약」 절 = 「요약」 · 절 없음 = 첫 별칭 (1.3.5 AC⑥-2·⑥-3·⑥-5·⑥-6 · D110)', () => {
+  const r = (reason, patch) => supOf(renderAd({ ...baseCheck(), reason: { text: '', source: 'body', ...reason } }, patch).md);
+  const off = r({ why: false, what: false, source: 'none', section: null });
+  assert.ok(off.includes('- 「배경」에 ① 왜(관찰한 현상·요청 근거)를 적어 주세요.\n- 「배경」에 ② 무엇을(원인·수정 위치·적용 범위)을 적어 주세요.\n'), off);
+  assert.ok(r({ why: true, what: false, section: '배경' }).includes('- 「배경」에 ② 무엇을(원인·수정 위치·적용 범위)을 적어 주세요.'));
+  const ON = { contract: { backgroundSections: ['배경', '요약'] } };
+  const sum = r({ why: true, what: false, section: '요약' }, ON);
+  assert.ok(sum.includes('- 「요약」에 ② 무엇을(원인·수정 위치·적용 범위)을 적어 주세요.'), sum);
+  assert.doesNotMatch(sum, /「배경」에/);
+  assert.equal(r({ why: true, what: true, section: '요약' }, ON), '');
+  assert.ok(r({ why: false, what: false, source: 'none', section: null }, { contract: { backgroundSections: ['요약', '배경'] } }).includes('- 「요약」에 ① 왜'));
+});

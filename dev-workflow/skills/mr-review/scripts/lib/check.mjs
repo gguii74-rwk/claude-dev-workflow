@@ -1,6 +1,7 @@
 // check.mjs — spec §5.2 검사표(모델 없이) + §5.1-4 댓글 신뢰 + §5.1-5 기준선·이슈 원문 수집 + §5.6 재리뷰 진입. 입력 = mr.json·snapshot.json.
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { apiJson, apiRaw, encodePath } from './gitlab.mjs';
 import { matchesAny } from './adapter.mjs';
 
@@ -62,9 +63,17 @@ export function parseTrack(description) {
   return '미기재';
 }
 
+// 배경 절(1.3.5 ⑥ — spec 2026-10-23 3.⑥ D96·D110·R1-6): 어댑터 `contract.backgroundSections`(기본 ["배경"]) 별칭마다 접두 일치로 **어댑터 순서대로** 찾아 첫 실재 절(빈 절이어도)을 쓴다 —
+// 이름들을 합친 정규식 하나는 본문에 먼저 나온 절이 이겨 어댑터 순서가 무시된다. name = 일치한 별칭 이름(실제 제목 전체가 아니다 — 키 없는 어댑터의 「## 배경 (Background)」 도 「배경」)
+const escRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function backgroundSection(description, aliases = ['배경']) {
+  for (const a of aliases) { const t = section(description, new RegExp(`^${escRe(a)}`)); if (t !== null) return { name: a, text: t }; }
+  return { name: null, text: '' };
+}
+
 // 배경 절에서 양식 줄(이슈/spec·트랙)을 뺀 변경 사유 본문
-export function reasonText(description) {
-  const bg = section(description, /^배경/) || '';
+export function reasonText(description, aliases = ['배경']) {
+  const bg = backgroundSection(description, aliases).text;
   const kept = bg.split('\n').filter((l) => !/^\s*[-*]\s*(이슈\/spec|이슈|spec|트랙)\s*[:：]/.test(l) && l.trim() !== '');
   return kept.join('\n').trim();
 }
@@ -106,12 +115,28 @@ function splitRefPath(refpath) {
   return { segs, ref: segs[0], path: segs.slice(1).join('/') };   // 임시 경계(첫 세그먼트) — SHA·미확보 링크용. 브랜치·태그는 해소 시 재결정
 }
 
-export function parseBaselineValue(value, currentProject) {
+// 저장소 상대 경로 후보(1.3.5 ⑤ — spec 2026-10-23 3.⑤-2 D112): 값을 **허용 구분자**로만 나눈 토큰에서 첫 `#` 뒤(절 접미)와 끝 `.`·`…` 만 떼고, 토큰 **전체**가 정규 상대 경로 꼴(`/` 1개 이상 · 확장자 · `.`/`..` 조각 없음)일 때만 후보.
+// 목록 밖 글자(역슬래시·`:`·`~`·`$`·한글 등)가 붙은 토큰은 통째로 탈락한다 — 토큰의 앞·뒷부분만 떼어 경로로 삼지 않는다(허용 목록 방식). 글롭(`baselineCandidates`) 밖은 무시
+const PATH_SEP_RE = /[\s,;()「」'"·]+/;
+const REPO_PATH_RE = /^(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]+$/;
+export function repoPathCandidates(value, globs) {
+  const out = [];
+  for (const tok of value.split(PATH_SEP_RE)) {
+    const t = tok.replace(/#.*$/, '').replace(/[.…]+$/, '');
+    if (!REPO_PATH_RE.test(t) || t.split('/').some((g) => g === '.' || g === '..')) continue;
+    if (matchesAny(t, globs) && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+// opts(1.3.5 ⑤·⑥ — 어댑터 선택 키): repoPaths = baselineRepoPaths(켠 어댑터만 경로 후보) · globs = baselineCandidates · aliases = contract.backgroundSections(본문 기준선 표지 — 기본값이면 현행 /배경|MR 본문/ 과 같다)
+export function parseBaselineValue(value, currentProject, { repoPaths = false, globs = [], aliases = ['배경'] } = {}) {
   const links = [];
   for (const m of value.matchAll(BLOB_RE)) { const refpath = m[3].replace(TRAIL_PUNCT, ''); const { ref, path } = splitRefPath(refpath); links.push({ raw: m[0], kind: 'repo', project: m[2], project_url: m[1], ref, path, refpath }); }
+  if (repoPaths) for (const p of repoPathCandidates(value, globs)) links.push({ raw: p, kind: 'repo-path', project: currentProject, ref: '', path: p });
   for (const m of value.matchAll(ISSUE_URL_RE)) links.push({ raw: m[0], kind: 'issue', project: m[2], project_url: m[1], ref: m[3], path: '' });
   for (const m of value.matchAll(ISSUE_REF_RE)) links.push({ raw: `#${m[1]}`, kind: 'issue', project: currentProject, ref: m[1], path: '' });
-  const isBody = /배경|MR 본문/.test(value);
+  const isBody = value.includes('MR 본문') || aliases.some((a) => value.includes(a));
   let type;
   if (links.some((l) => l.kind === 'repo')) type = '문서 링크';
   else if (links.some((l) => l.kind === 'issue')) type = '이슈';
@@ -200,12 +225,43 @@ function resolveIssue(link, adapter, work, n) {
   }
 }
 
-function resolveBody(link, mr, headSha, work, n) {
-  const bg = section(mr.description, /^배경/) || '';
+// 저장소 문서 경로 기준선(1.3.5 ⑤ — spec 2026-10-23 3.⑤-4 D95·D100·R1-4·R1-5): 고정 head 의 **일반 blob 전문**(자르지 않는다 — URL 기준선과 같은 규칙).
+// 워크트리 = `git ls-tree` 모드 100644·100755 일 때만 `git show` · diff-only = tree API 항목 mode 가 100644·100755 일 때만 raw(raw 는 링크면 링크 대상 문자열을 돌려준다).
+// 없음·심볼릭 링크·서브모듈·조회 실패 = null — 기준선 링크로 기록하지 않는다(호출자가 baselineRepoPathMisses 에 적는다 — M-baseline 아님, 판정 입력 불변)
+function resolveRepoPath(link, mr, snap, work, n) {
+  const p = link.path;
+  const head = snap.head_sha;
+  let raw = null;
+  try {
+    if (snap.mode === 'worktree' && snap.worktree) {
+      const ls = spawnSync('git', ['-C', snap.worktree, 'ls-tree', head, '--', p], { encoding: 'utf8' });
+      const mode = ls.status === 0 ? (ls.stdout.trim().split(/\s+/)[0] || '') : '';
+      if (mode === '100644' || mode === '100755') {
+        const show = spawnSync('git', ['-C', snap.worktree, 'show', `${head}:${p}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+        raw = show.status === 0 ? show.stdout : null;
+      }
+    } else {
+      const items = apiJson(`projects/${mr.project.id}/repository/tree?path=${encodeURIComponent(path.posix.dirname(p))}&ref=${head}&per_page=100`, { paginate: true });
+      const it = (Array.isArray(items) ? items : []).find((x) => x?.name === path.posix.basename(p));
+      if (it && (it.mode === '100644' || it.mode === '100755')) raw = apiRaw(`projects/${mr.project.id}/repository/files/${encodePath(p)}/raw?ref=${head}`).toString('utf8');
+    }
+  } catch { raw = null; }
+  if (raw == null) return null;
   const file = `baseline/${n}.md`;
   fs.mkdirSync(path.join(work, 'baseline'), { recursive: true });
-  fs.writeFileSync(path.join(work, file), `<!-- mr-review source: ${mr.project.name}:MR!${mr.iid} 본문 「배경」 head=${headSha} -->\n${bg}`);
-  return { ...link, resolved_sha: headSha, pinned: true, status: bg ? '확보' : '미확보', reason: bg ? '' : 'MR 본문에 「배경」 절이 없다', file, version: headSha };
+  fs.writeFileSync(path.join(work, file), `<!-- mr-review source: ${mr.project.name}:${p}@${head} ref=${head} pinned=true -->\n${raw}`);
+  const inDiff = (mr.diffs || []).some((d) => d.new_path === p && !d.deleted_file);
+  return { ...link, project: mr.project.name, ref: head, path: p, pinned: true, resolved_sha: head, status: '확보', reason: '', file, version: head, inDiff };
+}
+
+function resolveBody(link, mr, headSha, work, n, aliases = ['배경']) {
+  const bs = backgroundSection(mr.description, aliases);
+  const bg = bs.text;
+  const file = `baseline/${n}.md`;
+  fs.mkdirSync(path.join(work, 'baseline'), { recursive: true });
+  fs.writeFileSync(path.join(work, file), `<!-- mr-review source: ${mr.project.name}:MR!${mr.iid} 본문 「${bs.name ?? aliases[0]}」 head=${headSha} -->\n${bg}`);
+  const names = `「${aliases[0]}」${aliases.length > 1 ? `(또는 ${aliases.slice(1).map((a) => `「${a}」`).join('·')})` : ''}`;
+  return { ...link, resolved_sha: headSha, pinned: true, status: bg ? '확보' : '미확보', reason: bg ? '' : `MR 본문에 ${names} 절이 없다`, file, version: headSha };
 }
 
 // ── 첨부 ──────────────────────────────────────────────────────────────────
@@ -338,6 +394,7 @@ export function check({ adapter, work }) {
   const snap = JSON.parse(fs.readFileSync(path.join(work, 'snapshot.json'), 'utf8'));
   const headSha = snap.head_sha;
   const desc = mr.description || '';
+  const aliases = adapter.contract.backgroundSections || ['배경'];
 
   const contract = parseContract(desc, adapter);
   const track = parseTrack(desc);
@@ -346,7 +403,7 @@ export function check({ adapter, work }) {
   let links = [];
   if (!baselineRow || baselineRow.status === '없음') baselineType = '칸 없음';
   else if (baselineRow.status === '자리표시자') baselineType = '빈칸·자리표시자';
-  else { const p = parseBaselineValue(baselineRow.value, mr.project.name); baselineType = p.type; links = p.links; }
+  else { const p = parseBaselineValue(baselineRow.value, mr.project.name, { repoPaths: adapter.baselineRepoPaths === true, globs: adapter.baselineCandidates, aliases }); baselineType = p.type; links = p.links; }
 
   // 연결 이슈(closes_issues)와 MR 본문의 #n 참조도 원문 수집 대상(§5.1-5) — 프로젝트·IID 로 중복 제거.
   // closes_issues 의 project_id 가 어댑터에 없으면 현재 프로젝트로 **대체하지 않는다**(같은 번호의 무관한 이슈를 근거로 삼게 된다) — 미확보로 남긴다.
@@ -363,23 +420,27 @@ export function check({ adapter, work }) {
   for (const m of bodyText.matchAll(ISSUE_REF_RE)) if (!hasIssue(mr.project.name, m[1])) links.push({ raw: `#${m[1]}`, kind: 'issue', project: mr.project.name, ref: m[1], path: '' });
   for (const m of bodyText.matchAll(ISSUE_URL_RE)) if (!hasIssue(m[2], m[3])) links.push({ raw: m[0], kind: 'issue', project: m[2], project_url: m[1], ref: m[3], path: '' });
   const baselineLinks = [];
+  const baselineRepoPathMisses = [];
   let n = 0;
   let issueText = '';
   for (const l of links) {
     n += 1;
     let r;
     if (l.kind === 'repo') r = resolveRepoLink(l, adapter, work, n);
+    else if (l.kind === 'repo-path') { r = resolveRepoPath(l, mr, snap, work, n); if (!r) { baselineRepoPathMisses.push(l.path); n -= 1; continue; } }
     else if (l.kind === 'issue') { r = resolveIssue(l, adapter, work, n); if (r.text && !issueText) issueText = r.text; delete r.text; }
-    else r = resolveBody(l, mr, headSha, work, n);
+    else r = resolveBody(l, mr, headSha, work, n, aliases);
     baselineLinks.push(r);
   }
+  // 유형 우선순위(1.3.5 ⑤ D105): 문서 링크 > 저장소 문서 경로(확보된 경로 후보 1개 이상) > 이슈 > MR 본문 배경 > 빈칸·자리표시자 > 서술만 — 링크·원문은 전부 수집
+  if (baselineType !== '문서 링크' && baselineLinks.some((l) => l.kind === 'repo-path')) baselineType = '저장소 문서 경로';
 
   // 변경 사유 출처: 본문 「배경」에 실내용(양식 표지·자리표시자를 뺀 글)이 있을 때만 body — 양식만 남은 본문은 「없음」이라 연결 이슈 원문으로 대체한다(§5.2, R4-4)
-  const bodyReason = reasonText(desc);
+  const bodyReason = reasonText(desc, aliases);
   const bodyJ = judgeReason(bodyReason);
   const reasonSrc = (bodyJ.why || bodyJ.what) ? 'body' : issueText ? 'issue' : 'none';
   const reasonJ = reasonSrc === 'body' ? bodyJ : judgeReason(reasonSrc === 'issue' ? issueText : '');
-  const reason = { why: reasonJ.why, what: reasonJ.what, source: reasonSrc, text: (reasonSrc === 'body' ? bodyReason : reasonSrc === 'issue' ? issueText : '').slice(0, 2000) };
+  const reason = { why: reasonJ.why, what: reasonJ.what, source: reasonSrc, text: (reasonSrc === 'body' ? bodyReason : reasonSrc === 'issue' ? issueText : '').slice(0, 2000), section: backgroundSection(desc, aliases).name };
 
   const baselineCandidateFiles = mr.diffs.filter((d) => !d.deleted_file).map((d) => d.new_path).filter((p) => matchesAny(p, adapter.baselineCandidates));
   const attachments = parseAttachments(mr);
@@ -404,7 +465,7 @@ export function check({ adapter, work }) {
   const would = otherIncomplete.length > 0 || baselineMissing;
   const earlyExit = { would, reason: would ? (baselineMissing ? '기준선 없음(후보 문서도 없음)' : `계약 미완: ${otherIncomplete.join(', ')}`) : '', draftVerdict: would ? (baselineMissing ? 'RETURN_TO_DESIGN' : 'HOLD_EVIDENCE') : null };
 
-  const out = { contract, track, baselineType, baselineLinks, reason, baselineCandidateFiles, baselineConfirm, attachments, attachmentClaimedButMissing: claimed, deployRequired, deployExempt, deployNote: dNote, rebase, reviewerMismatch, priorVerdicts: notesC.priorVerdicts, authorTokens: notesC.authorTokens, ignoredComments: notesC.ignoredComments, rereview: notesC.rereview, earlyExit };
+  const out = { contract, track, baselineType, baselineLinks, ...(adapter.baselineRepoPaths === true ? { baselineRepoPathMisses } : {}), reason, baselineCandidateFiles, baselineConfirm, attachments, attachmentClaimedButMissing: claimed, deployRequired, deployExempt, deployNote: dNote, rebase, reviewerMismatch, priorVerdicts: notesC.priorVerdicts, authorTokens: notesC.authorTokens, ignoredComments: notesC.ignoredComments, rereview: notesC.rereview, earlyExit };
   fs.writeFileSync(path.join(work, 'check.json'), JSON.stringify(out, null, 2));
   return out;
 }

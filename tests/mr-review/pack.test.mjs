@@ -964,3 +964,25 @@ test('포인터 줄도 팩 B 마스킹을 거친다 — 경로가 어댑터 패�
   assert.equal(r2.p.codexSkipped, true);
   assert.equal(r2.b, null);
 });
+
+test('저장소 문서 경로 기준선(repo-path)은 워크트리 모드에서 팩 B 포인터 · 팩 A 는 전문 · diff-only 는 둘 다 본문 (1.3.5 AC⑤-8·⑤-11 · D108)', () => {
+  const s = setup();
+  const spec = 'docs/specs/a.md';
+  const big = Array.from({ length: 450 }, (_, i) => `기준 ${i + 1}${i === 449 ? ' LAST-CRITERION-450' : ''}`).join('\n') + '\n';
+  const { head } = withWorktree(s, { [spec]: big });
+  writeFileSync(join(s.work, 'baseline', '1.md'), `<!-- mr-review source: alpha:${spec}@${head} ref=${head} pinned=true -->\n${big}`);
+  const link = { raw: spec, kind: 'repo-path', project: 'alpha', ref: head, path: spec, pinned: true, resolved_sha: head, status: '확보', reason: '', file: 'baseline/1.md', version: head, inDiff: false };
+  writeFileSync(join(s.work, 'check.json'), JSON.stringify({ baselineLinks: [link] }));
+  const { p, a, b } = runPack(s);
+  const src = p.sources.find((x) => x.kind === 'baseline');
+  assert.equal(src.packB, 'pointer');
+  assert.ok(b.includes(`(워크트리 문서 — 본문은 현재 작업 디렉터리에서 직접 읽어라: \`${spec}\` · 450줄)`), b);
+  assert.doesNotMatch(b, /LAST-CRITERION-450/);
+  assert.match(a, /LAST-CRITERION-450/);
+  const s2 = setup();
+  writeFileSync(join(s2.work, 'baseline', '1.md'), `<!-- mr-review source: alpha:${spec}@${HEAD} ref=${HEAD} pinned=true -->\n${big}`);
+  writeFileSync(join(s2.work, 'check.json'), JSON.stringify({ baselineLinks: [{ ...link, ref: HEAD, resolved_sha: HEAD, version: HEAD }] }));
+  const d = runPack(s2);
+  assert.equal(d.p.sources.find((x) => x.kind === 'baseline').packB, 'body');
+  assert.match(d.b, /LAST-CRITERION-450/);
+});

@@ -142,3 +142,18 @@ test('deployLayout 의미 = 판별 못 할 때의 기본값(힌트) — 검증·
   assert.equal(a.resolved.projects.alpha.deployLayout, 'source');
   assert.throws(() => loadAdapter(writeAdapter(root, { projects: { gamma: { id: 104, path: 'repos/gamma', deployLayout: 'auto' } } })), /deployLayout\("source"\|"maven-war"\)/);
 });
+
+test('baselineRepoPaths: 키 없음 = false · true/false 보존 · 불리언 아니면 AdapterError (1.3.5 AC⑤-1 · D95·D99)', () => {
+  const root = tmp();
+  assert.equal(loadAdapter(writeAdapter(root)).baselineRepoPaths, false);
+  assert.equal(loadAdapter(writeAdapter(root, { baselineRepoPaths: true })).baselineRepoPaths, true);
+  assert.equal(loadAdapter(writeAdapter(root, { baselineRepoPaths: false })).baselineRepoPaths, false);
+  assert.throws(() => loadAdapter(writeAdapter(root, { baselineRepoPaths: 'yes' })), (e) => e instanceof AdapterError && /baselineRepoPaths\(true\|false\)/.test(e.message));
+});
+
+test('contract.backgroundSections: 키 없음 = ["배경"] · 보존 · 빈 배열·문자열·빈 이름은 AdapterError (1.3.5 AC⑥-1 · D96·D99)', () => {
+  const root = tmp();
+  assert.deepEqual(loadAdapter(writeAdapter(root)).contract.backgroundSections, ['배경']);
+  assert.deepEqual(loadAdapter(writeAdapter(root, { contract: { backgroundSections: ['배경', '요약'] } })).contract.backgroundSections, ['배경', '요약']);
+  for (const bad of [[], '배경', [''], ['배경', 3]]) assert.throws(() => loadAdapter(writeAdapter(root, { contract: { backgroundSections: bad } })), (e) => e instanceof AdapterError && /contract\.backgroundSections\(비어 있지 않은 문자열 배열\)/.test(e.message), JSON.stringify(bad));
+});

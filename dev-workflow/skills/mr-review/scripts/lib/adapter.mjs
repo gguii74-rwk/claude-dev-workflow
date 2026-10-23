@@ -55,6 +55,10 @@ export function validate(cfg) {
   }
   if (Array.isArray(cfg.policy?.acceptedIds) && cfg.policy.acceptedIds.length === 0) missing.push('policy.acceptedIds(비어 있음)');
   if (Array.isArray(cfg.contract?.lines) && cfg.contract.lines.length !== 10) missing.push('contract.lines(10개)');
+  // 선택 키(1.3.5 ⑤·⑥ — spec 2026-10-23 D95·D96·D99) — 없으면 현행 동작(기존 어댑터 출력 바이트 불변). 값 오류는 deployLayout 선례대로 로드 단계에서 멈춘다
+  if (cfg.baselineRepoPaths !== undefined && typeof cfg.baselineRepoPaths !== 'boolean') missing.push('baselineRepoPaths(true|false)');
+  const bs = cfg.contract?.backgroundSections;
+  if (bs !== undefined && !(Array.isArray(bs) && bs.length > 0 && bs.every((x) => typeof x === 'string' && x.trim() !== ''))) missing.push('contract.backgroundSections(비어 있지 않은 문자열 배열)');
   const v = cfg.comments?.verdictFirstLine;
   if (typeof v === 'string') for (const g of ['policy', 'sha', 'kind', 'verdict']) if (!v.includes(`(?<${g}>`)) missing.push(`comments.verdictFirstLine(그룹 ${g})`);
   const t = cfg.comments?.authorToken;
@@ -103,6 +107,8 @@ export function loadAdapter(file) {
     const root = path.resolve(expandHome(r.path));
     return { path: root, export: r.export === true, glossaryFile: r.glossary ? path.join(root, r.glossary) : null };
   });
+  cfg.baselineRepoPaths = cfg.baselineRepoPaths ?? false;
+  cfg.contract.backgroundSections = cfg.contract.backgroundSections ?? ['배경'];
   cfg.file = abs;
   cfg.markdown = md;
   cfg.resolved = { workspaceRoot, docsRoot: path.resolve(workspaceRoot, cfg.docsRoot), reportDir: path.resolve(workspaceRoot, cfg.report.dir), projects, wikiRoots };
