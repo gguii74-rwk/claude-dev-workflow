@@ -91,6 +91,10 @@ export function mismatchSummary(deploy) {
 }
 // 컴파일 산출물 존재 대조 표시(1.3.2 ⑨ D38·D47) — 실행 블록 「2. 검증 상태」·부록 A(헤더에는 넣지 않는다)
 const skippedNote = (deploy) => ((deploy?.zip?.bytes_skipped || []).length ? `바이트 대조 생략 ${deploy.zip.bytes_skipped.length}건(컴파일 산출물 — 존재만 확인)` : '');
+// 마크다운 표 셀(1.3.3 ⑭ — spec 2026-10-23 3.⑭ D56) — 줄바꿈(`\r\n`·단독 `\r`·`\n`, R6-1)은 공백 하나로, 이스케이프 안 된 `|` 는 `\|` 로(이미 `\|` 면 그대로).
+// 마스킹 순서(R3-2·R4-1) = 원문 fieldMask(renderReport) → 평탄화 → 재 fieldMask → 이 함수. renderReport 의 `tc` 가 그 순서로 부른다
+const NL = /\r\n|\r|\n/g;
+export const cell = (s) => String(s).replace(NL, ' ').replace(/(?<!\\)\|/g, '\\|');
 
 // ── §5.5-4 판정 ───────────────────────────────────────────────────────────
 export function machineEvidence({ check, snapshot, deploy }) {
@@ -186,13 +190,13 @@ function approvalLine(mr) {
 }
 
 // 정책 §8.1 실행 블록 — 5개 절은 항상 유지하고 본문 40줄 이내를 **보장**한다(R3-10). 넘치면 결정적 축약 순서: ① 의도 표 6행 초과분 → 부록 A ② 차단 발견 짧은 형태(위치·권고 생략) ③ 비차단 후속 1건 + 「외 n건」 ④ 차단 발견 앞 n건 + 「외 n건 — 부록 D」(n 은 40줄에 맞춰 계산, 최소 1건). 상세는 부록 D 가 전부 보존한다.
-function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack }) {
+function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack, tc }) {
   const fnd = findings?.findings || [];
   const byId = Object.fromEntries(fnd.map((f) => [f.id, f]));
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
   const head = [`리뷰 계약 ${verdict.contractPolicyId} · head ${snapshot.head_sha} · 추천 판정(초안) ${verdict.verdict}`, `사람 승인 상태: ${approvalLine(mr)}`, ''];
   const intent = findings?.intent || [];
-  let rows = intent.map((i) => `| ${i.criterion} | ${i.result} | ${i.location || '-'} (${i.basis || '작성자 주장'}) |`);
+  let rows = intent.map((i) => `| ${tc(i.criterion)} | ${tc(i.result)} | ${tc(i.location || '-')} (${tc(i.basis || '작성자 주장')}) |`);
   if (!rows.length) rows = ['| (검증 표 없음) | UNKNOWN | - |'];
   const s1h = ['1. 의도 대조표', '| 수용기준·MR 주장 | 결과 | 코드 위치 |', '|---|---|---|'];
   const s2 = ['2. 검증 상태',
@@ -245,20 +249,20 @@ function supplementRequests({ check, snapshot, deploy }) {
   return items;
 }
 
-function checkTable(check, deploy) {
+function checkTable(check, deploy, tc) {
   const rows = [];
-  for (const l of check.contract?.lines || []) rows.push(`| 계약 · ${l.name} | ${l.status} |`);
-  rows.push(`| 트랙 | ${check.track} |`);
-  rows.push(`| 기준선 확인 댓글 | ${check.baselineConfirm?.status}${check.baselineConfirm?.status === '낡음' ? `(본문 변경 ${check.baselineConfirm.changed_at})` : ''} |`);
-  rows.push(`| Baseline 유형 | ${check.baselineType} |`);
-  rows.push(`| 변경 사유 ①② | ①${check.reason?.why ? '있음' : '없음'} ②${check.reason?.what ? '있음' : '없음'} (${check.reason?.source}) |`);
-  rows.push(`| 변경 파일 속 문서(후보) | ${(check.baselineCandidateFiles || []).join(', ') || '없음'} |`);
-  rows.push(`| 첨부 | ${(check.attachments || []).map((a) => `${a.kind}:${a.filename}`).join(', ') || '없음'}${check.attachmentClaimedButMissing ? ' · **첨부 누락**' : ''} |`);
-  rows.push(`| 배포본 | ${check.deployExempt ? '제외 프로젝트' : check.deployRequired ? `필수(${check.deployNote || '표기 없음'})` : '비해당'} → ${deploy ? deploy.result : '-'} |`);
-  rows.push(`| 리베이스 | ${check.rebase?.need ? '필요' : '불필요'} (${check.rebase?.detailed_merge_status || '-'}) |`);
+  for (const l of check.contract?.lines || []) rows.push(`| 계약 · ${tc(l.name)} | ${tc(l.status)} |`);
+  rows.push(`| 트랙 | ${tc(check.track)} |`);
+  rows.push(`| 기준선 확인 댓글 | ${tc(`${check.baselineConfirm?.status}${check.baselineConfirm?.status === '낡음' ? `(본문 변경 ${check.baselineConfirm.changed_at})` : ''}`)} |`);
+  rows.push(`| Baseline 유형 | ${tc(check.baselineType)} |`);
+  rows.push(`| 변경 사유 ①② | ①${check.reason?.why ? '있음' : '없음'} ②${check.reason?.what ? '있음' : '없음'} (${tc(check.reason?.source)}) |`);
+  rows.push(`| 변경 파일 속 문서(후보) | ${tc((check.baselineCandidateFiles || []).join(', ') || '없음')} |`);
+  rows.push(`| 첨부 | ${tc((check.attachments || []).map((a) => `${a.kind}:${a.filename}`).join(', ') || '없음')}${check.attachmentClaimedButMissing ? ' · **첨부 누락**' : ''} |`);
+  rows.push(`| 배포본 | ${check.deployExempt ? '제외 프로젝트' : check.deployRequired ? `필수(${tc(check.deployNote || '표기 없음')})` : '비해당'} → ${tc(deploy ? deploy.result : '-')} |`);
+  rows.push(`| 리베이스 | ${check.rebase?.need ? '필요' : '불필요'} (${tc(check.rebase?.detailed_merge_status || '-')}) |`);
   rows.push(`| reviewer 불일치 | ${check.reviewerMismatch ? '예' : '아니오'} |`);
-  rows.push(`| 이전 판정(신뢰) | ${(check.priorVerdicts || []).filter((v) => v.trusted).map((v) => `#${v.note_id} ${v.verdict}@${s7(v.sha)}`).join(', ') || '없음'} |`);
-  rows.push(`| 무시한 댓글 | ${(check.ignoredComments || []).map((c) => `#${c.note_id}(${c.reason})`).join(', ') || '없음'} |`);
+  rows.push(`| 이전 판정(신뢰) | ${tc((check.priorVerdicts || []).filter((v) => v.trusted).map((v) => `#${v.note_id} ${v.verdict}@${s7(v.sha)}`).join(', ') || '없음')} |`);
+  rows.push(`| 무시한 댓글 | ${tc((check.ignoredComments || []).map((c) => `#${c.note_id}(${c.reason})`).join(', ') || '없음')} |`);
   return ['| 검사 | 판정값 |', '|---|---|', ...rows].join('\n');
 }
 
@@ -308,6 +312,8 @@ export function renderReport({ adapter, work, early = false }) {
   check = fieldMask(check, adapter.mask, keep);
   deploy = fieldMask(deploy, adapter.mask, keep);
   pack = fieldMask(pack, adapter.mask, keep);
+  // 표 셀 값(⑭ — R3-2·R4-1): 위 원문 마스킹 뒤 줄바꿈을 펴고, 편 값이 달라졌으면 다시 가린 다음 `cell()` 로 `|` 를 처리한다(줄로 나뉘어 있던 `--password⏎x` 가 펴져 `--password x` 가 되어도 여기서 가려진다)
+  const tc = (v) => { const raw = String(v); const flat = raw.replace(NL, ' '); return cell(flat === raw ? raw : fieldMask(flat, adapter.mask, keep)); };
   const adapterId = `${path.basename(adapter.file)}@${createHash('sha1').update(adapter.markdown).digest('hex').slice(0, 8)}`;
   const mode = early ? '조기 종료(결정적 검사만)' : `${check.rereview?.active ? '재리뷰' : '전체'}${snapshot.mode === 'diff-only' ? ' · diff-only' : ''}`;
   const models = findings?.validReviewers?.length ? findings.validReviewers.join(', ') : '-';
@@ -334,7 +340,7 @@ export function renderReport({ adapter, work, early = false }) {
   } else if (!verdict || verdict.status !== 'determined') {
     parts.push(verdict?.status === 'review-failed' ? '(리뷰 실패 — 블록 없음)' : `(리뷰어 확인 후 \`verdict --resolve <id>=confirmed|dismissed\`(설계 내 수정 가능 상충 항목은 \`confirmed:fixable|confirmed:design\`) 로 생성)`);
   } else {
-    parts.push('```text', executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack }), '```');
+    parts.push('```text', executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack, tc }), '```');
   }
   parts.push('');
   if (check.track === '경량' && (check.baselineConfirm?.status === '없음' || check.baselineConfirm?.status === '낡음')) {
@@ -361,7 +367,7 @@ export function renderReport({ adapter, work, early = false }) {
     for (const f of resolved) parts.push(`- **${f.id}** ${f.type} — ${f.title}: ${f.resolution === 'confirmed' ? '확인(차단 유지)' : '기각'}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}`);
     parts.push('');
   }
-  parts.push('## 부록 A — 작성 규칙 검사표 · 배포본 대조', '', checkTable(check, deploy), '');
+  parts.push('## 부록 A — 작성 규칙 검사표 · 배포본 대조', '', checkTable(check, deploy, tc), '');
   if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · zip ${deploy.zip.attachment || '없음'}(주석 ${deploy.zip.comment_sha ? s7(deploy.zip.comment_sha) : '-'})${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}${skippedNote(deploy) ? `\n${skippedNote(deploy)}:\n${deploy.zip.bytes_skipped.map((p) => `- ${p}`).join('\n')}` : ''}`, '');
   if (!early) {
     parts.push('## 부록 B — 근거 출처', '');

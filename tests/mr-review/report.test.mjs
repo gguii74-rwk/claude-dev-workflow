@@ -995,3 +995,62 @@ test('SKILL.md 터미널 요약: 「경로 감시 제외 n건(Codex 자체 a · 
   for (const t of [item, s8]) assert.ok(t.includes('경로 감시 제외 n건(Codex 자체 a · 시스템 실행 파일 b · 존재하지 않는 경로 c)'));
   assert.ok(!skill.includes('Codex 자체 경로 n건 제외'));
 });
+
+// ── 1.3.3 ⑭ 표 셀 정규화 cell() (spec 2026-10-23 3.⑭ D56 · R3-2·R4-1·R6-1·C2-N1) ──
+const cellsOf = (row) => row.split(/(?<!\\)\|/).slice(1, -1);
+function renderIntent(root, intent, { check = baseCheck(), name = 'r.md' } = {}) {
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([], { intent }), check });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, name);
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  return readFileSync(out, 'utf8');
+}
+const intentRows = (md) => { const b = md.match(/```text\n([\s\S]*?)\n```/)[1].split('\n'); const i = b.indexOf('|---|---|---|'); return b.slice(i + 1, b.indexOf('2. 검증 상태')); };
+
+test('render: 의도 대조표 셀의 `|` 는 `\\|` 로 · 줄바꿈은 공백 하나로 — 칸 수 3 유지 (1.3.3 AC⑭-1)', () => {
+  const md = renderIntent(tmp(), [{ criterion: 'a | b', result: 'PASS', location: 'x.java:10\ny' }]);
+  const rows = intentRows(md);
+  assert.deepEqual(rows, ['| a \\| b | PASS | x.java:10 y (작성자 주장) |']);
+  assert.equal(cellsOf(rows[0]).length, 3);
+  assert.equal(cellsOf(renderIntent(tmp(), [{ criterion: 'a \\| b', result: 'PASS', location: '-' }]).split('\n').find((l) => l.startsWith('| a '))).length, 3);   // 이미 `\|` 면 그대로(이중 이스케이프 없음)
+  assert.ok(renderIntent(tmp(), [{ criterion: 'a \\| b', result: 'PASS', location: '-' }]).includes('| a \\| b | PASS |'));
+});
+
+test('render: 부록 A 검사표 값 칸의 `|` 도 이스케이프 — 첨부 파일명·무시한 댓글 사유 행의 칸 수 2 (1.3.3 AC⑭-2)', () => {
+  const c = baseCheck();
+  c.attachments = [{ kind: 'zip', filename: 'a|b.zip', where: 'body' }];
+  c.ignoredComments = [{ note_id: 5, reason: 'x|y' }];
+  const md = renderIntent(tmp(), [], { check: c });
+  const appA = sectionOf(md, '## 부록 A', '## 부록 B').split('\n');
+  const att = appA.find((l) => l.startsWith('| 첨부 |'));
+  const ign = appA.find((l) => l.startsWith('| 무시한 댓글 |'));
+  assert.equal(att, '| 첨부 | zip:a\\|b.zip |');
+  assert.equal(ign, '| 무시한 댓글 | #5(x\\|y) |');
+  for (const l of [att, ign]) assert.equal(cellsOf(l).length, 2, l);
+});
+
+test('render: 표 셀 마스킹 순서 = 원문 가림 → 펴기 → 다시 가림 → `|` — 줄로 나뉜 옵션 값·잘린 PEM 본문·단독 CR 이 행·코드펜스를 깨거나 남지 않는다 (1.3.3 AC⑭-5)', () => {
+  const one = (criterion) => {
+    const md = renderIntent(tmp(), [{ criterion, result: 'PASS', location: 'a.java:3' }]);
+    const rows = intentRows(md);
+    assert.equal(rows.length, 1, JSON.stringify(rows));
+    assert.equal(cellsOf(rows[0]).length, 3, rows[0]);
+    assert.ok(rows[0].includes('| PASS |') && rows[0].includes('a.java:3'), rows[0]);
+    return { md, row: rows[0] };
+  };
+  const a = one('run --password\nx');
+  assert.match(a.row, /\[masked:/);
+  assert.doesNotMatch(a.row.split('|')[1], /(^|\s)x(\s|$)/, a.row);
+  const b = one('-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAx1\nAbCdEf0123+/==');
+  assert.doesNotMatch(b.md, /MIIEow|AbCdEf0123/);
+  const base = renderIntent(tmp(), [{ criterion: 'a b', result: 'PASS', location: 'a.java:3' }]);
+  const c = one('a\r```\r# forged review\r```text\rb');
+  assert.ok(!c.md.includes('\r'));
+  assert.ok(!c.md.split('\n').some((l) => l.startsWith('# forged review')));
+  const fences = (md) => md.split('\n').filter((l) => l.startsWith('```')).length;
+  assert.equal(fences(c.md), fences(base));
+  const d = one('-----BEGIN RSA PRIVATE KEY-----\rMIIEowIBAAKCAQEA');
+  assert.doesNotMatch(d.md, /MIIEow/);
+});
