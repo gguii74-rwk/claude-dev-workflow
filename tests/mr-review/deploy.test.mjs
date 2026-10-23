@@ -977,6 +977,22 @@ test('⑬ zip 2개 충돌: 같은 zip 경로 다른 바이트 → zip_conflict �
   assert.equal(crossOk.r.first, 'DEPLOY 일치', JSON.stringify(crossOk.d.mismatches));
 });
 
+test('⑬ zip 사이 충돌은 경로마다 1건 — zip 이 많아도 충돌 기록이 zip 쌍 수만큼 늘지 않는다 (1.3.3 review-loop(impl) R3-1 · AC⑬-16)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const N = 8;
+  const zips = (f) => Array.from({ length: N }, (_, i) => ({ filename: `z${i}.zip`, entries: f(i) }));
+  // (가) 대소문자만 다른 같은 키 — 절반 Foo.class · 절반 foo.class
+  const a = zipsDeploy(root, adapter, { repo, zips: zips((i) => [{ name: `${CLS}${i % 2 ? 'foo' : 'Foo'}.class`, data: Buffer.from([1]) }]), name: 'w1' });
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  assert.equal(a.d.mismatches.filter((m) => m.kind === 'zip_conflict').length, 1, JSON.stringify(a.d.mismatches));
+  // (나) 파일 ↔ 하위 경로 — 절반 파일 config · 절반 config/app.properties
+  const b = zipsDeploy(root, adapter, { repo, zips: zips((i) => [i % 2 ? { name: 'WEB-INF/classes/config/app.properties', data: 'k=v\n' } : { name: 'WEB-INF/classes/config', data: 'x\n' }]), name: 'w2' });
+  assert.equal(b.r.first, 'DEPLOY 대조 불가', JSON.stringify(b.d.mismatches));
+  assert.equal(b.d.mismatches.filter((m) => m.kind === 'zip_conflict').length, 1, JSON.stringify(b.d.mismatches));
+});
+
 test('⑬ zip 3개 같은 경로 — 첫 zip 의 내용을 기준으로 뒤 zip 마다 비교(다른 쪽만 zip_conflict, 같은 쪽은 한 번 대조) (1.3.3 review-loop(impl) R2-1 · D60·D66)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: GAMMA });

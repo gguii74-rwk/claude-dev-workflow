@@ -356,7 +356,17 @@ export function deploy({ adapter, work }) {
   }
   out.applicable = true;
   const mm = out.mismatches;
-  const push = (m) => { if (!mm.some((x) => x.kind === m.kind && x.path === m.path && m.path !== null && x.detail === m.detail)) mm.push(m); };
+  // 같은 (kind·path·detail) 는 한 번만 — 이미 쌓인 항목을 집합으로 따라잡아 대조한다(목록 전체를 매번 훑지 않는다 — R3-1)
+  const seenMm = new Set();
+  let scannedMm = 0;
+  const mmKey = (x) => `${x.kind}\0${x.path}\0${x.detail}`;
+  const push = (m) => {
+    if (m.path !== null) {
+      for (; scannedMm < mm.length; scannedMm++) if (mm[scannedMm].path !== null) seenMm.add(mmKey(mm[scannedMm]));
+      if (seenMm.has(mmKey(m))) return;
+    }
+    mm.push(m);
+  };
   const dl = out.expected.deploy;
   let judged = [];   // 배치가 정해진 zip(②③ 대조 대상)
 
@@ -441,21 +451,26 @@ export function deploy({ adapter, work }) {
           if (!e.name.endsWith('/')) { if (!fileKeys.has(key)) fileKeys.set(key, []); fileKeys.get(key).push({ st, e }); }
         }
         const conflict = (a, b) => push({ kind: 'zip_conflict', path: b.e.name, detail: `${lab(a.st.i)} 의 ${a.e.name} 와 ${lab(b.st.i)} 의 ${b.e.name} 가 풀 때 충돌(대소문자·파일/폴더) — 함께 배포할 수 없음` });
+        // 충돌은 경로(키)마다 대표 1건만 — zip 쌍마다 쌓으면 작은 zip 여러 개로 기록이 zip 수의 제곱으로 는다(R3-1)
+        const clash = (a, b) => {
+          if (a.st === b.st) return false;
+          const dirA = a.e.name.endsWith('/');
+          const dirB = b.e.name.endsWith('/');
+          if (dirA && dirB) return false;
+          return !(!dirA && !dirB && a.e.name === b.e.name);   // 같은 이름 파일 둘은 같은 경로 규칙(아래)
+        };
         for (const list of keyed.values()) {
-          for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
-            const a = list[x];
-            const b = list[y];
-            if (a.st === b.st) continue;
-            const dirA = a.e.name.endsWith('/');
-            const dirB = b.e.name.endsWith('/');
-            if (dirA && dirB) continue;
-            if (!dirA && !dirB && a.e.name === b.e.name) continue;   // 같은 경로 규칙(아래)
-            conflict(a, b);
-          }
+          outer: for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) if (clash(list[x], list[y])) { conflict(list[x], list[y]); break outer; }
         }
+        const under = new Set();   // (나) 하위 항목 키마다 1건
         for (const st of read) for (const e of st.all) {
-          const segs = e.name.replace(/\/$/, '').toLowerCase().split('/');
-          for (let k = 1; k < segs.length; k++) for (const f of fileKeys.get(segs.slice(0, k).join('/')) || []) if (f.st !== st) conflict(f, { st, e });
+          const key = e.name.replace(/\/$/, '').toLowerCase();
+          if (under.has(key)) continue;
+          const segs = key.split('/');
+          for (let k = 1; k < segs.length; k++) {
+            const f = (fileKeys.get(segs.slice(0, k).join('/')) || []).find((x) => x.st !== st);
+            if (f) { conflict(f, { st, e }); under.add(key); break; }
+          }
         }
         // 같은 zip 경로 다른 바이트 = zip_conflict(존재 대조 항목 .class 포함 — D66). 같은 바이트면 첫 zip 의 항목으로 한 번만 대조한다
         const byName = new Map();
