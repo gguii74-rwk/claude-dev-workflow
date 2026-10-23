@@ -833,3 +833,276 @@ test('maven-war: .class 항목이 심볼릭 링크면 zip 경로의 type 불일�
   assert.deepEqual(kp(d), [['type', `${CLS}Foo.class`]]);
   assert.ok(!d.zip.bytes_skipped.includes(`${CLS}Foo.class`));
 });
+
+// ── 1.3.3 ⑬ zip 마다 배치 판별 · 접두 제거 · 본문 zip 전부 합산 (spec 2026-10-23 3.⑬ D57~D60·D63~D66) ──
+const GAMMA = { gamma: { id: 104, path: 'repos/gamma' } };   // deployLayout 힌트 없음
+const H = 'src/main/webapp/html/a.html';
+const X = 'src/main/resources/mapper/a.xml';
+const J = 'src/main/java/com/example/acct/Foo.java';
+const S3 = { [H]: WAR4[H], [X]: WAR4[X], [J]: WAR4[J] };
+const E = (o) => Object.entries(o).map(([name, data]) => ({ name, data }));
+const SEC = (i) => 'abcdef0123456789'[i].repeat(32);
+// zips = [{ filename, entries, comment?(기본 head), secret?, where? }] — 본문 첨부 순서 = 배열 순서
+function zipsDeploy(root, adapter, { repo, zips, mode = 'worktree', description = '', blobs = {}, diffs = [], name = 'w' }) {
+  const rules = [];
+  const attachments = [];
+  zips.forEach((z, i) => {
+    const s = z.secret || SEC(i);
+    const zf = join(root, `${name}-${i}.zip`);
+    writeFileSync(zf, mkZip(z.entries, z.comment === undefined ? repo.headSha : z.comment));
+    rules.push({ match: `^api projects/101/uploads/${s}/${z.filename.replace(/\./g, '\\.')}$`, file: zf });
+    attachments.push({ url: `/uploads/${s}/${z.filename}`, kind: 'zip', filename: z.filename, secret: s, where: z.where || 'body' });
+  });
+  const work = workdir(root, { checkout: mode === 'worktree' ? repo.checkout : null, baseSha: repo.baseSha, headSha: repo.headSha, mode, attachments, description, blobs, diffs, name, project: 'gamma' });
+  const r = runCli(['deploy', '--adapter', adapter, '--work', work], fakeGlab(root, rules).env);
+  return { r, d: readJson(join(work, 'deploy.json')), work };
+}
+const CLASSES = () => E({ [`${CLS}Foo.class`]: Buffer.from([0xca, 0xfe, 1]), [`${CLS}Foo$1.class`]: Buffer.from([0xca, 0xfe, 2]) });
+
+test('⑬ 최상위 폴더 접두 + WAR 표지(어댑터 키 없음) → 일치 · layout maven-war(signature) · prefix app/ · entries·bytes_skipped 는 접두 뗀 이름 · zips 1건 (1.3.3 AC⑬-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: S3 });
+  const entries = E({ 'app/html/a.html': S3[H], 'app/WEB-INF/classes/mapper/a.xml': S3[X], [`app/${CLS}Foo.class`]: Buffer.from([0xca]), [`app/${CLS}Foo$1.class`]: Buffer.from([0xfe]) });
+  const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries }] });
+  assert.equal(r.first, 'DEPLOY 일치', JSON.stringify(d.mismatches));
+  assert.equal(d.zip.layout, 'maven-war');
+  assert.equal(d.zip.layout_source, 'signature');
+  assert.equal(d.zip.prefix, 'app/');
+  assert.deepEqual(d.zip.entries, ['WEB-INF/classes/mapper/a.xml', `${CLS}Foo$1.class`, `${CLS}Foo.class`, 'html/a.html'].sort());
+  assert.deepEqual(d.zip.bytes_skipped, [`${CLS}Foo$1.class`, `${CLS}Foo.class`]);
+  assert.equal(d.zips.length, 1);
+  assert.deepEqual({ layout: d.zips[0].layout, layout_source: d.zips[0].layout_source, prefix: d.zips[0].prefix }, { layout: 'maven-war', layout_source: 'signature', prefix: 'app/' });
+});
+
+test('⑬ 같은 프로젝트의 소스 배치 zip 은 어댑터 deployLayout = maven-war 여도 표지(src/)가 이겨 일치 · layout source(signature) · bytes_skipped [] (1.3.3 AC⑬-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const repo = warRepo(root, { add: S3 });
+  const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E(S3) }] });
+  assert.equal(r.first, 'DEPLOY 일치', JSON.stringify(d.mismatches));
+  assert.equal(d.zip.layout, 'source');
+  assert.equal(d.zip.layout_source, 'signature');
+  assert.deepEqual(d.zip.bytes_skipped, []);
+});
+
+test('⑬ 혼합(WAR 표지 + 소스 표지) zip → layout_ambiguous(path null, detail 에 zip 이름) · 대조 불가 · 그 zip 은 목록 대조 안 함 · entries 에는 두 항목 (1.3.3 AC⑬-3)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: S3 });
+  const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'mixed.zip', entries: E({ [J]: S3[J], 'WEB-INF/classes/mapper/a.xml': S3[X] }) }] });
+  assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+  const la = d.mismatches.find((m) => m.kind === 'layout_ambiguous');
+  assert.ok(la && la.path === null && /mixed\.zip/.test(la.detail), JSON.stringify(d.mismatches));
+  assert.ok(!d.mismatches.some((m) => m.kind === 'missing_in_zip' || m.kind === 'extra_in_zip'));
+  assert.deepEqual(d.zip.entries, [J, 'WEB-INF/classes/mapper/a.xml'].sort());
+});
+
+test('⑬ 표지 없는 zip → 기대 목록 시험: 불일치 0 인 배치가 하나면 그것(probe) · html/ 은 기대 사상 경로 첫 조각이라 떼지 않음 (1.3.3 AC⑬-4)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const HB = { [H]: '<p>a</p>\n', 'src/main/webapp/html/b.html': '<p>b</p>\n' };
+  const repo = warRepo(root, { add: HB });
+  const { r, d } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E({ 'html/a.html': HB[H], 'html/b.html': HB['src/main/webapp/html/b.html'] }) }] });
+  assert.equal(r.first, 'DEPLOY 일치', JSON.stringify(d.mismatches));
+  assert.equal(d.zip.layout, 'maven-war');
+  assert.equal(d.zip.layout_source, 'probe');
+  assert.equal(d.zip.prefix, '');
+});
+
+test('⑬ 표지 없고 시험도 실패 → 어댑터 힌트(adapter), 없으면 source(default) 로 대조해 불일치 — 빠진 경로가 보인다 (1.3.3 AC⑬-5)', () => {
+  const HB = { [H]: '<p>a</p>\n', 'src/main/webapp/html/b.html': '<p>b</p>\n' };
+  const run = (projects) => {
+    const root = tmp();
+    const adapter = writeAdapter(root, { projects });
+    const repo = warRepo(root, { add: HB });
+    return zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E({ 'html/a.html': HB[H] }) }] });
+  };
+  const a = run(GAMMA);
+  assert.equal(a.r.first, 'DEPLOY 불일치');
+  assert.equal(a.d.zip.layout, 'source');
+  assert.equal(a.d.zip.layout_source, 'default');
+  assert.deepEqual(kp(a.d).sort(), [['extra_in_zip', 'html/a.html'], ['missing_in_zip', H], ['missing_in_zip', 'src/main/webapp/html/b.html']]);
+  const b = run(WAR_PROJECT);
+  assert.equal(b.r.first, 'DEPLOY 불일치');
+  assert.equal(b.d.zip.layout, 'maven-war');
+  assert.equal(b.d.zip.layout_source, 'adapter');
+  assert.deepEqual(kp(b.d), [['missing_in_zip', 'src/main/webapp/html/b.html']]);
+  assert.match(b.d.mismatches[0].detail, /html\/b\.html/);
+});
+
+const SRC2 = { [J]: WAR4[J], [H]: WAR4[H] };
+test('⑬ 본문 zip 2개(소스판 + class 판) 합산 → 일치 · attachment 이음 · zips 2건 · zip.layout/layout_source mixed · prefix null · 소스판에서 바이트 대조된 .java 의 .class 는 bytes_skipped 에 없다 (1.3.3 AC⑬-6)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const { r, d, work } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E(SRC2) }, { filename: 'classes.zip', entries: CLASSES() }] });
+  assert.equal(r.first, 'DEPLOY 일치', JSON.stringify(d.mismatches));
+  assert.equal(d.zip.attachment, 'src.zip, classes.zip');
+  assert.equal(d.zips.length, 2);
+  assert.deepEqual(d.zips.map((z) => [z.attachment, z.layout, z.layout_source]), [['src.zip', 'source', 'signature'], ['classes.zip', 'maven-war', 'signature']]);
+  assert.equal(d.zip.layout, 'mixed');
+  assert.equal(d.zip.layout_source, 'mixed');
+  assert.equal(d.zip.prefix, null);
+  assert.deepEqual(d.zip.bytes_skipped, []);
+  assert.deepEqual(d.zip.entries, [J, H, `${CLS}Foo.class`, `${CLS}Foo$1.class`].sort());
+  assert.ok(existsSync(join(work, 'zip', '1-src.zip')) && existsSync(join(work, 'zip', '2-classes.zip')));
+});
+
+test('⑬ zip 2개 충돌: 같은 zip 경로 다른 바이트 → zip_conflict 대조 불가(.class 도 — D66) · 같은 바이트면 일치 · 다른 배치로 담은 같은 원본은 head 비교만(D65) (1.3.3 AC⑬-7)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const war = (b) => E({ [`${CLS}Foo.class`]: Buffer.from([b]) });
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', entries: war(1) }, { filename: 'b.zip', entries: [...war(2), { name: 'html/a.html', data: SRC2[H] }] }], name: 'w1' });
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  const zc = a.d.mismatches.find((m) => m.kind === 'zip_conflict');
+  assert.equal(zc.path, `${CLS}Foo.class`);
+  assert.match(zc.detail, /zip#1 a\.zip/);
+  assert.match(zc.detail, /zip#2 b\.zip/);
+  const same = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', entries: war(1) }, { filename: 'b.zip', entries: [...war(1), { name: 'html/a.html', data: SRC2[H] }] }], name: 'w2' });
+  assert.equal(same.r.first, 'DEPLOY 일치', JSON.stringify(same.d.mismatches));
+  const srcs = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', entries: E(SRC2) }, { filename: 'b.zip', entries: E({ [H]: '<p>other</p>\n' }) }], name: 'w3' });
+  assert.ok(srcs.d.mismatches.some((m) => m.kind === 'zip_conflict' && m.path === H), JSON.stringify(srcs.d.mismatches));
+  assert.equal(srcs.r.first, 'DEPLOY 대조 불가');
+  // (나) 교차 중복 — 소스판 src/main/webapp/html/a.html ↔ class 판 html/a.html(head 와 다른 바이트)
+  const cross = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E(SRC2) }, { filename: 'classes.zip', entries: [...CLASSES(), { name: 'html/a.html', data: '<p>stale</p>\n' }] }], name: 'w4' });
+  assert.equal(cross.r.first, 'DEPLOY 불일치', JSON.stringify(cross.d.mismatches));
+  assert.ok(!cross.d.mismatches.some((m) => m.kind === 'zip_conflict'));
+  assert.deepEqual(kp(cross.d), [['bytes', H]]);
+  assert.match(cross.d.mismatches[0].detail, /zip#2 classes\.zip/);
+  const crossOk = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E(SRC2) }, { filename: 'classes.zip', entries: [...CLASSES(), { name: 'html/a.html', data: SRC2[H] }] }], name: 'w5' });
+  assert.equal(crossOk.r.first, 'DEPLOY 일치', JSON.stringify(crossOk.d.mismatches));
+});
+
+test('⑬ zip 2개 주석(D63): 한 zip 이라도 head 와 일치하면 통과 · 주석 없는 zip 은 comment_sha null 만 · 다른 SHA 는 불일치 · 전부 없음은 불일치 1건 · zip 1개 주석 없음은 불일치 (1.3.3 AC⑬-8)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const two = (c2, c1 = undefined, name) => zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E(SRC2), comment: c1 }, { filename: 'classes.zip', entries: CLASSES(), comment: c2 }], name });
+  const a = two('', undefined, 'w1');
+  assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
+  assert.equal(a.d.zips[1].comment_sha, null);
+  assert.equal(a.d.zip.comment_sha, repo.headSha);
+  const b = two('deadbeef1', undefined, 'w2');
+  assert.deepEqual(kp(b.d), [['comment_sha', null]]);
+  assert.match(b.d.mismatches[0].detail, /zip#2 classes\.zip/);
+  assert.match(b.d.mismatches[0].detail, /deadbeef1/);
+  const c = two('', '', 'w3');
+  assert.deepEqual(kp(c.d), [['comment_sha', null]]);
+  assert.equal(c.d.zip.comment_sha, null);
+  const one = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E(SRC2), comment: '' }], name: 'w4' });
+  assert.deepEqual(kp(one.d), [['comment_sha', null]]);
+});
+
+test('⑬ 본문의 같은 링크(같은 secret) 두 번은 1개 · 다른 secret 의 같은 파일명 zip 둘은 순번 접두로 따로 받아 둘 다 대조 (1.3.3 AC⑬-15)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const dup = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'deploy.zip', entries: E(SRC2), secret: SEC(5) }, { filename: 'deploy.zip', entries: E(SRC2), secret: SEC(5) }], name: 'w1' });
+  assert.equal(dup.r.first, 'DEPLOY 일치', JSON.stringify(dup.d.mismatches));
+  assert.equal(dup.d.zips.length, 1);
+  const two = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'deploy.zip', entries: E(SRC2) }, { filename: 'deploy.zip', entries: CLASSES() }], name: 'w2' });
+  assert.equal(two.r.first, 'DEPLOY 일치', JSON.stringify(two.d.mismatches));
+  assert.equal(two.d.zips.length, 2);
+  assert.equal(two.d.zip.attachment, 'deploy.zip, deploy.zip');
+  assert.ok(existsSync(join(two.work, 'zip', '1-deploy.zip')) && existsSync(join(two.work, 'zip', '2-deploy.zip')));
+});
+
+test('⑬ 합산 경로 충돌(R1-2): zip 사이 파일/폴더·대소문자 충돌은 zip_conflict 대조 불가 · 같은 폴더 항목끼리는 충돌 아님 (1.3.3 AC⑬-16)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const CF = { 'src/main/webapp/WEB-INF/classes/config': 'c\n', 'src/main/resources/config/app.properties': 'k=v\n' };
+  const repo = warRepo(root, { add: CF });
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', entries: E({ 'WEB-INF/classes/config': CF['src/main/webapp/WEB-INF/classes/config'] }) }, { filename: 'b.zip', entries: E({ 'WEB-INF/classes/config/app.properties': CF['src/main/resources/config/app.properties'] }) }], name: 'w1' });
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  const zc = a.d.mismatches.find((m) => m.kind === 'zip_conflict');
+  assert.equal(zc.path, 'WEB-INF/classes/config/app.properties');
+  assert.match(zc.detail, /zip#1 a\.zip/);
+  assert.match(zc.detail, /zip#2 b\.zip/);
+  const root2 = tmp();
+  const adapter2 = writeAdapter(root2, { projects: GAMMA });
+  const repo2 = warRepo(root2, { add: SRC2 });
+  const b = zipsDeploy(root2, adapter2, { repo: repo2, zips: [{ filename: 'a.zip', entries: E({ 'html/A.html': 'x' }) }, { filename: 'b.zip', entries: E({ 'html/a.html': SRC2[H] }) }], name: 'w2' });
+  assert.ok(b.d.mismatches.some((m) => m.kind === 'zip_conflict'), JSON.stringify(b.d.mismatches));
+  assert.equal(b.r.first, 'DEPLOY 대조 불가');
+  const dirs = E({ 'WEB-INF/': '', 'WEB-INF/classes/': '' });
+  const c = zipsDeploy(root2, adapter2, { repo: repo2, zips: [{ filename: 'a.zip', entries: [...dirs, ...E({ [`${CLS}Foo.class`]: Buffer.from([1]) })] }, { filename: 'b.zip', entries: [...dirs, ...E({ [`${CLS}Foo.class`]: Buffer.from([1]), 'html/a.html': SRC2[H] })] }], name: 'w3' });
+  assert.equal(c.r.first, 'DEPLOY 일치', JSON.stringify(c.d.mismatches));
+});
+
+test('⑬ ④ 삭제 목록 정규화 배치: zip 표지가 WAR 면(키 없음) 소스·WAR 표기 통과 · zip 2개(mixed)도 WAR · zip 없는 삭제 전용 MR 은 어댑터 힌트, 없으면 source (1.3.3 AC⑬-9)', () => {
+  const OLD = { 'src/main/java/com/example/acct/Old.java': 'class Old {}\n' };
+  const body = `## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: ${CLS}Old.class\n`;
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { baseFiles: OLD, del: Object.keys(OLD) });
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: warEntries() }], description: body, name: 'w1' });
+  assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
+  const SRCW = Object.fromEntries(Object.entries(WAR4).filter(([p]) => p !== J));
+  const b = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E(SRCW) }, { filename: 'classes.zip', entries: CLASSES() }], description: body, name: 'w2' });
+  assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
+  const delOnly = (projects) => {
+    const r0 = tmp();
+    const ad = writeAdapter(r0, { projects });
+    const rp = warRepo(r0, { add: {}, baseFiles: OLD, del: Object.keys(OLD) });
+    return zipsDeploy(r0, ad, { repo: rp, zips: [], description: '## 배포·롤백\n- 배포본: 삭제만\n  - 삭제: ' + `${CLS}Old.class\n` });
+  };
+  const c = delOnly(WAR_PROJECT);
+  assert.equal(c.r.first, 'DEPLOY 일치', JSON.stringify(c.d.mismatches));
+  assert.equal(c.d.zip.layout, 'maven-war');
+  assert.equal(c.d.zip.layout_source, 'adapter');
+  assert.deepEqual(c.d.zips, []);
+  const e = delOnly(GAMMA);
+  assert.deepEqual(kp(e.d), [['deleted_list', null]]);
+  assert.equal(e.d.zip.layout_source, 'default');
+});
+
+test('⑬ 접두 제거 조건: 반복(app/build/) · src 는 떼지 않음 · 기대 소스 경로 첫 조각과 겹치면 떼지 않음 · 래퍼 폴더 항목은 버림 · 접두 밖 빈 폴더가 있으면 떼지 않음 · 떼자 드러난 드라이브 접두는 corrupt (1.3.3 AC⑬-10)', () => {
+  const XA = { [X]: WAR4[X] };
+  const one = (add, entries, name) => {
+    const root = tmp();
+    const adapter = writeAdapter(root, { projects: GAMMA });
+    const repo = warRepo(root, { add });
+    return zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries }], name });
+  };
+  const a = one(XA, E({ 'app/build/WEB-INF/classes/mapper/a.xml': XA[X] }));
+  assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
+  assert.equal(a.d.zip.prefix, 'app/build/');
+  const b = one(XA, E(XA));
+  assert.equal(b.d.zip.prefix, '');
+  assert.equal(b.r.first, 'DEPLOY 일치');
+  const c = one({ 'app/x.sql': 'select 1;\n' }, E({ 'app/x.sql': 'select 1;\n' }));
+  assert.equal(c.r.first, 'DEPLOY 일치', JSON.stringify(c.d.mismatches));
+  assert.equal(c.d.zip.prefix, '');
+  const wrapDirs = E({ 'app/': '', 'app/build/': '', 'app/build/WEB-INF/': '', 'app/build/WEB-INF/classes/mapper/a.xml': XA[X] });
+  const d = one(XA, wrapDirs);
+  assert.equal(d.r.first, 'DEPLOY 일치', JSON.stringify(d.d.mismatches));
+  assert.equal(d.d.zip.prefix, 'app/build/');
+  assert.deepEqual(d.d.zip.entries, ['WEB-INF/classes/mapper/a.xml']);
+  for (const n of ['', 'app/', 'app/build/']) assert.ok(!d.d.zip.entries.includes(n));
+  const e = one(XA, [...wrapDirs, ...E({ 'other/': '' })]);
+  assert.equal(e.d.zip.prefix, '');
+  assert.equal(e.r.first, 'DEPLOY 불일치');
+  const f = one({ [J]: WAR4[J] }, E({ [`app/C:/${CLS}Foo.class`]: Buffer.from([1]) }));
+  assert.equal(f.r.first, 'DEPLOY 대조 불가', JSON.stringify(f.d.mismatches));
+  const co = f.d.mismatches.find((m) => m.kind === 'corrupt');
+  assert.ok(co && co.path === null && co.detail.includes('app/') && co.detail.includes('C:/'), JSON.stringify(f.d.mismatches));
+});
+
+test('⑬ 기존 고정 배치 픽스처는 표지로 같은 배치가 잡힌다 — maven-war(어댑터 키 유지)·source 모두 layout_source signature · prefix "" · zips 1건 (1.3.3 AC⑬-11)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const repo = warRepo(root);
+  const { r, d } = warDeploy(root, adapter, { repo, entries: warEntries() });
+  assert.equal(r.first, 'DEPLOY 일치');
+  assert.deepEqual([d.zip.layout, d.zip.layout_source, d.zip.prefix, d.zips.length], ['maven-war', 'signature', '', 1]);
+  const root2 = tmp();
+  const adapter2 = writeAdapter(root2);
+  const { checkout, baseSha, headSha } = initRepos(root2);
+  const zip = archive(checkout, headSha, join(root2, 'd.zip'), AB);
+  const work = workdir(root2, { checkout, baseSha, headSha, attachments: ATT, description: '## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: src/main/java/app/Old.java\n' });
+  assert.equal(runCli(['deploy', '--adapter', adapter2, '--work', work], fakeGlab(root2, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: zip }]).env).first, 'DEPLOY 일치');
+  const d2 = readJson(join(work, 'deploy.json'));
+  assert.deepEqual([d2.zip.layout, d2.zip.layout_source, d2.zip.prefix, d2.zips.length], ['source', 'signature', '', 1]);
+});

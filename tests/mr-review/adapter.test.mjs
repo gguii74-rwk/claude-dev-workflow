@@ -133,3 +133,12 @@ test('projects.<이름>.deployLayout: "maven-war" 보존 · 키 없음 = "source
   const bad = writeAdapter(root, { projects: { gamma: { id: 104, path: 'repos/gamma', deployLayout: 'gradle' } } });
   assert.throws(() => loadAdapter(bad), (e) => e instanceof AdapterError && /projects\.gamma\.deployLayout/.test(e.message));
 });
+
+test('deployLayout 의미 = 판별 못 할 때의 기본값(힌트) — 검증·resolved 는 1.3.2 그대로, 키 유무는 원본 projects 에 남아 deploy 가 힌트 출처(adapter|default)를 가른다 (1.3.3 AC⑬-13 · D59)', () => {
+  const root = tmp();
+  const a = loadAdapter(writeAdapter(root, { projects: { gamma: { id: 104, path: 'repos/gamma', deployLayout: 'maven-war' } } }));
+  assert.equal(a.projects.gamma.deployLayout, 'maven-war');
+  assert.equal(a.projects.alpha.deployLayout, undefined);
+  assert.equal(a.resolved.projects.alpha.deployLayout, 'source');
+  assert.throws(() => loadAdapter(writeAdapter(root, { projects: { gamma: { id: 104, path: 'repos/gamma', deployLayout: 'auto' } } })), /deployLayout\("source"\|"maven-war"\)/);
+});

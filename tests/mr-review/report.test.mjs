@@ -1054,3 +1054,24 @@ test('render: 표 셀 마스킹 순서 = 원문 가림 → 펴기 → 다시 가
   const d = one('-----BEGIN RSA PRIVATE KEY-----\rMIIEowIBAAKCAQEA');
   assert.doesNotMatch(d.md, /MIIEow/);
 });
+
+// ── 1.3.3 ⑬ 표시 — 부록 A zip 줄(zip 마다 배치·근거·접두·주석) · 터미널 요약 · mismatchSummary 종류 (spec 2026-10-23 3.⑬-7) ──
+test('render: zips 2건이면 부록 A 에 zip 줄 2개(zip#n · 주석 7자|없음 · 배치(근거) · 접두) · 1건이면 지금 줄에 배치·접두 · zips 없는 1.3.2 꼴은 그대로 · SKILL §8 「배치」·「합산」 · mismatchSummary 종류 (1.3.3 AC⑬-12)', () => {
+  const zr = (o) => ({ attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], layout: 'source', layout_source: 'signature', prefix: '', bytes_skipped: [], ...o });
+  const base = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/com/example/acct/Foo.java'], deleted: [] }, result: '일치', mismatches: [] };
+  const two = { ...base, zip: { attachment: 'src.zip, classes.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'mixed', layout_source: 'mixed', prefix: null, bytes_skipped: [] }, zips: [zr({ attachment: 'src.zip' }), zr({ attachment: 'classes.zip', comment_sha: null, layout: 'maven-war' })] };
+  const appA = (md) => sectionOf(md, '## 부록 A', '## 부록 B').split('\n');
+  const a = appA(renderWith(tmp(), two));
+  assert.ok(a.some((l) => l.includes('zip 2개 합산')), a.join('\n'));
+  assert.ok(a.includes(`- zip#1 src.zip(주석 ${HEAD.slice(0, 7)} · 배치 source(signature) · 접두 없음)`), a.join('\n'));
+  assert.ok(a.includes('- zip#2 classes.zip(주석 없음 · 배치 maven-war(signature) · 접두 없음)'), a.join('\n'));
+  const one = { ...base, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'maven-war', layout_source: 'signature', prefix: 'app/', bytes_skipped: [] }, zips: [zr({ layout: 'maven-war', prefix: 'app/' })] };
+  const b = appA(renderWith(tmp(), one));
+  assert.ok(b.includes(`기대 배포 목록 1건 · 삭제 목록 0건 · zip d.zip(주석 ${HEAD.slice(0, 7)} · 배치 maven-war(signature) · 접두 app/)`), b.join('\n'));
+  const old = { ...base, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'source', bytes_skipped: [] } };
+  assert.ok(appA(renderWith(tmp(), old)).includes(`기대 배포 목록 1건 · 삭제 목록 0건 · zip d.zip(주석 ${HEAD.slice(0, 7)})`));
+  const s8 = skillText().slice(skillText().indexOf('## 8. 출력 · 정리'), skillText().indexOf('## 9.'));
+  assert.match(s8.split('\n').find((l) => l.startsWith('- **터미널 요약')), /배포본 대조 결과[^\n]*배치 <layout>\(<근거>\)[^\n]*zip n개 합산/);
+  assert.equal(machineEvidence({ check: {}, snapshot: {}, deploy: { applicable: true, result: '대조 불가', mismatches: [{ kind: 'layout_ambiguous', path: null, detail: 'x' }] } }).find((m) => m.id === 'M-deploy').detail, '배포본 대조 불가 — layout_ambiguous');
+  assert.equal(mismatchSummary({ mismatches: [{ kind: 'zip_conflict', path: 'p1', detail: 'x' }, { kind: 'zip_conflict', path: 'p2', detail: 'y' }] }), 'zip_conflict 2건(p1, p2) · 전체 목록 부록 A');
+});

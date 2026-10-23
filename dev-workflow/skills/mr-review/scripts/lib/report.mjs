@@ -96,6 +96,17 @@ const skippedNote = (deploy) => ((deploy?.zip?.bytes_skipped || []).length ? `�
 const NL = /\r\n|\r|\n/g;
 export const cell = (s) => String(s).replace(NL, ' ').replace(/(?<!\\)\|/g, '\\|');
 
+// 부록 A zip 줄(1.3.3 ⑬ — spec 2026-10-23 3.⑬-7) — zip 1개면 지금 줄에 배치(근거)·접두, 여럿이면 합산 줄 + zip 마다 한 줄. zips 가 없는 1.3.2 이전 deploy.json(--resolve 재실행)은 지금 줄 그대로
+const layoutNote = (z) => `배치 ${z.layout ?? '-'}(${z.layout_source ?? '-'}) · 접두 ${z.prefix || '없음'}`;
+function zipLines(deploy) {
+  const z = deploy.zip;
+  const head = `zip ${z.attachment || '없음'}(주석 ${z.comment_sha ? s7(z.comment_sha) : '-'}`;
+  const zips = deploy.zips;
+  if (!Array.isArray(zips) || zips.length === 0) return `${head})`;
+  if (zips.length === 1) return `${head} · ${layoutNote(z)})`;
+  return [`zip ${zips.length}개 합산(배치 ${z.layout}(${z.layout_source}))`, ...zips.map((x, i) => `- zip#${i + 1} ${x.attachment}(주석 ${x.comment_sha ? s7(x.comment_sha) : '없음'} · ${layoutNote(x)})`)].join('\n');
+}
+
 // ── §5.5-4 판정 ───────────────────────────────────────────────────────────
 export function machineEvidence({ check, snapshot, deploy }) {
   const out = [];
@@ -368,7 +379,7 @@ export function renderReport({ adapter, work, early = false }) {
     parts.push('');
   }
   parts.push('## 부록 A — 작성 규칙 검사표 · 배포본 대조', '', checkTable(check, deploy, tc), '');
-  if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · zip ${deploy.zip.attachment || '없음'}(주석 ${deploy.zip.comment_sha ? s7(deploy.zip.comment_sha) : '-'})${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}${skippedNote(deploy) ? `\n${skippedNote(deploy)}:\n${deploy.zip.bytes_skipped.map((p) => `- ${p}`).join('\n')}` : ''}`, '');
+  if (deploy?.applicable) parts.push(`기대 배포 목록 ${deploy.expected.deploy.length}건 · 삭제 목록 ${deploy.expected.deleted.length}건 · ${zipLines(deploy)}${deploy.mismatches.length ? '\n' + deploy.mismatches.map((m) => `- ${m.kind}${m.path ? ` ${m.path}` : ''}: ${m.detail}`).join('\n') : ''}${skippedNote(deploy) ? `\n${skippedNote(deploy)}:\n${deploy.zip.bytes_skipped.map((p) => `- ${p}`).join('\n')}` : ''}`, '');
   if (!early) {
     parts.push('## 부록 B — 근거 출처', '');
     parts.push(...((pack?.sources || []).map((s) => `- [${s.id}] ${s.kind} · ${s.ref}${s.inPackB ? '' : ' · (Codex 미제공)'}`)), '');

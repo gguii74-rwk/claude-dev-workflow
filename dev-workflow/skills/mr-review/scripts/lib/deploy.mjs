@@ -279,12 +279,73 @@ function gitShow(cwd, sha, p) {
   return r.stdout;
 }
 
+// zip 마다 배치 판별(1.3.3 ⑬ — spec 2026-10-23 3.⑬ D57~D60·D63~D66). 배치는 프로젝트가 아니라 작성자·MR 마다 다르다 — 어댑터 deployLayout 은 판별 못 할 때의 기본값(힌트, D59).
+const LAYOUTS = ['source', 'maven-war'];
+const RESERVED_TOP = new Set(['src', 'web-inf', 'meta-inf']);   // 뗄 수 없는 최상위 폴더(표지 이름 — 대소문자 무시로 더 보수적으로)
+// 기대 사상 — 배치 L 에서 zip 경로 → { source, compare }(두 소스가 같은 zip 경로면 null = map_conflict)
+function expectedMap(layout, deployList) {
+  const bySrc = new Map();
+  for (const p of deployList) { const t = zipPathFor(layout, p); if (!bySrc.has(t.zip)) bySrc.set(t.zip, []); bySrc.get(t.zip).push({ source: p, compare: t.compare }); }
+  const map = new Map();
+  for (const [zp, list] of bySrc) map.set(zp, list.length > 1 ? null : list[0]);
+  return { map, conflicts: [...bySrc].filter(([, l]) => l.length > 1) };
+}
+// zip 항목 → 기대 항목: 이름 그대로 먼저, 없으면(maven-war) 내부 클래스를 바깥 클래스의 존재 대조 항목으로
+function lookupIn(layout, expectedZip, name) {
+  if (expectedZip.has(name)) return { hit: true, exp: expectedZip.get(name) };
+  const outer = layout === 'maven-war' ? findOuterClass(name, (o) => expectedZip.get(o)?.compare === 'exists') : null;
+  if (outer) return { hit: true, exp: { ...expectedZip.get(outer), inner: true } };
+  return { hit: false, exp: null };
+}
+// 공통 최상위 폴더 접두 제거(D57·R2-2·R3-1) — 래퍼 폴더 항목 `P/` 외 모든 항목(폴더 포함)이 `P/` 아래 · 파일 1개 이상 · P 가 표지 이름이 아님 · 어느 배치의 기대 경로도 `P/` 로 시작하지 않을 때만, 반복.
+// 뗄 때마다 남은 이름을 정규형으로 다시 검사한다(`app/C:/…` 의 드러난 드라이브 접두) — 걸리면 { bad } (그 zip 은 대조 불가)
+function stripPrefix(entries, deployList) {
+  let list = entries;
+  let prefix = '';
+  for (;;) {
+    const top = list.length ? list[0].name.split('/')[0] : '';
+    if (!top || RESERVED_TOP.has(top.toLowerCase())) break;
+    const wrap = `${top}/`;
+    const rest = list.filter((e) => e.name !== wrap);
+    if (!rest.length || !rest.every((e) => e.name.startsWith(wrap)) || !rest.some((e) => !e.name.endsWith('/'))) break;
+    if (deployList.some((p) => LAYOUTS.some((l) => zipPathFor(l, p).zip.startsWith(wrap)))) break;
+    list = rest.map((e) => ({ ...e, name: e.name.slice(wrap.length) }));
+    prefix += wrap;
+    const bad = list.find((e) => notCanonical(e.name));
+    if (bad) return { list, prefix, bad: bad.name };
+  }
+  return { list, prefix, bad: null };
+}
+// 목록 대조(②) — 배치 L 로 이 zip 의 파일 항목을 기대와 맞춘다
+function listCheck(layout, deployList, files) {
+  const { map } = expectedMap(layout, deployList);
+  const names = new Set(files.map((e) => e.name));
+  const covered = new Set();
+  for (const [zp, exp] of map) if (exp && names.has(zp)) covered.add(exp.source);
+  const missing = [...map].filter(([zp, exp]) => exp && !names.has(zp));
+  const extra = files.filter((e) => !lookupIn(layout, map, e.name).hit).map((e) => e.name).sort();
+  return { map, covered, missing, extra };
+}
+// 배치 판별(D57·D58·D64) — 접두 뗀 파일 항목의 첫 조각: WEB-INF·META-INF = WAR 표지 · src = 소스 표지. 둘 다면 혼합(null), 둘 다 없으면 기대 목록 시험 → 힌트 → source
+function judgeLayout(files, deployList, hint) {
+  const tops = new Set(files.map((e) => e.name.split('/')[0]));
+  const war = tops.has('WEB-INF') || tops.has('META-INF');
+  const src = tops.has('src');
+  if (war && src) return { layout: null, layout_source: 'signature', ambiguous: true };
+  if (war || src) return { layout: war ? 'maven-war' : 'source', layout_source: 'signature' };
+  const zero = LAYOUTS.filter((l) => { const c = listCheck(l, deployList, files); return c.missing.length + c.extra.length === 0; });
+  if (zero.length === 1) return { layout: zero[0], layout_source: 'probe' };
+  if (zero.length === 2) return { layout: 'source', layout_source: 'probe' };
+  return { layout: hint.layout, layout_source: hint.source };
+}
+
 export function deploy({ adapter, work }) {
   const mr = JSON.parse(fs.readFileSync(path.join(work, 'mr.json'), 'utf8'));
   const snap = JSON.parse(fs.readFileSync(path.join(work, 'snapshot.json'), 'utf8'));
   const check = JSON.parse(fs.readFileSync(path.join(work, 'check.json'), 'utf8'));
-  const layout = adapter.resolved?.projects?.[mr.project?.name]?.deployLayout || 'source';
-  const out = { applicable: false, reason: null, expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [], bytes_source: null, layout, bytes_skipped: [] }, bodyDeletedList: parseDeletedList(mr.description || ''), result: '해당 없음', mismatches: [] };
+  const hintKey = adapter.projects?.[mr.project?.name]?.deployLayout;
+  const hint = { layout: hintKey || adapter.resolved?.projects?.[mr.project?.name]?.deployLayout || 'source', source: hintKey ? 'adapter' : 'default' };
+  const out = { applicable: false, reason: null, expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [], bytes_source: null, layout: hint.layout, layout_source: hint.source, prefix: null, bytes_skipped: [] }, zips: [], bodyDeletedList: parseDeletedList(mr.description || ''), result: '해당 없음', mismatches: [] };
   const exempt = check.deployExempt === true || mr.project?.deployExempt === true;
   if (exempt) { out.reason = '어댑터 배포 제외 프로젝트'; return finish(work, out); }
   out.expected = expectedLists({ adapter, mr, snap });
@@ -295,94 +356,179 @@ export function deploy({ adapter, work }) {
   }
   out.applicable = true;
   const mm = out.mismatches;
+  const push = (m) => { if (!mm.some((x) => x.kind === m.kind && x.path === m.path && m.path !== null && x.detail === m.detail)) mm.push(m); };
+  const dl = out.expected.deploy;
+  let judged = [];   // 배치가 정해진 zip(②③ 대조 대상)
 
-  if (out.expected.deploy.length > 0) {
-    const zips = (check.attachments || []).filter((a) => a.kind === 'zip');
-    const att = zips.filter((a) => a.where === 'body').pop() || zips.pop() || null;
-    if (!att) { out.result = 'zip 누락'; }
+  if (dl.length > 0) {
+    // 본문 zip 전부(D60 — 같은 링크는 한 번), 없으면 댓글 zip 중 마지막 1개
+    const all = (check.attachments || []).filter((a) => a.kind === 'zip');
+    const seen = new Set();
+    const body = all.filter((a) => a.where === 'body').filter((a) => { const k = `${a.secret}/${a.filename}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    const atts = body.length ? body : all.slice(-1);
+    if (!atts.length) { out.result = 'zip 누락'; }
     else {
-      out.zip.attachment = att.filename;
-      let buf = null;
-      const name = uploadName(att);
-      if (!name) mm.push({ kind: 'download', path: null, detail: `첨부 파일명·경로가 안전하지 않아 조회하지 않음: ${String(att.filename).slice(0, 120)}` });
-      else {
+      const many = atts.length > 1;
+      // zip 식별 표기 — 1개면 지금처럼(파일명 없이·파일명만), 여럿이면 `zip#<순번> <파일명>`
+      const lab = (i) => (many ? `zip#${i + 1} ${atts[i].filename}` : `zip ${atts[i].filename}`);
+      const tag = (i, detail) => (many ? `${lab(i)}: ${detail}` : detail);
+      const zs = atts.map((att, i) => {
+        const zr = { attachment: att.filename, downloaded: false, comment_sha: null, entries: [], layout: null, layout_source: null, prefix: null, bytes_skipped: [] };
+        const st = { i, zr, z: null, files: [], all: [], commentOk: false, hasComment: false };
+        const name = uploadName(att);
+        let buf = null;
+        if (!name) { mm.push({ kind: 'download', path: null, detail: tag(i, `첨부 파일명·경로가 안전하지 않아 조회하지 않음: ${String(att.filename).slice(0, 120)}`) }); return st; }
         try {
           buf = apiRaw(`projects/${mr.project.id}/uploads/${att.secret}/${encodeURIComponent(name)}`);
           fs.mkdirSync(path.join(work, 'zip'), { recursive: true });
-          fs.writeFileSync(path.join(work, 'zip', name), buf);
-          out.zip.downloaded = true;
+          fs.writeFileSync(path.join(work, 'zip', many ? `${i + 1}-${name}` : name), buf);   // 같은 파일명 zip 둘을 덮어쓰지 않게 순번 접두(AC⑬-15)
+          zr.downloaded = true;
         } catch (e) {
-          mm.push({ kind: 'download', path: null, detail: `다운로드 실패: ${e.message.slice(0, 160)}` });
+          mm.push({ kind: 'download', path: null, detail: tag(i, `다운로드 실패: ${e.message.slice(0, 160)}`) });
+          return st;
+        }
+        try { st.z = readZip(buf); } catch (e) { mm.push({ kind: 'corrupt', path: null, detail: tag(i, `zip 판독 실패: ${e.message}`) }); return st; }
+        const cm = st.z.comment.trim().match(/[0-9a-f]{7,40}/);
+        zr.comment_sha = cm ? cm[0] : (st.z.comment.trim() || null);
+        st.hasComment = zr.comment_sha !== null;
+        st.commentOk = !!cm && snap.head_sha.startsWith(cm[0]);
+        const sp = stripPrefix(st.z.entries, dl);
+        zr.prefix = sp.prefix;
+        if (sp.bad) { mm.push({ kind: 'corrupt', path: null, detail: `${lab(i)}: 접두 ${sp.prefix} 를 떼자 정규형이 아닌 이름이 드러남(절대·드라이브 접두·역슬래시·빈 조각·./..): ${sp.bad}` }); st.z = null; return st; }
+        st.all = sp.list;
+        st.files = sp.list.filter((e) => !e.name.endsWith('/'));
+        zr.entries = st.files.map((e) => e.name).sort();
+        const j = judgeLayout(st.files, dl, hint);
+        zr.layout_source = j.layout_source;
+        if (j.ambiguous) { mm.push({ kind: 'layout_ambiguous', path: null, detail: `${lab(i)}: WAR 표지(WEB-INF/·META-INF/)와 소스 표지(src/)가 함께 있음 — 배치를 정할 수 없음` }); return st; }
+        zr.layout = j.layout;
+        st.layout = j.layout;
+        return st;
+      });
+      const read = zs.filter((st) => st.z);
+      judged = read.filter((st) => st.layout);
+      // ① 주석 SHA — zip 1개면 현행(주석 없음 = 불일치), 여럿이면 「최소 한 zip」(D63): 일치하는 zip 이 있으면 주석이 있는데 다른 zip 만 불일치, 없으면 불일치 1건
+      if (!many) { for (const st of read) if (!st.commentOk) mm.push({ kind: 'comment_sha', path: null, detail: `zip 주석 ${st.zr.comment_sha ?? '(없음)'} ≠ head ${snap.head_sha}` }); }
+      else if (read.length) {
+        if (read.some((st) => st.commentOk)) { for (const st of read) if (st.hasComment && !st.commentOk) mm.push({ kind: 'comment_sha', path: null, detail: `${lab(st.i)}: zip 주석 ${st.zr.comment_sha} ≠ head ${snap.head_sha}` }); }
+        else mm.push({ kind: 'comment_sha', path: null, detail: `head 와 일치하는 zip 주석 없음 — ${read.map((st) => `${lab(st.i)} 주석 ${st.zr.comment_sha ?? '(없음)'}`).join(' · ')} ≠ head ${snap.head_sha}` });
+      }
+      // 기대 사상(배치별) — 두 소스가 같은 zip 경로로 사상되면 어느 원문과 비교할지 정할 수 없어 map_conflict(대조 불가 — fail-closed)
+      const maps = new Map();
+      for (const st of judged) if (!maps.has(st.layout)) { const em = expectedMap(st.layout, dl); maps.set(st.layout, em.map); for (const [zp, list] of em.conflicts) push({ kind: 'map_conflict', path: zp, detail: `소스 두 경로가 같은 배포 경로로 사상됨: ${list.map((x) => x.source).join(', ')}` }); }
+      // ② 목록 — 기대 경로는 어느 zip 에서든 충족(D60). 대조하지 못한 zip(손상·혼합·다운로드 실패)이 있으면 그 zip 에 있었을 경로를 「누락」으로 단정하지 않는다
+      const checks = judged.map((st) => ({ st, c: listCheck(st.layout, dl, st.files) }));
+      if (judged.length === zs.length) {
+        const covered = new Set(checks.flatMap(({ c }) => [...c.covered]));
+        const layouts = [...new Set(judged.map((st) => st.layout))];
+        for (const p of dl) {
+          if (covered.has(p)) continue;
+          const zps = [...new Set(layouts.filter((l) => maps.get(l).get(zipPathFor(l, p).zip)).map((l) => zipPathFor(l, p).zip))];
+          if (!zps.length) continue;   // map_conflict 경로
+          mm.push({ kind: 'missing_in_zip', path: p, detail: zps.length === 1 && zps[0] === p ? '배포 목록에 있으나 zip 에 없음' : `배포 목록에 있으나 zip 에 없음(기대 경로 ${zps.join(' · ')})` });
         }
       }
-      let z = null;
-      if (buf) {
-        try { z = readZip(buf); } catch (e) { mm.push({ kind: 'corrupt', path: null, detail: `zip 판독 실패: ${e.message}` }); }
-      }
-      if (z) {
-        const cm = z.comment.trim().match(/[0-9a-f]{7,40}/);
-        out.zip.comment_sha = cm ? cm[0] : (z.comment.trim() || null);
-        if (!cm || !snap.head_sha.startsWith(cm[0])) mm.push({ kind: 'comment_sha', path: null, detail: `zip 주석 ${out.zip.comment_sha ?? '(없음)'} ≠ head ${snap.head_sha}` });
-        const files = z.entries.filter((e) => !e.name.endsWith('/'));
-        out.zip.entries = files.map((e) => e.name).sort();
-        // 기대 사상(1.3.2 ⑨) — zip 경로 → { source, compare }. 두 소스가 같은 zip 경로로 사상되면 어느 원문과 비교할지 정할 수 없어 map_conflict(대조 불가 — fail-closed)
-        const bySrc = new Map();
-        for (const p of out.expected.deploy) { const t = zipPathFor(layout, p); if (!bySrc.has(t.zip)) bySrc.set(t.zip, []); bySrc.get(t.zip).push({ source: p, compare: t.compare }); }
-        const expectedZip = new Map();
-        for (const [zp, list] of bySrc) {
-          if (list.length > 1) { mm.push({ kind: 'map_conflict', path: zp, detail: `소스 두 경로가 같은 배포 경로로 사상됨: ${list.map((x) => x.source).join(', ')}` }); expectedZip.set(zp, null); }
-          else expectedZip.set(zp, list[0]);
+      for (const { st, c } of checks) for (const n of c.extra) mm.push({ kind: 'extra_in_zip', path: n, detail: tag(st.i, 'zip 에 있으나 배포 목록에 없음') });
+      // zip 사이 충돌(여럿일 때만 — 한 zip 안은 readZip 이 거부) — (가) 같은 키(끝 `/` 뗀 소문자)인데 둘 다 폴더도, 이름이 정확히 같은 파일 둘도 아님 (나) 한 zip 의 파일 키가 다른 zip 항목 키의 상위 조각(R1-2)
+      const handled = new Set();   // 같은 경로가 여러 zip 에 있을 때 대조는 첫 zip 의 항목으로 한 번만(D60)
+      if (many) {
+        const keyed = new Map();
+        const fileKeys = new Map();
+        for (const st of read) for (const e of st.all) {
+          const key = e.name.replace(/\/$/, '').toLowerCase();
+          if (!keyed.has(key)) keyed.set(key, []);
+          keyed.get(key).push({ st, e });
+          if (!e.name.endsWith('/')) { if (!fileKeys.has(key)) fileKeys.set(key, []); fileKeys.get(key).push({ st, e }); }
         }
-        // zip 항목 → 기대 항목: 이름 그대로 먼저, 없으면(maven-war) 내부 클래스를 바깥 클래스의 존재 대조 항목으로
-        const lookup = (name) => {
-          if (expectedZip.has(name)) return { hit: true, exp: expectedZip.get(name) };
-          const outer = layout === 'maven-war' ? findOuterClass(name, (o) => expectedZip.get(o)?.compare === 'exists') : null;
-          if (outer) return { hit: true, exp: { ...expectedZip.get(outer), inner: true } };
-          return { hit: false, exp: null };
-        };
-        const inZip = new Set(out.zip.entries);
-        for (const [zp, exp] of expectedZip) if (exp && !inZip.has(zp)) mm.push({ kind: 'missing_in_zip', path: exp.source, detail: zp === exp.source ? '배포 목록에 있으나 zip 에 없음' : `배포 목록에 있으나 zip 에 없음(기대 경로 ${zp})` });
-        for (const p of out.zip.entries) if (!lookup(p).hit) mm.push({ kind: 'extra_in_zip', path: p, detail: 'zip 에 있으나 배포 목록에 없음' });
-        // 컴파일 산출물(compare: exists) — 일반 파일인지만 보고 바이트·git 유형 대조는 건너뛴다(D38). 판독(CRC)은 한다. mismatches 가 아니라 bytes_skipped 에 적는다
+        const conflict = (a, b) => push({ kind: 'zip_conflict', path: b.e.name, detail: `${lab(a.st.i)} 의 ${a.e.name} 와 ${lab(b.st.i)} 의 ${b.e.name} 가 풀 때 충돌(대소문자·파일/폴더) — 함께 배포할 수 없음` });
+        for (const list of keyed.values()) {
+          for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
+            const a = list[x];
+            const b = list[y];
+            if (a.st === b.st) continue;
+            const dirA = a.e.name.endsWith('/');
+            const dirB = b.e.name.endsWith('/');
+            if (dirA && dirB) continue;
+            if (!dirA && !dirB && a.e.name === b.e.name) continue;   // 같은 경로 규칙(아래)
+            conflict(a, b);
+          }
+        }
+        for (const st of read) for (const e of st.all) {
+          const segs = e.name.replace(/\/$/, '').toLowerCase().split('/');
+          for (let k = 1; k < segs.length; k++) for (const f of fileKeys.get(segs.slice(0, k).join('/')) || []) if (f.st !== st) conflict(f, { st, e });
+        }
+        // 같은 zip 경로 다른 바이트 = zip_conflict(존재 대조 항목 .class 포함 — D66). 같은 바이트면 첫 zip 의 항목으로 한 번만 대조한다
+        const byName = new Map();
+        for (const st of judged) for (const e of st.files) { if (!byName.has(e.name)) byName.set(e.name, []); byName.get(e.name).push({ st, e }); }
+        for (const [n, list] of byName) {
+          if (list.length < 2) continue;
+          const bufs = [];
+          for (const it of list) { try { bufs.push(it.st.z.read(it.e)); } catch (err) { push({ kind: 'corrupt', path: n, detail: tag(it.st.i, err.message) }); bufs.push(null); } }
+          for (let x = 1; x < list.length; x++) if (bufs[0] && bufs[x] && !bufs[0].equals(bufs[x])) push({ kind: 'zip_conflict', path: n, detail: `${lab(list[0].st.i)} 와 ${lab(list[x].st.i)} 의 같은 경로 내용이 다름 — 어느 쪽이 배포될지 정할 수 없음` });
+          for (const it of list.slice(1)) handled.add(it.e);
+        }
+      }
+      // ③ 항목별 대조 — 컴파일 산출물(compare: exists)은 일반 파일인지만 보고 바이트·git 유형 대조는 건너뛴다(D38, 판독(CRC)은 한다). bytes_skipped 는 그 소스가 어느 zip 에서도 바이트 대조되지 않은 것만(D60)
+      const skippedBy = new Map();
+      const compared = new Set();
+      out.zip.bytes_source = read.length ? (snap.mode === 'worktree' ? 'worktree' : 'blobs') : null;
+      const headRoot = path.join(work, 'blobs', 'head');
+      const unrecovered = new Set(snap.unrecovered || []);
+      for (const { st } of checks) {
+        const map = maps.get(st.layout);
         const skipped = [];
         const toCompare = [];
-        for (const e of files) {
-          const { exp } = lookup(e.name);
+        for (const e of st.files) {
+          if (handled.has(e)) continue;
+          const { exp } = lookupIn(st.layout, map, e.name);
           if (!exp) continue;
           if (exp.compare === 'exists') {
-            if (e.type !== 'file') { mm.push({ kind: 'type', path: e.name, detail: `컴파일 산출물 zip 항목 유형 ${e.type} — 일반 파일만 인정` }); continue; }
-            try { z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: e.name, detail: err.message }); continue; }
-            skipped.push(e.name);
+            if (e.type !== 'file') { mm.push({ kind: 'type', path: e.name, detail: tag(st.i, `컴파일 산출물 zip 항목 유형 ${e.type} — 일반 파일만 인정`) }); continue; }
+            try { st.z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: e.name, detail: tag(st.i, err.message) }); continue; }
+            skipped.push({ name: e.name, source: exp.source });
           } else toCompare.push({ e, src: exp.source });
         }
-        out.zip.bytes_skipped = skipped.sort();
-        out.zip.bytes_source = snap.mode === 'worktree' ? 'worktree' : 'blobs';
-        if (snap.mode === 'worktree') {
-          for (const { e, src } of toCompare) {
+        skippedBy.set(st, skipped);
+        for (const { e, src } of toCompare) {
+          compared.add(src);
+          if (snap.mode === 'worktree') {
             const gt = gitType(snap.checkout, snap.head_sha, src);
-            if (e.type !== gt) { mm.push({ kind: 'type', path: src, detail: `zip 항목 유형 ${e.type} ≠ head 의 git 유형 ${gt}` }); continue; }
+            if (e.type !== gt) { mm.push({ kind: 'type', path: src, detail: tag(st.i, `zip 항목 유형 ${e.type} ≠ head 의 git 유형 ${gt}`) }); continue; }
             let zb;
-            try { zb = z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: src, detail: err.message }); continue; }
+            try { zb = st.z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: src, detail: tag(st.i, err.message) }); continue; }
             const gb = gitShow(snap.checkout, snap.head_sha, src);
-            if (!gb || !gb.equals(zb)) mm.push({ kind: 'bytes', path: src, detail: `git show ${snap.head_sha.slice(0, 7)}:${src} 와 바이트 불일치` });
-          }
-        } else {
-          // diff-only(1.3.1 ③ — spec 2026-10-22 3.③) — collect 가 받은 head 원문 `W/blobs/head/` 와 대조한다. 유형은 zip 쪽만 본다(일반 파일만 대조 — tree API 유형 대조는 안 함, D22).
-          // 원문을 못 받은 경로(unrecovered·blob 없음)는 경로별 대조 불가. blob 경로는 복원 루트 안으로만 해소한다(경로는 소스 경로 — 1.3.2 ⑨ 매핑 뒤에도 같다)
-          const headRoot = path.join(work, 'blobs', 'head');
-          const unrecovered = new Set(snap.unrecovered || []);
-          for (const { e, src } of toCompare) {
-            if (e.type !== 'file') { mm.push({ kind: 'type', path: src, detail: `diff-only — zip 항목 유형 ${e.type} 확인 불가(일반 파일만 대조)` }); continue; }
+            if (!gb || !gb.equals(zb)) mm.push({ kind: 'bytes', path: src, detail: tag(st.i, `git show ${snap.head_sha.slice(0, 7)}:${src} 와 바이트 불일치`) });
+          } else {
+            // diff-only(1.3.1 ③ — spec 2026-10-22 3.③) — collect 가 받은 head 원문 `W/blobs/head/` 와 대조한다. 유형은 zip 쪽만 본다(일반 파일만 대조 — tree API 유형 대조는 안 함, D22).
+            // 원문을 못 받은 경로(unrecovered·blob 없음)는 경로별 대조 불가. blob 경로는 복원 루트 안으로만 해소한다(경로는 소스 경로 — 1.3.2 ⑨ 매핑 뒤에도 같다)
+            if (e.type !== 'file') { mm.push({ kind: 'type', path: src, detail: tag(st.i, `diff-only — zip 항목 유형 ${e.type} 확인 불가(일반 파일만 대조)`) }); continue; }
             const blob = insideRoot(headRoot, src);
-            if (unrecovered.has(src) || !blob || !fs.lstatSync(blob, { throwIfNoEntry: false })?.isFile()) { mm.push({ kind: 'bytes_unavailable', path: src, detail: 'head 원문 미확보 — 바이트 대조 불가' }); continue; }
+            if (unrecovered.has(src) || !blob || !fs.lstatSync(blob, { throwIfNoEntry: false })?.isFile()) { push({ kind: 'bytes_unavailable', path: src, detail: 'head 원문 미확보 — 바이트 대조 불가' }); continue; }
             let zb;
-            try { zb = z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: src, detail: err.message }); continue; }
-            if (!fs.readFileSync(blob).equals(zb)) mm.push({ kind: 'bytes', path: src, detail: `blobs/head/${src}와 바이트 불일치` });
+            try { zb = st.z.read(e); } catch (err) { mm.push({ kind: 'corrupt', path: src, detail: tag(st.i, err.message) }); continue; }
+            if (!fs.readFileSync(blob).equals(zb)) mm.push({ kind: 'bytes', path: src, detail: tag(st.i, `blobs/head/${src}와 바이트 불일치`) });
           }
         }
+      }
+      for (const [st, list] of skippedBy) st.zr.bytes_skipped = list.filter((x) => !compared.has(x.source)).map((x) => x.name).sort();
+      // 합산 요약(SC-3 zip — 기존 소비자 불변) + zip 별 상세 zips[]
+      out.zips = zs.map((st) => st.zr);
+      out.zip.attachment = atts.map((a) => a.filename).join(', ');
+      out.zip.downloaded = zs.every((st) => st.zr.downloaded);
+      out.zip.comment_sha = many ? (read.find((st) => st.commentOk)?.zr.comment_sha ?? null) : zs[0].zr.comment_sha;
+      out.zip.entries = [...new Set(zs.flatMap((st) => st.zr.entries))].sort();
+      out.zip.bytes_skipped = [...new Set(zs.flatMap((st) => st.zr.bytes_skipped))].sort();
+      out.zip.prefix = many ? null : zs[0].zr.prefix;
+      if (judged.length) {
+        const ls = new Set(judged.map((st) => st.layout));
+        const ss = new Set(judged.map((st) => st.zr.layout_source));
+        out.zip.layout = ls.size === 1 ? [...ls][0] : 'mixed';
+        out.zip.layout_source = ls.size === 1 && ss.size === 1 ? [...ss][0] : 'mixed';
       }
     }
   }
+  // ④ 삭제 목록의 정규화 배치 L4(D59·D60) — 대조한 zip 중 하나라도 maven-war 면 maven-war(WAR·소스 꼴 표기 모두 수용), 전부 source 면 source, 대조한 zip 이 없으면(삭제 전용·zip 누락·혼합뿐) 어댑터 힌트
+  const layout = judged.length ? (judged.some((st) => st.layout === 'maven-war') ? 'maven-war' : 'source') : hint.layout;
   // ④ 삭제 목록은 기대가 비어 있어도 항상 집합 비교(순서 무관) — 본문에만 있는 삭제 지시(기대에 없는 경로)는 배포자가 정상 파일을 지우게 하므로 불일치다.
   // 1.3.2 ⑨ — 양쪽을 zip 경로로 정규화(소스 접두는 매핑 · 이미 zip 경로 꼴은 그대로)한 뒤 비교한다. detail 에는 원문을 적는다.
   // 내부 클래스(maven-war)는 ② 와 같은 2단계 — 본문 이름 그대로 먼저, 없을 때만 삭제한 .java 의 산출물(compare: exists)인 바깥 클래스로 본다(`$` 든 리소스·`Foo$Bar.java` 의 고유 이름을 합치지 않는다 — R1-1)
@@ -412,7 +558,7 @@ export function deploy({ adapter, work }) {
     if (!same) mm.push({ kind: 'deleted_list', path: null, detail: `삭제 목록 불일치 — 기대 [${out.expected.deleted.join(', ') || '없음'}] / 본문 [${out.bodyDeletedList.join(', ') || '없음'}]` });
   }
   if (out.result !== 'zip 누락') {
-    if (mm.some((m) => m.kind === 'download' || m.kind === 'corrupt' || m.kind === 'bytes_unavailable' || m.kind === 'map_conflict')) out.result = '대조 불가';
+    if (mm.some((m) => m.kind === 'download' || m.kind === 'corrupt' || m.kind === 'bytes_unavailable' || m.kind === 'map_conflict' || m.kind === 'layout_ambiguous' || m.kind === 'zip_conflict')) out.result = '대조 불가';
     else out.result = mm.length ? '불일치' : '일치';
   }
   return finish(work, out);

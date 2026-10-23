@@ -50,7 +50,7 @@ export function validate(cfg) {
   for (const [name, p] of Object.entries(cfg.projects || {})) {
     if (!p || !Number.isInteger(p.id)) missing.push(`projects.${name}.id`);
     if (!p || typeof p.path !== 'string') missing.push(`projects.${name}.path`);
-    // 배포본 zip 배치(1.3.2 ⑨ — spec 2026-10-22 3.⑨ D37) — 선택 키, 없으면 source(소스 경로 그대로). 매핑 표는 deploy.mjs 내장 프리셋
+    // 배포본 zip 배치(1.3.2 ⑨ — spec 2026-10-22 3.⑨ D37 → 1.3.3 D59) — 선택 키, 없으면 source. 의미 = zip 표지로 판별 못 할 때의 기본값(힌트)·zip 없는 ④ 의 배치(프로젝트 고정이 아니다). 매핑 표는 deploy.mjs 내장 프리셋
     if (p && p.deployLayout !== undefined && !DEPLOY_LAYOUTS.includes(p.deployLayout)) missing.push(`projects.${name}.deployLayout(${DEPLOY_LAYOUTS.map((l) => `"${l}"`).join('|')})`);
   }
   if (Array.isArray(cfg.policy?.acceptedIds) && cfg.policy.acceptedIds.length === 0) missing.push('policy.acceptedIds(비어 있음)');
