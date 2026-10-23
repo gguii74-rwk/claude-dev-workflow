@@ -1120,3 +1120,10 @@ test('cleanup: W 안의 root-before.txt 는 허용 9종 밖이라 extra 로 지�
   assert.ok(!existsSync(join(work, 'root-before.txt')));
 });
 
+test('SKILL.md §5 경로 감시 한계: companion 로그 96자·`...`·잘린 명령 n건 · §8 터미널 요약 「경로 감시 한계: 잘린 명령 n건」 (1.3.3 AC⑮-1·⑮-2 · D54)', () => {
+  const skill = skillText();
+  const item = skill.split('\n').find((l) => l.startsWith('- **경로 감시**'));
+  for (const s of ['96자', '`...`', '한계', '잘린 명령']) assert.ok(item.includes(s), s);
+  assert.ok(s8Of(skill).split('\n').find((l) => l.startsWith('- **터미널 요약')).includes('경로 감시 한계: 잘린 명령 n건'));
+  assert.ok(!sectionOf(skill, '## 8.', '## 9.').includes('헤더에 「경로 감시 한계'));
+});
