@@ -1466,6 +1466,14 @@ test('computeVerdict fail-closed: 없는 id · DEFECT 의 coveredBy 는 무시�
   assert.deepEqual(d.merged, []);
   assert.equal(d.verdict, 'CHANGES_REQUESTED');
   assert.ok(d.reasons.some((r) => r === 'coveredBy 무시: F1 → type DEFECT'), JSON.stringify(d.reasons));
+  // 배열이 아닌 coveredBy(형식 오류)도 「어긋남」 — 병합하지 않고 reasons 1줄(review-loop(impl) L-1 · 빌더 결정 ⑩)
+  for (const bad of ['M-contract-Base_SHA', { id: 'M-contract-Base_SHA' }, 1]) {
+    const s = V(findings([ME({ coveredBy: bad })]), { check: c2() });
+    assert.ok(s.evidence.includes('F1'));
+    assert.deepEqual(s.merged, []);
+    assert.ok(s.reasons.some((r) => r === 'coveredBy 무시: F1 → 형식 오류(배열 아님)'), JSON.stringify(s.reasons));
+  }
+  for (const none of [undefined, null, []]) assert.ok(!V(findings([ME({ coveredBy: none })]), { check: c2() }).reasons.some((r) => r.startsWith('coveredBy 무시')));
 });
 
 test('computeVerdict: 리뷰어 확인 전 미해결 후보는 병합하지 않는다 — 미확정·갈래 현행 · confirmed 뒤 재계산에서 병합 · dismissed 는 병합 아님 (1.3.5 AC④-9 · D111)', () => {
@@ -1595,6 +1603,17 @@ test('render 보완 문구 절 이름: 키 없음 = 「배경」 현행 바이�
   assert.doesNotMatch(sum, /「배경」에/);
   assert.equal(r({ why: true, what: true, section: '요약' }, ON), '');
   assert.ok(r({ why: false, what: false, source: 'none', section: null }, { contract: { backgroundSections: ['요약', '배경'] } }).includes('- 「요약」에 ① 왜'));
+});
+
+test('render 보완 문구: 절이 없을 때 쓰는 첫 별칭(어댑터 값)도 평탄화·가림을 거친다 — 줄바꿈 제목 주입·줄로 나뉜 비밀값 차단 (1.3.5 review-loop(impl) R1-1 · D88)', () => {
+  const r = (alias) => renderAd({ ...baseCheck(), reason: { why: false, what: false, source: 'none', text: '', section: null } }, { contract: { backgroundSections: [alias] } }).md;
+  for (const nl of ['\n', '\r', '\u0085', '\u2028', '\u2029']) {
+    const md = r(`요약${nl}## FORGED-APPROVAL${nl}`);
+    assert.doesNotMatch(md, /^## FORGED-APPROVAL/m, JSON.stringify(nl));
+    assert.ok(supOf(md).includes('- 「요약 ## FORGED-APPROVAL 」에 ① 왜'), supOf(md));
+  }
+  const sec = r('요약 --password\nDEMO-VALUE');
+  assert.doesNotMatch(sec, /DEMO-VALUE/);
 });
 
 test('review-loop description 에 「남의 MR 은 mr-review」 안내 · mr-review description 의 「that is review-loop」 유지 (1.3.5 AC-A-1 · D97)', () => {
