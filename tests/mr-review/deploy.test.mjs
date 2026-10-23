@@ -818,9 +818,11 @@ test('maven-war: `Foo$Bar.java` 의 내부 클래스 `Foo$Bar$1.class` 는 가�
   const a = warDeploy(join(root, 'r1'), adapter, { repo: r1, entries: [{ name: `${CLS}Foo$Bar.class`, data: Buffer.from('a') }, { name: `${CLS}Foo$Bar$1.class`, data: Buffer.from('b') }] });
   assert.equal(a.r.first, 'DEPLOY 일치', JSON.stringify(a.d.mismatches));
   assert.deepEqual(a.d.zip.bytes_skipped, [`${CLS}Foo$Bar$1.class`, `${CLS}Foo$Bar.class`]);
-  const r2 = warRepo(join(root, 'r2'), { baseFiles: FB, del: Object.keys(FB) });
+  // 1.3.3 S1(AC⑬-11 예외) — head 에 Foo.java 가 살아 있으면 Foo$Bar$1.class 는 그 산출물일 수 있어 「대조 불가」(AC-S1-6). 접기 의도를 보도록 head 에서 Foo.java 를 뺀다
+  const { ['src/main/java/com/example/acct/Foo.java']: _foo, ...noFoo } = WAR4;
+  const r2 = warRepo(join(root, 'r2'), { add: noFoo, baseFiles: FB, del: Object.keys(FB) });
   const body = `## 배포·롤백\n- 배포본: [d.zip](/uploads/x/d.zip)\n  - 삭제: ${CLS}Foo$Bar.class\n  - 삭제: ${CLS}Foo$Bar$1.class\n`;
-  const b = warDeploy(join(root, 'r2'), adapter, { repo: r2, entries: warEntries(), description: body, name: 'w2' });
+  const b = warDeploy(join(root, 'r2'), adapter, { repo: r2, entries: warEntries({ [`${CLS}Foo.class`]: null, [`${CLS}Foo$1.class`]: null }), description: body, name: 'w2' });
   assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
 });
 
@@ -1105,4 +1107,78 @@ test('⑬ 기존 고정 배치 픽스처는 표지로 같은 배치가 잡힌다
   assert.equal(runCli(['deploy', '--adapter', adapter2, '--work', work], fakeGlab(root2, [{ match: `^api projects/101/uploads/${SECRET}/d\\.zip$`, file: zip }]).env).first, 'DEPLOY 일치');
   const d2 = readJson(join(work, 'deploy.json'));
   assert.deepEqual([d2.zip.layout, d2.zip.layout_source, d2.zip.prefix, d2.zips.length], ['source', 'signature', '', 1]);
+});
+
+// ── 1.3.3 S1 내부 클래스 접기 전 head 트리 조회 (spec 2026-10-23 3.S1 D61 · R1-1·R2-1·R5-1·C1-N1) ──
+const PKG = 'com/example/acct/';
+const delBody = (items) => `## 배포·롤백\n- 배포본: 삭제만\n${items.map((i) => `  - 삭제: ${i}\n`).join('')}`;
+// base = baseFiles, MR = del 삭제(+ add) — zip 없는 삭제 MR(어댑터 maven-war 힌트로 ④ 정규화)
+function s1Deploy(baseFiles, del, items, { add = {}, mode = 'worktree', quotePath = false } = {}) {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: WAR_PROJECT });
+  const repo = warRepo(root, { add, baseFiles, del });
+  if (quotePath) git(repo.checkout, 'config', 'core.quotePath', 'true');
+  const diffs = mode === 'diff-only' ? del.map((p) => ({ old_path: p, new_path: p, new_file: false, renamed_file: false, deleted_file: true })) : [];
+  return zipsDeploy(root, adapter, { repo, zips: [], mode, diffs, description: delBody(items) });
+}
+const mcOf = (d, p) => d.mismatches.find((m) => m.kind === 'map_conflict' && m.path === p);
+
+test('S1 워크트리: 접을 내부 클래스 이름이 head 의 리소스(MR 이 안 건드림)로 살아 있으면 map_conflict(detail 에 head 경로) → 대조 불가 (1.3.3 AC-S1-1)', () => {
+  const { r, d } = s1Deploy({ [J]: 'class Foo {}\n', [`src/main/resources/${PKG}Foo$X.class`]: 'res\n' }, [J], [`${CLS}Foo.class`, `${CLS}Foo$X.class`]);
+  assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+  const mc = mcOf(d, `${CLS}Foo$X.class`);
+  assert.ok(mc, JSON.stringify(d.mismatches));
+  assert.match(mc.detail, /삭제 지시가 head 의 실제 파일을 가리킴: src\/main\/resources\/com\/example\/acct\/Foo\$X\.class/);
+});
+
+test('S1 워크트리: head 에 그 이름이 없으면 접어서 일치(AC⑨-7 그대로) · Java 폴더 리소스·webapp WEB-INF/classes·살아 있는 Foo$X.java 후보도 각각 map_conflict (1.3.3 AC-S1-2)', () => {
+  const items = [`${CLS}Foo.class`, `${CLS}Foo$X.class`];
+  const ok = s1Deploy({ [J]: 'class Foo {}\n' }, [J], items);
+  assert.equal(ok.r.first, 'DEPLOY 일치', JSON.stringify(ok.d.mismatches));
+  for (const cand of [`src/main/java/${PKG}Foo$X.class`, `src/main/webapp/WEB-INF/classes/${PKG}Foo$X.class`, `src/main/java/${PKG}Foo$X.java`]) {
+    const { r, d } = s1Deploy({ [J]: 'class Foo {}\n', [cand]: 'x\n' }, [J], items);
+    assert.equal(r.first, 'DEPLOY 대조 불가', cand);
+    assert.ok(mcOf(d, `${CLS}Foo$X.class`)?.detail.includes(cand), `${cand} ${JSON.stringify(d.mismatches)}`);
+  }
+});
+
+test('S1 diff-only: 접기가 성립하는 본문은 head 확인 불가로 map_conflict(대조 불가) · 내부 클래스를 적지 않은 본문은 일치 (1.3.3 AC-S1-3)', () => {
+  const a = s1Deploy({ [J]: 'class Foo {}\n' }, [J], [`${CLS}Foo.class`, `${CLS}Foo$X.class`], { mode: 'diff-only' });
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  assert.match(mcOf(a.d, `${CLS}Foo$X.class`)?.detail || '', /diff-only/);
+  const b = s1Deploy({ [J]: 'class Foo {}\n' }, [J], [`${CLS}Foo.class`], { mode: 'diff-only' });
+  assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
+});
+
+test('S1: 중간 바깥 클래스(Foo$Bar.java)가 head 에 살아 있으면 Foo$Bar$1.class 를 Foo.class 로 접지 않는다 · 없으면 일치 · Foo$Bar.java 도 지우면 Foo$Bar.class 로 접혀 일치 (1.3.3 AC-S1-5 · R1-1)', () => {
+  const FB = `src/main/java/${PKG}Foo$Bar.java`;
+  const a = s1Deploy({ [J]: 'class Foo {}\n', [FB]: 'class Foo$Bar {}\n' }, [J], [`${CLS}Foo.class`, `${CLS}Foo$Bar$1.class`]);
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  assert.ok(mcOf(a.d, `${CLS}Foo$Bar$1.class`)?.detail.includes(FB), JSON.stringify(a.d.mismatches));
+  const b = s1Deploy({ [J]: 'class Foo {}\n' }, [J], [`${CLS}Foo.class`, `${CLS}Foo$Bar$1.class`]);
+  assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
+  const c = s1Deploy({ [J]: 'class Foo {}\n', [FB]: 'class Foo$Bar {}\n' }, [J, FB], [`${CLS}Foo.class`, `${CLS}Foo$Bar.class`, `${CLS}Foo$Bar$1.class`]);
+  assert.equal(c.r.first, 'DEPLOY 일치', JSON.stringify(c.d.mismatches));
+});
+
+test('S1: 짧은 쪽 바깥 소스(Foo.java)가 head 에 살아 있으면 Foo$Bar.java 삭제 MR 의 Foo$Bar$1.class 도 접지 않는다 (1.3.3 AC-S1-6 · R2-1)', () => {
+  const FB = `src/main/java/${PKG}Foo$Bar.java`;
+  const { r, d } = s1Deploy({ [J]: 'class Foo {}\n', [FB]: 'class Foo$Bar {}\n' }, [FB], [`${CLS}Foo$Bar.class`, `${CLS}Foo$Bar$1.class`]);
+  assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+  assert.ok(mcOf(d, `${CLS}Foo$Bar$1.class`)?.detail.includes(J), JSON.stringify(d.mismatches));
+  // 이름이 `$` 로 시작해도 경계 전부(위치 0 제외)를 본다 — findOuterClass 는 `$Foo$1.class` 를 `$Foo.class` 로 접는다
+  const DJ = `src/main/java/${PKG}$Foo.java`;
+  const e = s1Deploy({ [DJ]: 'class $Foo {}\n', [`src/main/java/${PKG}$Foo$Bar.java`]: 'x\n' }, [`src/main/java/${PKG}$Foo$Bar.java`], [`${CLS}$Foo$Bar.class`, `${CLS}$Foo$Bar$1.class`]);
+  assert.equal(e.r.first, 'DEPLOY 대조 불가', JSON.stringify(e.d.mismatches));
+  assert.ok(mcOf(e.d, `${CLS}$Foo$Bar$1.class`)?.detail.includes(DJ), JSON.stringify(e.d.mismatches));
+});
+
+test('S1: head 조회는 대소문자 무시(detail 에 head 의 실제 경로) · 비ASCII 경로도 core.quotePath=true 저장소에서 인용 없이 잡는다 (1.3.3 AC-S1-7 · R5-1·C1-N1)', () => {
+  const a = s1Deploy({ [J]: 'class Foo {}\n', [`src/main/resources/${PKG}Foo$x.class`]: 'res\n' }, [J], [`${CLS}Foo.class`, `${CLS}Foo$X.class`]);
+  assert.equal(a.r.first, 'DEPLOY 대조 불가', JSON.stringify(a.d.mismatches));
+  assert.ok(mcOf(a.d, `${CLS}Foo$X.class`)?.detail.includes(`src/main/resources/${PKG}Foo$x.class`), JSON.stringify(a.d.mismatches));
+  const KJ = 'src/main/java/한글/Foo.java';
+  const b = s1Deploy({ [KJ]: 'class Foo {}\n', 'src/main/resources/한글/Foo$x.class': 'res\n' }, [KJ], ['WEB-INF/classes/한글/Foo.class', 'WEB-INF/classes/한글/Foo$X.class'], { quotePath: true });
+  assert.equal(b.r.first, 'DEPLOY 대조 불가', JSON.stringify(b.d.mismatches));
+  assert.ok(mcOf(b.d, 'WEB-INF/classes/한글/Foo$X.class')?.detail.includes('src/main/resources/한글/Foo$x.class'), JSON.stringify(b.d.mismatches));
 });

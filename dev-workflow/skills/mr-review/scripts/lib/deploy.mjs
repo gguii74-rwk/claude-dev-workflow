@@ -538,7 +538,34 @@ export function deploy({ adapter, work }) {
     const expClasses = new Set(expMapped.filter((t) => t.compare === 'exists').map((t) => t.zip));
     // 내부 클래스는 바깥 클래스 삭제가 본문에 따로 있을 때만 그 추가 삭제로 접는다 — 내부 클래스만 적으면 바깥 .class 가 서버에 남는다(R4-2, 추천 자동 채택(위임))
     const bodyZip = new Set(out.bodyDeletedList.map((p) => zipPathFor(layout, p).zip));
-    const normBody = (p) => { const zp = zipPathFor(layout, p).zip; if (expDel.has(zp)) return zp; const outer = layout === 'maven-war' ? findOuterClass(zp, (o) => expClasses.has(o) && bodyZip.has(o)) : null; return outer || zp; };
+    // 접기 전 head 트리 조회(1.3.3 S1 — spec 2026-10-23 3.S1 D61) — 본문의 `Foo$X.class` 가 내부 클래스 산출물이 아니라 head 에 살아 있는 다른 파일(리소스·살아 있는 소스의 산출물)이면 접지 않고 map_conflict(대조 불가).
+    // 후보 = 역사상 고정 5 + `$` 경계 전부의 바깥 소스 .java(R1-1·R2-1). head 목록은 `ls-tree -r -z`(NUL 구분 — quotePath 인용 없음, C1-N1) 1회 캐시, 대소문자 무시 비교(R5-1). diff-only 는 트리 조회를 하지 않고 대조 불가(D22)
+    let headTree = null;
+    const headHit = (zp) => {
+      if (!headTree) { headTree = new Map(); for (const p of gitZ(snap.checkout, ['ls-tree', '-r', '-z', '--name-only', snap.head_sha])) { const k = p.toLowerCase(); if (!headTree.has(k)) headTree.set(k, p); } }
+      const cands = [`src/main/webapp/${zp}`, zp];
+      if (zp.startsWith(WAR_CLASSES)) {
+        const rest = zp.slice(WAR_CLASSES.length);
+        const m = rest.match(/^(.*\/)?([^/]+)\.class$/);
+        cands.push(`src/main/resources/${rest}`, `src/main/java/${rest}`);
+        if (m) {
+          const dir = m[1] || '';
+          cands.push(`src/main/java/${dir}${m[2]}.java`);
+          for (let k = m[2].indexOf('$', 1); k > 0; k = m[2].indexOf('$', k + 1)) cands.push(`src/main/java/${dir}${m[2].slice(0, k)}.java`);
+        }
+      }
+      return [...new Set(cands.map((c) => headTree.get(c.toLowerCase())).filter(Boolean))];
+    };
+    const normBody = (p) => {
+      const zp = zipPathFor(layout, p).zip;
+      if (expDel.has(zp)) return zp;
+      const outer = layout === 'maven-war' ? findOuterClass(zp, (o) => expClasses.has(o) && bodyZip.has(o)) : null;
+      if (!outer) return zp;
+      if (snap.mode !== 'worktree') { push({ kind: 'map_conflict', path: zp, detail: 'head 존재 확인 불가(diff-only) — 내부 클래스 삭제 지시를 확인할 수 없음' }); return zp; }
+      const hits = headHit(zp);
+      if (hits.length) { push({ kind: 'map_conflict', path: zp, detail: `삭제 지시가 head 의 실제 파일을 가리킴: ${hits.join(', ')}` }); return zp; }
+      return outer;
+    };
     // 배포 소스와 삭제 소스가 같은 zip 경로로 사상되면(소스 이동 resources → java 등) 삭제 지시가 새로 배포한 파일을 지운다 — map_conflict(대조 불가 — fail-closed, R2-1)
     const deployBy = new Map();
     for (const p of out.expected.deploy) { const zp = zipPathFor(layout, p).zip; if (!deployBy.has(zp)) deployBy.set(zp, []); deployBy.get(zp).push(p); }
