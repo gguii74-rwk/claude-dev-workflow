@@ -1075,3 +1075,13 @@ test('render: zips 2건이면 부록 A 에 zip 줄 2개(zip#n · 주석 7자|없
   assert.equal(machineEvidence({ check: {}, snapshot: {}, deploy: { applicable: true, result: '대조 불가', mismatches: [{ kind: 'layout_ambiguous', path: null, detail: 'x' }] } }).find((m) => m.id === 'M-deploy').detail, '배포본 대조 불가 — layout_ambiguous');
   assert.equal(mismatchSummary({ mismatches: [{ kind: 'zip_conflict', path: 'p1', detail: 'x' }, { kind: 'zip_conflict', path: 'p2', detail: 'y' }] }), 'zip_conflict 2건(p1, p2) · 전체 목록 부록 A');
 });
+
+// ── 1.3.3 ⑭ §6-5 · ⑯ 검토자 W 밖 쓰기 · ⑮ 경로 감시 한계 — SKILL.md 문구 (spec 2026-10-23 3.⑭-2·3.⑯·3.⑮) ──
+const s5Of = (skill) => skill.slice(skill.indexOf('## 5. 독립 병렬 검토'), skill.indexOf('## 6. 병합'));
+const s8Of = (skill) => skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
+test('SKILL.md §6-5: criterion = 수용기준·주장을 적은 첫 칸 원문 · 번호·ID 만이면 다음 칸 · 행 전체가 아니다 (1.3.3 AC⑭-4 · D67)', () => {
+  const skill = skillText();
+  const r5 = skill.slice(skill.indexOf('## 6. 병합'), skill.indexOf('## 7. 재리뷰')).split('\n').find((l) => l.startsWith('5. `intent`'));
+  for (const s of ['첫 칸', '수용기준', '행 전체가 아니', '번호·ID', '다음 칸']) assert.ok(r5.includes(s), s);
+});
+
