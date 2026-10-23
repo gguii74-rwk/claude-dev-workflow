@@ -833,3 +833,11 @@ test('PEM 비밀키 규칙은 줄 끝까지 가리는 규칙보다 먼저 돈다
   ]);
   assert.deepEqual(maskTextWithCounts('-----BEGIN PRIVATE KEY-----\nMIIx\n-----END PRIVATE KEY-----', []).residual, []);
 });
+
+test('단독 CR(옛 맥 줄바꿈) 뒤 잘린 PEM 본문도 가린다 — 마스킹 입구가 \\r\\n·\\r 을 모두 \\n 으로 통일 · 기존 \\r\\n·\\n 입력 결과 불변 (1.3.3 AC⑭-5 C2-N1, 추천 자동 채택(위임))', () => {
+  const m = maskText('-----BEGIN RSA PRIVATE KEY-----\rMIIEowIBAAKCAQEA\rxyz', []);
+  assert.doesNotMatch(m, /MIIEow|xyz/, JSON.stringify(m));
+  const lf = '앞\n-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n(… 생략)\n뒤 password: hunter2';
+  assert.equal(maskText(lf.replace(/\n/g, '\r\n'), []), maskText(lf, []));
+  assert.equal(maskTextWithCounts(lf, []).text, maskText(lf, []));
+});
