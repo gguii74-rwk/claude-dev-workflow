@@ -1186,11 +1186,18 @@ test('S1: 짧은 쪽 바깥 소스(Foo.java)가 head 에 살아 있으면 Foo$Ba
   const { r, d } = s1Deploy({ [J]: 'class Foo {}\n', [FB]: 'class Foo$Bar {}\n' }, [FB], [`${CLS}Foo$Bar.class`, `${CLS}Foo$Bar$1.class`]);
   assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
   assert.ok(mcOf(d, `${CLS}Foo$Bar$1.class`)?.detail.includes(J), JSON.stringify(d.mismatches));
-  // 이름이 `$` 로 시작해도 경계 전부(위치 0 제외)를 본다 — findOuterClass 는 `$Foo$1.class` 를 `$Foo.class` 로 접는다
+  // 이름이 `$` 로 시작해도 경계 전부(위치 0 포함 — review-loop(impl) R1-2)를 본다 — findOuterClass 는 `$Foo$1.class` 를 `$Foo.class` 로 접는다
   const DJ = `src/main/java/${PKG}$Foo.java`;
   const e = s1Deploy({ [DJ]: 'class $Foo {}\n', [`src/main/java/${PKG}$Foo$Bar.java`]: 'x\n' }, [`src/main/java/${PKG}$Foo$Bar.java`], [`${CLS}$Foo$Bar.class`, `${CLS}$Foo$Bar$1.class`]);
   assert.equal(e.r.first, 'DEPLOY 대조 불가', JSON.stringify(e.d.mismatches));
   assert.ok(mcOf(e.d, `${CLS}$Foo$Bar$1.class`)?.detail.includes(DJ), JSON.stringify(e.d.mismatches));
+  // 위치 0 경계의 바깥 이름은 빈 문자열 — 후보 `src/main/java/<dir>/.java` 가 head 에 있으면 접지 않는다(R1-2)
+  const ZJ = `src/main/java/${PKG}.java`;
+  const z = s1Deploy({ [ZJ]: 'class X {}\n', [`src/main/java/${PKG}$Foo.java`]: 'x\n' }, [`src/main/java/${PKG}$Foo.java`], [`${CLS}$Foo.class`, `${CLS}$Foo$1.class`]);
+  assert.equal(z.r.first, 'DEPLOY 대조 불가', JSON.stringify(z.d.mismatches));
+  assert.ok(mcOf(z.d, `${CLS}$Foo$1.class`)?.detail.includes(ZJ), JSON.stringify(z.d.mismatches));
+  const z2 = s1Deploy({ [`src/main/java/${PKG}$Foo.java`]: 'x\n' }, [`src/main/java/${PKG}$Foo.java`], [`${CLS}$Foo.class`, `${CLS}$Foo$1.class`]);
+  assert.equal(z2.r.first, 'DEPLOY 일치', JSON.stringify(z2.d.mismatches));
 });
 
 test('S1: head 조회는 대소문자 무시(detail 에 head 의 실제 경로) · 비ASCII 경로도 core.quotePath=true 저장소에서 인용 없이 잡는다 (1.3.3 AC-S1-7 · R5-1·C1-N1)', () => {

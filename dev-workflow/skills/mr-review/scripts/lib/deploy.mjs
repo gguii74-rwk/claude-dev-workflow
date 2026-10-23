@@ -542,7 +542,7 @@ export function deploy({ adapter, work }) {
     // 내부 클래스는 바깥 클래스 삭제가 본문에 따로 있을 때만 그 추가 삭제로 접는다 — 내부 클래스만 적으면 바깥 .class 가 서버에 남는다(R4-2, 추천 자동 채택(위임))
     const bodyZip = new Set(out.bodyDeletedList.map((p) => zipPathFor(layout, p).zip));
     // 접기 전 head 트리 조회(1.3.3 S1 — spec 2026-10-23 3.S1 D61) — 본문의 `Foo$X.class` 가 내부 클래스 산출물이 아니라 head 에 살아 있는 다른 파일(리소스·살아 있는 소스의 산출물)이면 접지 않고 map_conflict(대조 불가).
-    // 후보 = 역사상 고정 5 + `$` 경계 전부의 바깥 소스 .java(R1-1·R2-1). head 목록은 `ls-tree -r -z`(NUL 구분 — quotePath 인용 없음, C1-N1) 1회 캐시, 대소문자 무시 비교(R5-1). diff-only 는 트리 조회를 하지 않고 대조 불가(D22)
+    // 후보 = 역사상 고정 5 + `$` 경계 전부(위치 0 포함 — review-loop(impl) R1-2)의 바깥 소스 .java(R1-1·R2-1). head 목록은 `ls-tree -r -z`(NUL 구분 — quotePath 인용 없음, C1-N1) 1회 캐시, 대소문자 무시 비교(R5-1). diff-only 는 트리 조회를 하지 않고 대조 불가(D22)
     let headTree = null;
     const headHit = (zp) => {
       if (!headTree) { headTree = new Map(); for (const p of gitZ(snap.checkout, ['ls-tree', '-r', '-z', '--name-only', snap.head_sha])) { const k = p.toLowerCase(); if (!headTree.has(k)) headTree.set(k, p); } }
@@ -554,7 +554,7 @@ export function deploy({ adapter, work }) {
         if (m) {
           const dir = m[1] || '';
           cands.push(`src/main/java/${dir}${m[2]}.java`);
-          for (let k = m[2].indexOf('$', 1); k > 0; k = m[2].indexOf('$', k + 1)) cands.push(`src/main/java/${dir}${m[2].slice(0, k)}.java`);
+          for (let k = m[2].indexOf('$'); k >= 0; k = m[2].indexOf('$', k + 1)) cands.push(`src/main/java/${dir}${m[2].slice(0, k)}.java`);
         }
       }
       return [...new Set(cands.map((c) => headTree.get(c.toLowerCase())).filter(Boolean))];
