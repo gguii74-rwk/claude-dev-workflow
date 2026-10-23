@@ -1085,3 +1085,38 @@ test('SKILL.md §6-5: criterion = 수용기준·주장을 적은 첫 칸 원문 
   for (const s of ['첫 칸', '수용기준', '행 전체가 아니', '번호·ID', '다음 칸']) assert.ok(r5.includes(s), s);
 });
 
+test('SKILL.md §5 Claude 검토자 프롬프트: 임시 파일은 W/ 아래에만 · W 밖에는 쓰지 마라 (1.3.3 AC⑯-1)', () => {
+  const p = s5Of(skillText()).split('\n').find((l) => l.startsWith('**Claude 검토자**'));
+  assert.match(p, /`W\/` 아래에만/);
+  assert.match(p, /쓰지 마라/);
+});
+
+test('SKILL.md: root-before.txt 기록(§5)·비교(§8) · F7 줄 「W 밖 새 항목 n건」·이름 미출력·지우지 않는다 · 비교는 cleanup 앞 · §0 공통 종료 절차에 비교 단계, 조기 종료·--resolve 해당 없음 (1.3.3 AC⑯-2 · R6-2)', () => {
+  const skill = skillText();
+  assert.ok(s5Of(skill).includes('root-before.txt'));
+  const s8 = s8Of(skill);
+  assert.ok(s8.includes('root-before.txt'));
+  const f7 = s8.split('\n').find((l) => l.startsWith('- 종료 전 자가 점검'));
+  for (const s of ['W 밖 새 항목', '지우지 않는다', 'n건', '이름은 출력하지 않']) assert.ok(f7.includes(s), s);
+  assert.match(f7, /검토자 종료 확인 → 자가 점검 비교 → cleanup/);
+  const s0 = skill.slice(skill.indexOf('## 0. 전제 확인'), skill.indexOf('## 1. 작업 디렉터리'));
+  const end = s0.split('\n').find((l) => l.startsWith('**공통 종료 절차'));
+  assert.match(end, /「검토자 종료 확인」 → 「W 밖 새 항목 비교」[^\n]*→ `<CLI> cleanup/);
+  assert.match(end, /조기 종료[^\n]*`--resolve`[^\n]*해당 없음|`--resolve`[^\n]*조기 종료[^\n]*해당 없음/);
+  for (const t of [s5Of(skill), s8]) assert.doesNotMatch(t, /새 항목[^\n]{0,20}이름을 (적|보고|출력)한다/);
+  const blocks = (t) => [...t.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).filter((b) => b.includes('root-before.txt'));
+  assert.ok(blocks(s5Of(skill)).length === 1 && blocks(s8).length === 1);
+  assert.match(blocks(s8)[0], /wc -l/);                                                       // 셸 비교는 건수만 낸다
+});
+
+test('cleanup: W 안의 root-before.txt 는 허용 9종 밖이라 extra 로 지운다 (1.3.3 AC⑯-3)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  writeFileSync(join(work, 'root-before.txt'), 'root/a\n');
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /extra=[1-9]/);
+  assert.ok(!existsSync(join(work, 'root-before.txt')));
+});
+
