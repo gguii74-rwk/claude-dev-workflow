@@ -1,13 +1,13 @@
 // deploy 계약 테스트 (spec §5.2b · SC-3 deploy.json) — 실제 git archive 로 zip 을 만들어 자체 리더·대조를 검증한다
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { tmp, writeAdapter, initRepos, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
-const { readZip, crc32, parseDeletedList, expectedLists } = await import(join(LIB, 'deploy.mjs'));
+const { readZip, crc32, parseDeletedList, expectedLists, uploadName } = await import(join(LIB, 'deploy.mjs'));
 const SECRET = '3'.repeat(32);
 
 function archive(checkout, sha, out, files) {
@@ -1259,4 +1259,120 @@ test('S1: head 조회는 대소문자 무시(detail 에 head 의 실제 경로) 
   const b = s1Deploy({ [KJ]: 'class Foo {}\n', 'src/main/resources/한글/Foo$x.class': 'res\n' }, [KJ], ['WEB-INF/classes/한글/Foo.class', 'WEB-INF/classes/한글/Foo$X.class'], { quotePath: true });
   assert.equal(b.r.first, 'DEPLOY 대조 불가', JSON.stringify(b.d.mismatches));
   assert.ok(mcOf(b.d, 'WEB-INF/classes/한글/Foo$X.class')?.detail.includes('src/main/resources/한글/Foo$x.class'), JSON.stringify(b.d.mismatches));
+});
+
+// ── 1.3.4 S2 zip 이름 범주 검사 · zip 주석 원문 비노출 · 첨부 파일명 (spec 2026-10-23 1.3.4 3.S2-1·S2-2·S2-4 · D73·D76·D78·D87·D89) ──
+// 숨은 문자는 소스에 원문으로 넣지 않는다(spec R4-3) — \uXXXX 표기만
+const HIDDEN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/;
+// deploy 작업 디렉터리로 조기 종료 리포트를 렌더해 전문을 돌려준다 — 이름·주석이 리포트에 실려 나가는지 보는 용도
+function renderEarly(adapter, work) {
+  const out = join(work, 'early.md');
+  const r = runCli(['render', '--adapter', adapter, '--work', work, '--early', '--out', out]);
+  assert.equal(r.code, 0, r.out + r.err);
+  return readFileSync(out, 'utf8');
+}
+
+test('S2 zip 항목 이름에 Cc·Cf·Zl·Zp 문자(NEL·U+2028·U+2029·RLO·ZWSP·중간 BOM·soft hyphen)가 있으면 corrupt → 대조 불가 · detail 은 \\uXXXX 표시 · 원문 문자는 detail·deploy.json·리포트 어디에도 없다 (1.3.4 AC-S2-1 · D76)', () => {
+  const names = ['src/main/A\u0085.txt', 'src/main/A\u2028.txt', 'src/main/A\u2029.txt', 'src/main/\u202etxt.A', 'src/main/A\u200b.txt', 'src/main/A\ufeffB.txt', 'src/main/A\u00ad.txt'];
+  for (const n of names) assert.throws(() => readZip(mkZip([{ name: n, data: 'x', flags: 0x0800 }])), /제어문자·서식·줄 구분/, JSON.stringify(n));
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  for (const [i, [n, esc]] of [['src/main/A\u0085.txt', '\\u0085'], ['src/main/A\u2028.txt', '\\u2028'], ['src/main/\u202etxt.A', '\\u202e']].entries()) {
+    const { r, d, work } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: [...E(SRC2), { name: n, data: 'x', flags: 0x0800 }] }], name: `n${i}` });
+    assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+    const c = d.mismatches.find((m) => m.kind === 'corrupt');
+    assert.ok(c && c.detail.includes(esc), JSON.stringify(d.mismatches));
+    assert.ok(!HIDDEN.test(c.detail));
+    assert.ok(!HIDDEN.test(readFileSync(join(work, 'deploy.json'), 'utf8')));
+    assert.ok(!HIDDEN.test(renderEarly(adapter, work)));
+  }
+  // 한글·단일 코드포인트 이모지 이름은 통과(R3-2 불변)
+  for (const n of ['한글/파일.txt', '\u{1F4C4}.txt']) assert.doesNotThrow(() => readZip(mkZip([{ name: n, data: 'x', flags: 0x0800 }])), n);
+});
+
+test('S2 zip 이름의 선행 오류(잘못된 UTF-8 · 표시 없는 비ASCII)도 같은 표시 함수 — detail 에 \\u001b · 원문 ESC·U+0080 은 detail·deploy.json·리포트에 없다 (1.3.4 AC-S2-1 · D87)', () => {
+  const bad = [[Buffer.from([0xff, 0x1b, 0x5b, 0x32, 0x4a]), 0x0800], [Buffer.from([0x80, 0x1b, 0x5b, 0x32, 0x4a]), 0]];
+  for (const [raw, flags] of bad) assert.throws(() => readZip(mkZip([{ name: raw, data: 'x', flags }])), /UTF-8/);
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  for (const [i, [raw, flags]] of bad.entries()) {
+    const { r, d, work } = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: [...E(SRC2), { name: raw, data: 'x', flags }] }], name: `b${i}` });
+    assert.equal(r.first, 'DEPLOY 대조 불가', JSON.stringify(d.mismatches));
+    const c = d.mismatches.find((m) => m.kind === 'corrupt');
+    assert.ok(c && c.detail.includes('\\u001b') && /UTF-8/.test(c.detail), JSON.stringify(d.mismatches));
+    for (const t of [c.detail, readFileSync(join(work, 'deploy.json'), 'utf8'), renderEarly(adapter, work)]) assert.ok(!HIDDEN.test(t), JSON.stringify(t.slice(0, 200)));
+  }
+});
+
+test('S2 zip 주석에 SHA 가 없으면 comment_sha = null · detail 은 「주석에 SHA 없음(주석 n자)」 — 주석 원문은 detail·deploy.json·리포트 어디에도 없다 · zip 2개(D63) 상태 표기 (1.3.4 AC-S2-2 · D73)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E(SRC2), comment: 'abc\n## 가짜 판정\n' }], name: 'c1' });
+  assert.equal(a.d.zip.comment_sha, null);
+  assert.equal(a.d.zips[0].comment_sha, null);
+  assert.deepEqual(kp(a.d), [['comment_sha', null]]);
+  assert.ok(a.d.mismatches[0].detail.includes('주석에 SHA 없음(주석 12자)'), a.d.mismatches[0].detail);
+  for (const t of [a.d.mismatches[0].detail, readFileSync(join(a.work, 'deploy.json'), 'utf8'), renderEarly(adapter, a.work)]) assert.ok(!t.includes('가짜'));
+  const b = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E(SRC2), comment: '' }], name: 'c2' });
+  assert.match(b.d.mismatches[0].detail, /zip 주석 \(없음\) ≠ head/);
+  const c = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E(SRC2), comment: `built from ${repo.headSha}` }], name: 'c3' });
+  assert.equal(c.r.first, 'DEPLOY 일치', JSON.stringify(c.d.mismatches));
+  assert.equal(c.d.zip.comment_sha, repo.headSha);
+  const two = (c1, c2, name) => zipsDeploy(root, adapter, { repo, zips: [{ filename: 'src.zip', entries: E(SRC2), comment: c1 }, { filename: 'classes.zip', entries: CLASSES(), comment: c2 }], name });
+  const m = two(undefined, 'no sha here', 'c4');
+  assert.deepEqual(kp(m.d), [['comment_sha', null]]);
+  assert.ok(m.d.mismatches[0].detail.includes('zip#2 classes.zip') && m.d.mismatches[0].detail.includes('주석에 SHA 없음(주석 11자)'), m.d.mismatches[0].detail);
+  assert.equal(m.d.zips[1].comment_sha, null);
+  assert.equal(m.d.zip.comment_sha, repo.headSha);
+  const n = two('x\ny', '', 'c5');
+  assert.deepEqual(kp(n.d), [['comment_sha', null]]);
+  assert.match(n.d.mismatches[0].detail, /zip#1 src\.zip 주석 SHA 없음\(3자\)/);
+  assert.match(n.d.mismatches[0].detail, /zip#2 classes\.zip 주석 \(없음\)/);
+  assert.ok(!/x\ny|[^a-z]x[^a-z]/.test(n.d.mismatches[0].detail.replace(/zip#\d|classes|\.zip/g, '')), n.d.mismatches[0].detail);
+});
+
+test('S2 zip 주석의 SHA 후보는 가린 주석에서 뽑는다 — `token=<32자 16진>` 은 comment_sha 가 아니고 deploy.json·리포트·cleanup 뒤 산출물에 0개 · head 40자·문맥 없는 7자는 현행 (1.3.4 AC-S2-10 · D89)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const HEX = '0123456789abcdef0123456789abcdef';
+  const a = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E(SRC2), comment: `token=${HEX}` }], name: 't1' });
+  assert.equal(a.d.zips[0].comment_sha, null);
+  assert.equal(a.d.zip.comment_sha, null);
+  assert.deepEqual(kp(a.d), [['comment_sha', null]]);
+  assert.ok(a.d.mismatches[0].detail.includes('주석에 SHA 없음(주석 38자)'), a.d.mismatches[0].detail);
+  assert.ok(!readFileSync(join(a.work, 'deploy.json'), 'utf8').includes(HEX));
+  assert.ok(!renderEarly(adapter, a.work).includes(HEX));
+  const sp = join(a.work, 'snapshot.json');
+  writeFileSync(sp, JSON.stringify({ ...readJson(sp), fetched_at: '2026-10-23T00:00:00Z' }));   // cleanup 표지(우리 형식) — deploy 테스트 작업 디렉터리는 fetched_at 이 없다
+  assert.equal(runCli(['cleanup', '--adapter', adapter, '--work', a.work]).code, 0);
+  for (const f of readdirSync(a.work)) if (statSync(join(a.work, f)).isFile()) assert.ok(!readFileSync(join(a.work, f), 'utf8').includes(HEX), f);
+  const b = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E(SRC2), comment: `built from ${repo.headSha}` }], name: 't2' });
+  assert.equal(b.r.first, 'DEPLOY 일치', JSON.stringify(b.d.mismatches));
+  const c = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'd.zip', entries: E(SRC2), comment: 'deadbee' }], name: 't3' });
+  assert.equal(c.d.zip.comment_sha, 'deadbee');
+  assert.match(c.d.mismatches[0].detail, /zip 주석 deadbee ≠ head/);
+});
+
+test('S2 첨부 파일명(디코딩 뒤)에 Cc·Cf·Zl·Zp 문자가 있으면 조회하지 않고 download 거부 → 대조 불가 · detail 은 \\uXXXX 표시 · 정상 이름(한글 포함)은 현행 (1.3.4 AC-S2-7 · D78)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const desc = '## 배포·롤백\n- 배포본: 첨부\n  - 삭제: src/main/java/app/Old.java\n';
+  for (const [filename, esc] of [['\u202epiz.lived', '\\u202e'], ['d\u200b.zip', '\\u200b']]) {
+    const g = fakeGlab(root, [{ match: 'uploads', text: 'NOT A ZIP' }]);
+    const work = workdir(root, { checkout, baseSha, headSha, attachments: [{ url: `/uploads/${SECRET}/x`, kind: 'zip', filename, secret: SECRET, where: 'body' }], description: desc, name: `u${esc.slice(2)}` });
+    const r = runCli(['deploy', '--adapter', adapter, '--work', work], g.env);
+    assert.equal(r.first, 'DEPLOY 대조 불가', esc);
+    assert.equal(g.calls().length, 0, esc);
+    const d = readJson(join(work, 'deploy.json'));
+    const dl = d.mismatches.find((m) => m.kind === 'download');
+    assert.ok(dl && dl.path === null && dl.detail.includes('안전하지 않아 조회하지 않음') && dl.detail.includes(esc), JSON.stringify(d.mismatches));
+    assert.ok(!HIDDEN.test(dl.detail));
+  }
+  assert.equal(uploadName({ filename: 'd.zip', secret: SECRET }), 'd.zip');
+  assert.equal(uploadName({ filename: '배포본_v2.zip', secret: SECRET }), '배포본_v2.zip');
 });

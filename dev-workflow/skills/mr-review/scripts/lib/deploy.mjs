@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { apiRaw } from './gitlab.mjs';
 import { matchesAny } from './adapter.mjs';
 import { insideRoot } from './collect.mjs';
+import { maskText, knownShas } from './pack.mjs';
 
 const MAX_BUFFER = 512 * 1024 * 1024;
 const MAX_ENTRY = 256 * 1024 * 1024;   // 항목 하나의 비압축 상한(압축 폭탄 — impl SDD 이월 T04①). 소스·리소스 배포본 범위
@@ -101,16 +102,21 @@ const SAFE_EXTRA = new Set([0x5455, 0x7875]);
 // 파일명 인코딩(impl R3-2) — zip 표준은 UTF-8 표시(일반 목적 플래그 bit 11)가 없으면 CP437 로 읽는다. 표시 없는 비ASCII 이름은 표준 리더와 자체 리더가 다른 이름을 보므로 거부하고,
 // 표시가 있으면 엄격한 UTF-8 로만 읽는다(깨진 바이트 거부). git archive 는 비ASCII 이름에 표시를 켠다(2.43 실측) — 정상 배포본은 통과한다.
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
+// 보이는 이름 ≠ 실제 이름(1.3.4 S2 — spec 2026-10-23 3.S2-1 D76·D78) — 유니코드 범주 Cc(제어 — C0·C1·DEL)·Cf(서식 — 양방향·폭 0·BOM 등)·Zl·Zp 로 닫는다(열거 목록 아님). zip 항목 이름·첨부 파일명 두 입구가 쓴다
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const hasInvisible = (name) => INVISIBLE.test(name);
+// 거부한 이름의 표시용 꼴(R1-1·D87) — JSON.stringify 가 남기는 범주 문자(NEL·U+2028·양방향 등)까지 \uXXXX 로 — 진단이 원문 문자를 다시 실어 나르지 않는다
+const showName = (s) => JSON.stringify(s).replace(new RegExp(INVISIBLE.source, 'gu'), (c) => `\\u${c.codePointAt(0).toString(16).padStart(4, '0')}`);
 function zipName(raw, flags) {
-  if (!(flags & 0x0800) && raw.some((b) => b >= 0x80)) throw new Error(`zip 파일명이 UTF-8 표시 없이 비ASCII(표준 리더와 이름이 달라짐): ${raw.toString('latin1')}`);
+  if (!(flags & 0x0800) && raw.some((b) => b >= 0x80)) throw new Error(`zip 파일명이 UTF-8 표시 없이 비ASCII(표준 리더와 이름이 달라짐): ${showName(raw.toString('latin1'))}`);
   let name;
-  try { name = UTF8.decode(raw); } catch { throw new Error(`zip 파일명이 올바른 UTF-8 이 아님: ${raw.toString('latin1')}`); }
+  try { name = UTF8.decode(raw); } catch { throw new Error(`zip 파일명이 올바른 UTF-8 이 아님: ${showName(raw.toString('latin1'))}`); }
   // 왕복 대조(impl R4-4) — 해독기가 몰래 바꾼 이름(앞 BOM 제거 등)은 다른 리더와 이름이 갈린다
-  if (!Buffer.from(name, 'utf8').equals(raw)) throw new Error(`zip 파일명이 UTF-8 왕복에서 바뀜(BOM 등): ${raw.toString('latin1')}`);
-  // 제어문자(impl R5-2) — NUL 에서 이름을 자르는 리더는 `x.js\0/`(우리에겐 폴더)를 일반 파일 `x.js` 로 푼다
-  if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error(`zip 파일명에 제어문자(NUL 등): ${JSON.stringify(name)}`);
-  if (notCanonical(name)) throw new Error(`zip 파일명이 정규형이 아님: ${JSON.stringify(name)}`);
-  if (name.replace(/\/$/, '').split('/').length > MAX_DEPTH) throw new Error(`zip 파일명 경로 깊이 상한 초과(${MAX_DEPTH} 조각): ${name.slice(0, 120)}…`);
+  if (!Buffer.from(name, 'utf8').equals(raw)) throw new Error(`zip 파일명이 UTF-8 왕복에서 바뀜(BOM 등): ${showName(raw.toString('latin1'))}`);
+  // 제어문자(impl R5-2 — NUL 에서 이름을 자르는 리더는 `x.js\0/`(우리에겐 폴더)를 일반 파일 `x.js` 로 푼다) + 서식·줄 구분 문자(1.3.4 D76)
+  if (hasInvisible(name)) throw new Error(`zip 파일명에 제어문자·서식·줄 구분 문자(보이는 이름과 다를 수 있음): ${showName(name)}`);
+  if (notCanonical(name)) throw new Error(`zip 파일명이 정규형이 아님: ${showName(name)}`);
+  if (name.replace(/\/$/, '').split('/').length > MAX_DEPTH) throw new Error(`zip 파일명 경로 깊이 상한 초과(${MAX_DEPTH} 조각): ${showName(name.slice(0, 120))}…`);
   return name;
 }
 
@@ -271,7 +277,7 @@ function gitType(cwd, sha, p) {
 export function uploadName(att) {
   let name;
   try { name = decodeURIComponent(String(att.filename || '')); } catch { return null; }
-  if (!name || name === '.' || name === '..' || /[\/\\\0]/.test(name) || !/^[0-9a-f]{32}$/.test(String(att.secret || ''))) return null;
+  if (!name || name === '.' || name === '..' || /[\/\\\0]/.test(name) || hasInvisible(name) || !/^[0-9a-f]{32}$/.test(String(att.secret || ''))) return null;
   return name;
 }
 
@@ -349,6 +355,7 @@ export function deploy({ adapter, work }) {
   const mr = JSON.parse(fs.readFileSync(path.join(work, 'mr.json'), 'utf8'));
   const snap = JSON.parse(fs.readFileSync(path.join(work, 'snapshot.json'), 'utf8'));
   const check = JSON.parse(fs.readFileSync(path.join(work, 'check.json'), 'utf8'));
+  const keep = knownShas({ mr, snapshot: snap });
   const hintKey = adapter.projects?.[mr.project?.name]?.deployLayout;
   const hint = { layout: hintKey || adapter.resolved?.projects?.[mr.project?.name]?.deployLayout || 'source', source: hintKey ? 'adapter' : 'default' };
   const out = { applicable: false, reason: null, expected: { deploy: [], deleted: [] }, zip: { attachment: null, downloaded: false, comment_sha: null, entries: [], bytes_source: null, layout: hint.layout, layout_source: hint.source, prefix: null, bytes_skipped: [] }, zips: [], bodyDeletedList: parseDeletedList(mr.description || ''), result: '해당 없음', mismatches: [] };
@@ -393,7 +400,7 @@ export function deploy({ adapter, work }) {
         const st = { i, zr, z: null, files: [], all: [], commentOk: false, hasComment: false };
         const name = uploadName(att);
         let buf = null;
-        if (!name) { mm.push({ kind: 'download', path: null, detail: tag(i, `첨부 파일명·경로가 안전하지 않아 조회하지 않음: ${String(att.filename).slice(0, 120)}`) }); return st; }
+        if (!name) { mm.push({ kind: 'download', path: null, detail: tag(i, `첨부 파일명·경로가 안전하지 않아 조회하지 않음: ${showName(String(att.filename).slice(0, 120))}`) }); return st; }
         try {
           buf = apiRaw(`projects/${mr.project.id}/uploads/${att.secret}/${encodeURIComponent(name)}`);
           fs.mkdirSync(path.join(work, 'zip'), { recursive: true });
@@ -404,9 +411,12 @@ export function deploy({ adapter, work }) {
           return st;
         }
         try { st.z = readZip(buf); } catch (e) { mm.push({ kind: 'corrupt', path: null, detail: tag(i, `zip 판독 실패: ${e.message}`) }); return st; }
-        const cm = st.z.comment.trim().match(/[0-9a-f]{7,40}/);
-        zr.comment_sha = cm ? cm[0] : (st.z.comment.trim() || null);
-        st.hasComment = zr.comment_sha !== null;
+        // 주석 = SHA 또는 null(1.3.4 S2 — spec 2026-10-23 3.S2-2 D73) — 원문은 deploy.json·리포트 어디에도 적지 않는다(길이만). SHA 후보는 가린 주석에서 뽑는다(D89 — `token=<16진>` 이 문맥 없이 저장되지 않게, 실제 커밋 SHA 는 keep 으로 보호)
+        const cmt = st.z.comment.trim();
+        const cm = cmt ? maskText(cmt, adapter.mask, keep).match(/[0-9a-f]{7,40}/) : null;
+        zr.comment_sha = cm ? cm[0] : null;
+        st.commentLen = cmt.length;
+        st.hasComment = cmt !== '';
         st.commentOk = !!cm && snap.head_sha.startsWith(cm[0]);
         const sp = stripPrefix(st.z.entries, dl);
         zr.prefix = sp.prefix;
@@ -424,10 +434,13 @@ export function deploy({ adapter, work }) {
       const read = zs.filter((st) => st.z);
       judged = read.filter((st) => st.layout);
       // ① 주석 SHA — zip 1개면 현행(주석 없음 = 불일치), 여럿이면 「최소 한 zip」(D63): 일치하는 zip 이 있으면 주석이 있는데 다른 zip 만 불일치, 없으면 불일치 1건
-      if (!many) { for (const st of read) if (!st.commentOk) mm.push({ kind: 'comment_sha', path: null, detail: `zip 주석 ${st.zr.comment_sha ?? '(없음)'} ≠ head ${snap.head_sha}` }); }
+      // 주석 상태 표기(D73) — SHA · (없음) · SHA 없음(n자)
+      const cstate = (st) => st.zr.comment_sha ?? (st.hasComment ? `SHA 없음(${st.commentLen}자)` : '(없음)');
+      const csent = (st) => (st.zr.comment_sha === null && st.hasComment ? `zip 주석에 SHA 없음(주석 ${st.commentLen}자)` : `zip 주석 ${cstate(st)}`);
+      if (!many) { for (const st of read) if (!st.commentOk) mm.push({ kind: 'comment_sha', path: null, detail: `${csent(st)} ≠ head ${snap.head_sha}` }); }
       else if (read.length) {
-        if (read.some((st) => st.commentOk)) { for (const st of read) if (st.hasComment && !st.commentOk) mm.push({ kind: 'comment_sha', path: null, detail: `${lab(st.i)}: zip 주석 ${st.zr.comment_sha} ≠ head ${snap.head_sha}` }); }
-        else mm.push({ kind: 'comment_sha', path: null, detail: `head 와 일치하는 zip 주석 없음 — ${read.map((st) => `${lab(st.i)} 주석 ${st.zr.comment_sha ?? '(없음)'}`).join(' · ')} ≠ head ${snap.head_sha}` });
+        if (read.some((st) => st.commentOk)) { for (const st of read) if (st.hasComment && !st.commentOk) mm.push({ kind: 'comment_sha', path: null, detail: `${lab(st.i)}: ${csent(st)} ≠ head ${snap.head_sha}` }); }
+        else mm.push({ kind: 'comment_sha', path: null, detail: `head 와 일치하는 zip 주석 없음 — ${read.map((st) => `${lab(st.i)} 주석 ${cstate(st)}`).join(' · ')} ≠ head ${snap.head_sha}` });
       }
       // 기대 사상(배치별) — 두 소스가 같은 zip 경로로 사상되면 어느 원문과 비교할지 정할 수 없어 map_conflict(대조 불가 — fail-closed)
       const maps = new Map();
