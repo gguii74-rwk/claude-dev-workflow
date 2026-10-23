@@ -328,7 +328,7 @@ export function maskTextWithCounts(text, maskRules, keepShas = []) {
   const keep = [];
   const known = new Set(keepShas);
   const nonce = PUA_HEX(randomBytes(8).toString('hex'));
-  const held = unescapeKeyChars(text.replace(/\r\n|\r/g, '\n').replace(/[\u0000\uE000-\uE010]/g, '\uFFFD')).replace(SHA40_RE, (m) => { if (!known.has(m)) return m; keep.push(m); return `\u0000${nonce}\uE010${PUA_HEX((keep.length - 1).toString(16))}\u0000`; });   // 줄바꿈 통일 = `\r\n`·단독 `\r` 둘 다(1.3.3 C2-N1 — 단독 CR 뒤 잘린 PEM 본문)
+  const held = unescapeKeyChars(text.replace(/\r\n|[\r\u0085\u2028\u2029]/g, '\n').replace(/[\u0000\uE000-\uE010]/g, '\uFFFD')).replace(SHA40_RE, (m) => { if (!known.has(m)) return m; keep.push(m); return `\u0000${nonce}\uE010${PUA_HEX((keep.length - 1).toString(16))}\u0000`; });   // 줄바꿈 통일 = `\r\n`·단독 `\r` 둘 다(1.3.3 C2-N1 — 단독 CR 뒤 잘린 PEM 본문) + NEL·U+2028·U+2029(1.3.4 D84 — report 평탄화와 같은 줄바꿈 집합)
   const a = applyMask(held, maskRules);
   const x = maskXml(a.text);
   const b = applyMask(x.text, SECRET_MASK);

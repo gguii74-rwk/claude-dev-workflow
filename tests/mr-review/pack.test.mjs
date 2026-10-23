@@ -841,3 +841,14 @@ test('단독 CR(옛 맥 줄바꿈) 뒤 잘린 PEM 본문도 가린다 — 마스
   assert.equal(maskText(lf.replace(/\n/g, '\r\n'), []), maskText(lf, []));
   assert.equal(maskTextWithCounts(lf, []).text, maskText(lf, []));
 });
+
+// ── 1.3.4 S2-6 마스킹 입구의 줄바꿈 집합 (spec 2026-10-23 1.3.4 3.S2-6 · D84) ──
+test('마스킹 입구가 NEL·U+2028·U+2029 도 줄바꿈으로 본다 — 그 문자로 나뉜 잘린 PEM 본문도 가린다 (1.3.4 AC-S2-8 (가) · D84)', () => {
+  for (const sep of ['\u0085', '\u2028', '\u2029']) {
+    const m = maskText('-----BEGIN RSA PRIVATE KEY-----' + sep + 'MIIEowIBAAKCAQEA' + sep + 'abcd', []);
+    assert.doesNotMatch(m, /MIIEow|abcd/, JSON.stringify(m));
+    assert.match(m, /\[masked:secret\]/);
+  }
+  const lf = '앞\n-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n뒤 password: hunter2';
+  assert.equal(maskTextWithCounts(lf, []).text, maskText(lf, []));   // 그 문자가 없는 입력은 그대로
+});
