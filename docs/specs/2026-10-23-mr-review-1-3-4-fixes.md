@@ -1,0 +1,218 @@
+# mr-review 1.3.4 — 4차 실사용에서 드러난 엔진 결함 2건 + 1.3.3 보안 지적 1건 수정
+
+> 상태: **spec 확정·harden 완료**(2026-10-23 19:0x — 3 harden-spec 수동 트랙 · 설계 질의 4건(Q1~Q4) + harden 판단 갭 8건(H-1~H-8) = 사용자 지시로 메인이 추천안 입력 · 사실 갭은 코드·실측 조회로 닫음 · DEFERRED 0건) · 이전: spec 초안(18:4x) · 작성 2026-10-23 · 버전 **1.3.4 패치** · 다음 = 4 review-loop(spec, 보안 yes) → 7 impl → 8 review-loop(impl, 보안 yes) → 9 릴리스(push·머지·릴리스는 사용자 확인)
+> 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16 승계) · 1.3.1 spec `docs/specs/2026-10-22-mr-review-1-3-1-fixes.md`(D17~D34 승계 — D34 배포본 결과 우선순위) · 1.3.2 spec `docs/specs/2026-10-22-mr-review-1-3-2-fixes.md`(D35~D51 승계 — D38 `.class` 존재 대조·D40 부록 A 단일 목록·D47 표시 자리) · **1.3.3 spec `docs/specs/2026-10-23-mr-review-1-3-3-fixes.md`**(D52~D67 승계 — ⑰ 은 1.3.3 ⑬ 의 접두 제거·배치 판별·다중 zip 합산 **아래층**(`readZip`)을 고치고, ⑱ 은 ⑬ 의 목록 대조 `listCheck`·시험 `judgeLayout` 위에 얹히며, S2 는 ⑭ `cell()`/`tc()` 순서를 표 밖 줄로 넓힌다) · plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-2 어댑터 계약·SC-3 `deploy.json` 계약·SC-7 게이트 · ledger(impl) zip 해석 차이 계열 S-5·R2-1·R3-2·R4-1·R4-4·R5-2·C1-2·R6-3 + 8b FR1-3·FR2-1·FR3-5 = ⑰ 설계의 방어선)
+> 경로: **경량 — 단 4단계(spec 적대검증)는 유지, 5 plan·6 plan 적대검증 생략**(dev-cycle 1차 판정 + 사용자 지시로 메인이 추천안 입력 2026-10-23 18:4x — 접촉 표면 무신호: 스키마·마이그레이션·권한·인증·외부 연동 신설 없음, 도구는 읽기 전용이라 데이터 손상·비가역 없음. ⑰·S2 는 「우리 zip 리더가 표준 도구와 다른 바이트·이름을 볼 수 있는가」라는 zip 해석 차이 계열 접촉면이라 1.3.3 D53 과 같이 spec 적대검증만 남긴다 — D69)
+
+## 1. 배경 · 목표
+
+1.3.3 설치본으로 4차 실사용(2026-10-23 18:1x~18:2x — 2차·3차와 같은 코드 MR 워크트리 모드 + 표본 MR 2건 `collect·check·deploy` 만)을 돌렸다. 1.3.3 이 고친 ⑬(zip 별 배치 자동 판별 `maven-war(signature)` · zip 2개 `mixed` 합산 「일치」)·⑭(criterion 첫 칸·표 정상)·⑮(잘린 명령 집계)·⑯(`W` 밖 새 항목 0건)은 전부 해소가 확인됐고, 표본 2건에서 엔진 결함 후보 2건(⑰·⑱)이 드러났다. 여기에 1.3.3 push 뒤 자동 보안 리뷰가 지적한 `report.mjs` 평탄화 누락 1건(S2)을 사용자 결정(2026-10-23 14:0x 「실측 뒤 묶어서」)대로 이번에 넣는다. 번호는 실사용 기록(⑰·⑱)을 그대로 쓴다. 우선순위 = ⑰(특정 압축 도구 사용자의 정상 배포본이 **매번** 「대조 불가」 → `M-deploy` 증거 부족 — 1.3.3 ⑬ 의 접두 제거·내부 클래스 처리도 그 표본에서는 실측을 못 했다) > ⑱(배포 제외 파일이 섞인 정상 zip 이 「불일치」 수십 건) > S2(사람이 읽는 초안에 가짜 줄).
+
+**목표**
+
+- G1. data descriptor(일반 목적 플래그 bit 3) 형식으로 쓰인 배포 zip 도 — 꼬리표(descriptor) 값이 중앙 디렉터리(목차)와 전부 같고 레코드 경계가 확정될 때만 — 지금의 zip 과 같은 수준으로 대조돼 정상 배포본은 「일치」로 판정된다(⑰). 값이 다르거나 경계가 모호한 zip 은 지금처럼 「대조 불가」다.
+- G2. 어댑터 `deploy.excludes` 에 걸리는 zip 항목은 「zip 에만 있음」 불일치가 아니라 「배포 제외 경로 n건(참고)」로 따로 보이고(⑱ — 사용자 정책 결정 2026-10-23 18:3x), 어댑터 어디에도 없는 파일은 지금처럼 불일치다.
+- G3. 리포트의 모든 조립 줄에서 외부 유래 문자열(zip 주석·zip 항목 이름·저장소 경로·MR 본문·검토자 출력)이 새 줄을 만들지 못하고, 보이는 이름과 실제 이름이 다른 zip 항목(제어·불가시 문자)은 「대조 불가」다(S2).
+
+## 2. 범위 · 비목표
+
+**범위**(impl 트랙이 고친다 — 이 세션은 spec 만, D74): `dev-workflow/skills/mr-review/scripts/lib/deploy.mjs`(⑰ `readZip` 레이아웃·`read()` · ⑱ `listCheck`·`judgeLayout`·`deploy` 합산 · S2 `zipName` 이름 검사·`comment_sha`) · `dev-workflow/skills/mr-review/scripts/lib/report.mjs`(⑱ 표시 · S2 `line()` 평탄화) · `dev-workflow/skills/mr-review/SKILL.md`(§8 터미널 요약·리포트 구성 문구 — ⑱) · `tests/mr-review/{deploy,report}.test.mjs` + `tests/mr-review/fixtures/`(⑰ 실물 픽스처) · `dev-workflow/.claude-plugin/plugin.json`·`.claude-plugin/marketplace.json` 버전 1.3.4 · README 3종의 1.3.4 한 줄 · plan SC-3 문장 정정(「1.3.4에서 변경」 표기 — 1.3.3 과 같은 방식) · plan ledger(impl) R4-1·8b FR2-1 행 끝 부기(「1.3.4 D70·D71 로 변경」). 어댑터 계약 SC-2 는 **키·값·형식·의미 모두 불변**.
+
+**비목표(이 트랙에서 하지 않는다)** — 사용자 결정 2026-10-23(D68)
+
+- **실행 간 재현율 편차**(같은 실결함을 실행마다 다르게 잡음) — 운영 한계(1.3.3 §6 승계). V1(Windows 경로 존재 검사)은 Windows PC 몫. 1.3.3 R2-2(zip 개수·총량 상한 없음)는 ACCEPTED 기결정.
+- **jar 도구 전용 확장 필드(0xCAFE)·Windows 압축 폴더의 NTFS 시각 필드(0x000A) 등 미지원 확장 필드** — ⑰ 과 다른 결함(허용 목록 impl R2-1). 표본에서는 보이지 않았다. 실사용에서 「확장 필드 미지원(0x…)」 corrupt 가 나오면 별도 트랙(§6).
+- **서명 없는 12바이트 꼬리표** — 의도적으로 받지 않는다(D70). 실측에서 나오면 「대조 불가」로 보이므로 그때 넓힌다.
+- **ZIP64**(8바이트 크기 꼬리표 포함) — 1.3.0 미지원 유지.
+- **유니코드 정규화 차이(NFC/NFD)·공백류(U+00A0 등 Zs) 동형 이름** — S2 의 이름 검사는 제어·서식·줄/단락 구분 문자(Cc·Cf·Zl·Zp)까지다(§6 한계).
+- **저장소 경로 자체에 든 제어 문자**(MR 이 `x\n.java` 같은 파일을 추가) — zip 밖 입력이라 이름 검사 대상이 아니다. 리포트 평탄화(S2-③)로 표시만 방어한다.
+- bit 3 이 **없는** 항목 중 읽지 않는 것(기대에 없는 초과 항목·배포 제외 항목)의 deflate 스트림 경계 검증 — 현행(1.3.0 FR3-5 는 `read()` 때만)과 같다. **bit 3 항목은 전수 확인한다**(D75 — 범위 안).
+- **GitLab 에 복사되는 줄(보완 요청 문안 등)의 작성자 유래 경로가 마크다운 링크·이미지·HTML 구문으로 렌더되는 것**(`![x](http://…)` 같은 zip 항목 이름) — S2 는 「새 줄 삽입」까지다. 위험 주체가 동료 작성자라 D16 수준이고 어떤 대책(코드 스팬·이스케이프)도 기존 출력을 넓게 바꾼다 — 별도 트랙 후보(D77, §6).
+- **macOS Finder 「압축」 zip 의 `__MACOSX/` 폴더·`.DS_Store`** — ⑰ 로 판독은 되지만 최상위 폴더가 둘이라 1.3.3 접두 제거(D57)가 떼지 못해 「불일치」(보이는 실패). 4차 표본에서 확인되지 않았다 — 9단계 실측(§5)에서 보이면 D57 보강 별도 트랙(D82). `.DS_Store` 는 프로젝트 어댑터가 `excludes` 에 `**/.DS_Store` 를 적으면 ⑱ 로 「참고」가 된다(어댑터 몫).
+- **`deploy.json`·부록 A 에 bit 3 사용 표시** — 결과가 같으면 무의미(D79).
+- 1.3.0~1.3.3 설계 결정 D1~D67 의 재론. **변경 2건은 명시**: 1.3.0 impl R4-1(bit 3 거부)·8b FR2-1(폴더 항목 압축 크기 0) → D70·D71. 1.3.0 SC-3 `comment_sha`(주석 원문) → D73.
+
+## 3. 결함별 명세
+
+예시는 전부 가상 값이다(프로젝트 `alpha`·`gamma` · MR `!64`·`!65` · head `d4d4d4d` · 패키지 `com/example/acct` · 접두 `app/`). 재현 근거의 사실은 4차 실사용 산출물(`deploy.json`·리포트)의 서술과 이 머신에서 만든 zip 의 바이트 덤프를 **읽기 전용**으로 확인한 것이며, 리뷰 대상 프로젝트 식별자는 전부 치환했다(D10·SC-7 T6). 표본 zip 실물은 남아 있지 않아(사용자 세션 보고) 형식 서술을 사실로 쓰고, data descriptor zip 은 테스트 픽스처로 직접 만든다(3.⑰-AC).
+
+### 3.⑰ data descriptor(bit 3) 형식 zip 을 `readZip` 이 통째로 거부해 그 도구를 쓰는 작성자의 배포본은 매번 「대조 불가」
+
+**현상**: 표본 MR `alpha !64` 의 본문 첨부 zip(접두 `app/` + WAR 배치 + 내부 클래스 — 1.3.3 표본 (가)와 같은 꼴)이 일반 목적 플래그 **bit 3(data descriptor)** 형식이라 `readZip` 이 `zip data descriptor(bit 3) 항목(미지원)` 을 던졌다 → `{kind:"corrupt"}` → 결과 「대조 불가」 → `M-deploy` 증거 부족(HOLD_EVIDENCE). Java `ZipOutputStream`(IDE 내보내기·빌드 도구 — 문헌·구현 지식)·macOS Finder/`ditto`(문헌 — 미실측)·Info-ZIP 스트리밍(`zip -r - …` — 이 머신 실측)·Python `zipfile`(비탐색 스트림 — 이 머신 실측)은 이 형식을 쓴다(Windows 압축 폴더는 미확인) — 그런 도구를 쓰는 작성자의 MR 은 **매번** 증거 부족이고, 리뷰어는 「zip 판독 실패」 한 줄로 원인을 알기 어렵다. 이 때문에 1.3.3 ⑬ 의 접두 제거·내부 클래스 처리는 그 표본에서 실측하지 못했다.
+
+**재현 근거**: 4차 실사용 `deploy.json`(표본 (가)) = `mismatches[0] = {kind:"corrupt", path:null, detail:"zip 판독 실패: zip data descriptor(bit 3) 항목(미지원): …"}` · `result = "대조 불가"`(사용자 세션 보고 — 산출물 디렉터리는 남아 있지 않다). 이 머신(spark2) 실측 2026-10-23 18:3x: ① Info-ZIP Zip 3.0(2008) `zip -r - app | cat > x.zip` → 파일 항목 `bit3=true · method 8 · local(crc 0, csize 0, usize **실제값**) · 목차(crc·csize·usize 실제값) · 데이터 뒤 꼬리표 = 서명 `50 4b 07 08` + crc + csize + usize(16바이트) · 폴더 항목은 bit 3 없이 stored 크기 0`. ② Python 3 `zipfile`(비탐색 스트림, deflate) → 모든 항목 `bit3=true · local(crc 0, csize 0, usize 0) · 꼬리표 서명 있음(16바이트)` · **폴더 항목 `app/` 도 method 8 · 목차 csize 2 · usize 0 · 꼬리표 있음**(deflate 빈 스트림 `03 00`) · stored 항목에도 bit 3 + 꼬리표. ③ 현행 `readZip` 은 ①②를 모두 `zip data descriptor(bit 3) 항목(미지원): app/`(②)·`…: app/html/a.html`(①)로 거부(`deploy.mjs:187`). ④ `unzip -t` 는 ①② 모두 「No errors detected」. Java `ZipOutputStream` 은 문헌·구현 지식(이 머신에 `javac` 없음 — impl 트랙 픽스처 또는 사용자 표본으로 실측): deflate 항목 = bit 3 + local 세 값 0 + 서명 있는 꼬리표(ZIP64 면 24바이트), stored 항목은 bit 3 을 쓰지 않음(크기·CRC 를 미리 요구), 폴더 항목(기본 deflate) = ②와 같은 빈 스트림 꼴, `JarOutputStream` 은 첫 항목에 확장 필드 0xCAFE(비목표). 코드: `deploy.mjs:181-204` 레이아웃 검사(`:187` bit 3 거부 · `:195` local CRC·크기 = 목차 · `:196` 폴더 `csize !== 0` 거부 · `:202` 레코드 끝 = 헤더 + 이름 + 확장 + `csize`) · `:230-237` `read()`(`:235` bit 3 거부 · `:236-237` local CRC·크기 = 목차) · `:247-250` inflate 가 `csize` 를 정확히 소비(FR3-5) · `:254-256` 풀린 크기·CRC = 목차.
+
+**원인**: 1.3.0 impl R4-1(zip 해석 차이 계열 4회째)에서 「local 헤더 값 = 목차 값」을 요구하면서, local 값이 비어 있어 **local 헤더만으로는 레코드 끝을 확정할 수 없는** bit 3 항목을 「descriptor 검증해 허용」 대신 「거부」로 닫았다(`git archive` 는 쓰지 않음 — 당시 실측). 전제 「배포 zip = `git archive` 산출물」이 4차 실사용에서 깨졋다 — 작성자는 IDE·OS 압축 도구로도 zip 을 만든다. 방어선의 목적(「우리 리더와 표준 리더가 같은 바이트를 본다」)은 중앙 디렉터리 값 + 꼬리표 값 + 레코드 경계 연속 + inflate 완전 소비로 **bit 3 항목에도 똑같이** 세울 수 있다.
+
+**표준 리더가 bit 3 항목을 읽는 두 방식**(설계 전제): (가) **목차 기반**(Info-ZIP `unzip`·Python `zipfile`·Java `ZipFile`·7-Zip) — 목차의 `lho`·`csize`·`usize`·`crc` 로 풀고 local 값·꼬리표는 무시 또는 참고. (나) **순차(스트리밍)**(Java `ZipInputStream`·`funzip`) — local 헤더 뒤 deflate 스트림을 **스트림 자체의 끝**까지 풀고, 바로 뒤 꼬리표(서명 있으면 건너뜀)에서 crc·크기를 읽어 대조한다. 두 방식이 같은 바이트를 보려면 ① 목차 `csize` 위치에 꼬리표가 실제로 있고 그 값이 목차와 같아야 하며 ② deflate 스트림이 정확히 `csize` 바이트에서 끝나야 한다 — **읽지 않는 항목(초과·배포 제외)까지 모든 bit 3 항목에서**(D75: 스트림이 `csize` 보다 일찍 끝나면 그 뒤 빈자리에 「짧은 스트림용 꼬리표 + 숨은 local 레코드 + 그 꼬리표」를 넣어 (나) 리더만 푸는 파일을 심을 수 있다 — 1.3.0 FR1-3 「목차에 없는 레코드는 보증하지 않는다」를 꼬리표 항목에도 유지하는 조건. 꼬리표가 없을 때는 연속 검사만으로 충분했다). stored(method 0) + bit 3 는 (나)가 경계를 알 수 없어 데이터 속의 `50 4b 07 08` 바이트열을 꼬리표로 오인할 수 있으므로(Java `ZipInputStream` 은 예외) 받지 않는다.
+
+**수정 방향(사용자 결정 2026-10-23 18:4x — D70·D71 · 사용자 지시로 메인이 추천안 입력)** — **목차 기준 + 서명 있는 꼬리표만 수용**
+
+1. **레이아웃 검사(`readZip` `:184-204`) — bit 3 항목 허용 조건(전부 만족해야 통과, 하나라도 어긋나면 `throw` → 그 zip `corrupt` 「대조 불가」)**:
+   - (a) `method === 8`(deflate). stored(0) + bit 3 → `zip data descriptor 가 있는 stored 항목(스트리밍 리더가 경계를 정할 수 없음): <이름>`. 폴더 항목도 bit 3 이면 같다(Python 의 stored 스트리밍처럼 stored + bit 3 폴더 항목은 corrupt — 그 zip 은 stored + bit 3 파일 항목도 함께 들어 있어 어차피 거부된다).
+   - (b) local 헤더의 crc·csize·usize **각각** `0` 또는 목차 값과 동일(Info-ZIP 처럼 usize 만 실제값인 꼴 허용). 그 밖 값 → `zip local header CRC·크기 불일치(목차와 다름)`(현행 문구).
+   - (c) 레코드 끝 `end = at + 30 + lnLen + leLen + e.csize`(**목차 csize**) 에 **서명 있는 16바이트 꼬리표**가 있어야 한다: `end + 16 <= cdOff` · `readUInt32LE(end) === 0x08074b50` · `readUInt32LE(end+4) === e.crc` · `readUInt32LE(end+8) === e.csize` · `readUInt32LE(end+12) === e.usize`. 아니면 `zip data descriptor 없음 또는 값이 목차와 다름(서명·CRC·크기): <이름>`. 서명 없는 12바이트 꼴·ZIP64 20/24바이트 꼴은 여기서 걸린다(서명 없음 → 거부, ZIP64 꼴은 서명·앞 12바이트가 맞아도 뒤 8바이트 때문에 다음 항목 연속(d)이 깨져 거부 — 1.3.0 ZIP64 미지원 유지, 별도 해석 없음).
+   - (d) `at = end + 16` 으로 넘어가 **다음 항목 local 헤더(또는 목차 시작)와 빈틈·겹침 없이 이어져야 한다**(현행 `:186`·`:204` 연속 검사 그대로 — 꼬리표 뒤 바이트·꼬리표 누락은 여기서 걸린다).
+   - (e) bit 3 이 **없는** 항목은 현행 그대로(local 세 값 = 목차, 꼬리표 없음 — 꼬리표가 있으면 (d)에서 걸린다). 플래그·압축 방식·이름 원시 바이트의 local↔목차 대조(`:193-194`)·암호화 거부·확장 필드 허용 목록은 bit 3 유무와 무관하게 그대로.
+   - (f) **전수 경계 확인(D75 — harden H-1)**: bit 3 **파일** 항목은 (c)·(d) 를 통과한 뒤 레이아웃 검사에서 **즉시 푼다** — 먼저 `e.usize > MAX_ENTRY` 면 `zip 항목 비압축 크기 상한 초과`(현행 `read()` 문구 — 압축 폭탄 선검사, 할당 전) · `zlib.inflateRawSync(data, { maxOutputLength: Math.max(1, e.usize), info: true })` 로 풀어 **`engine.bytesWritten === e.csize`(스트림이 정확히 목차 압축 크기에서 끝남 — 빈자리 없음) 이고 `buffer.length === e.usize`** 여야 한다. 어긋나거나 inflate 가 던지면 `zip data descriptor 항목의 압축 스트림 경계가 목차와 다름(숨은 레코드 가능): <이름>`. **풀린 내용은 버린다**(캐시 없음 — 1.3.3 R2-1 「풀린 내용을 쌓지 않는다」 · 대조 항목은 `read()` 가 다시 풀어 CRC 까지 본다 — bit 3 대조 항목만 CPU 2회, 메모리 불변). CRC 는 여기서 보지 않는다(현행 `read()` 범위 — 대조하지 않는 항목의 CRC 는 지금도 보지 않는다). bit 3 이 없는 항목·zip 은 이 검사를 하지 않는다(현행과 동일 비용). 폴더 항목의 빈 스트림 확인은 2 가 한다.
+2. **폴더 항목(`/` 로 끝) 규칙 변경(D71 — 8b FR2-1 「두 크기 0」 변경)**: 폴더 항목은 `usize === 0`·`crc === 0`(현행 `:176`·`:200`) 그대로이고, **`csize` 는 `0` 또는 「풀면 0바이트가 되는 deflate 빈 스트림」**(`method === 8` · `csize <= 64` · 레이아웃 검사 때 즉시 `inflateRawSync(data, { maxOutputLength: 1, info: true })` 로 풀어 **출력 0바이트 · `engine.bytesWritten === csize`(전부 소비)**) 이어야 한다. 그 밖(`csize > 64` · 풀면 1바이트 이상 · 스트림 손상 · method 0 인데 `csize !== 0`) → `zip 폴더 항목에 데이터가 있음(<csize>바이트): <이름>`(현행 문구). bit 3 유무와 무관하게 적용한다(Java·Python 은 폴더 항목에 bit 3 + 빈 스트림 둘 다를 쓴다 — 1 의 (a)~(d)도 같이 통과해야 한다). 64 상한의 근거: 빈 deflate 스트림은 고정 블록 2바이트(`03 00`) 또는 stored 블록 5바이트(`01 00 00 ff ff`)이고, 64 는 그 수십 배다 — 폴더 항목마다 푸는 비용을 묶는다(압축 폭탄 경로 아님 — 출력 상한 1).
+3. **`read()`(`:219-258`)**: bit 3 항목은 local crc·csize·usize 대조를 1-(b)(「0 또는 목차 값」)로 바꾸고 `:235` 거부를 없앤다. 데이터 범위(`start + e.csize`)·압축 폭탄 상한·inflate `maxOutputLength = usize`·**스트림 완전 소비 `bytesWritten === csize`(FR3-5 — (나) 방식 리더의 경계와 일치시키는 검사)**·풀린 크기·CRC = 목차는 현행 그대로 **목차 값으로** 수행한다. 꼬리표는 `read()` 에서 다시 읽지 않는다(레이아웃 검사가 이미 대조).
+4. **진단 정보(D79 — harden H-5)**: `deploy.json`·부록 A 에 bit 3 사용 여부를 적지 않는다(결과가 같으면 리뷰어에게 무의미 — D47 정신 · 필요하면 리뷰어가 zip 을 직접 연다). corrupt detail 문구는 위 1·2 의 문장 그대로(사람이 「꼬리표 값이 다르다」「스트림 경계가 다르다」를 읽을 수 있게 — 지금의 「미지원」보다 원인이 보인다). `zips[i].data_descriptor` 필드·부록 A 「꼬리표」 구는 기각.
+5. **문서**: plan ledger(impl) R4-1 행 끝에 「1.3.4 D70 — 서명 있는 꼬리표 검증해 허용」, 8b FR2-1 행 끝에 「1.3.4 D71 — 폴더 빈 deflate 스트림 허용」 부기(impl 트랙). SC-3 「zip 손상」 사유 목록에 「data descriptor 서명·값 불일치 · stored+descriptor · 폴더 항목 빈 스트림 아님」 추가.
+
+- 기각: **서명 유무 둘 다 인정**(12바이트 꼴 — 값·다음 위치가 맞는 하나만, 둘 다 맞으면 모호 거부) — 알려진 주요 작성기(Java·Info-ZIP·Python·.NET·macOS)가 전부 서명을 쓰고, 이 계열은 매번 가장 보수적인 선택지(알려진 꼴만 허용)를 택해 왔다. 서명 없는 zip 은 「대조 불가」로 보이므로 실측되면 그때 넓힌다(D70). **현행 유지 + 작성 안내 문구**(「`zip -r`·`git archive` 로 다시 묶어 달라」) — 그 도구 사용자는 계속 증거 부족이고 작성 규칙을 사람에게 또 강요한다(D70). **local 세 값 전부 0 만 허용** — Info-ZIP 실측(usize 실제값)에 어긋난다. **stored + bit 3 허용** — (나) 방식 리더와 경계가 갈린다. **대조 항목만 경계 확인(현행 `read()` 범위)** — ⑱ 로 읽지 않게 되는 배포 제외 항목에 숨긴 레코드가 「일치」로 보증된다(D75). **꼬리표 zip 은 기대 밖 항목 금지** — ⑱ 정책(제외 파일 동반 허용)과 충돌(D75). **`zips[i].data_descriptor` 표시** — D47 정신(D79).
+- 알려진 한계(§6): 서명 없는 꼬리표·ZIP64·jar 0xCAFE·NTFS 0x000A 확장 필드는 여전히 「대조 불가」(보이는 실패). bit 3 이 **없는** 항목 중 읽지 않는 것의 deflate 경계는 지금처럼 검증하지 않는다(그 항목은 순차 리더도 local 크기로 건너뛰므로 숨은 레코드가 성립하지 않는다). 꼬리표 zip 은 전체를 한 번 푸는 CPU 비용(`unzip -t` 수준)이 든다. macOS Finder zip 의 `__MACOSX/` 폴더는 ⑰ 뒤에도 접두 제거(D57)를 막아 「불일치」(D82 — 범위 밖).
+
+**AC(테스트로 검증 — `tests/mr-review/deploy.test.mjs` · 픽스처 `tests/mr-review/fixtures/`)**
+
+- AC⑰-1. (수용) 테스트 zip 작성기 `mkZip` 에 `dd: true` 옵션(bit 3 · local crc·csize 0 · usize 는 옵션 `ddLocalUsize: 0|real` · 데이터 뒤 서명 있는 16바이트 꼬리표) 추가. `src/main/java/com/example/acct/Foo.java`(head 바이트, deflate, `dd`) 1개 zip → `readZip` 통과 · `read()` 바이트 = 원문 · `deploy` → `DEPLOY 일치`. **표본 (가) 꼴**: 접두 `app/` + WAR 표지 + 내부 클래스(`app/WEB-INF/classes/com/example/acct/Foo.class`·`Foo$1.class`·`app/html/a.html`) 전 항목 `dd` → `일치` · `layout maven-war(signature)` · `prefix "app/"` · `bytes_skipped` 2건(1.3.3 AC⑬-1 과 같은 단언).
+- AC⑰-2. (꼬리표 검증) 같은 zip 에서 꼬리표의 crc·csize·usize 중 하나를 +1 → `readZip` throw(`/data descriptor/`) → `deploy` `{kind:"corrupt"}` · `대조 불가` · 서명 없는 12바이트 꼬리표 → throw(`/data descriptor/`) · 꼬리표 누락(바로 다음 local 헤더) → throw(`/레이아웃/` 또는 `/data descriptor/`) · 꼬리표 뒤 바이트 1개 삽입 → throw(`/레이아웃/`) · ZIP64 꼴(서명 + crc + 8바이트 csize + 8바이트 usize, 24바이트) → throw.
+- AC⑰-3. (local 값) `ddLocalUsize: real`(Info-ZIP 꼴 — crc 0·csize 0·usize 실제값) → 통과 · local 세 값이 모두 목차 값(bit 3 인데 실제값) → 통과 · local usize 가 0 도 목차 값도 아님 → throw(`/local header/`).
+- AC⑰-4. (stored) `method: 0` + `dd` → throw(`/stored/`) · bit 3 없는 stored 항목은 현행 통과.
+- AC⑰-5. (폴더 항목 — D71) 폴더 `app/` 을 `method: 8`·데이터 빈 문자열(csize 2)·`dd` 로 + 파일 1개 → 통과 · 같은 폴더 항목 bit 3 없이(csize 2) → 통과 · 폴더 항목의 deflate 스트림이 1바이트를 풀면(`usize` 선언 0 유지) → throw(`/폴더 항목/`) · 폴더 항목 csize 65(빈 스트림 뒤 패딩 — 목차 csize 에 포함) → throw(`/폴더 항목/`) · 폴더 항목 `method: 0`·csize 0·`dd`(stored + bit 3 — Python stored 스트리밍 꼴) → throw(`/stored/`) · 기존 FR2-1 테스트(`dir/` + 데이터 `X`(usize 1) → throw · 폴더 CRC 있음 → throw)는 불변.
+- AC⑰-6. (기존 테스트 — 단언 유지) 1.3.0 impl R4-1 테스트(`deploy.test.mjs:366-375`)의 마지막 단언 「bit 3 → `/data descriptor/` throw」의 픽스처는 `mkZip` 기본값(**method 0 = stored**) + bit 3 + 꼬리표 없음이라 새 규칙에서 (a) stored 거부에 먼저 걸리고 그 메시지에도 `data descriptor` 가 들어 있어 **단언이 그대로 통과**한다 — 주석만 「stored + bit 3(꼬리표 없음)」로 정정. 그 밖 `readZip` 테스트(EOCD·확장 필드·이름·충돌·암호화·압축 폭탄·FR3-5) 전부 불변.
+- AC⑰-9. (전수 경계 확인 — D75) (가) **숨은 레코드**: 어댑터 excludes `docs/**` · 기대 = `src/main/java/com/example/acct/Foo.java` · zip = `Foo.java`(head 바이트, `dd`) + `docs/notes.md`(`dd`) 인데 `docs/notes.md` 의 압축 영역 = [짧은 deflate 스트림(실제 내용)][그 짧은 스트림용 서명 있는 꼬리표][local 헤더 `WEB-INF/evil.jsp` + deflate 데이터 + 꼬리표] 를 **한 항목의 목차 csize 안에** 넣고, 영역 끝의 꼬리표·목차 crc·csize·usize 는 영역 전체 기준으로 맞춰 (c)·(d) 를 통과하게 만든 zip → `readZip` **목록 단계에서** throw(`/경계/`) → `deploy` `{kind:"corrupt"}` · `대조 불가` — `일치`·`excluded` 가 아니다. 같은 zip 에서 `docs/notes.md` 의 스트림이 정상(영역 끝까지 소비)이면 `일치` · `excluded` 1건. (나) **조기 종료 스트림(초과 항목)**: 기대에 없는 `extra.txt`(`dd`) 의 deflate 스트림 뒤에 패딩 바이트를 두고 목차 csize 에 포함 → 목록 단계 throw(`/경계/`)(현행은 읽지 않는 항목이라 통과 → 불일치였다). (다) **출력 크기**: `dd` 항목의 목차 usize 를 실제 +1 로 → 목록 단계 throw(`/경계/`). (라) **폭탄 선검사**: `dd` 항목 usize `0x7fffffff` → 목록 단계 throw(`/상한/`)(현행은 `read()` 때). (마) bit 3 **없는** 항목에 같은 패딩을 두면 현행대로 목록 단계 통과(대조 항목이면 `read()` 의 FR3-5 가 잡는다 — 1.3.0 테스트 불변).
+- AC⑰-7. (실물 픽스처) 이 머신에서 만든 실제 zip 2종을 `tests/mr-review/fixtures/dd-infozip.zip`(`zip -r - app | cat`)·`dd-python.zip`(Python `zipfile` 비탐색 스트림 — 폴더 항목 빈 스트림 + stored 항목 **없이**) 으로 두고 `readZip` 통과 · 항목 목록·바이트가 기대와 같음 · 테스트 주석에 생성 명령/스니펫. Python 꼴에 stored+bit 3 항목을 포함한 셋째 픽스처 `dd-python-stored.zip` 은 throw(`/stored/`).
+- AC⑰-8. (9단계 실측) 1.3.4 설치본으로 표본 (가) MR 재실행 → 「일치」, 부록 A 에 `배치 maven-war(signature) · 접두 app/`·`바이트 대조 생략 n건` — 1.3.3 AC⑬-14 의 미완 항목을 여기서 닫는다.
+
+### 3.⑱ 어댑터 「배포 제외」 경로가 zip 에 들어 있으면 「zip 에만 있음」 불일치
+
+**현상**: 표본 MR `gamma !65` 의 zip(소스 배치 `source(signature)`)에 `docs/**` 아래 문서·`AGENTS.md`·(어댑터 어디에도 없는 파일 1개 — 예 `_CHANGES.txt`)가 함께 들어 있어 `extra_in_zip` 16건 → 「불일치」 → `M-deploy`. `docs/**`·`AGENTS.md` 는 어댑터 `deploy.excludes` 에 **이미 적힌 경로**다 — 기대 배포 목록(`expectedLists`)은 그 경로를 빼고 만들면서, zip 쪽 초과 검사는 「매핑에 안 걸린 항목 전부」라 같은 경로가 초과로 잡힌다. 같은 MR 의 「삭제 34건인데 본문 삭제 목록 없음」(`deleted_list` 불일치)은 정당한 증거 부족이라 결함이 아니다.
+
+**재현 근거**: 4차 실사용 `deploy.json`(표본 (나)) = `extra_in_zip` 16건(`docs/…` 다수 + `AGENTS.md` + 어댑터 밖 파일 1) · `deleted_list` 1건 · `result = "불일치"`(사용자 세션 보고). 어댑터 `deploy.excludes` = `docs/**`·`.gitlab/**`·`AGENTS.md`·`CLAUDE.md`·`README*`·`src/test/**`(메인 확인 2026-10-23 18:3x — 값은 프로젝트 문서 몫, 여기서는 사실로만). 코드: `deploy.mjs:21` `inDeploy = targets 매칭 && !excludes 매칭`(기대 목록에만 적용) · `:326-333` `listCheck` — `extra = files 중 lookupIn 실패 전부` · `:342` `judgeLayout` 시험이 `missing + extra === 0` 을 본다(제외 파일이 섞이면 시험도 실패해 힌트/기본값으로 떨어진다) · `:447` `extra_in_zip` 기록 · `report.mjs:85-91` `mismatchSummary`.
+
+**원인**: 1.3.0 §5.2b 는 「zip 파일 목록 = 배포 목록」 등식으로 설계돼 **zip 이 배포 목록보다 많으면 전부 불일치**였다. 작성자가 저장소 루트를 통째로 묶는 관행(문서 포함)에서는 등식이 아니라 「배포 목록 ⊆ zip, 나머지는 어댑터가 배포 제외로 선언한 경로면 참고·아니면 불일치」가 정책이다(사용자 결정 18:3x).
+
+**수정 방향(사용자 정책 결정 2026-10-23 18:3x = 기결정 · 형식 = 사용자 지시로 메인이 추천안 입력 18:4x — D72)** — **별도 필드 + D47 자리 3곳**
+
+1. **분류(`listCheck`)**: zip 파일 항목(접두 뗀 이름)마다 ① 기대 사상 조회(이름 그대로 → 내부 클래스 2단계, 현행) 성공 = 대조 대상 ② 실패이고 **접두 뗀 zip 경로 원문이 어댑터 `deploy.excludes` 의 glob(SC-2 규칙 — `matchesAny`, 대소문자 구분, 배치 역사상 없음)에 걸리면 `excluded`** ③ 둘 다 아니면 `extra`(현행 `extra_in_zip`). `excluded` 는 `mismatches` 에 넣지 않는다(판정 입력 아님 · `result` 계산 불변 — `deploy.mjs:618-621`). 순서 ①→② 라 기대 경로는 excludes 에 걸려도 대조 대상이다(기대 목록이 excludes 를 이미 뺐으므로 겹칠 일은 없다). `deploy.targets` 는 보지 않는다 — targets 에 걸리는데 기대에 없는 항목(`src/main/java/…/Other.java` — MR 범위 밖 파일)은 지금처럼 `extra_in_zip`(이 검사의 본래 목적).
+2. **시험(`judgeLayout`)**: `probe` 의 「불일치 0」은 `missing + extra` 만 본다 — `excluded` 는 세지 않는다(제외 파일이 섞인 표지 없는 zip 도 시험이 성립). 두 배치의 `excluded` 분류 결과가 다를 수 있으나(배치별로 사상 조회가 다르다) 판정은 선택된 배치의 결과만 쓴다.
+3. **합산(`deploy`)**: `zips[i].excluded` = 그 zip 의 `excluded` 경로(접두 뗀 zip 경로, 정렬) · `zip.excluded` = 합집합(정렬·중복 제거). 대조한 zip 이 없으면 `[]`. `zip.entries`·`zip_conflict`·R3-1 「삭제 경로가 zip 에도 있음」 검사는 **불변**(제외 항목도 zip 에 있는 항목이다 — `entries` 에 남고 충돌·삭제 검사에 참여한다).
+4. **`deploy.json`(SC-3)**: `zip.excluded: [<zip 경로>]`(기본 `[]` — `해당 없음`·제외 프로젝트·zip 누락에도 항상 기록) · `zips[i].excluded: [<zip 경로>]`. `mismatches.kind` 변경 없음. plan SC-3 정정은 impl 트랙(「1.3.4에서 변경」).
+5. **표시(D47 자리 3곳 — 헤더에는 넣지 않는다)**: (가) **부록 A** 배포본 절에 `bytes_skipped` 목록(`report.mjs:382` `skippedNote`)과 같은 꼴로 `배포 제외 경로 n건(참고 — 어댑터 deploy.excludes):` + 경로 각 1줄(`- <경로>`) — 0건이면 문구 없음 · **전부 적는다, 상한 없음**(D80 — harden H-6: 부록 A 는 전문 자리(1.3.2 D40), 길어지는 것은 작성자가 배포본에 문서를 많이 넣었다는 사실의 표시 · 「상한 50 + 외 n건」 기각). (나) **실행 블록 「2. 검증 상태」** 배포본 줄(`:215`) 끝에 ` · 배포 제외 경로 n건(참고)`(0건이면 없음 — `skippedNote` 와 같은 자리·같은 규칙). (다) **SKILL.md §8 터미널 요약** 배포본 대조 결과 항목에 「`deploy.json.zip.excluded` 가 1건 이상이면 「(배포 제외 경로 n건 — 참고)」」 1구. 보완 요청 문안·`mismatchSummary`·`machineEvidence` 는 `excluded` 를 보지 않는다(불일치가 아니다). `zips` 가 없거나 `excluded` 키가 없는 1.3.3 이전 `deploy.json`(`--resolve` 재실행)은 「0건」으로 읽는다(render 가 키 부재를 허용).
+
+- 기각: **`mismatches` 새 kind `excluded_in_zip`(판정 제외)** — 「`mismatches` 가 비면 일치」 불변식(`deploy.mjs:620`)·`mismatchSummary`·부록 A 불일치 목록에 예외 분기가 생긴다(D72). **부록 A 만** — 리뷰어가 게시 블록만 보면 제외 파일이 섞였는지 모른다(D72). **excludes 를 배치 역사상(소스 경로)으로 대조** — WAR 배치 `WEB-INF/classes/x` 의 역사상은 둘 이상(`resources`·`java`)이라 모호하고, 알려진 excludes(`docs/**`·`AGENTS.md`·`src/test/**` 등)는 WAR zip 에 그 경로로 들어오지 않는다 — zip 경로 원문 대조로 충분(§6 한계 1줄).
+- 알려진 한계(§6): `excluded` 항목의 바이트는 대조하지 않는다(배포되지 않는 파일 — 참고 표시만). 대소문자만 다른 `Docs/a.md` 는 excludes 에 안 걸려 `extra_in_zip`(SC-2 glob 규칙 그대로).
+
+**AC(테스트로 검증 — `tests/mr-review/{deploy,report}.test.mjs`)**
+
+- AC⑱-1. (기본) 어댑터 `deploy.excludes = ["docs/**", "AGENTS.md"]` · 기대 = `src/main/java/com/example/acct/Foo.java` · zip(소스 배치) = `Foo.java`(head 바이트) + `docs/a.md` + `docs/sub/b.md` + `AGENTS.md` → `DEPLOY 일치` · `mismatches = []` · `zip.excluded = ["AGENTS.md", "docs/a.md", "docs/sub/b.md"]` · `zips[0].excluded` 같음 · `zip.entries` 에 네 항목 전부.
+- AC⑱-2. (어댑터 밖 파일은 불일치 유지) 같은 zip 에 `_CHANGES.txt` 추가 → `불일치` · `extra_in_zip` 1건 `_CHANGES.txt` · `zip.excluded` 3건 유지 · `mismatchSummary` = `extra_in_zip 1건(_CHANGES.txt) · 전체 목록 부록 A`. targets 에 걸리는 기대 밖 파일 `src/main/java/com/example/acct/Other.java` 추가 → `extra_in_zip`(현행).
+- AC⑱-3. (접두) zip = `app/src/main/java/com/example/acct/Foo.java` + `app/docs/a.md` → `prefix "app/"` · `excluded = ["docs/a.md"]`(접두 뗀 경로) · `일치`.
+- AC⑱-4. (시험) 기대 = `src/main/webapp/html/a.html` · 표지 없는 zip = `html/a.html`(head 바이트) + `docs/a.md` → `layout maven-war(probe)` · `일치` · `excluded = ["docs/a.md"]`(1.3.3 AC⑬-4 에 제외 파일을 더한 꼴 — 현행이면 시험 실패 → `source(default)` 불일치).
+- AC⑱-5. (zip 2개) `src.zip` 에 `docs/a.md` · `classes.zip` 에 `docs/a.md`·`AGENTS.md` → `zip.excluded = ["AGENTS.md", "docs/a.md"]`(합집합·중복 제거) · `zips[0].excluded = ["docs/a.md"]` · `zips[1].excluded = ["AGENTS.md", "docs/a.md"]` · 같은 바이트면 `일치`, 다른 바이트면 `zip_conflict`(D60·D66 — 제외 항목도 zip 사이 충돌 검사 대상, 현행 불변).
+- AC⑱-6. (대소문자·glob) `Docs/a.md` → `extra_in_zip`(excludes `docs/**` 에 안 걸림) · excludes `README*` 에 `README.md`·`README.ko.md` 걸림.
+- AC⑱-7. (렌더·문구) `deploy.json` 픽스처 `zip.excluded` 2건 → 부록 A 에 `배포 제외 경로 2건(참고 — 어댑터 deploy.excludes):` + `- docs/a.md`·`- AGENTS.md`(각 1줄) · 실행 블록 「2. 검증 상태」 배포본 줄에 ` · 배포 제외 경로 2건(참고)` · `bytes_skipped` 와 둘 다 있으면 둘 다(순서 생략 → 제외) · 0건·키 없음(1.3.3 꼴 픽스처) → 두 문구 없음(기존 render 테스트 불변) · `M-deploy`·보완 문안 없음(`result = 일치`) · SKILL.md §8 터미널 요약 줄에 「배포 제외 경로 n건」 실재(grep).
+- AC⑱-8. (기존 테스트 — 픽스처 정정 3건, 단언 유지 — D81, harden H-7) 테스트 픽스처 어댑터(`tests/mr-review/fixtures/adapter.md`)의 `deploy.excludes` 는 `docs/**`·`.gitlab/**`·`AGENTS.md`·`CLAUDE.md`·`README*`·`src/test/**`(조회 사실)라, zip 에 `README.md`/`README.txt` 를 「기대 밖 파일」로 넣어 `extra_in_zip` 불일치를 단언하는 기존 테스트 **3건**은 ⑱ 뒤 그 파일이 `excluded` 로 분류돼 단언이 깨진다 — ① 1.3.0 `deploy.test.mjs:84-97` 「불일치: base 기준 zip … 4종 mismatch」(`README.md`) ② 1.3.1 `:550-555` diff-only `bytes_unavailable` + `extra_in_zip README.md` ③ 1.3.2 `:745-751` WAR `README.txt` + `map_conflict`. 세 테스트의 의도(「기대에 없는 파일이 zip 에 있으면 불일치」)를 지키기 위해 **픽스처의 그 파일 이름만 `extra.txt`**(targets `src/main/**`·`assets/**`·`**/*.sql` 과 excludes 어디에도 안 걸리는 이름)로 바꾸고 **단언(`extra_in_zip`·종류 목록·`불일치`)은 유지**한다(1.3.3 AC⑬-11 예외와 같은 방식). `README.md` 가 `excluded` 로 가는 새 행동은 AC⑱-1·⑱-6 이 단언한다. 그 밖 1.3.0~1.3.3 `deploy.test.mjs`·`report.test.mjs` 는 전부 불변(zip 픽스처에 excludes 경로가 든 테스트는 위 3건뿐 — grep `docs/|AGENTS|README|CLAUDE|src/test` 조회).
+
+### 3.S2 `report.mjs` 가 표 밖 줄에 들어가는 외부 유래 문자열을 평탄화하지 않아 가짜 줄이 들어갈 수 있다 (1.3.3 보안 지적)
+
+**현상**: 1.3.3 ⑭ 는 **마크다운 표 셀**(의도 대조표·부록 A 검사표)만 `cell()`/`tc()`(마스킹 → 줄바꿈 평탄화 → 재마스킹 → `|` 이스케이프)로 처리했다. 표 밖 줄 — 부록 A 배포본 절(`zipLines()` 의 `attachment`·`comment_sha`·`prefix` · 불일치 줄 `m.path`·`m.detail` · `bytes_skipped` 목록), 실행 블록·보완 문안·부록 D 에 들어가는 `mismatchSummary`/`machineEvidence.detail`(경로·`unrecovered`·`baselineLinks.raw`), 헤더(`mr.title`·`web_url`·`outsideWorktreePaths`), 부록 B 출처 `ref`, 부록 C·D 의 검토자 출력 필드 — 는 값에 줄바꿈이 있으면 **새 줄**이 되고, 그 줄이 `## `·`- `·```` ``` ```` 로 시작하면 가짜 제목·가짜 항목·코드펜스 닫힘이 된다. 판정값(`verdict.json`)은 계산값이라 불변 — 사람이 읽는 초안과 게시용 블록에 가짜 문장이 들어가는 문제다.
+
+**재현 근거(읽기 전용 코드 조회 2026-10-23 18:3x)**: ⓐ **프롬프트 전제 정정** — zip 항목 이름의 C0 제어 문자(LF·CR·탭 포함)·DEL 은 1.3.0 impl R5-2 가 `zipName`(`deploy.mjs:111`)에서 이미 거부한다(`notCanonical(:119)` 은 경로 꼴만 보지만 그 앞에서 걸린다). 따라서 `prefix`(접두)·`m.path`(zip 경로)·`bytes_skipped`·`entries` 로는 **줄바꿈을 끼울 수 없다**. ⓑ **zip 주석**: `deploy.mjs:407-408` — 주석에 7~40자 16진수가 없으면 `comment_sha = 주석 원문(trim)`(최대 65535바이트, 줄바꿈 포함) → `zipLines()` 의 `s7(comment_sha)`(앞 7자 — 줄바꿈 포함 가능) · `comment_sha` 불일치 detail `zip 주석 ${comment_sha} ≠ head …`(`:427`·`:429`·`:430` — **원문 전체**) → 부록 A `- comment_sha: …` 줄. ⓒ **이름의 그 밖 불가시 문자**: C1 제어(U+0080~U+009F, NEL U+0085 포함)·줄/단락 구분자 U+2028/U+2029·양방향 제어(U+202A~U+202E·U+2066~U+2069 등)·폭 0 문자(U+200B~U+200D·U+2060·U+FEFF 중간 위치)·연결 제어 U+00AD 는 `:111` 정규식(`[\u0000-\u001f\u007f]`)에 걸리지 않는다 — 마크다운은 U+2028 을 줄 경계로 보지 않지만 편집기·터미널·일부 뷰어는 보고, 양방향·폭 0 문자는 **보이는 경로와 실제 경로를 다르게** 만든다(`html/a.html` 로 보이는 `html/a​.html` 은 기대 경로와 다른 항목인데 리뷰어 눈에는 같다 — 불일치로는 잡히므로 틀린 「일치」는 없고 혼동만). ⓓ **저장소 경로**(`expectedLists` 가 `-z` 로 읽어 줄바꿈 든 경로를 그대로 전달 → `missing_in_zip.path`·`detail`)·`snapshot.unrecovered`·`baselineLinks.raw`·검토자 출력 필드는 zip 밖 입력이라 ⓐ 와 무관하게 줄바꿈이 가능하다. ⓔ `mr.title`(GitLab 제목은 한 줄 입력)·첨부 파일명(`check.mjs:212` `UPLOAD_RE` 가 `[^)\s]+` — 공백·줄바꿈 불허)은 지금도 안전하지만 같은 규칙에 넣어 둔다(비용 0).
+
+**원인**: ⑭ 의 범위가 「표가 깨진다」는 증상(셀 수)에 맞춰져 **표 셀**에만 적용됐고, 리포트의 「값 자리에 들어가는 문자열은 전부 한 줄」이라는 불변식이 없었다. zip 주석은 1.3.0 부터 SHA 추출 실패 시 원문을 그대로 보존하는 설계였다.
+
+**수정 방향(사용자 결정 2026-10-23 18:4x — D73 · 사용자 지시로 메인이 추천안 입력)** — **두 겹: 이름 검사 확장 + 주석 원문 비노출 + 전부 평탄화**
+
+1. **zip 항목 이름 검사 확장(`zipName` `:111` — zip 해석 차이 계열 R3-2·R4-4 「보이는 이름 ≠ 실제 이름 zip 은 보증하지 않는다」의 연장)**: UTF-8 해독·왕복 대조 뒤의 이름에 **유니코드 일반 범주 Cc(제어 — C0·C1·DEL)·Cf(서식 — 양방향 제어·폭 0·연결 제어·BOM·ZWJ·태그 등 전부)·Zl(U+2028)·Zp(U+2029)** 문자가 하나라도 있으면 `throw` → 그 zip `corrupt` 「대조 불가」. **범주로 닫는다 — 열거 목록이 아니다**(D76 — harden H-2: 1.3.0 FR1-3 처럼 「거부 목록 늘리기」가 아니라 「범주로 닫기」 · ZWJ 가족 이모지·국기 태그 이름도 거부 — §6 한계). 구현 = `/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u`(현행 C0·DEL 검사를 대체 — C0·DEL 은 Cc 에 포함). 메시지 `zip 파일명에 제어·서식·줄 구분 문자(보이는 이름과 다를 수 있음): <JSON.stringify(이름)>`. 한글·단일 코드포인트 이모지 등 일반 비ASCII 이름은 그대로 통과(1.3.0 R3-2 테스트 불변). 접두 제거·매핑 뒤 이름은 이 검사를 통과한 이름의 부분 문자열이라 다시 검사하지 않는다.
+2. **zip 주석 원문 비노출(SC-3 `comment_sha` 의미 변경 — 1.3.0 「SHA 없으면 주석 원문(trim)」 → 「SHA 또는 `null`」)**: `comment_sha` = 주석에서 뽑은 7~40자 16진수(현행 정규식), 없으면 **`null`**(주석이 있어도). 불일치 detail = 주석이 비어 있으면 `zip 주석 (없음) ≠ head …`(현행), 주석이 있는데 SHA 가 없으면 `zip 주석에 SHA 없음(주석 n자) ≠ head …`(n = trim 뒤 문자열의 `String.length` — 원문은 리포트·`deploy.json` 어디에도 넣지 않는다). 다중 zip 의 「head 와 일치하는 zip 주석 없음 — zip#1 … 주석 <상태> · zip#2 …」(`deploy.mjs:430`) 줄의 `<상태>` 도 같은 규칙(`<SHA>` · `(없음)` · `SHA 없음(n자)`). D63 의 다중 zip 「주석 없음」 판정(`hasComment`)은 **`comment_sha !== null`** 이 아니라 **「trim 뒤 주석이 비어 있지 않음」** 으로 — SHA 없는 주석이 있는 zip 은 「주석이 있는데 다른 zip」 쪽(불일치)이다(현행 의미 유지 — 지금도 원문이 head 와 다르므로 불일치였다). `zips[i].comment_sha`·`zip.comment_sha`(합산 — head 와 일치하는 값 또는 `null`)도 같다. 부록 A zip 줄의 `주석 <7자|없음>` 은 그대로(`null` → 「없음」 · zip 1개 `-`).
+3. **리포트 조립 줄 평탄화(`report.mjs`)**: 표 셀용 `tc()` 와 같은 순서(원문 `fieldMask` → 줄바꿈(`\r\n|\r|\n`) 공백 하나로 → 편 값이 달라졌으면 `fieldMask` 재적용)로 **`|` 이스케이프만 없는 `line()`** 을 두고, **렌더가 조립하는 모든 줄의 값 자리**에 적용한다 — 헤더(`mr.title`·`web_url`·`unrecovered` 경로·`outsideWorktreePaths`·`earlyExit.reason`·`rereview` 값·`codexSkipReason`) · 실행 블록(`mismatchSummary` 입력 경로·`machineEvidence.detail`·차단 발견·후속 줄의 `title`·`file`·`recommendation`) · 기준선 확인 문안·보완 문안 항목(`baselineLinks.raw`·`reason`·`unrecovered`) · 리뷰어 확인 필요·리뷰어 결정·리뷰 실패 줄 · 부록 A 배포본 절(`zipLines()` 의 `attachment`·`comment_sha`·`layout`·`layout_source`·`prefix` · 불일치 줄 `kind`·`path`·`detail` · `bytes_skipped`·`excluded` 경로) · 부록 B `kind`·`ref` · 부록 C·D 의 검토자 출력 필드(`lens`·`type`·`title`·`file`·`line_start`·`confidence`·`evidence`·`scenario`·`fixableInDesign`·`brokenPremise`·`recommendation`·`resolution`·`dismissReason`·`fixableInDesignClaims`) · 부록 D 기계 증거 `detail`·`kind`. **고정 문구·숫자·계산값**(`result`·`verdict`·건수·SHA 7자)은 바꾸지 않는다. `mismatchSummary()` 는 `verdict.json.machineEvidence.detail` 로도 저장되므로(`computeVerdict`) 저장 전이 아니라 **렌더 때** 편다(verdict.json 은 계산 입력 — 값 변경 없음 · cleanup 마스킹은 현행). 재리뷰 파서(`check.mjs:242` 부록 D 불릿 줄)는 한 줄 불릿을 읽으므로 평탄화가 오히려 파서와 맞다. 표 셀은 ⑭ 그대로(`tc()`).
+4. **첨부 파일명에도 같은 범주 검사(D78 — harden H-4)**: `uploadName`(`deploy.mjs:271-276`)이 디코딩한 이름에 1 과 같은 `/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u` 문자가 있으면 `null` → 기존 거부 경로(`{kind:"download", path:null, detail:"첨부 파일명·경로가 안전하지 않아 조회하지 않음: …"}` — 그 zip 은 받지 않고 결과 「대조 불가」). 검사 함수 하나(`hasInvisible(name)`)를 `zipName`·`uploadName` 두 입구에 건다. detail 에 들어가는 파일명은 S2-③ 평탄화를 거치고(`line()`), 앞 120자 절단은 현행.
+5. **불변식(테스트 가능)**: 「렌더가 조립하는 줄의 **값 자리에 들어가는 자유 문자열 필드**(3 의 목록) 어느 것에 줄바꿈이 있어도, 출력 리포트의 줄 수는 같은 입력에서 줄바꿈을 뺀 것과 같고, 값에서 온 글자로 시작하는 줄이 없다」(AC-S2-3). 분기 키(enum·id·reviewer 이름·SHA·`status`·`mode`·`track` 등 — 값이 바뀌면 렌더 구조가 바뀌는 것)는 불변식의 대상이 아니다(그 값들은 엔진·어댑터 산출이라 작성자 유래가 아니다).
+
+- 기각: **평탄화만**(주석 원문은 펴서 80자 절단 유지·이름 검사 현행) — 보이는 이름과 실제 이름이 다른 zip 이 그대로 통과하고, 주석 원문은 리뷰어에게 쓸모가 없는데(정책 §6.1 은 주석 = SHA) 노출 면만 남긴다(D73). **이름 검사만** — 주석·저장소 경로·검토자 출력 경로의 줄바꿈이 남는다(D73). **열거 목록(C1·U+2028/9·양방향·폭 0·U+00AD)만 거부** — 목록 유지 부담·빠짐(D76). **Zs(공백류 — U+00A0·U+3000) 까지 거부** — 정상 이름에 섞일 수 있고(macOS 파일명) 「보이는 이름 ≠ 실제 이름」 효과가 제어·서식 문자보다 작다 — 비목표(§6). **첨부 파일명은 현행** — 검사 함수 하나를 두 입구에 거는 비용뿐이고 거부 경로가 이미 있다(D78). **마크다운 인라인 구문(`![…](…)`·`<…>`) 이스케이프·코드 스팬** — 범위 밖(D77, §6).
+- 알려진 한계(§6): 유니코드 정규화 차이(NFC/NFD)·공백류 동형은 검사하지 않는다. ZWJ 연결 이모지·국기 태그 이름은 정상이어도 「대조 불가」. 주석 원문은 리뷰어도 못 본다(길이만) — 필요하면 리뷰어가 zip 을 직접 연다. 저장소 경로의 제어 문자는 표시만 방어(이름 검사 대상 아님). GitLab 에 복사되는 보완 문안 줄의 작성자 유래 경로가 마크다운 링크·이미지로 렌더될 수 있다(D77 — 별도 트랙 후보).
+
+**AC(테스트로 검증 — `tests/mr-review/{deploy,report}.test.mjs`)**
+
+- AC-S2-1. (이름 검사) zip 항목 이름 `src/main/A\u0085.txt`(NEL)·`src/main/A .txt`·`src/main/A .txt`·`src/main/‮txt.A`(RLO)·`src/main/A​.txt`(ZWSP)·`src/main/A﻿B.txt`(중간 BOM)·`src/main/A­.txt`(soft hyphen) 각각(UTF-8 표시 bit 11 켬) → `readZip` throw(`/제어·서식·줄 구분/`) → `deploy` `{kind:"corrupt"}` · `대조 불가`. 기존 C0·DEL 거부 테스트(R5-2) 불변(같은 메시지 패턴 `/제어/` 로 맞는지 확인 — 단언이 `/제어문자/` 면 메시지에 「제어」 유지). 한글 이름(`한글/파일.txt`, bit 11)·이모지 `📄.txt` → 통과(R3-2 테스트 불변).
+- AC-S2-2. (주석) zip 주석 = `"abc\n## 가짜 판정\n"`(SHA 없음) → `zip.comment_sha = null` · `mismatches` 에 `comment_sha` 1건, detail 에 `주석에 SHA 없음(주석 12자)` 실재 · **detail·`deploy.json` 전문·렌더 리포트 전문에 `가짜` 없음** · 주석 `""` → detail `(없음)`(현행) · 주석에 SHA 포함(`"built from d4d4d4d…"`) → 현행(SHA 추출·일치) · zip 2개(D63): `src.zip` 주석 = head · `classes.zip` 주석 = `"no sha here"` → `comment_sha` 불일치 1건(detail 에 `zip#2 classes.zip`·`주석에 SHA 없음(11자)`) · `zips[1].comment_sha = null` · `zip.comment_sha = head` · zip 2개 둘 다 SHA 없는 주석(`"x\ny"`·`""`) → 불일치 1건, detail 에 `zip#1 … SHA 없음(3자)`·`zip#2 … (없음)` · 원문 `x`·`y` 없음.
+- AC-S2-3. (평탄화 불변식) `report.test.mjs` 의 전체 렌더 픽스처(`fullWork` — mr·snapshot·check·deploy(zips·excluded·bytes_skipped·mismatches 포함)·pack·findings·review-*)에서 **3.S2-3 목록의 자유 문자열 필드 전부**(테스트에 필드 경로 목록을 명시해 3.S2-3 과 1:1 로 둔다 — 분기 키(SHA·`result`·`verdict`·`kind`·`type`·`confidence`·`fixableInDesign`·`status`·`mode`·`track`·`reviewer`·`validReviewers`·`id`·`source`·`where`·`resolution` 등)는 주입하지 않는다)에 `"\n## ZZINJ\n"` 를 덧붙인 입력으로 `verdict`·`render` → (가) 출력 리포트의 줄 수 = 덧붙이지 않은 입력의 리포트 줄 수 (나) `ZZINJ` 로 시작하는 줄 0개 · `## ZZINJ` 0개 · `ZZINJ` 는 주입한 필드 수 이상 나타난다(값이 실제로 렌더됐음) (다) 실행 블록 코드펜스(```` ```text ````~```` ``` ````) 수 불변 (라) 부록 D 불릿 수·재리뷰 파서(`parseAppendixD`) 결과 건수 불변. 마스킹 순서(⑭ AC⑭-5 꼴): `deploy.mismatches[0].detail = "run --password\nx"` → 최종 리포트 부록 A 줄에 `x` 없음(가림) · `comment_sha` 가 아닌 `kind`·`result` 유지.
+- AC-S2-4. (zipLines·excluded·bytes_skipped 개별) `deploy.json` 픽스처 `zips[0].attachment = "d\n.zip"`·`prefix = "app\n/"`·`bytes_skipped[0] = "p\nq.class"`·`zip.excluded[0] = "docs/e\nf.md"`·`mismatches[0] = {kind:"extra_in_zip", path:"a\nb", detail:"c\nd"}` → 부록 A 의 zip 줄·목록 줄이 각각 **한 줄**(`d .zip`·`app /`·`p q.class`·`docs/e f.md`·`- extra_in_zip a b: c d`) · 실행 블록 `mismatchSummary` 한 줄 · `M-deploy` 부록 D 줄 한 줄 · 보완 문안 항목 한 줄.
+- AC-S2-5. (기존 불변) 줄바꿈이 없는 입력의 렌더 출력은 1.3.3 과 **바이트 동일**(기존 `report.test.mjs` 전부 불변 — AC⑭-3 식) · `comment_sha` 에 SHA 가 있는 기존 deploy 테스트 전부 불변.
+- AC-S2-6. (문서) plan SC-3 `deploy.json` 의 `comment_sha` 설명 「`<string|null>`」에 「1.3.4 — SHA(7~40자) 또는 `null`, 주석 원문은 적지 않는다」 · 1.3.0 spec §5.2b 변경 없음(① 규칙은 「주석 SHA = head」 그대로) — impl 트랙.
+- AC-S2-7. (첨부 파일명 — D78) `check.json.attachments[0].filename = "‮piz.lived"`(양방향 반전) · `"d​.zip"`(폭 0) → `uploadName` 이 `null` · `mismatches` 에 `{kind:"download", path:null}`(detail 에 「안전하지 않아 조회하지 않음」) · `대조 불가` · 가짜 `glab` 호출 0회(그 zip 을 받지 않음) · 정상 이름 `d.zip`·`배포본_v2.zip`(한글) → 현행 통과(기존 `uploadName` 테스트 불변).
+
+## 4. 영향 범위
+
+| 대상 | 변경 |
+|---|---|
+| SC-2 어댑터 계약 | **변경 없음**(키·값·형식·의미 전부 불변 — `deploy.excludes` 를 zip 초과 분류에도 쓰는 것은 소비 방식 추가일 뿐) |
+| SC-3 `deploy.json` | `zip.excluded`·`zips[i].excluded` 추가(기본 `[]`) · `comment_sha` = SHA 또는 `null`(주석 원문 안 적음 — 1.3.0 의미 변경, D73) · 「zip 손상」 사유에 data descriptor 서명·값 불일치 / stored + descriptor / 폴더 빈 스트림 아님 / 제어·서식·줄 구분 문자 이름 추가 · `mismatches.kind` 불변 — plan SC-3 정정은 impl 트랙(「1.3.4에서 변경」) |
+| `adapter.mjs` | 변경 없음(`matchesAny` 재사용) |
+| `deploy.mjs` | `readZip` 레이아웃 검사 bit 3 허용 조건(a)~(e) + **(f) bit 3 파일 항목 전수 inflate 경계 확인(D75)**·폴더 빈 deflate 스트림 허용(D71)·`read()` local 값 「0 또는 목차」·`hasInvisible()` 범주 검사(Cc·Cf·Zl·Zp)를 `zipName`·`uploadName` 두 입구에(D76·D78)·`comment_sha` SHA|null + detail 문구·`hasComment` 기준·`listCheck` 3분류(`excluded`)·`judgeLayout` 시험에서 `excluded` 제외·합산 `excluded` · `out.zip` 기본값에 `excluded: []` |
+| `report.mjs` | `line()` 신설 + 모든 조립 줄의 값 자리에 적용(3.S2-3 목록) · 부록 A `excluded` 목록 · 실행 블록 「2. 검증 상태」 ` · 배포 제외 경로 n건(참고)` |
+| `pack.mjs`·`check.mjs`·`collect.mjs` | 변경 없음 |
+| SKILL.md | §8 터미널 요약 배포본 항목에 「(배포 제외 경로 n건 — 참고)」 · §8 리포트 구성 문구에 부록 A 「배포 제외 경로」 목록 1구 |
+| README 3종 | 1.3.4 한 줄(결함 2건 + 보안 1건 — data descriptor zip 수용·배포 제외 경로 참고 표시·리포트 평탄화/이름 검사) |
+| plugin.json·marketplace.json | 1.3.3 → 1.3.4 |
+| plan ledger(impl) | R4-1 행 끝 「1.3.4 D70 — 서명 있는 꼬리표 검증해 허용」 · 8b FR2-1 행 끝 「1.3.4 D71 — 폴더 빈 deflate 스트림 허용」 부기(재론 아님 — impl 트랙) |
+| 어댑터 문서(프로젝트 쪽) | 변경 불요 |
+| `tests/mr-review` | deploy(⑰ 8건(AC⑰-1~5·7·9 + 기존 R4-1 주석 정정) + 실물 픽스처 3개 · ⑱ 6건 · S2 3건(AC-S2-1·2·7))·report(⑱ 1건 · S2 3건) — 기존 전부 불변(AC⑰-6·AC-S2-5), **예외 = AC⑱-8 의 3건(픽스처 파일명 `README.*` → `extra.txt`, 단언 유지)** |
+
+## 5. 검증 · 완료 조건
+
+- 각 AC 를 `tests/mr-review/*.test.mjs` 에 **먼저 RED 로** 추가한 뒤 구현으로 GREEN(TDD). 게이트 = SC-7 T1~T7(기존 테스트 전부 통과 · T6 식별자 패턴 0건 — 픽스처 zip 의 항목 이름·주석도 가상 값 · T7 AI 서명 0건 · T5 `$N` 0건). 실물 픽스처(AC⑰-7)는 바이너리라 T6 grep 대상이 아니지만 생성 입력(`app/html/a.html` 등)이 가상 값임을 테스트 주석에 적는다.
+- 4단계 review-loop(spec) — 이 spec 을 적대검증한다(D69). 보안 크리티컬 = **yes**(호출자(메인) 지정 — 접촉면 = data descriptor 꼬리표 해석(목차 기준·경계 연속·stored 거부·폴더 빈 스트림) · 이름 범주 검사 · 주석 비노출 · 리포트 평탄화 경계(마스킹 순서)). 5·6 생략.
+- 8단계 impl 적대검증(review-loop `--phase impl`) 필수(하한). 보안 크리티컬 = **yes**(같은 접촉면 + `excluded` 분류가 판정에 새지 않는지).
+- 9단계: 1.3.4 릴리스 커밋·push(사용자 확인) → 설치본 갱신 → 표본 (가) MR 재실행 「일치」(AC⑰-8 — 접두·내부 클래스·`bytes_skipped` 확인) · **표본 (가) zip 의 실제 꼴 기록**(꼬리표 서명 유무·local 값·stored 항목·폴더 항목·`__MACOSX/`·`.DS_Store` 유무 — D82 의 실측 항목, 「대조 불가」면 corrupt detail 로 사유가 보인다) · 표본 (나) MR 재실행 → `extra_in_zip` 은 어댑터 밖 파일 1건만·「배포 제외 경로 n건(참고)」 실재·`deleted_list` 증거 부족은 유지(정당) · 검증 표가 있는 MR 로 리포트 바이트 동일성(S2 평탄화가 정상 입력을 바꾸지 않음 — 1.3.3 리포트와 diff).
+
+## 6. 잔여 리스크 (DEFERRED · 실측) · 미해결 질문
+
+**미해결 질문: 없음.** 설계 선택 4건(Q1 경로·Q2 ⑰·Q3 ⑱·Q4 S2)과 harden-spec(2026-10-23 18:5x~19:0x, 이 세션)의 판단 갭 8건(H-1 숨은 레코드 전수 확인·H-2 이름 범주·H-3 마크다운 인라인·H-4 첨부 파일명·H-5 꼬리표 표시·H-6 제외 목록 상한·H-7 기존 테스트 3건·H-8 `__MACOSX/`)은 전부 질문으로 해소됐고(사용자 지시로 메인이 추천안 입력) 사용자가 유예한 갭은 없다 — **DEFERRED 0건**. 사실 갭은 코드·실측 조회로 닫았다(zip 항목 이름 C0·DEL 은 R5-2 가 이미 거부(`deploy.mjs:111`) · Info-ZIP 스트리밍 local usize 실제값·꼬리표 서명 · Python 폴더 항목 빈 deflate 스트림·stored+bit 3 · 현행 `readZip` 이 둘 다 거부 · 테스트 어댑터 excludes 에 `README*` → 기존 테스트 3건 영향 · `mkZip` 기본 method 0 → R4-1 단언 유지 · `tests/mr-review/fixtures/` 존재 · `zipLines`·불일치 줄·`bytes_skipped` 가 `tc()` 를 거치지 않음 · `comment_sha` 원문 경로 `:407-408`·`:427-430`).
+
+**검증 필요(실측 — repo 조회로도 사용자 결정으로도 닫히지 않는 외부 사실)**
+
+- 표본 (가) zip 의 실제 꼬리표 꼴(서명 유무·local 값·폴더 항목 유무·stored 항목 유무)이 Java/IDE 꼴 서술과 같은지 — 9단계 AC⑰-8. 서명 없는 꼬리표나 stored+bit 3 가 나오면 「대조 불가」로 보인다(의도 — 그때 넓힌다).
+- 표본 (가) zip 에 `__MACOSX/`·`.DS_Store` 가 있는지(macOS Finder zip 인지) — 있으면 ⑰ 뒤에도 「불일치」(접두 제거 불가) → D57 보강 별도 트랙(D82).
+- Java `ZipOutputStream`/IDE 가 폴더 항목을 넣는지·빈 스트림 꼴인지(이 머신에 `javac` 없음 — Python 꼴은 실측).
+- 1.3.3 §6 승계 — WAR 표지 `META-INF/` 만의 zip 존재 여부 · Windows (마) V1 · 재현율 편차.
+
+**수용된 한계(결정은 내려졌고 리스크만 기록)**
+
+- ⑰ 서명 없는 12바이트 꼬리표·ZIP64 꼬리표·jar 0xCAFE·NTFS 0x000A 확장 필드 zip 은 여전히 「대조 불가」(보이는 실패 — corrupt detail 에 사유). 넓힐 때는 이 spec 의 허용 조건에 한 줄 더하는 방식.
+- ⑰ bit 3 이 **없는** 항목 중 읽지 않는 것의 deflate 스트림 경계는 검증하지 않는다(현행 FR3-5 범위 — 순차 리더도 local 크기로 건너뛰므로 숨은 레코드가 성립하지 않는다). bit 3 항목은 전수 확인(D75)이라 꼬리표 zip 은 전체를 한 번 푸는 CPU 비용이 든다(`unzip -t` 수준 · 대조 항목은 `read()` 에서 한 번 더 — 메모리는 쌓지 않는다).
+- ⑰ 폴더 항목 빈 스트림 허용은 폴더마다 inflate 1회(출력 상한 1바이트·입력 ≤ 64바이트) — 항목 수에 비례, 상한 있음.
+- ⑰ macOS Finder 「압축」 zip(`__MACOSX/` 동반)은 판독은 되지만 접두 제거가 안 돼 「불일치」(D82 — 실측 뒤 D57 보강 트랙). `.DS_Store` 는 어댑터 excludes 몫.
+- ⑱ 배포 제외 항목의 바이트·유형은 대조하지 않는다(배포되지 않는 파일). excludes 는 zip 경로 원문 대조라 배치 역사상(WAR 의 `WEB-INF/classes/…` ← `src/test/**`)은 보지 않는다 — 알려진 excludes 는 WAR zip 에 그 경로로 들어오지 않는다.
+- ⑱ 어댑터가 excludes 를 넓게 적으면(`**/*.md`) 배포돼야 할 파일이 「참고」로 빠질 수 있다 — 어댑터 몫(기대 목록도 같은 excludes 로 빠지므로 일관).
+- S2 유니코드 정규화(NFC/NFD)·공백류(Zs) 동형 이름은 검사하지 않고, ZWJ 연결 이모지·국기 태그 이름은 정상이어도 Cf 라 「대조 불가」(D76 — 범주로 닫는 비용, 보이는 실패).
+- S2 첨부 파일명에 범주 문자가 있으면 그 zip 을 받지 않고 「대조 불가」(D78 — `download` 사유로 보인다).
+- S2 GitLab 에 복사되는 보완 문안 줄의 작성자 유래 경로는 마크다운 링크·이미지·HTML 로 렌더될 수 있다(D77 — 범위 밖, 위험 주체 = 동료 작성자(D16 수준), 별도 트랙 후보).
+- S2 zip 주석 원문은 리뷰어도 리포트에서 못 본다(길이만) — 필요하면 zip 을 직접 연다.
+- S2 저장소 경로·검토자 출력의 제어 문자는 표시(평탄화)만 방어한다 — 경로 자체의 이상은 모델 검토·사람 몫.
+- S2 평탄화는 검토자 출력(`evidence`·`scenario` 등)의 의도된 줄바꿈도 공백으로 편다 — 부록 C·D 가독성 비용(검토자 스키마는 한 줄 문자열 전제).
+
+## 재논의 금지(기결정)
+
+사용자 지시(2026-10-23 18:1x 「수정사항이 나오면 수정 진행해주세요」)에 따라 **메인이 추천안(첫 선택지)을 입력**한 결정(이 세션 질의 4건, 18:4x). 리뷰에서 다시 제안하지 않는다. 1.3.0 spec D1~D16 · 1.3.1 spec D17~D34 · 1.3.2 spec D35~D51 · 1.3.3 spec D52~D67 은 전부 승계한다(**변경 = 1.3.0 impl R4-1·8b FR2-1 → D70·D71 · SC-3 `comment_sha` → D73** — 명시).
+
+| D | 결정 | 근거 |
+|---|---|---|
+| D68 | 이 트랙 범위 = ⑰ + ⑱ + 1.3.3 보안 지적 S2. 재현율 편차·V1·1.3.3 R2-2·미지원 확장 필드(0xCAFE·0x000A)·서명 없는 꼬리표·ZIP64·정규화/공백류 동형·저장소 경로 제어 문자·읽지 않는 항목 경계는 비목표 | 사용자 결정(2026-10-23 18:1x 「수정사항이 나오면 수정 진행」 + ⑱ 정책 18:3x + S2 「실측 뒤 묶어서」 14:0x) |
+| D69 | 경로 = **경량, 단 4단계 spec 적대검증은 유지**. 생략 = 5 plan·6 plan 적대검증(5 생략의 자동 귀결). 근거 = 접촉 표면 무신호, 그러나 ⑰ 꼬리표 수용 규칙이 새 설계라 spec 에서 codex 가 한 번 두드린다. 하한(spec·harden·impl 적대검증) 유지. ledger(spec) = 이 spec 말미 `## 적대검증 ledger (spec)`, ledger(impl) = 그 아래 | 사용자 지시로 메인이 추천안 입력(Q1) — 1.3.3 D53 선례 |
+| D70 | ⑰ = **목차 기준 + 서명 있는 16바이트 꼬리표만 수용**: deflate 항목만(stored+bit 3 거부) · local crc·csize·usize 각각 0 또는 목차 값 · 목차 csize 위치에 서명 `0x08074b50` + crc·csize·usize = 목차 · 그 뒤 다음 항목이 빈틈·겹침 없이 연속 · ZIP64 꼴·서명 없는 12바이트 꼴 거부 · `read()` 는 목차 값으로 풀고 FR3-5 완전 소비 유지. **1.3.0 impl R4-1 「bit 3 거부」 변경**. 서명 유무 둘 다·현행 유지+안내 문구는 기각 | 사용자 지시로 메인이 추천안 입력(Q2) — 알려진 주요 작성기 전부 서명 사용, 계열 관행 = 알려진 꼴만 허용 |
+| D71 | ⑰ 폴더 항목 = usize 0·crc 0 + **csize 0 또는 풀면 0바이트가 되는 deflate 빈 스트림(csize ≤ 64 · 전부 소비)**. bit 3 유무 무관. **8b FR2-1 「폴더는 두 크기 0」 변경** | 사용자 지시로 메인이 추천안 입력(Q2 묶음) — Java·Python 이 폴더 항목을 이 꼴로 씀(Python 실측) |
+| D72 | ⑱ = 정책(사용자 18:3x 기결정: excludes 에 걸리는 zip 항목은 불일치 아님·「배포 제외 경로 n건(참고)」, 어댑터 어디에도 없는 파일은 불일치 유지) + 형식 = **별도 필드 `zip.excluded`·`zips[i].excluded`**(mismatches 아님 · 판정 코드 무변경 · 시험에서도 제외) + **D47 자리 3곳**(실행 블록 「2. 검증 상태」 건수 · 부록 A 목록 · 터미널 요약). 대조 = 접두 뗀 zip 경로 원문 ↔ `deploy.excludes` glob(SC-2 규칙). 새 kind `excluded_in_zip`·부록 A 만·역사상 대조는 기각 | 사용자 정책 결정(18:3x) + 사용자 지시로 메인이 추천안 입력(Q3) — 「mismatches 가 비면 일치」 불변식 유지 |
+| D73 | S2 = **두 겹**: ① `zipName` 범주 검사 Cc·Cf·Zl·Zp → corrupt(C0·DEL 검사 대체) + zip 주석 원문 비노출(`comment_sha` = SHA 또는 `null` — **1.3.0 SC-3 「주석 원문」 변경**, SHA 없는 주석은 detail 「주석에 SHA 없음(n자)」, D63 `hasComment` = trim 뒤 비어 있지 않음) ② `report.mjs` `line()`(마스킹→평탄화→재마스킹, `|` 이스케이프 없음)을 **모든 조립 줄의 값 자리**에 적용(표 셀은 ⑭ `tc()` 그대로). 평탄화만·이름 검사만·Zs 거부는 기각 | 사용자 지시로 메인이 추천안 입력(Q4) — R3-2·R4-4 방어선 연장 + ⑭ 재사용 |
+| D74 | 이 세션(spec·harden)은 코드·테스트·SKILL.md·plan·README·plugin.json 을 수정하지 않는다. plan SC-3·ledger 부기·README 는 impl 트랙 몫 | 트랙 프롬프트 편집 범위(1.3.3 D62 방식) |
+
+harden-spec(2026-10-23 18:5x~19:0x, 이 세션)에서 확정 — 판단 갭 8건 전부 사용자 지시로 메인이 추천안 입력(메인 확인 19:0x).
+
+| D | 결정 | 근거 |
+|---|---|---|
+| D75 | ⑰ bit 3 **파일** 항목은 레이아웃(목록) 단계에서 **전수** inflate 해 「소비 바이트 = 목차 csize · 출력 = 목차 usize」를 확인(`MAX_ENTRY` 선검사 · 풀린 내용은 버림 — 캐시 없음 · CRC 는 `read()` 때). 어긋나면 corrupt. 「대조 항목만 확인」·「꼬리표 zip 은 기대 밖 항목 금지」는 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-1) — 1.3.0 FR1-3 「목차에 없는 레코드 보증 안 함」을 꼬리표 항목에도 유지하는 유일한 방법(⑱ 제외 항목에 숨긴 레코드 차단) · 비용 = `unzip -t` 수준 |
+| D76 | S2 이름 검사 = 유니코드 범주 **Cc·Cf·Zl·Zp 전체**(정규식 한 줄). 열거 목록(C1·U+2028/9·양방향·폭 0·U+00AD)은 기각. ZWJ 이모지·태그 이름 거부는 §6 한계 | 사용자 지시로 메인이 추천안 입력(갭 H-2) — 「거부 목록 늘리기」가 아니라 「범주로 닫기」(FR1-3 관행) |
+| D77 | GitLab 에 복사되는 줄의 작성자 유래 경로의 **마크다운 인라인 구문(링크·이미지·HTML)은 이번 범위 밖** — §6 기록, 별도 트랙 후보. 코드 스팬·특수문자 이스케이프는 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-3) — D68 범위(새 줄 삽입)를 넘고 위험도 낮음(D16 수준), 어느 대책도 기존 출력을 넓게 바꿈 |
+| D78 | S2 범주 검사를 **첨부 파일명(`uploadName`)에도** 적용 — 걸리면 `null` → 기존 `download` 거부(「안전하지 않아 조회하지 않음」) → 대조 불가 | 사용자 지시로 메인이 추천안 입력(갭 H-4) — 검사 함수 하나를 두 입구에, 거부 경로 기존 |
+| D79 | ⑰ bit 3 사용 여부를 `deploy.json`·부록 A 에 **적지 않는다**. `zips[i].data_descriptor`·부록 A 「꼬리표」 구는 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-5) — D47 정신(결과가 같으면 매번 뜨는 정보는 무시된다) |
+| D80 | ⑱ 부록 A 「배포 제외 경로」 목록은 **전부**(상한 없음). 「상한 50 + 외 n건」 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-6) — 1.3.2 D40 부록 A = 전문 자리 |
+| D81 | ⑱ 로 결과가 바뀌는 기존 테스트 3건(`deploy.test.mjs` 84-97·550-555·745-751)은 **픽스처 파일명만 `README.*` → `extra.txt` 로 정정, 단언 유지**. 단언을 `excluded` 로 바꾸는 것은 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-7) — 1.3.3 AC⑬-11 예외 방식(의도 보존, 새 행동은 새 테스트) |
+| D82 | macOS Finder zip 의 `__MACOSX/`·`.DS_Store` 는 **이번 범위 밖** — D57 접두 제거 무변경, §5 실측 항목 + §6 기록, 표본 (가) 실측에서 확인되면 D57 보강 별도 트랙. 「접두 조건에서 excludes 항목 제외」는 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-8) — 범위(D68)는 실측된 결함만, 불일치는 보이는 실패 |
+
+## 확인 대기 대장
+
+| # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
+|---|---|---|---|---|---|---|
+| (spec·harden 단계 — 수동 모드. 설계 질의 4건(Q1~Q4) + harden 판단 갭 8건(H-1~H-8) + diff 승인 1건은 사용자 지시 「수정사항이 나오면 수정 진행해주세요」(2026-10-23 18:1x)에 따라 메인이 추천안을 입력했고(메인 확인 18:43·19:00·19:04·19:09) 그 출처는 위 D68~D82 에 적었다 — 대기 0건) | | | | | | |
