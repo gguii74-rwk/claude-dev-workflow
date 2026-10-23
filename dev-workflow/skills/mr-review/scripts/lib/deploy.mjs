@@ -462,9 +462,14 @@ export function deploy({ adapter, work }) {
         for (const st of judged) for (const e of st.files) { if (!byName.has(e.name)) byName.set(e.name, []); byName.get(e.name).push({ st, e }); }
         for (const [n, list] of byName) {
           if (list.length < 2) continue;
-          const bufs = [];
-          for (const it of list) { try { bufs.push(it.st.z.read(it.e)); } catch (err) { push({ kind: 'corrupt', path: n, detail: tag(it.st.i, err.message) }); bufs.push(null); } }
-          for (let x = 1; x < list.length; x++) if (bufs[0] && bufs[x] && !bufs[0].equals(bufs[x])) push({ kind: 'zip_conflict', path: n, detail: `${lab(list[0].st.i)} 와 ${lab(list[x].st.i)} 의 같은 경로 내용이 다름 — 어느 쪽이 배포될지 정할 수 없음` });
+          // 기준(첫 zip) 버퍼와 현재 버퍼만 들고 바로 비교한다 — zip 수만큼 풀린 내용을 쌓지 않는다(R2-1)
+          let base = null;
+          list.forEach((it, x) => {
+            let cur = null;
+            try { cur = it.st.z.read(it.e); } catch (err) { push({ kind: 'corrupt', path: n, detail: tag(it.st.i, err.message) }); }
+            if (x === 0) base = cur;
+            else if (base && cur && !base.equals(cur)) push({ kind: 'zip_conflict', path: n, detail: `${lab(list[0].st.i)} 와 ${lab(it.st.i)} 의 같은 경로 내용이 다름 — 어느 쪽이 배포될지 정할 수 없음` });
+          });
           for (const it of list.slice(1)) handled.add(it.e);
         }
       }

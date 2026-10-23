@@ -977,6 +977,19 @@ test('⑬ zip 2개 충돌: 같은 zip 경로 다른 바이트 → zip_conflict �
   assert.equal(crossOk.r.first, 'DEPLOY 일치', JSON.stringify(crossOk.d.mismatches));
 });
 
+test('⑬ zip 3개 같은 경로 — 첫 zip 의 내용을 기준으로 뒤 zip 마다 비교(다른 쪽만 zip_conflict, 같은 쪽은 한 번 대조) (1.3.3 review-loop(impl) R2-1 · D60·D66)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root, { projects: GAMMA });
+  const repo = warRepo(root, { add: SRC2 });
+  const z = (b) => ({ entries: [{ name: `${CLS}Foo.class`, data: Buffer.from([b]) }, { name: 'html/a.html', data: SRC2[H] }] });
+  const one = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', ...z(1) }, { filename: 'b.zip', ...z(1) }, { filename: 'c.zip', ...z(2) }], name: 'w1' });
+  const zc = one.d.mismatches.filter((m) => m.kind === 'zip_conflict');
+  assert.equal(zc.length, 1, JSON.stringify(one.d.mismatches));
+  assert.match(zc[0].detail, /zip#1 a\.zip 와 zip#3 c\.zip/);
+  const same = zipsDeploy(root, adapter, { repo, zips: [{ filename: 'a.zip', ...z(1) }, { filename: 'b.zip', ...z(1) }, { filename: 'c.zip', ...z(1) }], name: 'w2' });
+  assert.equal(same.r.first, 'DEPLOY 일치', JSON.stringify(same.d.mismatches));
+});
+
 test('⑬ zip 2개 같은 경로·같은 바이트여도 뒤 zip 항목의 유형 검사는 한다 — 심볼릭 링크 중복은 zip 순서와 무관하게 type 불일치 (1.3.3 review-loop(impl) R1-1 · AC⑨-9)', () => {
   const root = tmp();
   const adapter = writeAdapter(root, { projects: GAMMA });
