@@ -51,11 +51,11 @@
 
 **원인**: SKILL.md §5 「Codex 검토자」 2(`SKILL.md:148`) 「팩은 `W/pack-b.md` 본문을 그대로 붙인다(Codex는 cwd 밖을 읽어선 안 되므로 경로가 아니라 본문)」 — 이 이유는 **워크트리 밖 자료**(공통 문서 저장소·위키·어댑터·기준선 원문)에만 맞다. `repo:` 출처(`pack.mjs:520-524`)는 대상 저장소 head 의 blob 이고 Codex 의 cwd(`snapshot.worktree` = 그 head 의 체크아웃) 안에 같은 파일이 있다 — Codex 는 D4 대로 워크트리 전체를 이미 직접 읽을 수 있다(D16 「Codex 직접 읽기 한계」도 같은 전제). 그런데 팩 B 가 그 본문까지 실어 보내니 프롬프트가 문서로 채워지고(큰 저장소일수록 `repo:` 문서가 크다), 「교차 검토」 표시는 **유효 결과 2개**만 보고 깊이를 보지 않는다. 어댑터 v1.1 이 Codex 를 코드 주 검토자로 세웠으므로 이 둘을 고치지 않으면 배분이 효과를 못 낸다.
 
-**보안 접촉면(설계 전제 — D4·D14·D16 과의 관계)**: 포인터는 **우리가 보내는 양을 줄이는** 변경이다. Codex 가 그 문서를 읽는 경로는 「우리가 보낸 본문」에서 「Codex 의 cwd 직접 읽기」로 바뀌는데, 후자는 D4 가 이미 허용한 범위(워크트리 전체)다. 마스킹(D14)은 팩 B 에 남는 모든 본문(워크트리 밖 자료·MR 본문·댓글·포인터 줄 자체)에 그대로 적용된다 — 포인터 줄에는 경로·head7·줄 수·절 제목 접두만 들어가고 문서 본문은 없다. 심볼릭 링크(120000)·서브모듈·부재는 `repoDocText`(`pack.mjs:469-487`, R5-1)가 이미 `missing:true` 로 거르므로 **포인터는 head 에 일반 blob(100644·100755)으로 실재하는 경로에만** 만든다(링크 대상을 가리키는 포인터를 만들지 않는다 — F4). 경로 감시(D16 ⓑ)는 불변 — 포인터 경로는 워크트리 안 상대 경로라 감시 대상이 아니다.
+**보안 접촉면(설계 전제 — D4·D14·D16 과의 관계)**: 포인터는 **우리가 보내는 양을 줄이는** 변경이다. Codex 가 그 문서를 읽는 경로는 「우리가 보낸 본문」에서 「Codex 의 cwd 직접 읽기」로 바뀌는데, 후자는 D4 가 이미 허용한 범위(워크트리 전체)다. 마스킹(D14)은 팩 B 에 남는 모든 본문(워크트리 밖 자료·MR 본문·댓글·포인터 줄 자체)에 그대로 적용된다 — 포인터 줄에는 경로·head7·줄 수·절 제목 접두만 들어가고 문서 본문은 없다. 심볼릭 링크(120000)·서브모듈·부재는 `repoDocText`(`pack.mjs:469-487`, R5-1)가 이미 `missing:true` 로 거르므로 **포인터는 head 에 일반 blob(100644·100755)으로 실재하는 경로에만** 만든다(링크 대상을 가리키는 포인터를 만들지 않는다 — F4). 또 Codex 가 실제로 읽는 것은 커밋 트리가 아니라 **디스크의 체크아웃 파일**이므로 포인터 직전에 그 파일의 실물(일반 파일 · 실제 위치가 워크트리 안 · 바이트 = head blob)을 확인하고, 어긋나면 본문으로 보낸다(R1-2 — D109). 경로 감시(D16 ⓑ)는 불변 — 포인터 경로는 워크트리 안 상대 경로라 감시 대상이 아니다.
 
 **수정 방향(사용자 지시로 메인이 추천안 입력 2026-10-23 22:2x, Q2 — D92·D93) — (가) 포인터 + (나) 깊이 표지**
 
-1. **(가) 팩 B 포인터(`pack.mjs`)**: 출처가 **대상 저장소 head blob 에서 읽은 것**이고 `snapshot.mode === 'worktree'` 이며 `missing === false` 이면, 팩 B 의 그 출처 본문 자리에 아래 **한 블록**만 넣는다(팩 A 는 바이트 불변 — Claude 는 지금처럼 전부 받는다):
+1. **(가) 팩 B 포인터(`pack.mjs`)**: 출처가 **대상 저장소 head blob 에서 읽은 것**이고 `snapshot.mode === 'worktree'` 이며 `missing === false` 이고 **워크트리 실물 확인 3가지를 통과하면**(review-loop(spec) R1-2 — D109: ⓐ `fs.lstatSync(<worktree>/<경로>)` 가 일반 파일(심볼릭 링크 아님) ⓑ `fs.realpathSync` 결과가 `realpath(<worktree>)` 안(부모 디렉터리가 링크여도 걸린다) ⓒ 그 파일의 바이트가 `git show <head>:<경로>` blob 바이트와 동일(줄바꿈 변환·체크아웃 훅·작업 폴더 수정으로 달라지면 불일치) — 하나라도 어긋나거나 확인 중 오류면 **현행 마스킹 본문**(`packB:'body'` — 안전한 쪽)), 팩 B 의 그 출처 본문 자리에 아래 **한 블록**만 넣는다(팩 A 는 바이트 불변 — Claude 는 지금처럼 전부 받는다):
    ```
    ### [S7] doc · repo:docs/runbooks/ingest-operations.md@e5e5e5e
    (워크트리 문서 — 본문은 현재 작업 디렉터리에서 직접 읽어라: `docs/runbooks/ingest-operations.md` · 212줄)
@@ -63,7 +63,7 @@
    절 참조(`repo:<경로>#<절제목접두>`)면 ` · 절 「5.」 이하` 를 덧붙인다(절이 없으면 현행 `(절 없음: …)` 그대로 — `missing:true`). 대상 = `doc` 출처 중 `repo:` 참조(`pack.mjs:520`) **+ ⑤ 로 생기는 `baseline` 출처 중 `kind: repo-path`**(같은 head blob — 3.⑤-4 · harden H-16). 그 밖(공통 문서 `docsRoot` · 위키 · 어댑터 · `repo` URL 기준선(ref 가 head 와 다를 수 있다) · 이슈 · 본문 기준선 · 재리뷰)은 현행 마스킹 본문. **diff-only 모드는 전부 현행(본문)** — cwd `W/blobs/head` 에 변경 밖 문서가 없다. **포인터의 「n줄」 = head blob 파일 전체 줄 수**(`repoDocText` 가 자르기 전 본문에서 센다 — Codex 가 실제 읽을 양 · harden H-4). `pack.json.sources[*].lines` 는 현행대로 팩 A 발췌 줄 수(상한 400)라 두 값이 다를 수 있다.
 2. **`pack.json.sources[*].packB`**(SC-3 추가 — 1.3.5에서 변경): `"body" | "pointer" | "none"`(`none` = `inPackB:false`). 기존 필드(`inPackB`·`exportAllowed`·`lines`)는 불변. 출처 목록 헤더 줄(`pack.mjs:556`)에서 포인터 출처는 ` · (경로만 — 작업 디렉터리에서 직접 읽음)` 을 붙인다(팩 B 헤더만 — 팩 A 헤더 불변 · 모델 이름을 적지 않는다, D11).
 3. **마스킹·잔존 검사 불변**: 포인터가 들어간 `rawB` 전체가 지금처럼 `maskTextWithCounts` → 잔존이면 팩 B 없음(D14). 포인터 줄의 경로가 어댑터 마스킹 패턴에 걸리면 가려진 채 간다(그 문서는 Codex 가 못 찾는다 — 보이는 실패, §6).
-4. **SKILL.md §5 Codex 프롬프트**: 2 의 문구를 「팩은 `W/pack-b.md` 본문을 그대로 붙인다(**워크트리 밖 자료**는 Codex 가 읽을 수 없으므로 본문 · **워크트리 안 문서는 팩 B 에 경로 포인터만 들어 있다** — 1.3.5 ①)」로 고치고, 고정 첫머리(D16 ⓐ) 뒤에 1문장 추가: 「팩 B 의 (워크트리 문서) 포인터는 현재 작업 디렉터리에서 그 경로를 읽어라. 팩 B 에 없는 경로·작업 디렉터리 밖 경로는 읽지 마라.」 금지 문구(cwd 밖 읽기 금지)는 불변.
+4. **SKILL.md §5 Codex 프롬프트**: 2 의 문구를 「팩은 `W/pack-b.md` 본문을 그대로 붙인다(**워크트리 밖 자료**는 Codex 가 읽을 수 없으므로 본문 · **워크트리 안 문서는 팩 B 에 경로 포인터만 들어 있다** — 1.3.5 ①)」로 고치고, 고정 첫머리(D16 ⓐ) 뒤에 1문장 추가: 「팩 B 의 (워크트리 문서) 포인터는 현재 작업 디렉터리에서 그 경로를 읽어라.」 — **읽기 범위를 팩 B 목록으로 좁히는 문구는 넣지 않는다**(review-loop(spec) R1-1: 팩 B 에는 문서만 있고 코드 경로 목록이 없어 「팩 B 에 없는 경로는 읽지 마라」는 변경 파일 전문·호출부 탐색(§5 공통 입력 3 · D4 워크트리 전체)까지 막는다 — ① 의 목적과 반대). 금지 문구(cwd 밖 읽기 금지 — 고정 첫머리)는 불변.
 5. **(나) 깊이 표지 — `codexStats()`(`report.mjs` export, 순수 함수) + CLI `codex-stats`**: 입력 = `W/codex.out` 전문 + `mr.json.diffs`. 출력 `{ commands, changedFiles, filesMentioned, weak }`:
    - `commands` = `[codex] Running command:` 로 시작하는 줄 수(현행 §5 「잘린 명령」 집계와 같은 줄 집합).
    - `changedFiles` = `mr.json.diffs[*]` 의 `new_path`·`old_path` 를 모은 **경로 집합 크기**(중복 제거 · 빈 값 제외).
@@ -90,9 +90,10 @@
 - AC①-8 CLI: `codex-stats --work W` 첫 줄 `CODEX_STATS commands=… changed=… mentioned=… weak=…` · `codex.out` 없음 → `ERR`.
 - AC①-9 `render`: `findings.reviewerStats.codex = { …, weak:true }` → 헤더 `교차 검토: 있음(약함 — 변경 파일 69 중 9 언급 · 명령 16회)` · 실행 블록 `[판독]` 줄에 ` · 교차 검토 약함` · 부록 D 통계 1줄; `weak:false` → 헤더 `있음(변경 파일 69 중 30 언급 · 명령 40회)` · 실행 블록 변화 없음; `reviewerStats` 없음 → 현행 리포트와 **바이트 동일**(기존 report 테스트 전부 통과) · `crossChecked:false` + 통계 있음 → `없음` 그대로.
 - AC①-10 `verdict`: `reviewerStats` 유무·`weak` 값이 `verdict.json`(status·verdict·evidence·defects)을 바꾸지 않는다.
-- AC①-11 SKILL.md 문구: §5 에 「워크트리 안 문서는 팩 B 에 경로 포인터만」·「포인터는 현재 작업 디렉터리에서 그 경로를 읽어라」·`codex-stats`·`reviewerStats` 가 있고 「경로가 아니라 본문」 문구가 없다(기존 SKILL.md 문구 테스트 파일에 추가).
+- AC①-11 SKILL.md 문구: §5 에 「워크트리 안 문서는 팩 B 에 경로 포인터만」·「포인터는 현재 작업 디렉터리에서 그 경로를 읽어라」·`codex-stats`·`reviewerStats` 가 있고 「경로가 아니라 본문」·「팩 B 에 없는 경로」 문구가 없으며 고정 첫머리의 「현재 작업 디렉터리(워크트리) 밖의 파일을 읽지 마라」는 그대로 있다(R1-1)(기존 SKILL.md 문구 테스트 파일에 추가).
 - AC①-12 `cleanup`: `W/codex-stats.json` 은 허용 9종 밖이라 `extra` 로 지워지고 `findings.json` 의 `reviewerStats` 는 마스킹 사본에 남는다(숫자라 마스킹 영향 없음).
 - AC①-13 `render`(단일 모델 — H-8·H-9·H-13): `validReviewers:['claude']`·`crossChecked:false` + `reviewerStats.codex` 있음 → 헤더 `교차 검토: 없음`(현행 바이트) · 실행 블록 `[판독]` 줄 현행(`· 교차 검토 없음`) · 부록 D 에 `- Codex 검토 통계: …` 1줄 있음.
+- AC①-15 `pack`(R1-2 — D109): head 에 일반 blob 인 `repo:AGENTS.md` 인데 ⓐ 워크트리의 그 파일을 심볼릭 링크로 바꿈 ⓑ 부모 디렉터리(`docs/`)를 워크트리 밖 디렉터리 링크로 바꿈(`repo:docs/x.md`) ⓒ 워크트리 파일 내용을 blob 과 다르게 고침(미커밋) → 세 경우 모두 포인터 **없음** · 팩 B 에 현행 마스킹 본문(blob 에서 읽은 것) · `packB === 'body'` · 링크 대상 파일의 고유 문장은 팩 A·B 어디에도 없다.
 - AC①-14 `pack`(H-4): head blob 450줄 문서 → 팩 A 발췌 400줄 + `(… 상한으로 생략)` · 팩 B 포인터 `450줄` · `pack.json.sources[*].lines` = 팩 A 발췌 줄 수(현행).
 
 ### 3.④ 계약 누락이 게시 블록에 세 번 반복 — 모델 발견 F1 + 기계 증거 M-contract 4건 + 체크박스 5개
@@ -166,9 +167,9 @@
 **수정 방향(사용자 지시로 메인이 추천안 입력 2026-10-23 22:2x, Q5 — D96·D99)**
 
 1. **SC-2 선택 키 `contract.backgroundSections: ["배경"]`**(`contract.lines` 옆 · 기본 `["배경"]` · 비어 있지 않은 문자열 1개 이상의 배열이 아니면 `AdapterError` 메시지에 `contract.backgroundSections(비어 있지 않은 문자열 배열)`). `loadAdapter` 가 `?? ['배경']` 로 채운다.
-2. **절 매칭**(harden H-19 · review-loop(spec) R1-6 으로 정정): 별칭마다 `^<정규식 이스케이프한 이름>`(**접두 일치**, 현행 `/^배경/` 과 같은 규칙 · 정확 일치는 기각)으로 **어댑터 순서대로 `section()` 을 한 번씩** 불러 **첫 번째로 실재하는 절**을 쓴다(둘 다 있으면 어댑터 순서의 앞 이름 — 본문에 나온 순서와 무관) — `reasonText`·`resolveBody` 두 곳. 이름들을 합친 정규식 하나(`^(?:배경|요약)`)를 `section()` 에 넘기지 않는다 — `section()`(`check.mjs:12-18`)은 본문 위에서부터 `findIndex` 로 찾으므로 본문에 먼저 나온 절이 이겨 어댑터 순서가 무시된다. 우선 별칭의 절이 실재하면 비어 있어도 그 절을 쓴다(「첫 실재 절」 — 뒤 별칭으로 넘어가지 않는다). `check.json.reason.section`(SC-3 추가) = 쓴 절의 **실제 제목**(`## 요약` → `요약`) 또는 `null`(없음).
+2. **절 매칭**(harden H-19 · review-loop(spec) R1-6 으로 정정): 별칭마다 `^<정규식 이스케이프한 이름>`(**접두 일치**, 현행 `/^배경/` 과 같은 규칙 · 정확 일치는 기각)으로 **어댑터 순서대로 `section()` 을 한 번씩** 불러 **첫 번째로 실재하는 절**을 쓴다(둘 다 있으면 어댑터 순서의 앞 이름 — 본문에 나온 순서와 무관) — `reasonText`·`resolveBody` 두 곳. 이름들을 합친 정규식 하나(`^(?:배경|요약)`)를 `section()` 에 넘기지 않는다 — `section()`(`check.mjs:12-18`)은 본문 위에서부터 `findIndex` 로 찾으므로 본문에 먼저 나온 절이 이겨 어댑터 순서가 무시된다. 우선 별칭의 절이 실재하면 비어 있어도 그 절을 쓴다(「첫 실재 절」 — 뒤 별칭으로 넘어가지 않는다). `check.json.reason.section`(SC-3 추가) = 쓴 절에 **일치한 별칭 이름**(어댑터에 적힌 이름 그대로 — `## 요약 (Summary)` → `요약` · `## 배경 (Background)` → `배경`) 또는 `null`(없음). 실제 제목 전체를 쓰지 않는다(review-loop(spec) R1-7 — D110: 키 없는 기존 어댑터에서도 `## 배경 (Background)` 제목이면 문구가 바뀌어 D99 바이트 불변이 깨진다).
 3. **본문 기준선 표지**(`check.mjs:114` · harden H-6): `isBody` = 값에 `MR 본문` 또는 **별칭 중 하나**가 있으면(별칭도 본문 표지 — 「MR 본문·배경만」은 기각) → 기본값에서는 `/배경|MR 본문/` 과 동일.
-4. **보완 문구**(`report.mjs:255-256`): `「<check.reason.section ?? backgroundSections[0]>」에 ① 왜…` — 절이 있는데 내용이 비면 그 절 이름, 절이 없으면 첫 별칭. 기본 어댑터 + 「배경」 절 → 현행 문구 바이트 동일. `resolveBody` 사유 = `MR 본문에 「배경」(또는 「요약」) 절이 없다` — 별칭이 1개면 현행 문구 그대로.
+4. **보완 문구**(`report.mjs:255-256`): `「<check.reason.section ?? backgroundSections[0]>」에 ① 왜…` — 절이 있는데 내용이 비면 그 절에 일치한 별칭 이름, 절이 없으면 첫 별칭(둘 다 어댑터에 적힌 이름 — 실제 제목의 덧붙은 글자는 문구에 들어가지 않는다, D110). 기본 어댑터 + 「배경」 절 → 현행 문구 바이트 동일. `resolveBody` 사유 = `MR 본문에 「배경」(또는 「요약」) 절이 없다` — 별칭이 1개면 현행 문구 그대로.
 5. `supplementRequests` 에 `adapter` 를 넘긴다(시그니처 내부 — SC 계약 아님).
 
 **AC**
@@ -177,7 +178,8 @@
 - AC⑥-2 `check`(키 없음): 본문 `## 요약` 만 → `reason = { why:false, what:false, source:'none', text:'', section:null }` · 보완 문안 「「배경」에 ① …」·「「배경」에 ② …」(현행 바이트) · 본문 `## 배경` → `section:'배경'` 이고 그 밖 `check.json`·리포트 **바이트 불변**(기존 check·report 테스트 전부 통과 — `reason.section` 필드 추가는 깊은 동치 단언이 있으면 그 단언에 필드를 더한다).
 - AC⑥-3 `check`(켬 `["배경","요약"]`): `## 요약` 에 ①② → `why:true · what:true · source:'body' · section:'요약'` · 보완 문안에 배경 줄 없음; `## 요약` 에 ① 만 → 「「요약」에 ② 무엇을…」 1줄; 둘 다 있으면 `## 배경` 우선(`section:'배경'`) — **본문에 `## 요약` 이 먼저 나와도**(R1-6 — 본문 순서 `## 요약` → `## 배경` 픽스처) · `## 배경` 이 빈 절이고 `## 요약` 에 ①② 가 있으면 `section:'배경'`·`why:false`·`what:false`(첫 실재 절 — 뒤 별칭으로 넘어가지 않는다).
 - AC⑥-4 `check`(켬): Baseline `MR 본문 「요약」` → `baselineType 'MR 본문 배경'` · `resolveBody` 가 `## 요약` 절을 `baseline/<n>.md` 로 확보; 키 없음 + 같은 값 → `MR 본문 배경`(「MR 본문」 문구) · 절 없음 → `미확보` 사유 현행 문구.
-- AC⑥-5 `check`(켬): 접두 일치 — `## 요약 (Summary)` 도 `요약` 별칭에 걸린다(현행 `/^배경/` 과 같은 규칙) · 이름에 정규식 메타 문자(`C++ 배경`)가 있어도 이스케이프돼 문자 그대로 비교.
+- AC⑥-5 `check`(켬): 접두 일치 — `## 요약 (Summary)` 도 `요약` 별칭에 걸린다(현행 `/^배경/` 과 같은 규칙) · 이름에 정규식 메타 문자(`C++ 배경`)가 있어도 이스케이프돼 문자 그대로 비교 · `## 요약 (Summary)` 에 ① 만 → `section:'요약'` · 보완 문안 「「요약」에 ② 무엇을…」(제목 전체 아님).
+- AC⑥-6 `check`·`render`(키 없음 · R1-7 — D110): 본문 `## 배경 (Background)` 에 ① 만 → `reason.section === '배경'` · 보완 문안 「「배경」에 ② 무엇을(원인·수정 위치·적용 범위)을 적어 주세요.」 **현행 바이트**(1.3.4 리포트와 동일).
 
 ### 3.A review-loop 설명문에 「남의 MR 검토는 mr-review」 안내 없음
 
@@ -213,7 +215,7 @@
 | SC-7 게이트 | 이번 트랙 T4 = review-loop 제외 + T4a·T4b(A, D97) · T1 파일 목록 불변 |
 | `adapter.mjs` | ⑤·⑥ 키 검증·기본값(`validate`·`loadAdapter`) |
 | `check.mjs` | ⑤ 경로 후보 추출(`parseBaselineValue` 에 어댑터 옵션 · 오른쪽 토큰 경계)·`resolveRepoPath`(head 일반 blob **전문** — 워크트리 `ls-tree` 모드 · diff-only tree API 모드 확인 뒤 raw)·유형 우선순위·`inDiff` · ⑥ 별칭별 `section()` 을 어댑터 순서로(`reasonText`·`resolveBody`)·`isBody`·`reason.section` |
-| `pack.mjs` | ① 포인터 렌더(`renderSources` 의 B 분기 · 대상 = `repo:` doc + `repo-path` baseline · 워크트리 모드만)·`packB` 표지·B 헤더 표기 · 팩 A 바이트 불변 |
+| `pack.mjs` | ① 포인터 렌더(`renderSources` 의 B 분기 · 대상 = `repo:` doc + `repo-path` baseline · 워크트리 모드만 · 포인터 직전 워크트리 실물 확인 3가지(D109) — 불일치 = 본문)·`packB` 표지·B 헤더 표기 · 팩 A 바이트 불변 |
 | `report.mjs` | ① `codexStats()`·헤더/실행 블록/부록 D 표시 · ④ `computeVerdict` `coveredBy`·`merged` · 「3.」 `M-contract-*` 2건 이상 묶음 + 권고(1건은 현행 + 권고) · 「4.」 병합 제외 · 부록 D 표지 · ⑤ 검사표 접미(수정됨·경로 미확인) + 보완 문안 「경로 미확인」 1줄 · ⑥ 보완 문구 절 이름(`supplementRequests(adapter)`) — D88 원칙: 새 표시 줄의 외부 유래 문자열(경로·권고·절 이름)은 전부 `line()`/`tc()` |
 | `mr-review.mjs` | `codex-stats` 라우팅 1줄 |
 | `collect.mjs`·`deploy.mjs`·`gitlab.mjs` | 변경 없음 |
@@ -268,11 +270,11 @@
 |---|---|---|
 | D90 | 이 트랙 범위 = ①·④·⑤·⑥·A(5건 전부). ②·③ = 어댑터 v1.1 몫(처리됨) · ⑦·⑧·계약 줄 수 고정·어댑터 자동 선택 = 후속 · 1.3.4 이월·팩 B 총량 상한·diff-only 포인터·dev-cycle 안내 = 비목표 | 사용자 결정(22:1x 「5건 전부」 · 22:2x 어댑터 v1.1) |
 | D91 | 경로 = **경량, 단 4단계 spec 적대검증 유지(보안 yes)**. 생략 = 5 plan·6 plan 적대검증(5 생략의 자동 귀결). 근거 = 접촉 표면 무신호 + ① 이 Codex 전송 경계 변경(축소)이라 codex 가 spec 에서 한 번 두드린다. 하한 유지. ledger(spec) = 이 spec 말미 `## 적대검증 ledger (spec)`, ledger(impl) = 그 아래 | 사용자 지시로 메인이 추천안 입력(Q1) — 1.3.3 D53·1.3.4 D69 선례 |
-| D92 | ① = **팩 B 포인터**: 대상 저장소 head blob 에서 읽은 출처(`repo:` doc · ⑤ `repo-path` baseline)는 워크트리 모드에서 본문 대신 「경로@head7[#절] · n줄 — cwd 에서 직접 읽어라」 한 블록. 일반 blob(100644·100755)·`missing:false` 만 · 심볼릭 링크·서브모듈·부재·절 없음은 현행 · diff-only 는 전부 본문 · 워크트리 밖 자료(공통 문서·위키·어댑터·URL 기준선·이슈·본문 기준선·재리뷰·MR 본문·댓글)는 현행 마스킹 본문 · 팩 A 바이트 불변 · 마스킹·잔존 검사는 포인터 포함 `rawB` 전체. **D4 전송 범위의 축소**(D14·D16 불변). 총량 상한·깊이 표지만은 기각 | 사용자 지시로 메인이 추천안 입력(Q2) — Codex 는 D4 대로 워크트리를 이미 직접 읽으며, 보내는 양만 줄어든다 |
+| D92 | ① = **팩 B 포인터**: 대상 저장소 head blob 에서 읽은 출처(`repo:` doc · ⑤ `repo-path` baseline)는 워크트리 모드에서 본문 대신 「경로@head7[#절] · n줄 — cwd 에서 직접 읽어라」 한 블록. 일반 blob(100644·100755)·`missing:false` 만 · 심볼릭 링크·서브모듈·부재·절 없음은 현행 · diff-only 는 전부 본문 · 워크트리 밖 자료(공통 문서·위키·어댑터·URL 기준선·이슈·본문 기준선·재리뷰·MR 본문·댓글)는 현행 마스킹 본문 · 팩 A 바이트 불변 · 마스킹·잔존 검사는 포인터 포함 `rawB` 전체. **D4 전송 범위의 축소**(D14·D16 불변). 총량 상한·깊이 표지만은 기각. **(review-loop(spec) 로 정정: 포인터 직전 워크트리 실물 확인 3가지 — D109)** | 사용자 지시로 메인이 추천안 입력(Q2) — Codex 는 D4 대로 워크트리를 이미 직접 읽으며, 보내는 양만 줄어든다 |
 | D93 | ① = **깊이 표지**: `codexStats()`(`commands` = `[codex] Running command:` 줄 수 · `changedFiles` = `mr.json.diffs` 경로 집합 · `filesMentioned` = `codex.out` 전문에 경로 그대로 등장 · `weak` = `filesMentioned < ceil(changedFiles/4)`) + CLI `codex-stats` + `findings.json.reviewerStats.codex`(선택) → 헤더 `교차 검토: 있음(약함 — 변경 파일 n 중 m 언급 · 명령 k회)` · 실행 블록 `[판독]` 줄 ` · 교차 검토 약함`(약함일 때만) · 터미널 요약 · 부록 D 1줄. 통계 없음 = 현행 바이트. `crossChecked`·판정 계산 불변 | 사용자 지시로 메인이 추천안 입력(Q2 묶음) — 실측 9/69 를 「약함」으로 읽는 임계 · D47 표시 자리 3곳 |
 | D94 | ④ = **기계 증거 유지 + 모델 발견 병합**: SC-5 `coveredBy: ["M-…"]`(메인이 §6 1b 에서 `MISSING_EVIDENCE` 에만) → `computeVerdict` 가 `type === MISSING_EVIDENCE` 이고 모든 id 가 이번 `machineEvidence` 에 있을 때만 `merged`(evidence·defects 제외 · `verdict.json.merged`), 아니면 무시 + `reasons`(fail-closed). 「3. 통과해야 할 테스트」의 `M-contract-*` 는 한 체크박스 `Review Contract n줄 미완(이름들)` + 병합 발견의 `recommendation` 을 ` — 권고: …`. 「4. 차단 발견」은 `M-contract-*` 줄마다(재리뷰 파서 불변) · 병합 발견 제외 · 부록 D 에 병합 표지. 바뀌는 기존 체크박스 단언은 새 형식으로 갱신(의도 보존). 「F1 남기고 기계 증거 접기」·「병합만」은 기각. **(harden 로 정정: 묶음은 2건 이상만·1건은 현행 문구 — D101 · 권고 자리 = 「3.」 1회 — D101 · 병합 대상 = 모든 기계 증거 종류 — D106)** | 사용자 지시로 메인이 추천안 입력(Q3) — 기계 증거 id 가 재리뷰·축약 파서의 키 · 판정 불변(둘 다 증거 부족) |
 | D95 | ⑤ = **선택 키 `baselineRepoPaths`(기본 false) + `baselineCandidates` 글롭 + head 일반 blob 실재**: 값 안 정규 상대 경로 꼴(구분자·확장자·뒤 구두점 제거·`#`/`(§…)` 접미 제외) 중 글롭에 맞는 것만 경로 후보 · 실재하면 `kind: repo-path` 링크·유형 `저장소 문서 경로` · 해소 = `repoDocText` 와 같은 head blob 읽기(`ref=head`·`pinned:true`) · `inDiff` 표지 → 검사표 `(이 MR 에서 수정됨)` · 글롭 밖 = 서술만 · `baselineMissing`·조기 종료 계산 불변. 「head 의 .md 전부」·「diff 안 문서만」은 기각. **(harden 로 정정: 없음/링크/서브모듈 = 「서술만」 + `baselineRepoPathMisses` + 보완 문안 — `M-baseline` 아님 — D100 · 우선순위 링크 > 경로 > 이슈 — D105)** | 사용자 지시로 메인이 추천안 입력(Q4·Q5) — 어댑터가 기준선 문서 위치를 이미 글롭으로 선언 |
-| D96 | ⑥ = **선택 키 `contract.backgroundSections`(기본 `["배경"]`)**: 접두 일치 정규식(이스케이프 · 어댑터 순서의 첫 실재 절) 을 `reasonText`·`resolveBody`·`isBody` 에 · `check.json.reason.section` · 보완 문구 「<실제 절 이름 또는 첫 별칭>」. 기본 어댑터 = 현행 바이트. 「`authoring` 객체」·「엔진이 요약 인정」은 기각 | 사용자 지시로 메인이 추천안 입력(Q5) — 1.3.2 `deployLayout` 선례(선택 키 + 기본값 + 검증) |
+| D96 | ⑥ = **선택 키 `contract.backgroundSections`(기본 `["배경"]`)**: 접두 일치 정규식(이스케이프 · 어댑터 순서의 첫 실재 절) 을 `reasonText`·`resolveBody`·`isBody` 에 · `check.json.reason.section` · 보완 문구 「<실제 절 이름 또는 첫 별칭>」. 기본 어댑터 = 현행 바이트. **(review-loop(spec) 로 정정: 「실제 절 이름」 → 「일치한 별칭 이름」 — D110 · 별칭별 `section()` 을 어댑터 순서로 — R1-6)** 「`authoring` 객체」·「엔진이 요약 인정」은 기각 | 사용자 지시로 메인이 추천안 입력(Q5) — 1.3.2 `deployLayout` 선례(선택 키 + 기본값 + 검증) |
 | D97 | A = review-loop `SKILL.md` frontmatter description 끝 1구(「남의 MR … 그건 mr-review 다 (Does NOT trigger on reviewing someone else's MR; that is mr-review)」) · 그 밖 review-loop 불변 · dev-cycle·README 불변 · **SC-7 T4 이번 트랙만 예외** = review-loop 제외 0 + T4a(review-loop 변경 줄 2) + T4b(파일 1) · 문구 테스트는 기존 mr-review SKILL.md 문구 테스트 파일에(T1 목록 불변). 「별도 트랙 분리」·「dev-cycle 도 1줄」은 기각 | 사용자 지시로 메인이 추천안 입력(Q6) — 사용자 결정 「5건 전부」 유지 · 예외는 측정 가능한 두 줄로 좁힘 |
 | D98 | 이 세션(spec·harden)은 코드·테스트·SKILL.md·review-loop·plan·README·plugin.json 을 수정하지 않는다. plan SC 부기·README·버전은 impl 트랙 몫 | 트랙 프롬프트 편집 범위(1.3.4 D74 방식) |
 | D99 | ⑤·⑥ 은 **기본값 = 현행 동작(기존 어댑터 출력 바이트 불변)**, 새 동작은 어댑터 키로 켤 때만 — 그 불변을 AC 로 둔다(AC⑤-2·AC⑥-2·AC⑤-9·AC①-9 현행 바이트). ① 은 모든 어댑터에 적용(판정 계산 불변 · 표시만 변경). ②·③ 은 어댑터 몫 | 사용자 결정(22:1x — 기존 어댑터 정책 = Baseline permalink 고정·「배경」 절 필수) |
@@ -290,3 +292,10 @@ harden-spec(2026-10-23 22:3x~22:5x, 이 세션)에서 확정 — 판단 갭 15�
 | D106 | ④ `coveredBy` 대상 = **모든 기계 증거 종류**(`M-contract-*`·`M-deploy`·`M-baseline-*`·`M-diff-*`·`M-api-*`·`M-rereview` — 검증 = 이번 실행 id 실재 + `type` MISSING_EVIDENCE). 「M-contract-* 만」은 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-12) — 같은 사안 반복은 계약뿐이 아니다 |
 | D107 | §5 9단계 실측에 **기존 실사용 저장소(키 없는 어댑터) MR 1건 재실행 → 1.3.4 리포트와 바이트 비교** 포함(①·④ 표시 변경분만 다름). 「제외」는 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-15) — D99 불변의 외부 증거, 비용 = 실행 1회 |
 | D108 | ⑤ 로 확보한 `repo-path` 기준선 원문도 워크트리 모드에서 **① 포인터**(같은 head blob · 팩 A 는 본문 · URL permalink 기준선은 현행 본문). 「기준선은 본문 유지」는 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-16) — 포인터 규칙 = 「대상 저장소 head blob」 한 가지 |
+
+review-loop(spec)(2026-10-23 23:1x, 위임 트랙)에서 확정 — 위험군 질문(보안 접촉면·D블록 문구 변경)에 메인이 추천안 입력 **[자동 채택(위임)]**(사용자 판정 아님 — 확인 임무 ③ 우선 감사 대상 · `## 확인 대기 대장` 참조).
+
+| D | 결정 | 근거 |
+|---|---|---|
+| D109 | ① 포인터는 D92 조건에 더해 **워크트리 실물 확인 3가지**를 통과할 때만: ⓐ 그 파일이 `lstat` 으로 일반 파일(링크 아님) ⓑ `realpath` 가 워크트리 실제 경로 안(부모 링크 포함) ⓒ 바이트 = `git show <head>:<경로>` blob. 하나라도 어긋나거나 확인 오류면 현행 마스킹 본문(`packB:'body'`). 「알고 둔다(같은 head 새 체크아웃 전제)」는 기각 | 추천 자동 채택(위임)(R1-2) — Codex 가 읽는 것은 커밋 트리가 아니라 디스크 파일 · 보안 트랙 fail-closed · 비용 = 파일 1회 비교 |
+| D110 | ⑥ `check.json.reason.section`·보완 문구의 절 이름 = **일치한 별칭 이름**(어댑터에 적힌 이름 — `## 배경 (Background)` → `배경`). 실제 제목 전체는 쓰지 않는다(D96 「실제 절 이름」 정정). 「켠 어댑터만 실제 제목」은 기각 | 추천 자동 채택(위임)(R1-7) — 키 없는 어댑터에서도 긴 제목이면 문구가 바뀌어 D99 바이트 불변이 깨진다 · 규칙 하나 |
