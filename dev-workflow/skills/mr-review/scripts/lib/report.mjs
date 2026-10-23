@@ -154,7 +154,7 @@ export function parseResolve(id, value, f = null) {
 
 export function computeVerdict({ check, snapshot, deploy, findings, resolves = {}, judgeId }) {
   const contractPolicyId = check?.contract?.policyId || judgeId;
-  const base = { contractPolicyId, judgeId, head_sha: snapshot?.head_sha || null, defects: [], evidence: [], unresolved: [], baselineMissing: false, returnToDesignBy: [], branches: {}, machineEvidence: [], reasons: [] };
+  const base = { contractPolicyId, judgeId, head_sha: snapshot?.head_sha || null, defects: [], evidence: [], merged: [], unresolved: [], baselineMissing: false, returnToDesignBy: [], branches: {}, machineEvidence: [], reasons: [] };
   if (!findings || !Array.isArray(findings.validReviewers) || findings.validReviewers.length === 0) {
     return { ...base, status: 'review-failed', verdict: null, reasons: ['완료되고 스키마를 통과한 검토 결과가 0개 — 판정을 만들지 않는다(§5.4)'] };
   }
@@ -174,11 +174,25 @@ export function computeVerdict({ check, snapshot, deploy, findings, resolves = {
   const typeMissing = check?.baselineType === '빈칸·자리표시자' || check?.baselineType === '칸 없음';
   const baselineMissing = typeMissing && ((check?.baselineCandidateFiles || []).length === 0 || findings.baselineCandidateRelevant !== true);
   const machine = machineEvidence({ check, snapshot, deploy });
+  // 모델 발견 ↔ 기계 증거 병합(1.3.5 ④ — spec 2026-10-23 3.④ D94·D106·D111): 메인이 적은 `coveredBy` 는 type MISSING_EVIDENCE 이고 id 가 전부 이번 실행의 기계 증거에 있을 때만 쓴다.
+  // 하나라도 어긋나면 무시하고 현행대로 넣는다(fail-closed — DEFECT 가 병합되면 CHANGES_REQUESTED 가 HOLD_EVIDENCE 로 내려갈 수 있다). 병합해도 기계 증거가 남으므로 판정은 같다.
+  // 리뷰어 확인 전 미해결 후보는 병합하지 않는다(D111 — §5.5-2 확인 게이트 불변) — `--resolve … =confirmed` 뒤 재계산에서 병합된다
+  const machineIds = new Set(machine.map((m) => m.id));
+  const coverReasons = [];
+  const coverable = new Set();
+  for (const f of list) {
+    if (!Array.isArray(f.coveredBy) || f.coveredBy.length === 0) continue;
+    const missing = f.coveredBy.filter((id) => !machineIds.has(id));
+    if (f.type !== 'MISSING_EVIDENCE') coverReasons.push(`coveredBy 무시: ${f.id} → type ${f.type}`);
+    else if (missing.length) coverReasons.push(`coveredBy 무시: ${f.id} → ${missing.join(', ')} 없음`);
+    else coverable.add(f.id);
+  }
+  const isMerged = (f) => coverable.has(f.id) && !(f.unresolved === true && !f.resolution);
   const calc = (assume) => calcOn(list, assume);
   const calcOn = (list, assume) => {
     const active = list.filter((f) => f.blocking === true && (f.resolution ?? assume[f.id] ?? 'confirmed') !== 'dismissed');
     const defects = active.filter((f) => f.type === 'DEFECT' || f.type === 'DESIGN_DRIFT');
-    const evidence = active.filter((f) => f.type === 'MISSING_EVIDENCE');
+    const evidence = active.filter((f) => f.type === 'MISSING_EVIDENCE' && !isMerged(f));
     const rtd = defects.filter((f) => f.fixableInDesign === 'no');
     let verdict;
     if (baselineMissing || rtd.length) verdict = 'RETURN_TO_DESIGN';
@@ -197,7 +211,7 @@ export function computeVerdict({ check, snapshot, deploy, findings, resolves = {
         branches[id] = { 'confirmed:fixable': withF('yes'), 'confirmed:design': withF('no'), dismissed: calc({ [id]: 'dismissed' }).verdict };
       } else branches[id] = { confirmed: calc({ [id]: 'confirmed' }).verdict, dismissed: calc({ [id]: 'dismissed' }).verdict };
     }
-    return { ...base, status: 'undetermined', verdict: null, unresolved, baselineMissing, branches, machineEvidence: machine, reasons: [`미해결 차단 후보 ${unresolved.length}건 — 리뷰어가 --resolve 로 확인·기각하기 전에는 판정을 계산하지 않는다(§5.5-2)`] };
+    return { ...base, status: 'undetermined', verdict: null, unresolved, baselineMissing, branches, machineEvidence: machine, reasons: [`미해결 차단 후보 ${unresolved.length}건 — 리뷰어가 --resolve 로 확인·기각하기 전에는 판정을 계산하지 않는다(§5.5-2)`, ...coverReasons] };
   }
   const c = calc({});
   const reasons = [];
@@ -206,7 +220,9 @@ export function computeVerdict({ check, snapshot, deploy, findings, resolves = {
   if (c.defects.length) reasons.push(`결함 집합 ${c.defects.length}건`);
   if (c.evidence.length) reasons.push(`증거 부족 집합 ${c.evidence.length}건(기계 ${machine.length})`);
   if (!reasons.length) reasons.push('차단 발견 없음 + 필수 증거 충분');
-  return { ...base, status: 'determined', verdict: c.verdict, defects: c.defects, evidence: c.evidence, unresolved: [], baselineMissing, returnToDesignBy: c.rtd, branches: {}, machineEvidence: machine, reasons };
+  reasons.push(...coverReasons);
+  const merged = list.filter((f) => isMerged(f) && f.blocking === true && f.resolution !== 'dismissed').map((f) => f.id);
+  return { ...base, status: 'determined', verdict: c.verdict, defects: c.defects, evidence: c.evidence, merged, unresolved: [], baselineMissing, returnToDesignBy: c.rtd, branches: {}, machineEvidence: machine, reasons };
 }
 
 // ── §5.7 렌더 ─────────────────────────────────────────────────────────────
@@ -230,7 +246,18 @@ function executionBlock({ verdict, mr, snapshot, check, deploy, findings, pack, 
     `- [판독] base..head diff·변경 파일 전문 — head ${s7(snapshot.head_sha)} (돈 모델: ${models}${findings?.crossChecked ? (findings?.reviewerStats?.codex?.weak === true ? ' · 교차 검토 약함' : '') : ' · 교차 검토 없음'})`,
     deploy?.applicable ? `- [실행] 배포본 zip 대조(스킬 직접 수행): ${[deploy.result, mismatchSummary(deploy)].filter(Boolean).join(' — ')}${skippedNote(deploy) ? ` · ${skippedNote(deploy)}` : ''}${excludedCount(deploy) ? ` · 배포 제외 경로 ${excludedCount(deploy)}건(참고)` : ''}` : '- 배포본: 비해당(운영 배포 대상 변경 없음)',
     '- [다른 주체 제공] 작성자 검증 표 결과 — 작성자 주장(이 스킬은 테스트·빌드를 실행하지 않는다)'];
-  const evidenceItems = verdict.evidence.map((id) => byId[id] ? `${byId[id].title}` : (verdict.machineEvidence.find((m) => m.id === id)?.detail || id));
+  // 「3.」 계약 미완 묶음(1.3.5 ④ D94·D101): M-contract-* 가 2건 이상이면 한 체크박스, 1건이면 현행 문구. 그 줄들을 덮은 병합 발견의 권고는 여기 1회만(「4.」 M- 줄에는 붙이지 않는다)
+  const contractIds = verdict.evidence.filter((id) => id.startsWith('M-contract-'));
+  const rec = (verdict.merged || []).map((id) => byId[id]).find((f) => f && (f.coveredBy || []).some((c) => contractIds.includes(c)))?.recommendation;
+  const recTail = rec ? ` — 권고: ${rec}` : '';
+  const contractName = (id) => verdict.machineEvidence.find((m) => m.id === id)?.detail.match(/^Review Contract 「(.*)」 미완/)?.[1] ?? id.slice('M-contract-'.length);
+  const evidenceItems = verdict.evidence.flatMap((id) => {
+    if (contractIds.includes(id)) {
+      if (contractIds.length === 1) return [`${verdict.machineEvidence.find((m) => m.id === id)?.detail || id}${recTail}`];
+      return id === contractIds[0] ? [`Review Contract ${contractIds.length}줄 미완(${contractIds.map(contractName).join(' · ')})${recTail}`] : [];
+    }
+    return [byId[id] ? `${byId[id].title}` : (verdict.machineEvidence.find((m) => m.id === id)?.detail || id)];
+  });
   const s3 = ['3. 통과해야 할 테스트', evidenceItems.length ? `- 머지 전: ${evidenceItems.map((t) => `[ ] ${t}`).join(' · ')}` : '- 머지 전: 없음', '- 배포 후: —(릴리즈 게이트 이관)'];
   // 차단 발견 줄은 id 를 앞에 둔다(`- F3 DEFECT — …` · `- M-deploy MISSING_EVIDENCE — …`) — 재리뷰(task-03 `priorBlockingList`)가 댓글 항목을 부록 D 와 id 로 맞추고, 축약 ④ 가 생략분 id 를 댓글에 남길 수 있게(R4-3)
   const blockingFull = [];
@@ -430,7 +457,9 @@ export function renderReport({ adapter, work, early = false }) {
     const merged = findings?.findings || [];
     if (!merged.length && !(verdict?.machineEvidence || []).length) parts.push('(발견 없음)', '');
     for (const f of merged) {
-      parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? ' (차단)' : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}`,
+      // 병합 발견(1.3.5 ④)은 「(차단 — 기계 증거 … 에 병합)」 — 재리뷰 파서(APPENDIX_D_RE)가 이 줄을 이전 차단 발견으로 복원하지 않는다(「4.」 에 없는 항목)
+      const mergedTag = (verdict?.merged || []).includes(f.id) ? ` (차단 — 기계 증거 ${(f.coveredBy || []).join(', ')} 에 병합)` : ' (차단)';
+      parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? mergedTag : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}`,
         `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${claimsText(f.fixableInDesignClaims)}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
         `  - 권고: ${f.recommendation || '-'}`,
         `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);

@@ -1439,3 +1439,107 @@ test('SKILL.md §5: 워크트리 안 문서는 팩 B 에 경로 포인터만 · 
   const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
   assert.match(s8, /돈 모델\/교차 검토[^\n]*교차 검토: 있음\(약함 — 변경 파일 n 중 m 언급 · 명령 k회\)/);
 });
+
+// ── 1.3.5 ④ 모델 발견 ↔ 기계 증거 병합 (spec 2026-10-23 1.3.5 3.④ · D94·D101·D106·D111) ──
+const { priorBlockingList } = await import(join(LIB, 'check.mjs'));
+const c2 = (names = ['Base SHA', 'Human reviewer']) => { const c = baseCheck(); c.contract.complete = false; c.contract.incompleteLines = names; c.contract.lines = [...c.contract.lines, ...names.filter((n) => n !== 'Baseline').map((name) => ({ name, status: '자리표시자', value: '' }))]; if (names.includes('Baseline')) c.contract.lines.find((l) => l.name === 'Baseline').status = '자리표시자'; return c; };
+const ME = (over) => F({ type: 'MISSING_EVIDENCE', lens: 'L1', title: 'Review Contract 2줄이 비어 있음', recommendation: 'Base SHA·Human reviewer 줄을 채운다', coveredBy: ['M-contract-Base_SHA', 'M-contract-Human_reviewer'], ...over });
+
+test('computeVerdict: MISSING_EVIDENCE 의 coveredBy 가 전부 이번 기계 증거 id 면 병합 — evidence 에서 빠지고 merged 로 · 판정 불변 (1.3.5 AC④-1)', () => {
+  const v = V(findings([ME()]), { check: c2() });
+  assert.equal(v.status, 'determined');
+  assert.ok(!v.evidence.includes('F1'));
+  assert.ok(v.evidence.includes('M-contract-Base_SHA') && v.evidence.includes('M-contract-Human_reviewer'));
+  assert.deepEqual(v.merged, ['F1']);
+  assert.equal(v.verdict, 'HOLD_EVIDENCE');
+  assert.equal(V(findings([ME({ coveredBy: undefined })]), { check: c2() }).verdict, v.verdict);
+  assert.deepEqual(V(findings([]), { check: c2() }).merged, []);
+});
+
+test('computeVerdict fail-closed: 없는 id · DEFECT 의 coveredBy 는 무시하고 현행대로 + reasons 1줄 — 병합으로 판정이 내려가지 않는다 (1.3.5 AC④-2)', () => {
+  const v = V(findings([ME({ coveredBy: ['M-contract-Nope'] })]), { check: c2() });
+  assert.ok(v.evidence.includes('F1'));
+  assert.deepEqual(v.merged, []);
+  assert.ok(v.reasons.some((r) => r === 'coveredBy 무시: F1 → M-contract-Nope 없음'), JSON.stringify(v.reasons));
+  const d = V(findings([F({ coveredBy: ['M-contract-Base_SHA'] })]), { check: c2() });
+  assert.deepEqual(d.defects, ['F1']);
+  assert.deepEqual(d.merged, []);
+  assert.equal(d.verdict, 'CHANGES_REQUESTED');
+  assert.ok(d.reasons.some((r) => r === 'coveredBy 무시: F1 → type DEFECT'), JSON.stringify(d.reasons));
+});
+
+test('computeVerdict: 리뷰어 확인 전 미해결 후보는 병합하지 않는다 — 미확정·갈래 현행 · confirmed 뒤 재계산에서 병합 · dismissed 는 병합 아님 (1.3.5 AC④-9 · D111)', () => {
+  const f = () => findings([ME({ unresolved: true, confidence: 'low', coveredBy: ['M-contract-Base_SHA'] })]);
+  const u = V(f(), { check: c2(['Base SHA']) });
+  assert.equal(u.status, 'undetermined');
+  assert.equal(u.verdict, null);
+  assert.deepEqual(u.unresolved, ['F1']);
+  assert.deepEqual(u.branches.F1, { confirmed: 'HOLD_EVIDENCE', dismissed: 'HOLD_EVIDENCE' });
+  assert.deepEqual(u.merged, []);
+  const c = V(f(), { check: c2(['Base SHA']), resolves: { F1: 'confirmed' } });
+  assert.equal(c.status, 'determined');
+  assert.deepEqual(c.merged, ['F1']);
+  assert.ok(!c.evidence.includes('F1') && c.evidence.includes('M-contract-Base_SHA'));
+  const d = V(f(), { check: c2(['Base SHA']), resolves: { F1: 'dismissed' } });
+  assert.deepEqual(d.merged, []);
+  assert.ok(!d.evidence.includes('F1'));
+});
+
+const blockOf = (md) => md.match(/```text\n([\s\S]*?)\n```/)[1];
+function renderCheck(root, check, fnd, deploy = baseDeploy()) {
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd, check, deploy });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'r.md');
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  return readFileSync(out, 'utf8');
+}
+
+test('render: 계약 미완 2줄 + 병합 발견 → 「3.」 한 체크박스 + 권고 1회 · 「4.」 에 F1 없음·M-contract 줄은 현행 · 부록 D 병합 표지 · 재리뷰 파서는 M-contract 만 센다 (1.3.5 AC④-3·④-6 · D101)', () => {
+  const md = renderCheck(tmp(), c2(), findings([ME()]));
+  const block = blockOf(md);
+  const s3 = block.split('\n').filter((l) => l.startsWith('- 머지 전:'));
+  assert.deepEqual(s3, ['- 머지 전: [ ] Review Contract 2줄 미완(Base SHA · Human reviewer) — 권고: Base SHA·Human reviewer 줄을 채운다']);
+  const s4 = block.slice(block.indexOf('4. 차단 발견'), block.indexOf('5. 비차단 후속'));
+  assert.doesNotMatch(s4, /^- F1 /m);
+  assert.ok(s4.includes('- M-contract-Base_SHA MISSING_EVIDENCE — Review Contract 「Base SHA」 미완(자리표시자)\n'), s4);
+  assert.ok(s4.includes('- M-contract-Human_reviewer MISSING_EVIDENCE — Review Contract 「Human reviewer」 미완(자리표시자)\n'), s4);
+  assert.doesNotMatch(s4, /권고/);
+  const appD = sectionOf(md, '## 부록 D');
+  assert.ok(appD.includes('- **F1** [L1] MISSING_EVIDENCE (차단 — 기계 증거 M-contract-Base_SHA, M-contract-Human_reviewer 에 병합) — Review Contract 2줄이 비어 있음 (src/A.java:3) · 출처 both'), appD);
+  const prior = priorBlockingList(block, md);
+  assert.deepEqual(prior.items.map((x) => x.id), ['M-contract-Base_SHA', 'M-contract-Human_reviewer']);
+  assert.equal(prior.complete, true);
+  const ad = parseAppendixD(md);
+  assert.ok(!ad.has('F1'));
+  assert.ok(ad.has('M-contract-Base_SHA') && ad.has('M-contract-Human_reviewer'));
+});
+
+test('render: coveredBy 없는 계약 미완 2줄은 한 체크박스(권고 없음) · M-deploy·M-baseline·병합 안 된 모델 증거 부족은 항목별 (1.3.5 AC④-4·④-5)', () => {
+  const md = renderCheck(tmp(), c2(), findings([]));
+  assert.ok(blockOf(md).split('\n').includes('- 머지 전: [ ] Review Contract 2줄 미완(Base SHA · Human reviewer)'), blockOf(md));
+  const c = c2(); c.baselineLinks = [...c.baselineLinks, { kind: 'repo', status: '미확보', reason: '원문 확보 실패: x', raw: 'http://gitlab.test/g/alpha/-/blob/main/docs/x.md' }];
+  const d = { ...baseDeploy(), applicable: true, reason: null, result: '불일치', mismatches: [{ kind: 'comment_sha', path: null, detail: 'x' }], zip: { attachment: 'd.zip', downloaded: true, comment_sha: null, entries: [] } };
+  const md2 = renderCheck(tmp(), c, findings([ME({ id: 'F2', title: '회귀 결과 없음', coveredBy: undefined })]), d);
+  const line = blockOf(md2).split('\n').find((l) => l.startsWith('- 머지 전:'));
+  assert.equal(line, '- 머지 전: [ ] 회귀 결과 없음 · [ ] Review Contract 2줄 미완(Base SHA · Human reviewer) · [ ] 배포본 불일치 — comment_sha · [ ] 기준선·이슈 원문 미확보: http://gitlab.test/g/alpha/-/blob/main/docs/x.md — 원문 확보 실패: x');
+});
+
+test('render: 계약 미완 1줄은 현행 문구 그대로 · 병합 발견이 있으면 그 줄 끝에 권고 · 「4.」 M-contract 줄은 권고 없이 현행 (1.3.5 AC④-8 · H-3)', () => {
+  const md = renderCheck(tmp(), c2(['Baseline']), findings([]));
+  assert.ok(blockOf(md).split('\n').includes('- 머지 전: [ ] Review Contract 「Baseline」 미완(자리표시자)'), blockOf(md));
+  const md2 = renderCheck(tmp(), c2(['Baseline']), findings([ME({ coveredBy: ['M-contract-Baseline'], recommendation: '기준선 링크를 적는다' })]));
+  const block = blockOf(md2);
+  assert.ok(block.split('\n').includes('- 머지 전: [ ] Review Contract 「Baseline」 미완(자리표시자) — 권고: 기준선 링크를 적는다'), block);
+  assert.ok(block.split('\n').includes('- M-contract-Baseline MISSING_EVIDENCE — Review Contract 「Baseline」 미완(자리표시자)'), block);
+});
+
+test('SKILL.md §6: 1b coveredBy 단계 — MISSING_EVIDENCE 만 · 「DEFECT·DESIGN_DRIFT·FOLLOW_UP 에는 적지 않는다」 (1.3.5 AC④-7)', () => {
+  const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
+  const s6 = skill.slice(skill.indexOf('## 6. 병합'), skill.indexOf('## 7. 재리뷰'));
+  assert.match(s6, /^1b\. /m);
+  assert.match(s6, /coveredBy/);
+  assert.match(s6, /DEFECT·DESIGN_DRIFT·FOLLOW_UP 에는 적지 않는다/);
+  assert.match(s6, /"coveredBy"/);
+});
