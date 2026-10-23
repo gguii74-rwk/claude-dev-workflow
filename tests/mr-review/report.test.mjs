@@ -1129,3 +1129,137 @@ test('SKILL.md §5 경로 감시 한계: companion 로그 96자·`...`·잘린 �
   assert.ok(s8Of(skill).split('\n').find((l) => l.startsWith('- **터미널 요약')).includes('경로 감시 한계: 잘린 명령 n건'));
   assert.ok(!sectionOf(skill, '## 8.', '## 9.').includes('헤더에 「경로 감시 한계'));
 });
+
+// ── 1.3.4 S2 리포트 조립 줄 평탄화 (spec 2026-10-23 1.3.4 3.S2-3·S2-5·S2-6 · D73·D84·D88) ──
+// 주입 문자열 4종(R1-1) — 값에서 온 글자가 새 줄을 만들면 안 된다. 숨은 문자는 \uXXXX 표기로만(spec R4-3)
+const INJ = ['\n## ZZINJ\n', '\r\n## ZZINJ\r\n', '\u2028## ZZINJ\u2029', '\u0085## ZZINJ'];
+// 3.S2-3 목록의 자유 문자열 필드(1:1). 주입하지 않는 것 = 3.S2-5 「허용값이 강제되는 필드」뿐(SHA·result·verdict·deploy kind·status·mode·track · validateFindings 검증 필드 id·type·blocking·fixableInDesign·resolution·validReviewers)
+// 장면 A(판정 확정 · diff-only · 재리뷰) — 헤더·실행 블록·기준선/보완 문안·리뷰어 결정·부록 A~D
+const S2_FIELDS_A = ['mr.title', 'mr.web_url', 'snapshot.unrecovered[0]', 'check.rereview.prior_verdict', 'check.baselineLinks[0].raw', 'check.baselineLinks[0].reason',
+  'pack.codexSkipReason', 'pack.sources[0].kind', 'pack.sources[0].ref',
+  'deploy.zip.attachment', 'deploy.zips[0].prefix', 'deploy.zips[0].layout', 'deploy.zips[0].layout_source', 'deploy.mismatches[0].path', 'deploy.mismatches[0].detail', 'deploy.zip.bytes_skipped[0]',
+  'findings[0].title', 'findings[0].file', 'findings[0].line_start', 'findings[0].recommendation', 'findings[0].evidence', 'findings[0].scenario', 'findings[0].source', 'findings[0].confidence', 'findings[0].lens', 'findings[0].brokenPremise', 'findings[0].dismissReason', 'findings[0].fixableInDesignClaims.claude',
+  'intent[0].criterion', 'intent[0].result', 'intent[0].location', 'intent[0].basis', 'outsideWorktreePaths[0]',
+  'review-claude.lens', 'review-claude.title', 'review-claude.file', 'review-claude.line_start', 'review-claude.confidence', 'review-claude.evidence', 'review-claude.scenario', 'review-claude.brokenPremise', 'review-claude.recommendation'];
+// 장면 B(판정 미확정 — 리뷰어 확인 필요 절 · 설계 내 수정 가능 상충)
+const S2_FIELDS_B = ['findings[0].title', 'findings[0].file', 'findings[0].line_start', 'findings[0].source', 'findings[0].confidence', 'findings[0].scenario', 'findings[0].brokenPremise', 'findings[0].fixableInDesignClaims.claude'];
+// 장면 C(조기 종료)
+const S2_FIELDS_C = ['check.earlyExit.reason'];
+function s2Render(root, scene, s, name) {
+  const adapter = writeAdapter(root);
+  const I = (v) => `${v}${s}`;
+  const c = baseCheck();
+  const snap = baseSnap();
+  let fnd;
+  let deploy = baseDeploy();
+  let pack = { sources: [{ id: 'S1', kind: 'doc', ref: 'guide/policy.md@abc#5.', exportAllowed: true, inPackB: true, lines: 3 }], mask: { applied: {}, residual: [], ok: true }, packA: 'pack-a.md', packB: 'pack-b.md', codexSkipped: false, codexSkipReason: null };
+  let mr = {};
+  let review = null;
+  if (scene === 'A') {
+    mr = { title: I('fix(x): y'), web_url: I('http://gitlab.test/g/alpha/-/merge_requests/7') };
+    Object.assign(snap, { mode: 'diff-only', unrecovered: [I('src/main/java/app/Big.java')] });
+    c.rereview = { active: true, prior_head: 'c'.repeat(40), prior_verdict: I('CHANGES_REQUESTED'), prior_note_id: 12, priorReport: null, priorBlocking: [], priorBlockingComplete: true };
+    c.baselineLinks = [{ kind: 'issue', status: '미확보', raw: I('#55'), reason: I('권한 없음') }];
+    pack = { ...pack, codexSkipped: true, codexSkipReason: I('잔존'), sources: [{ ...pack.sources[0], kind: I('doc'), ref: I('guide/policy.md@abc#5.') }] };
+    deploy = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/app/A.java'], deleted: [] }, zip: { attachment: I('d.zip'), downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'blobs', layout: 'source', layout_source: 'signature', prefix: '', bytes_skipped: [I('WEB-INF/classes/app/A.class')] }, zips: [{ attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], layout: I('source'), layout_source: I('signature'), prefix: I('app/'), bytes_skipped: [] }], result: '불일치', mismatches: [{ kind: 'extra_in_zip', path: I('extra.txt'), detail: I('zip 에 있으나 배포 목록에 없음') }] };
+    const f1 = F({ title: I('제목'), file: I('src/A.java'), line_start: I(3), recommendation: I('권고'), evidence: I('근거'), scenario: I('시나리오'), source: I('both'), confidence: I('high'), lens: I('L5'), brokenPremise: I('전제'), dismissReason: I('결정 근거'), resolution: 'confirmed', fixableInDesignClaims: { claude: I('yes'), codex: 'yes' } });
+    fnd = findings([f1, F({ id: 'F2', type: 'MISSING_EVIDENCE', title: '회귀 결과 없음' }), F({ id: 'F3', type: 'FOLLOW_UP', blocking: false, title: '주석 정리' })], { intent: [{ criterion: I('V1 빌드'), result: I('UNKNOWN'), location: I('a.java:3'), basis: I('작성자 주장') }], outsideWorktreePaths: [I('/tmp/x')] });
+    review = { reviewer: 'claude', head_sha: HEAD, findings: [{ lens: I('L5'), type: 'DEFECT', title: I('원본 제목'), file: I('src/B.java'), line_start: I(9), line_end: 9, evidence: I('원본 근거'), scenario: I('원본 시나리오'), confidence: I('high'), recommendation: I('원본 권고'), fixableInDesign: 'no', brokenPremise: I('원본 전제') }], intent: [], baselineCandidateRelevant: true };
+  } else if (scene === 'B') {
+    fnd = findings([F({ unresolved: true, fixableInDesign: null, title: I('제목'), file: I('src/A.java'), line_start: I(3), source: I('codex'), confidence: I('low'), scenario: I('시나리오'), brokenPremise: I('전제'), fixableInDesignClaims: { claude: I('yes'), codex: 'no' } })]);
+  } else {
+    c.contract.complete = false; c.contract.incompleteLines = ['Base SHA']; c.earlyExit = { would: true, reason: I('기준선 없음'), draftVerdict: 'RETURN_TO_DESIGN' };
+  }
+  const work = fullWork(join(root, name), { check: c, snap, deploy, fnd, mr, pack: scene !== 'C', reviews: scene !== 'C' });
+  writeFileSync(join(work, 'pack.json'), JSON.stringify(pack));
+  if (review) writeFileSync(join(work, 'review-claude.json'), JSON.stringify(review));
+  if (scene !== 'C') assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0, scene);
+  const out = join(root, `${name}.md`);
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, ...(scene === 'C' ? ['--early'] : []), '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  return readFileSync(out, 'utf8');
+}
+
+test('render: 조립 줄의 자유 문자열 필드 어디에 줄바꿈(CR·LF·CRLF·NEL·U+2028·U+2029)이 있어도 줄 수·코드펜스·부록 D 불릿·재리뷰 파서 결과가 같고 값에서 시작하는 줄이 없다 (1.3.4 AC-S2-3 · D73·D88)', () => {
+  const root = tmp();
+  const fences = (md) => md.split('\n').filter((l) => l.startsWith('```')).length;
+  const bullets = (md) => sectionOf(md, '## 부록 D').split('\n').filter((l) => l.startsWith('- **')).length;
+  for (const [scene, fields] of [['A', S2_FIELDS_A], ['B', S2_FIELDS_B], ['C', S2_FIELDS_C]]) {
+    const base = s2Render(root, scene, '', `${scene}0`);
+    INJ.forEach((s, k) => {
+      const md = s2Render(root, scene, s, `${scene}${k + 1}`);
+      const tag = `${scene}/${JSON.stringify(s)}`;
+      assert.equal(md.split('\n').length, base.split('\n').length, tag);
+      assert.ok(!md.split('\n').some((l) => l.startsWith('ZZINJ') || l.startsWith('## ZZINJ')), tag);
+      assert.ok(md.split('ZZINJ').length - 1 >= fields.length, `${tag} ZZINJ ${md.split('ZZINJ').length - 1} < ${fields.length}`);
+      assert.equal(fences(md), fences(base), tag);
+      assert.equal(bullets(md), bullets(base), tag);
+      assert.equal(parseAppendixD(md).size, parseAppendixD(base).size, tag);
+      assert.ok(!/[\u0085\u2028\u2029]/.test(md), tag);
+    });
+  }
+});
+
+test('render: 검증되지 않는 검토자 필드 source 의 줄바꿈도 가짜 제목을 만들지 못한다 · 마스킹 순서(원문 가림 → 펴기 → 다시 가림)는 부록 A 줄에도 (1.3.4 AC-S2-3 회귀 R1-2 · AC⑭-5 꼴)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const fnd = findings([F({ unresolved: true, source: 'both\n## SOURCEINJ' })]);
+  const work = fullWork(join(root, 'a'), { fnd });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'a.md');
+  assert.equal(runCli(['render', '--adapter', adapter, '--work', work, '--out', out]).code, 0);
+  const md = readFileSync(out, 'utf8');
+  assert.ok(md.includes('SOURCEINJ'));
+  assert.ok(!md.split('\n').some((l) => l.startsWith('## SOURCEINJ')));
+  const d = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/app/A.java'], deleted: [] }, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'source', bytes_skipped: [] }, result: '불일치', mismatches: [{ kind: 'extra_in_zip', path: 'p.txt', detail: 'run --password\nx' }] };
+  const appA = sectionOf(renderWith(tmp(), d), '## 부록 A', '## 부록 B').split('\n');
+  const l = appA.find((x) => x.startsWith('- extra_in_zip p.txt:'));
+  assert.ok(l && l.includes('[masked:') && !/(^|\s)x(\s|$)/.test(l), l);
+  assert.ok(!appA.some((x) => x.trim() === 'x'));
+});
+
+test('render: 부록 A zip 줄·불일치 줄·바이트 대조 생략 목록과 실행 블록·부록 D·보완 문안의 배포본 요약은 각각 한 줄 (1.3.4 AC-S2-4)', () => {
+  const d = { ...baseDeploy(), applicable: true, reason: null, expected: { deploy: ['src/main/java/app/A.java'], deleted: [] }, zip: { attachment: 'd\n.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'source', layout_source: 'signature', prefix: 'app\n/', bytes_skipped: ['p\nq.class'] }, zips: [{ attachment: 'd\n.zip', downloaded: true, comment_sha: HEAD, entries: [], layout: 'source', layout_source: 'signature', prefix: 'app\n/', bytes_skipped: ['p\nq.class'] }], result: '불일치', mismatches: [{ kind: 'extra_in_zip', path: 'a\nb', detail: 'c\nd' }] };
+  const md = renderWith(tmp(), d);
+  const lines = md.split('\n');
+  const appA = sectionOf(md, '## 부록 A', '## 부록 B').split('\n');
+  assert.ok(appA.some((l) => l.includes('zip d .zip(주석 ') && l.includes('접두 app /')), appA.join('\n'));
+  assert.ok(appA.includes('- p q.class'), appA.join('\n'));
+  assert.ok(appA.includes('- extra_in_zip a b: c d'), appA.join('\n'));
+  const block = md.match(/```text\n([\s\S]*?)\n```/)[1].split('\n');
+  assert.ok(block.some((l) => l.startsWith('- [실행] 배포본 zip 대조') && l.includes('extra_in_zip 1건(a b)')), block.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('- **M-deploy** [기계]') && l.includes('extra_in_zip 1건(a b)')));
+  assert.ok(lines.some((l) => l.startsWith('- 배포본 대조 결과 「불일치」') && l.includes('extra_in_zip 1건(a b)')));
+  for (const frag of ['b', '.zip', '/', 'q.class', 'd']) assert.ok(!lines.some((l) => l === frag || l.startsWith(`${frag}(`) || l.startsWith(`${frag}:`) || l.startsWith(`${frag})`)), frag);
+});
+
+test('render: 부록 C 무효 결과(JSON 파싱 실패)는 고정 문구 한 줄 — 파싱 오류 메시지가 인용한 입력(가짜 제목·비밀값 꼴)을 싣지 않는다 (1.3.4 AC-S2-9 · D88)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([F()], { validReviewers: ['codex'], crossChecked: false }) });
+  writeFileSync(join(work, 'review-claude.json'), '{"findings": [\n## ZZINJ\n password=hunter2pass ]}');
+  writeFileSync(join(work, 'review-codex.json'), JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [{ lens: 'L1', type: 'DEFECT', title: '코덱스 발견', file: 'src/C.java', line_start: 1, evidence: 'e', scenario: 's', confidence: 'high', recommendation: 'r', fixableInDesign: 'yes' }], intent: [], baselineCandidateRelevant: true }));
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  const out = join(root, 'c.md');
+  assert.equal(runCli(['render', '--adapter', adapter, '--work', work, '--out', out]).code, 0);
+  const md = readFileSync(out, 'utf8');
+  assert.ok(md.includes('### claude\n\n(무효 결과 — JSON 파싱 실패)\n'), sectionOf(md, '### claude', '### codex'));
+  assert.ok(!md.includes('ZZINJ') && !md.includes('hunter2pass'));
+  assert.match(md, /### codex\n\n- \[L1\] DEFECT — 코덱스 발견/);
+});
+
+test('render: NEL·U+2028·U+2029 로 나뉜 잘린 PEM 본문은 평탄화 줄(검토자 근거)과 표 셀(의도 대조표) 어디에도 남지 않는다 (1.3.4 AC-S2-8 (나) · D84)', () => {
+  for (const sep of ['\u0085', '\u2028', '\u2029']) {
+    const pem = '-----BEGIN RSA PRIVATE KEY-----' + sep + 'MIIEowIBAAKCAQEA' + sep + 'abcd';
+    const root = tmp();
+    const adapter = writeAdapter(root);
+    const work = fullWork(root, { fnd: findings([F({ evidence: pem })], { intent: [{ criterion: pem, result: 'PASS', location: 'a.java:3' }] }) });
+    assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+    const out = join(root, 'r.md');
+    const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+    assert.equal(rr.code, 0, rr.out + rr.err);
+    const md = readFileSync(out, 'utf8');
+    assert.ok(!md.includes('MIIEow'), JSON.stringify(sep));
+    assert.equal(cellsOf(intentRows(md)[0]).length, 3);
+  }
+});
