@@ -30,7 +30,7 @@
 - **GitLab 에 복사되는 줄(보완 요청 문안 등)의 작성자 유래 경로가 마크다운 링크·이미지·HTML 구문으로 렌더되는 것**(`![x](http://…)` 같은 zip 항목 이름) — S2 는 「새 줄 삽입」까지다. 위험 주체가 동료 작성자라 D16 수준이고 어떤 대책(코드 스팬·이스케이프)도 기존 출력을 넓게 바꾼다 — 별도 트랙 후보(D77, §6).
 - **macOS Finder 「압축」 zip 의 `__MACOSX/` 폴더·`.DS_Store`** — ⑰ 로 판독은 되지만 최상위 폴더가 둘이라 1.3.3 접두 제거(D57)가 떼지 못해 「불일치」(보이는 실패). 4차 표본에서 확인되지 않았다 — 9단계 실측(§5)에서 보이면 D57 보강 별도 트랙(D82). `.DS_Store` 는 프로젝트 어댑터가 `excludes` 에 `**/.DS_Store` 를 적으면 ⑱ 로 「참고」가 된다(어댑터 몫).
 - **`deploy.json`·부록 A 에 bit 3 사용 표시** — 결과가 같으면 무의미(D79).
-- 1.3.0~1.3.3 설계 결정 D1~D67 의 재론. **변경 2건은 명시**: 1.3.0 impl R4-1(bit 3 거부)·8b FR2-1(폴더 항목 압축 크기 0) → D70·D71. 1.3.0 SC-3 `comment_sha`(주석 원문) → D73.
+- 1.3.0~1.3.3 설계 결정 D1~D67 의 재론. **변경은 명시**: 1.3.0 impl R4-1(bit 3 거부)·8b FR2-1(폴더 항목 압축 크기 0) → D70·D71. 1.3.0 SC-3 `comment_sha`(주석 원문) → D73. 1.3.3 D57 표지 판별(루트 폴더 전부) → D83(제외 항목은 표지 안 만듦).
 
 ## 3. 결함별 명세
 
@@ -86,7 +86,7 @@
 **수정 방향(사용자 정책 결정 2026-10-23 18:3x = 기결정 · 형식 = 사용자 지시로 메인이 추천안 입력 18:4x — D72)** — **별도 필드 + D47 자리 3곳**
 
 1. **분류(`listCheck`)**: zip 파일 항목(접두 뗀 이름)마다 ① 기대 사상 조회(이름 그대로 → 내부 클래스 2단계, 현행) 성공 = 대조 대상 ② 실패이고 **접두 뗀 zip 경로 원문이 어댑터 `deploy.excludes` 의 glob(SC-2 규칙 — `matchesAny`, 대소문자 구분, 배치 역사상 없음)에 걸리면 `excluded`** ③ 둘 다 아니면 `extra`(현행 `extra_in_zip`). `excluded` 는 `mismatches` 에 넣지 않는다(판정 입력 아님 · `result` 계산 불변 — `deploy.mjs:618-621`). 순서 ①→② 라 기대 경로는 excludes 에 걸려도 대조 대상이다(기대 목록이 excludes 를 이미 뺐으므로 겹칠 일은 없다). `deploy.targets` 는 보지 않는다 — targets 에 걸리는데 기대에 없는 항목(`src/main/java/…/Other.java` — MR 범위 밖 파일)은 지금처럼 `extra_in_zip`(이 검사의 본래 목적).
-2. **시험(`judgeLayout`)**: `probe` 의 「불일치 0」은 `missing + extra` 만 본다 — `excluded` 는 세지 않는다(제외 파일이 섞인 표지 없는 zip 도 시험이 성립). 두 배치의 `excluded` 분류 결과가 다를 수 있으나(배치별로 사상 조회가 다르다) 판정은 선택된 배치의 결과만 쓴다.
+2. **표지·시험(`judgeLayout` `:336-346`)**: **표지 판별(`:337-341` 루트 `WEB-INF/`·`META-INF/`·`src/`)은 접두 뗀 zip 경로 원문이 `deploy.excludes` 에 걸리지 않는 항목만으로 한다**(D83 — review-loop(spec) R1-3, 1.3.3 D57 변경: WAR zip 에 `src/test/**` 테스트 소스가 섞이면 제외 파일 하나가 `src` 표지를 만들어 zip 전체가 `layout_ambiguous` 대조 불가가 되던 것). 제외 항목은 표지만 만들지 않을 뿐 `entries`·충돌·삭제 검사·D75 경계 확인·⑱-1 분류에는 그대로 참여한다. 제외 아닌 항목이 두 표지를 다 만들면 지금처럼 혼합 대조 불가(D58 불변). 접두 제거(D57 — 모든 항목이 같은 첫 폴더 공유)는 제외 항목도 센다(불변). `probe` 의 「불일치 0」은 `missing + extra` 만 본다 — `excluded` 는 세지 않는다(제외 파일이 섞인 표지 없는 zip 도 시험이 성립). 두 배치의 `excluded` 분류 결과가 다를 수 있으나(배치별로 사상 조회가 다르다) 판정은 선택된 배치의 결과만 쓴다.
 3. **합산(`deploy`)**: `zips[i].excluded` = 그 zip 의 `excluded` 경로(접두 뗀 zip 경로, 정렬) · `zip.excluded` = 합집합(정렬·중복 제거). 대조한 zip 이 없으면 `[]`. `zip.entries`·`zip_conflict`·R3-1 「삭제 경로가 zip 에도 있음」 검사는 **불변**(제외 항목도 zip 에 있는 항목이다 — `entries` 에 남고 충돌·삭제 검사에 참여한다).
 4. **`deploy.json`(SC-3)**: `zip.excluded: [<zip 경로>]`(기본 `[]` — `해당 없음`·제외 프로젝트·zip 누락에도 항상 기록) · `zips[i].excluded: [<zip 경로>]`. `mismatches.kind` 변경 없음. plan SC-3 정정은 impl 트랙(「1.3.4에서 변경」).
 5. **표시(D47 자리 3곳 — 헤더에는 넣지 않는다)**: (가) **부록 A** 배포본 절에 `bytes_skipped` 목록(`report.mjs:382` `skippedNote`)과 같은 꼴로 `배포 제외 경로 n건(참고 — 어댑터 deploy.excludes):` + 경로 각 1줄(`- <경로>`) — 0건이면 문구 없음 · **전부 적는다, 상한 없음**(D80 — harden H-6: 부록 A 는 전문 자리(1.3.2 D40), 길어지는 것은 작성자가 배포본에 문서를 많이 넣었다는 사실의 표시 · 「상한 50 + 외 n건」 기각). (나) **실행 블록 「2. 검증 상태」** 배포본 줄(`:215`) 끝에 ` · 배포 제외 경로 n건(참고)`(0건이면 없음 — `skippedNote` 와 같은 자리·같은 규칙). (다) **SKILL.md §8 터미널 요약** 배포본 대조 결과 항목에 「`deploy.json.zip.excluded` 가 1건 이상이면 「(배포 제외 경로 n건 — 참고)」」 1구. 보완 요청 문안·`mismatchSummary`·`machineEvidence` 는 `excluded` 를 보지 않는다(불일치가 아니다). `zips` 가 없거나 `excluded` 키가 없는 1.3.3 이전 `deploy.json`(`--resolve` 재실행)은 「0건」으로 읽는다(render 가 키 부재를 허용).
@@ -103,6 +103,7 @@
 - AC⑱-5. (zip 2개) `src.zip` 에 `docs/a.md` · `classes.zip` 에 `docs/a.md`·`AGENTS.md` → `zip.excluded = ["AGENTS.md", "docs/a.md"]`(합집합·중복 제거) · `zips[0].excluded = ["docs/a.md"]` · `zips[1].excluded = ["AGENTS.md", "docs/a.md"]` · 같은 바이트면 `일치`, 다른 바이트면 `zip_conflict`(D60·D66 — 제외 항목도 zip 사이 충돌 검사 대상, 현행 불변).
 - AC⑱-6. (대소문자·glob) `Docs/a.md` → `extra_in_zip`(excludes `docs/**` 에 안 걸림) · excludes `README*` 에 `README.md`·`README.ko.md` 걸림.
 - AC⑱-7. (렌더·문구) `deploy.json` 픽스처 `zip.excluded` 2건 → 부록 A 에 `배포 제외 경로 2건(참고 — 어댑터 deploy.excludes):` + `- docs/a.md`·`- AGENTS.md`(각 1줄) · 실행 블록 「2. 검증 상태」 배포본 줄에 ` · 배포 제외 경로 2건(참고)` · `bytes_skipped` 와 둘 다 있으면 둘 다(순서 생략 → 제외) · 0건·키 없음(1.3.3 꼴 픽스처) → 두 문구 없음(기존 render 테스트 불변) · `M-deploy`·보완 문안 없음(`result = 일치`) · SKILL.md §8 터미널 요약 줄에 「배포 제외 경로 n건」 실재(grep).
+- AC⑱-9. (표지 — D83) 어댑터 excludes 에 `src/test/**` · 기대 = `src/main/java/com/example/acct/Foo.java` · zip = `WEB-INF/classes/com/example/acct/Foo.class` + `src/test/java/com/example/acct/FooTest.java` → `layout maven-war(signature)` · `일치` · `bytes_skipped` 1건(`Foo.class`) · `excluded = ["src/test/java/com/example/acct/FooTest.java"]`(현행이면 `layout_ambiguous` 대조 불가). 같은 zip 에 제외 아닌 `src/main/java/com/example/acct/Other.java` 를 더하면 → `layout_ambiguous` 대조 불가(D58 혼합 거부 유지). zip 의 `src/` 항목이 전부 제외이고 `WEB-INF/` 도 없으면 표지 없음 → 시험(⑱-2)으로 간다.
 - AC⑱-8. (기존 테스트 — 픽스처 정정 3건, 단언 유지 — D81, harden H-7) 테스트 픽스처 어댑터(`tests/mr-review/fixtures/adapter.md`)의 `deploy.excludes` 는 `docs/**`·`.gitlab/**`·`AGENTS.md`·`CLAUDE.md`·`README*`·`src/test/**`(조회 사실)라, zip 에 `README.md`/`README.txt` 를 「기대 밖 파일」로 넣어 `extra_in_zip` 불일치를 단언하는 기존 테스트 **3건**은 ⑱ 뒤 그 파일이 `excluded` 로 분류돼 단언이 깨진다 — ① 1.3.0 `deploy.test.mjs:84-97` 「불일치: base 기준 zip … 4종 mismatch」(`README.md`) ② 1.3.1 `:550-555` diff-only `bytes_unavailable` + `extra_in_zip README.md` ③ 1.3.2 `:745-751` WAR `README.txt` + `map_conflict`. 세 테스트의 의도(「기대에 없는 파일이 zip 에 있으면 불일치」)를 지키기 위해 **픽스처의 그 파일 이름만 `extra.txt`**(targets `src/main/**`·`assets/**`·`**/*.sql` 과 excludes 어디에도 안 걸리는 이름)로 바꾸고 **단언(`extra_in_zip`·종류 목록·`불일치`)은 유지**한다(1.3.3 AC⑬-11 예외와 같은 방식). `README.md` 가 `excluded` 로 가는 새 행동은 AC⑱-1·⑱-6 이 단언한다. 그 밖 1.3.0~1.3.3 `deploy.test.mjs`·`report.test.mjs` 는 전부 불변(zip 픽스처에 excludes 경로가 든 테스트는 위 3건뿐 — grep `docs/|AGENTS|README|CLAUDE|src/test` 조회).
 
 ### 3.S2 `report.mjs` 가 표 밖 줄에 들어가는 외부 유래 문자열을 평탄화하지 않아 가짜 줄이 들어갈 수 있다 (1.3.3 보안 지적)
@@ -141,7 +142,7 @@
 | SC-2 어댑터 계약 | **변경 없음**(키·값·형식·의미 전부 불변 — `deploy.excludes` 를 zip 초과 분류에도 쓰는 것은 소비 방식 추가일 뿐) |
 | SC-3 `deploy.json` | `zip.excluded`·`zips[i].excluded` 추가(기본 `[]`) · `comment_sha` = SHA 또는 `null`(주석 원문 안 적음 — 1.3.0 의미 변경, D73) · 「zip 손상」 사유에 data descriptor 서명·값 불일치 / stored + descriptor / 폴더 빈 스트림 아님 / 제어·서식·줄 구분 문자 이름 추가 · `mismatches.kind` 불변 — plan SC-3 정정은 impl 트랙(「1.3.4에서 변경」) |
 | `adapter.mjs` | 변경 없음(`matchesAny` 재사용) |
-| `deploy.mjs` | `readZip` 레이아웃 검사 bit 3 허용 조건(a)~(e) + **(f) bit 3 파일 항목 전수 inflate 경계 확인(D75)**·폴더 빈 deflate 스트림 허용(D71)·`read()` local 값 「0 또는 목차」·`hasInvisible()` 범주 검사(Cc·Cf·Zl·Zp)를 `zipName`·`uploadName` 두 입구에(D76·D78) + 거부 detail 의 이름은 표시용 꼴(범주 문자 → `\uXXXX`, R1-1)·`comment_sha` SHA|null + detail 문구·`hasComment` 기준·`listCheck` 3분류(`excluded`)·`judgeLayout` 시험에서 `excluded` 제외·합산 `excluded` · `out.zip` 기본값에 `excluded: []` |
+| `deploy.mjs` | `readZip` 레이아웃 검사 bit 3 허용 조건(a)~(e) + **(f) bit 3 파일 항목 전수 inflate 경계 확인(D75)**·폴더 빈 deflate 스트림 허용(D71)·`read()` local 값 「0 또는 목차」·`hasInvisible()` 범주 검사(Cc·Cf·Zl·Zp)를 `zipName`·`uploadName` 두 입구에(D76·D78) + 거부 detail 의 이름은 표시용 꼴(범주 문자 → `\uXXXX`, R1-1)·`comment_sha` SHA|null + detail 문구·`hasComment` 기준·`listCheck` 3분류(`excluded`)·`judgeLayout` 표지 판별에서 excludes 항목 제외(D83)·시험에서 `excluded` 제외·합산 `excluded` · `out.zip` 기본값에 `excluded: []` |
 | `report.mjs` | 공용 줄바꿈 집합 `NL` 확장(CR·LF·NEL·U+2028·U+2029 — `cell()`·`tc()`·`line()` 공용, R1-1) · `line()` 신설 + 모든 조립 줄의 값 자리에 적용(3.S2-3 목록 — 검증 안 되는 검토자 필드 `source`·`confidence`·`lens` 포함, R1-2) · 부록 A `excluded` 목록 · 실행 블록 「2. 검증 상태」 ` · 배포 제외 경로 n건(참고)` |
 | `pack.mjs`·`check.mjs`·`collect.mjs` | 변경 없음 |
 | SKILL.md | §8 터미널 요약 배포본 항목에 「(배포 제외 경로 n건 — 참고)」 · §8 리포트 구성 문구에 부록 A 「배포 제외 경로」 목록 1구 |
@@ -149,7 +150,7 @@
 | plugin.json·marketplace.json | 1.3.3 → 1.3.4 |
 | plan ledger(impl) | R4-1 행 끝 「1.3.4 D70 — 서명 있는 꼬리표 검증해 허용」 · 8b FR2-1 행 끝 「1.3.4 D71 — 폴더 빈 deflate 스트림 허용」 부기(재론 아님 — impl 트랙) |
 | 어댑터 문서(프로젝트 쪽) | 변경 불요 |
-| `tests/mr-review` | deploy(⑰ 8건(AC⑰-1~5·7·9 + 기존 R4-1 주석 정정) + 실물 픽스처 3개 · ⑱ 6건 · S2 3건(AC-S2-1·2·7))·report(⑱ 1건 · S2 3건) — 기존 전부 불변(AC⑰-6·AC-S2-5), **예외 = AC⑱-8 의 3건(픽스처 파일명 `README.*` → `extra.txt`, 단언 유지)** |
+| `tests/mr-review` | deploy(⑰ 8건(AC⑰-1~5·7·9 + 기존 R4-1 주석 정정) + 실물 픽스처 3개 · ⑱ 7건(AC⑱-1~6·9) · S2 3건(AC-S2-1·2·7))·report(⑱ 1건 · S2 3건) — 기존 전부 불변(AC⑰-6·AC-S2-5), **예외 = AC⑱-8 의 3건(픽스처 파일명 `README.*` → `extra.txt`, 단언 유지)** |
 
 ## 5. 검증 · 완료 조건
 
@@ -186,7 +187,7 @@
 
 ## 재논의 금지(기결정)
 
-사용자 지시(2026-10-23 18:1x 「수정사항이 나오면 수정 진행해주세요」)에 따라 **메인이 추천안(첫 선택지)을 입력**한 결정(이 세션 질의 4건, 18:4x). 리뷰에서 다시 제안하지 않는다. 1.3.0 spec D1~D16 · 1.3.1 spec D17~D34 · 1.3.2 spec D35~D51 · 1.3.3 spec D52~D67 은 전부 승계한다(**변경 = 1.3.0 impl R4-1·8b FR2-1 → D70·D71 · SC-3 `comment_sha` → D73** — 명시).
+사용자 지시(2026-10-23 18:1x 「수정사항이 나오면 수정 진행해주세요」)에 따라 **메인이 추천안(첫 선택지)을 입력**한 결정(이 세션 질의 4건, 18:4x). 리뷰에서 다시 제안하지 않는다. 1.3.0 spec D1~D16 · 1.3.1 spec D17~D34 · 1.3.2 spec D35~D51 · 1.3.3 spec D52~D67 은 전부 승계한다(**변경 = 1.3.0 impl R4-1·8b FR2-1 → D70·D71 · SC-3 `comment_sha` → D73 · 1.3.3 D57 표지 판별 → D83** — 명시).
 
 | D | 결정 | 근거 |
 |---|---|---|
@@ -210,6 +211,7 @@ harden-spec(2026-10-23 18:5x~19:0x, 이 세션)에서 확정 — 판단 갭 8건
 | D80 | ⑱ 부록 A 「배포 제외 경로」 목록은 **전부**(상한 없음). 「상한 50 + 외 n건」 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-6) — 1.3.2 D40 부록 A = 전문 자리 |
 | D81 | ⑱ 로 결과가 바뀌는 기존 테스트 3건(`deploy.test.mjs` 84-97·550-555·745-751)은 **픽스처 파일명만 `README.*` → `extra.txt` 로 정정, 단언 유지**. 단언을 `excluded` 로 바꾸는 것은 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-7) — 1.3.3 AC⑬-11 예외 방식(의도 보존, 새 행동은 새 테스트) |
 | D82 | macOS Finder zip 의 `__MACOSX/`·`.DS_Store` 는 **이번 범위 밖** — D57 접두 제거 무변경, §5 실측 항목 + §6 기록, 표본 (가) 실측에서 확인되면 D57 보강 별도 트랙. 「접두 조건에서 excludes 항목 제외」는 기각 | 사용자 지시로 메인이 추천안 입력(갭 H-8) — 범위(D68)는 실측된 결함만, 불일치는 보이는 실패 |
+| D83 | ⑱ 배치 **표지 판별은 `deploy.excludes` 에 걸리지 않는 항목만으로**(제외 항목은 표지를 만들지 않음 — `entries`·충돌·삭제·D75·⑱ 분류에는 참여). 제외 아닌 항목의 두 표지 = 혼합 대조 불가(D58 불변) · 접두 제거는 제외 항목도 셈(불변). **1.3.3 D57 「표지 = 루트 폴더」 변경**. 현행 유지(제외 파일이 표지를 만들면 혼합 대조 불가)는 기각 | review-loop(spec) R1-3 — 위험군 질문에 사용자 지시로 메인이 추천안 입력(추천 자동 채택(위임) — 확인 라운드 우선 감사 대상). ⑱ 정책(excludes = 배포 안 되는 파일)과 일관 |
 
 ## 확인 대기 대장
 
