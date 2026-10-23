@@ -19,7 +19,7 @@
 
 ## 2. 범위 · 비목표
 
-**범위**(impl 트랙이 고친다 — 이 세션은 spec 만, D62): `dev-workflow/skills/mr-review/scripts/lib/{adapter,deploy,report}.mjs` · `dev-workflow/skills/mr-review/SKILL.md`(§5 Claude 검토자 프롬프트·경로 감시 한계 · §6-5 `criterion` 첫 칸 · §8 터미널 요약·자가 점검·리포트 구성 문구) · `tests/mr-review/{adapter,deploy,report}.test.mjs` · `dev-workflow/.claude-plugin/plugin.json`·`.claude-plugin/marketplace.json` 버전 1.3.3 · README 3종의 1.3.3 한 줄 + 어댑터 안내의 `deployLayout` 문장 정정(「고정」 → 「판별 못 할 때의 기본값」) · plan SC-2(`deployLayout` 의미)·SC-3(`deploy.json` 필드·`mismatches.kind`) 문장 정정(1.3.2 와 같은 방식 — impl 트랙이 「1.3.3에서 변경」 표기) · 1.3.2 spec D37 행 끝 부기(「1.3.3 D59 로 의미 변경」). 어댑터 계약(SC-2)의 **기존 키·값·형식은 바꾸지 않는다** — `deployLayout` 의 의미만 바뀐다(D59).
+**범위**(impl 트랙이 고친다 — 이 세션은 spec 만, D62): `dev-workflow/skills/mr-review/scripts/lib/{adapter,deploy,report}.mjs` · `dev-workflow/skills/mr-review/scripts/lib/pack.mjs`(마스킹 입구의 줄바꿈 통일 한 줄만 — review-loop(spec) C2-N1, 추천 자동 채택(위임)) · `tests/mr-review/pack.test.mjs`(그 AC) · `dev-workflow/skills/mr-review/SKILL.md`(§5 Claude 검토자 프롬프트·경로 감시 한계 · §6-5 `criterion` 첫 칸 · §8 터미널 요약·자가 점검·리포트 구성 문구) · `tests/mr-review/{adapter,deploy,report}.test.mjs` · `dev-workflow/.claude-plugin/plugin.json`·`.claude-plugin/marketplace.json` 버전 1.3.3 · README 3종의 1.3.3 한 줄 + 어댑터 안내의 `deployLayout` 문장 정정(「고정」 → 「판별 못 할 때의 기본값」) · plan SC-2(`deployLayout` 의미)·SC-3(`deploy.json` 필드·`mismatches.kind`) 문장 정정(1.3.2 와 같은 방식 — impl 트랙이 「1.3.3에서 변경」 표기) · 1.3.2 spec D37 행 끝 부기(「1.3.3 D59 로 의미 변경」). 어댑터 계약(SC-2)의 **기존 키·값·형식은 바꾸지 않는다** — `deployLayout` 의 의미만 바뀐다(D59).
 
 **비목표(이 트랙에서 하지 않는다)** — 사용자 결정 2026-10-23(D52)
 
@@ -123,7 +123,7 @@
 
 **수정 방향(사용자 결정 2026-10-23 — D56, 둘 다)**
 
-1. **렌더러**: `report.mjs` 에 셀 정규화 `cell(s)` — `String(s)` 의 줄바꿈(`\r\n`·단독 `\r`·`\n` — 정규식 `\r\n|\r|\n`, R6-1)은 공백 하나로, 이스케이프되지 않은 `|` 는 `\|` 로(이미 `\|` 인 것은 그대로 — 이중 이스케이프 금지). 의도 대조표 행(`criterion`·`result`·`location`·`basis`)과 부록 A 검사표 행(`:250-261` 의 값 칸 전부)에 적용한다. **순서(R3-2·R4-1 — 마스킹 경계)**: ① **원문 마스킹** — 지금의 `fieldMask`(`renderReport` 의 `findings`·`check`·`deploy` 마스킹, `:302`·`:308`·`:309`)를 줄바꿈이 있는 원문에 그대로 먼저 한다(잘린 PEM 규칙 `pack.mjs:123` 은 BEGIN 뒤 줄바꿈으로 키 본문을 알아보므로, 먼저 펴면 BEGIN 표지만 가려지고 본문이 남는다 — R4-1). ② **평탄화** — 그 뒤 표 셀로 쓰일 값들의 줄바꿈(`\r\n|\r|\n` — 마크다운이 줄 경계로 읽는 세 꼴 전부. 단독 `\r` 을 남기면 칸 안에서 줄이 갈려 표·실행 블록 코드펜스가 깨지고 가짜 제목이 끼어든다, R6-1)을 공백 하나로. ③ **재마스킹** — 편 값에 `fieldMask` 를 **다시** 적용한다(줄로 나뉘어 있던 `run --password⏎x` 가 평탄화로 `--password x` 가 되면 여기서 가려지고 꼬리 봉인도 다시 시험된다 — 이것이 없으면 마지막 전체 마스킹이 그 뒤 행 전체(결과·위치·칸 구분자)를 먹는다, R3-2). ④ **`|` 이스케이프** — 행 조립 때 `cell()` 로. `cell()` 은 ④ 에서 줄바꿈 평탄화를 다시 해도 된다(①~③ 뒤라 무변경 — ②가 정본). 고정 문구 행(`(검증 표 없음)`·축약 ① 「… 외 n건 — 부록 A」·조기 종료 블록 `:333`)은 바꾸지 않는다. 재리뷰 파서(`check.mjs:242` `APPENDIX_D_RE`)는 부록 D 의 불릿 줄만 읽고 표를 읽지 않으므로(조회 사실) 영향 없다.
+1. **렌더러**: `report.mjs` 에 셀 정규화 `cell(s)` — `String(s)` 의 줄바꿈(`\r\n`·단독 `\r`·`\n` — 정규식 `\r\n|\r|\n`, R6-1)은 공백 하나로, 이스케이프되지 않은 `|` 는 `\|` 로(이미 `\|` 인 것은 그대로 — 이중 이스케이프 금지). 의도 대조표 행(`criterion`·`result`·`location`·`basis`)과 부록 A 검사표 행(`:250-261` 의 값 칸 전부)에 적용한다. **순서(R3-2·R4-1 — 마스킹 경계)**: ① **원문 마스킹** — 지금의 `fieldMask`(`renderReport` 의 `findings`·`check`·`deploy` 마스킹, `:302`·`:308`·`:309`)를 줄바꿈이 있는 원문에 그대로 먼저 한다(잘린 PEM 규칙 `pack.mjs:123` 은 BEGIN 뒤 줄바꿈으로 키 본문을 알아보므로, 먼저 펴면 BEGIN 표지만 가려지고 본문이 남는다 — R4-1). **① 의 전제(C2-N1)**: 마스킹 입구 `maskTextWithCounts`(`pack.mjs:331`)는 지금 `\r\n` 만 `\n` 으로 바꾸고 단독 `\r` 을 남겨, BEGIN 뒤가 단독 CR 이면 잘린 PEM 규칙(`:123` — `\n` 뒤 본문)이 본문을 못 잡는다(1.3.2 현행 모든 마스킹 경로 — 표 칸·본문·팩 — 공통 구멍). 입구를 `\r\n|\r` → `\n` 으로 바꾼다(한 줄). 마스킹 결과 글의 단독 CR 이 LF 가 되는 것 외 동작 불변. ② **평탄화** — 그 뒤 표 셀로 쓰일 값들의 줄바꿈(`\r\n|\r|\n` — 마크다운이 줄 경계로 읽는 세 꼴 전부. 단독 `\r` 을 남기면 칸 안에서 줄이 갈려 표·실행 블록 코드펜스가 깨지고 가짜 제목이 끼어든다, R6-1)을 공백 하나로. ③ **재마스킹** — 편 값에 `fieldMask` 를 **다시** 적용한다(줄로 나뉘어 있던 `run --password⏎x` 가 평탄화로 `--password x` 가 되면 여기서 가려지고 꼬리 봉인도 다시 시험된다 — 이것이 없으면 마지막 전체 마스킹이 그 뒤 행 전체(결과·위치·칸 구분자)를 먹는다, R3-2). ④ **`|` 이스케이프** — 행 조립 때 `cell()` 로. `cell()` 은 ④ 에서 줄바꿈 평탄화를 다시 해도 된다(①~③ 뒤라 무변경 — ②가 정본). 고정 문구 행(`(검증 표 없음)`·축약 ① 「… 외 n건 — 부록 A」·조기 종료 블록 `:333`)은 바꾸지 않는다. 재리뷰 파서(`check.mjs:242` `APPENDIX_D_RE`)는 부록 D 의 불릿 줄만 읽고 표를 읽지 않으므로(조회 사실) 영향 없다.
 2. **SKILL.md §6-5**: 「`criterion` = 메인이 검증 표에서 읽은 **수용기준·주장을 적은 첫 칸의 원문** — 첫 칸이 번호·ID 만이면(숫자·`M3` 같은 짧은 표식) **그 다음 칸**(D67 — 번호는 `row` 에 이미 있다). 행 전체가 아니다(다른 칸은 기대·실제 값이라 `result`·`location` 과 겹친다). 불릿 목록이면 항목 문구 전체. 셀의 `|`·줄바꿈은 `render` 가 처리한다」.
 
 - 기각: 렌더러만 — 행 전체가 한 셀에 들어가 읽기 불편. SKILL.md 만 — 첫 칸에도 `|`(코드 조각) 가 올 수 있어 다시 깨짐.
@@ -132,7 +132,7 @@
 
 - AC⑭-1. `findings.json` 픽스처 `intent[0].criterion = "a | b"`·`location = "x.java:10\ny"` → render 결과의 의도 대조표 행이 `| a \| b | PASS | x.java:10 y (작성자 주장) |`(이스케이프 안 된 `|` 로 나누면 칸 3개) · `\|` 실재.
 - AC⑭-2. 부록 A 검사표: `check.json` 픽스처 `attachments[0].filename = "a|b.zip"`·`ignoredComments[0].reason = "x|y"` → 그 행들이 `\|` 로 이스케이프되고 칸 수 2.
-- AC⑭-5. (마스킹 순서 — R3-2) `intent[0].criterion = "run --password\nx"`·`result = "PASS"`·`location = "a.java:3"` → 최종 리포트(전체 마스킹 뒤)의 의도 대조표 행에 `x` 가 남지 않고(가림 표시) · `PASS`·`a.java:3` 가 남으며 · 이스케이프 안 된 `|` 로 나누면 칸 3개. (잘린 PEM — R4-1) `criterion = "-----BEGIN RSA PRIVATE KEY-----\nMIIEow…(base64 본문 몇 줄, END 줄 없음)"` → 최종 리포트 어디에도 base64 본문 조각이 남지 않고 · 같은 행의 결과·위치가 남으며 · 칸 3개. (단독 CR — R6-1) `criterion = "a\r```\r# forged review\r```text\rb"` → 최종 리포트에 `\r` 없음 · `# forged review` 로 시작하는 줄 없음 · 의도 대조표 행이 한 줄이고 칸 3개 · 실행 블록 코드펜스 수 불변.
+- AC⑭-5. (마스킹 순서 — R3-2) `intent[0].criterion = "run --password\nx"`·`result = "PASS"`·`location = "a.java:3"` → 최종 리포트(전체 마스킹 뒤)의 의도 대조표 행에 `x` 가 남지 않고(가림 표시) · `PASS`·`a.java:3` 가 남으며 · 이스케이프 안 된 `|` 로 나누면 칸 3개. (잘린 PEM — R4-1) `criterion = "-----BEGIN RSA PRIVATE KEY-----\nMIIEow…(base64 본문 몇 줄, END 줄 없음)"` → 최종 리포트 어디에도 base64 본문 조각이 남지 않고 · 같은 행의 결과·위치가 남으며 · 칸 3개. (단독 CR — R6-1) `criterion = "a\r```\r# forged review\r```text\rb"` → 최종 리포트에 `\r` 없음 · `# forged review` 로 시작하는 줄 없음 · 의도 대조표 행이 한 줄이고 칸 3개 · 실행 블록 코드펜스 수 불변. (단독 CR + 잘린 PEM — C2-N1) `criterion = "-----BEGIN RSA PRIVATE KEY-----\rMIIEowIBAAKCAQEA"`(END 없음) → 최종 리포트에 `MIIEow` 조각 없음 · 결과·위치 유지 · 칸 3개. `pack.test.mjs`: `maskText("-----BEGIN RSA PRIVATE KEY-----\rMIIEowIBAAKCAQEA\rxyz", [])` 결과에 `MIIEow`·`xyz` 없음 · 기존 `\r\n`·`\n` 입력 결과 불변.
 - AC⑭-3. 기존 render 테스트(`report.test.mjs`)의 의도 대조표·검사표 단언 불변(`|` 없는 입력은 출력 동일).
 - AC⑭-4. SKILL.md §6-5 에 「첫 칸」·「수용기준」·「행 전체가 아니」·「번호·ID」(또는 「다음 칸」) 문구 실재(grep).
 
@@ -182,6 +182,7 @@
 | SC-2 어댑터 계약 | `projects.<이름>.deployLayout` **의미 변경**(고정 → 판별 못 할 때의 기본값·삭제 전용 MR 의 ④ 배치). 값·형식·검증·기본값 불변. plan SC-2 문장 정정은 impl 트랙(「1.3.3에서 변경」), 이 spec 이 정본 |
 | SC-3 `deploy.json` | `zip` 요약에 `layout_source`·`prefix` 추가, `layout` 에 `"mixed"` 값 · `attachment` 가 여러 이름(`, ` 연결) 가능 · `comment_sha` = head 와 일치하는 주석(없으면 `null`) · 주석 규칙 「최소 한 zip」(D63) · 새 배열 `zips[]` · zip 저장 `W/zip/<순번>-<이름>` · `mismatches.kind` 에 `layout_ambiguous`·`zip_conflict`(둘 다 대조 불가군) · `map_conflict` 의 새 detail 2종(S1) — plan SC-3 정정도 impl 트랙 |
 | `adapter.mjs` | 변경 없음(검증·resolved 그대로). 주석의 「고정」 문구만 정정 |
+| `pack.mjs` | 마스킹 입구 `maskTextWithCounts` 의 줄바꿈 통일 `\r\n` → `\r\n\|\r`(→ `\n`) 한 줄(C2-N1 — 단독 CR 뒤 잘린 PEM 본문). 그 밖 무변경 |
 | `deploy.mjs` | zip 전부 수집·접두 제거·표지/시험 판별·zip 별 ②③·합산·`zip_conflict`(같은 경로 다른 바이트 + 합산 경로 충돌 R1-2)·`layout_ambiguous`·④ `L4` 선택·S1 head 트리 조회(`git ls-tree -r -z --name-only` 1회 캐시·NUL 분리·대소문자 무시 비교 R5-1·C1, `$` 경계 전부의 `.java` 포함 R1-1·R2-1)·diff-only 폴백 |
 | `report.mjs` | `cell()` 이스케이프(의도 대조표·검사표 — 순서 = 원문 `fieldMask` → 줄바꿈 평탄화 → 재 `fieldMask` → `|` 이스케이프, R3-2·R4-1) · 부록 A zip 줄(배치·근거·접두, zip 별) · `mismatchSummary` 종류 분류 2종 추가 |
 | SKILL.md | §5 Claude 검토자 프롬프트 「W 아래에만」 + `root-before.txt` 기록 · §5 경로 감시 「한계」 문단 · §6-5 `criterion` = 첫 칸 · §8 터미널 요약(배치·합산·경로 감시 한계)·자가 점검 F7(W 밖 새 항목)·리포트 구성 문구(부록 A zip 줄) |
@@ -189,7 +190,7 @@
 | plugin.json·marketplace.json | 1.3.2 → 1.3.3 |
 | 1.3.2 spec D37 | impl 트랙이 D37 행 끝에 「1.3.3 D59 로 의미 변경(힌트) — spec `2026-10-23-mr-review-1-3-3-fixes.md` 3.⑬」 부기(재론 아님) |
 | 어댑터 문서(프로젝트 쪽) | 변경 불요. WAR 프로젝트는 키 없이도 zip 표지로 동작하고, 삭제 전용 MR 을 위해 두고 싶으면 그대로 둔다 |
-| `tests/mr-review` | deploy(⑬ 15건·S1 7건)·report(⑭ 5건·⑬-12·⑮·⑯ 문구)·adapter(⑬-13) — 기존 전부 불변(AC⑬-11), 단 1.3.2 R2-2 테스트 둘째 픽스처(`r2`)만 정정(head 에서 `Foo.java` 제외 — AC⑬-11 예외, 단언 불변) |
+| `tests/mr-review` | deploy(⑬ 15건·S1 7건)·report(⑭ 5건·⑬-12·⑮·⑯ 문구)·adapter(⑬-13)·pack(C2-N1 1건) — 기존 전부 불변(AC⑬-11), 단 1.3.2 R2-2 테스트 둘째 픽스처(`r2`)만 정정(head 에서 `Foo.java` 제외 — AC⑬-11 예외, 단언 불변) |
 
 ## 5. 검증 · 완료 조건
 
