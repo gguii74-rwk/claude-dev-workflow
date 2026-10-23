@@ -103,7 +103,7 @@ function zipLines(deploy) {
   const head = `zip ${z.attachment || '없음'}(주석 ${z.comment_sha ? s7(z.comment_sha) : '-'}`;
   const zips = deploy.zips;
   if (!Array.isArray(zips) || zips.length === 0) return `${head})`;
-  if (zips.length === 1) return `${head} · ${layoutNote(z)})`;
+  if (zips.length === 1) return `${head} · ${layoutNote(zips[0])})`;   // 그 zip 자체 값 — 혼합·손상이면 요약(힌트값)이 아니라 `배치 -(…)`
   return [`zip ${zips.length}개 합산(배치 ${z.layout}(${z.layout_source}))`, ...zips.map((x, i) => `- zip#${i + 1} ${x.attachment}(주석 ${x.comment_sha ? s7(x.comment_sha) : '없음'} · ${layoutNote(x)})`)].join('\n');
 }
 

@@ -1068,6 +1068,8 @@ test('render: zips 2건이면 부록 A 에 zip 줄 2개(zip#n · 주석 7자|없
   const one = { ...base, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'maven-war', layout_source: 'signature', prefix: 'app/', bytes_skipped: [] }, zips: [zr({ layout: 'maven-war', prefix: 'app/' })] };
   const b = appA(renderWith(tmp(), one));
   assert.ok(b.includes(`기대 배포 목록 1건 · 삭제 목록 0건 · zip d.zip(주석 ${HEAD.slice(0, 7)} · 배치 maven-war(signature) · 접두 app/)`), b.join('\n'));
+  const amb = { ...one, zip: { ...one.zip, layout: 'source', layout_source: 'default', prefix: '' }, zips: [zr({ layout: null, layout_source: 'signature' })] };   // 혼합 zip 1개 — 요약은 힌트값이지만 줄은 그 zip 값
+  assert.ok(appA(renderWith(tmp(), amb)).some((l) => l.includes('배치 -(signature) · 접두 없음')));
   const old = { ...base, zip: { attachment: 'd.zip', downloaded: true, comment_sha: HEAD, entries: [], bytes_source: 'worktree', layout: 'source', bytes_skipped: [] } };
   assert.ok(appA(renderWith(tmp(), old)).includes(`기대 배포 목록 1건 · 삭제 목록 0건 · zip d.zip(주석 ${HEAD.slice(0, 7)})`));
   const s8 = skillText().slice(skillText().indexOf('## 8. 출력 · 정리'), skillText().indexOf('## 9.'));
