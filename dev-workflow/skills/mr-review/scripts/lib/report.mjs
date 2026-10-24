@@ -72,11 +72,14 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
 // ── SC-5 병합 발견 검증(impl SDD 이월 T06 우선 minor) ──────────────────────────────
 // findings.json 은 메인(LLM)이 손으로 쓴다 — `blocking:"true"`(문자열)·오타 type 이 판정 집합에서 조용히 빠지면 차단 발견이 있는데도 APPROVE 가 된다.
 // verdict 가 계산 전에 형식을 검사하고 어긋나면 ERR(fail-closed) — 판정 규칙은 바꾸지 않는다(D9).
-export function validateFindings(fnd) {
+// confirmedNull = 확정 뒤 최종 검사(confirmedNullErrors)도 함께 — cmdVerdict 는 끄고 `--resolve` 적용 뒤에 따로 건다(1.4.0 ② R3-3)
+export function validateFindings(fnd, { confirmedNull = true } = {}) {
   const errors = [];
   if (!fnd || typeof fnd !== 'object' || Array.isArray(fnd)) return ['객체가 아니다'];
   if (!/^[0-9a-f]{40}$/.test(String(fnd.head_sha || ''))) errors.push('head_sha 는 40자 SHA(snapshot.head_sha)');
   if (!Array.isArray(fnd.validReviewers) || fnd.validReviewers.some((r) => !['claude', 'codex'].includes(r))) errors.push('validReviewers 는 claude|codex 배열');
+  // 후보 문서 관련성(1.4.0 ② D135 ⓐ) — 키가 있으면 boolean 만. null 을 「무관」으로 읽어 조용히 RETURN_TO_DESIGN 으로 가지 않게
+  if ('baselineCandidateRelevant' in fnd && typeof fnd.baselineCandidateRelevant !== 'boolean') errors.push('baselineCandidateRelevant: 후보 문서 관련성 미판정 — 메인이 후보 문서를 읽고 정한다(true|false)');
   if (!Array.isArray(fnd.findings)) { errors.push('findings 배열 필요'); return errors; }
   const ids = new Set();
   fnd.findings.forEach((f, i) => {
@@ -89,6 +92,11 @@ export function validateFindings(fnd) {
     if (f.unresolved != null && typeof f.unresolved !== 'boolean') errors.push(`${f.id ?? i}.unresolved 는 boolean`);
     if (!['yes', 'no', null, undefined].includes(f.fixableInDesign)) errors.push(`${f.id ?? i}.fixableInDesign 은 yes|no|null`);
     if (![null, undefined, 'confirmed', 'dismissed'].includes(f.resolution)) errors.push(`${f.id ?? i}.resolution 은 confirmed|dismissed|null`);
+    // 설계 내 수정 가능 주장·근거(1.4.0 ② D116·D135) — 주장은 1~2명(claude|codex · yes|no), 주장 위에 메인이 정한 값(리뷰어 --resolve 결정 아님)에는 근거 1줄 필수
+    const claims = f.fixableInDesignClaims;
+    if (claims != null && (typeof claims !== 'object' || Array.isArray(claims) || Object.entries(claims).some(([k, v]) => !['claude', 'codex'].includes(k) || !['yes', 'no'].includes(v)))) errors.push(`${f.id ?? i}.fixableInDesignClaims 는 { claude|codex: yes|no }`);
+    if (f.fixableInDesignBasis != null && typeof f.fixableInDesignBasis !== 'string') errors.push(`${f.id ?? i}.fixableInDesignBasis 는 문자열`);
+    if (claims != null && ['yes', 'no'].includes(f.fixableInDesign) && !f.resolution && !(typeof f.fixableInDesignBasis === 'string' && f.fixableInDesignBasis.trim())) errors.push(`${f.id ?? i}.fixableInDesignBasis 필요 — 검토자 주장 위에 메인이 정한 설계 내 수정 가능 값의 근거 1줄`);
     // 출처(1.4.0 ① D124) — 메인이 결정 어김을 발견으로 올린 항목은 `main`. 검토자 발견에 요구하는 것과 같은 수준의 근거를 요구한다(감사 가능)
     if (f.source !== undefined && !['claude', 'codex', 'both', 'main'].includes(f.source)) errors.push(`${f.id ?? i}.source 는 claude|codex|both|main`);
     if (f.source === 'main') {
@@ -99,7 +107,14 @@ export function validateFindings(fnd) {
       if (!['yes', 'no'].includes(f.fixableInDesign)) errors.push(`${f.id ?? i}: 출처 main 발견은 fixableInDesign yes|no`);
     }
   });
+  if (confirmedNull) errors.push(...confirmedNullErrors(fnd.findings));
   return errors;
+}
+
+// 확정 뒤 최종 검사(1.4.0 ② R1-2·R3-3) — 차단 설계 유형이 리뷰어 확인(confirmed)으로 닫혔는데 fixableInDesign 이 null 이면 판정이 CHANGES_REQUESTED 쪽으로 조용히 확정된다.
+// `--resolve` 를 적용한 뒤의 상태에 건다(이전 버전이 남긴 confirmed+null 도 `--resolve <id>=confirmed:fixable|confirmed:design` 으로 복구된다)
+export function confirmedNullErrors(list) {
+  return (list || []).filter((f) => f?.resolution === 'confirmed' && f.blocking === true && DESIGN_TYPES.includes(f.type) && f.fixableInDesign == null).map((f) => `${f.id}.fixableInDesign 이 null 인 채 confirmed — confirmed:fixable|confirmed:design 으로 정한다`);
 }
 
 // 결정 어김 대응 발견(1.4.0 ① D124·D133) — VIOLATED 인 결정 id 중 그 id 를 decisionIds 에 가진 DEFECT·DESIGN_DRIFT 발견(blocking 값 무관)이 없는 것. 입력 검사이지 판정 규칙이 아니다(D9)
@@ -171,14 +186,15 @@ export function machineEvidence({ check, snapshot, deploy }) {
   return out;
 }
 
-// fixableInDesign 상충(R6-3): 메인이 같은 지문의 두 결과를 합칠 때 `fixableInDesign` 이 갈리고 코드로 확인하지 못하면 `fixableInDesignClaims: { claude, codex }` 에 양쪽을 보존하고 `unresolved:true`·`fixableInDesign:null` 로 둔다(SC-5).
-// 이 값 하나로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀌므로 스크립트가 한쪽을 고르지 않는다(D9 — 판정 규칙 신설 금지). 리뷰어가 `--resolve <id>=confirmed:fixable|confirmed:design` 으로 정한다. 상충이 없는 항목은 접미 없는 `confirmed` 그대로(접미를 주면 그 값으로 덮는다 — 리뷰어 결정).
-export const claimsConflict = (f) => !!f?.fixableInDesignClaims && new Set(Object.values(f.fixableInDesignClaims).filter(Boolean)).size > 1;
+// 설계 내 수정 가능 미정(R6-3 → 1.4.0 ② — spec 2026-10-24 3.②-2 D116·R1-2·R2-2): 차단 DEFECT·DESIGN_DRIFT 의 `fixableInDesign: null` 은 그 자체가 「수정 가능 판단 미정」 표지다 —
+// 두 검토자 상충이든 단독 출처 1인 주장이든 주장 없음이든(`fixableInDesignClaims` 유무 무관) 메인이 판단하지 못한 것이다. 이 값 하나로 CHANGES_REQUESTED ↔ RETURN_TO_DESIGN 이 바뀌므로
+// 스크립트가 한쪽을 고르지 않는다(D9). 리뷰어가 `--resolve <id>=confirmed:fixable|confirmed:design` 으로 정한다. `unresolved`(낮은 확신·유형 상충 확인 전용)와는 별개 표지다.
+export const fixableUndecided = (f) => f?.blocking === true && DESIGN_TYPES.includes(f.type) && f.fixableInDesign == null;
 export function parseResolve(id, value, f = null) {
   const m = String(value).match(/^(confirmed|dismissed)(?::(fixable|design))?$/);
   if (!m) throw new ReportError(`--resolve ${id}=${value}: confirmed|dismissed|confirmed:fixable|confirmed:design 만 허용`);
   if (m[1] === 'dismissed' && m[2]) throw new ReportError(`--resolve ${id}=${value}: dismissed 에는 접미를 붙이지 않는다`);
-  if (m[1] === 'confirmed' && !m[2] && claimsConflict(f)) throw new ReportError(`--resolve ${id}=confirmed: 설계 내 수정 가능 여부가 검토자 간 상충(${Object.entries(f.fixableInDesignClaims).map(([k, v]) => `${k}=${v}`).join(' / ')}) — confirmed:fixable 또는 confirmed:design 으로 정하라`);
+  if (m[1] === 'confirmed' && !m[2] && fixableUndecided(f)) throw new ReportError(`--resolve ${id}=confirmed: 설계 내 수정 가능 여부 미정${f.fixableInDesignClaims ? `(검토자 주장 ${Object.entries(f.fixableInDesignClaims).map(([k, v]) => `${k}=${v}`).join(' / ')})` : ''} — confirmed:fixable 또는 confirmed:design 으로 정하라`);
   return { resolution: m[1], fixableInDesign: m[2] === 'fixable' ? 'yes' : m[2] === 'design' ? 'no' : null };
 }
 
@@ -232,12 +248,13 @@ export function computeVerdict({ check, snapshot, deploy, findings, resolves = {
     else verdict = 'APPROVE';
     return { verdict, defects: defects.map((f) => f.id), evidence: [...evidence.map((f) => f.id), ...machine.map((m) => m.id)], rtd: rtd.map((f) => f.id) };
   };
-  const unresolved = list.filter((f) => f.unresolved === true && !f.resolution).map((f) => f.id);
+  // 미확정 목록(1.4.0 ② R2-2) = 낮은 확신·유형 상충 확인 미완(`unresolved`) 또는 설계 내 수정 가능 미정(`fixableUndecided`) — 리뷰어 결정(resolution) 전까지
+  const unresolved = list.filter((f) => (f.unresolved === true || fixableUndecided(f)) && !f.resolution).map((f) => f.id);
   if (unresolved.length) {
     const branches = {};
     for (const id of unresolved) {
       const f = list.find((x) => x.id === id);
-      if (claimsConflict(f)) {   // fixableInDesign 상충(R6-3) — 확인 갈래가 둘(설계 내 수정 가능 / 불가)로 갈린다. 리뷰어가 `confirmed:fixable|confirmed:design` 로 정한다
+      if (fixableUndecided(f)) {   // 설계 내 수정 가능 미정(R6-3 · 1.4.0 ②) — 확인 갈래가 둘(설계 내 수정 가능 / 불가)로 갈린다. 리뷰어가 `confirmed:fixable|confirmed:design` 로 정한다
         const withF = (v) => { const g = list.map((x) => (x.id === id ? { ...x, fixableInDesign: v } : x)); return calcOn(g, { [id]: 'confirmed' }).verdict; };
         branches[id] = { 'confirmed:fixable': withF('yes'), 'confirmed:design': withF('no'), dismissed: calc({ [id]: 'dismissed' }).verdict };
       } else branches[id] = { confirmed: calc({ [id]: 'confirmed' }).verdict, dismissed: calc({ [id]: 'dismissed' }).verdict };
@@ -499,7 +516,7 @@ export function renderReport({ adapter, work, early = false }) {
       // 새 표지(1.4.0 ①)는 ` · 출처 ` 뒤에만 붙인다 — 재리뷰 파서(APPENDIX_D_RE)는 출처 앞까지만 읽는다(3.①-8)
       const decTag = (f.decisionIds || []).length ? ` · 결정 ${f.decisionIds.join(', ')}` : '';
       parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? mergedTag : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}${decTag}`,
-        `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${claimsText(f.fixableInDesignClaims)}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
+        `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignBasis ? ` · 근거(메인): ${f.fixableInDesignBasis}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${claimsText(f.fixableInDesignClaims)}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
         `  - 권고: ${f.recommendation || '-'}`,
         `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);
     }
@@ -649,20 +666,21 @@ export async function cmdVerdict(args, ctx) {
   const findings = readJson(ctx.work, 'findings.json');
   if (!check || !snapshot) throw new ReportError('check.json·snapshot.json 이 필요하다');
   if (!findings) throw new ReportError('findings.json 이 없다 — 메인이 두 검토자 결과를 병합해 먼저 써야 한다(SC-5)');
-  const ferr = validateFindings(findings);
+  const ferr = validateFindings(findings, { confirmedNull: false });
   if (ferr.length) throw new ReportError(`findings.json 검증 실패: ${ferr.slice(0, 5).join('; ')}${ferr.length > 5 ? ` 외 ${ferr.length - 5}건` : ''}`);
   const gaps = decisionGaps(findings);
   if (gaps.length) throw new ReportError(`결정 어김 대응 발견 없음 ${gaps.join(', ')} — 결과를 정정하거나 출처 main 발견을 추가한다`);
   const resolves = {};
   for (const r of args.resolve || []) { const m = String(r).match(/^([^=]+)=(.+)$/); if (!m) throw new ReportError(`--resolve 형식: <id>=confirmed|dismissed|confirmed:fixable|confirmed:design (${r})`); resolves[m[1]] = m[2]; }
   for (const id of Object.keys(resolves)) if (!findings.findings.some((f) => f.id === id)) throw new ReportError(`--resolve ${id}: findings.json 에 없는 id — 리뷰어 결정이 조용히 버려지지 않게 멈춘다`);
-  const v = computeVerdict({ check, snapshot, deploy, findings, resolves, judgeId: ctx.adapter.policy.judgeId });
+  // --resolve 를 먼저 적용하고(메모리) 최종 상태에 confirmed+null 검사(1.4.0 ② R3-3) → 판정 계산 → 영속. 검사를 통과해야 findings.json·verdict.json 을 쓴다
+  let touched = false;
+  for (const f of findings.findings || []) { const r = resolves[f.id]; if (r !== undefined) { const d = parseResolve(f.id, r, f); f.resolution = d.resolution; if (d.fixableInDesign) f.fixableInDesign = d.fixableInDesign; f.unresolved = false; touched = true; } }
+  const cerr = confirmedNullErrors(findings.findings);
+  if (cerr.length) throw new ReportError(`findings.json 검증 실패: ${cerr.slice(0, 5).join('; ')}${cerr.length > 5 ? ` 외 ${cerr.length - 5}건` : ''}`);
+  const v = computeVerdict({ check, snapshot, deploy, findings, resolves: {}, judgeId: ctx.adapter.policy.judgeId });
   // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다. 접미(fixable|design)는 fixableInDesign 확정값으로 남는다(R6-3).
-  if (Object.keys(resolves).length) {
-    let touched = false;
-    for (const f of findings.findings || []) { const r = resolves[f.id]; if (r !== undefined) { const d = parseResolve(f.id, r, f); f.resolution = d.resolution; if (d.fixableInDesign) f.fixableInDesign = d.fixableInDesign; f.unresolved = false; touched = true; } }
-    if (touched) fs.writeFileSync(path.join(ctx.work, 'findings.json'), JSON.stringify(findings, null, 2));
-  }
+  if (touched) fs.writeFileSync(path.join(ctx.work, 'findings.json'), JSON.stringify(findings, null, 2));
   fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify(v, null, 2));
   return `VERDICT ${v.status} ${v.verdict || '-'}`;
 }

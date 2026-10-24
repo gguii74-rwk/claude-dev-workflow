@@ -1789,3 +1789,65 @@ test('verdict: decisions·decisionGaps 는 판정을 바꾸지 않는다 · VIOL
   assert.ok(vf(MAIN_F({ scenario: '' })).length > 0);
   assert.ok(vf(MAIN_F({ fixableInDesign: null })).length > 0);
 });
+
+// ── 1.4.0 ② 단독 출처 fixableInDesign 확인 (spec 2026-10-24 3.② · D116·D127·D135 · R1-2·R2-2·R3-3) ──
+const S1 = (over = {}) => F({ type: 'DESIGN_DRIFT', source: 'claude', fixableInDesign: null, fixableInDesignClaims: { claude: 'yes' }, unresolved: true, ...over });
+test('computeVerdict: 차단 설계 유형의 fixableInDesign null 은 1인 주장·주장 없음·unresolved 없음이어도 3갈래 · 접미 없는 confirmed 는 ERR · 현행 두 갈래 불변 (1.4.0 AC②-1 · R1-2·R2-2)', () => {
+  const three = { 'confirmed:fixable': 'CHANGES_REQUESTED', 'confirmed:design': 'RETURN_TO_DESIGN', dismissed: 'APPROVE' };
+  for (const f of [S1(), F({ fixableInDesign: null, unresolved: true }), S1({ unresolved: false }), F({ fixableInDesign: null, unresolved: false })]) {
+    const u = V(findings([f]));
+    assert.equal(u.status, 'undetermined', JSON.stringify(f));
+    assert.deepEqual(u.branches.F1, three);
+    assert.throws(() => V(findings([f]), { resolves: { F1: 'confirmed' } }), /confirmed:fixable 또는 confirmed:design/);
+    assert.equal(V(findings([f]), { resolves: { F1: 'confirmed:design' } }).verdict, 'RETURN_TO_DESIGN');
+    assert.equal(V(findings([f]), { resolves: { F1: 'confirmed:fixable' } }).verdict, 'CHANGES_REQUESTED');
+  }
+  assert.deepEqual(V(findings([F({ unresolved: true })])).branches.F1, { confirmed: 'CHANGES_REQUESTED', dismissed: 'APPROVE' });   // fixableInDesign 'yes' 미확정 후보 — 현행 두 갈래
+  assert.equal(V(findings([F({ type: 'MISSING_EVIDENCE', fixableInDesign: null })])).status, 'determined');                       // 설계 유형만
+  assert.equal(V(findings([F({ type: 'DESIGN_DRIFT', blocking: false, fixableInDesign: null })])).status, 'determined');           // 비차단은 판정 입력이 아니다
+});
+
+test('computeVerdict: 메인이 판단한 값(+basis)이면 확정 · 두 확인 겹침(낮은 확신 unresolved + 수정 가능 판단)은 리뷰어 확인 전 확정 안 됨 (1.4.0 AC②-2 · R2-2)', () => {
+  assert.deepEqual([V(findings([S1({ fixableInDesign: 'no', fixableInDesignBasis: '전제 D1 깨짐', unresolved: false })])).status, V(findings([S1({ fixableInDesign: 'no', fixableInDesignBasis: '전제 D1 깨짐', unresolved: false })])).verdict], ['determined', 'RETURN_TO_DESIGN']);
+  assert.equal(V(findings([S1({ fixableInDesign: 'yes', fixableInDesignBasis: '국소 수정', unresolved: false })])).verdict, 'CHANGES_REQUESTED');
+  const both = V(findings([F({ type: 'DEFECT', source: 'codex', confidence: 'medium', unresolved: true, fixableInDesign: 'yes', fixableInDesignClaims: { codex: 'yes' }, fixableInDesignBasis: '국소 수정' })]));
+  assert.equal(both.status, 'undetermined');
+  assert.deepEqual(Object.keys(both.branches.F1), ['confirmed', 'dismissed']);
+});
+
+test('validateFindings: null 차단 설계 유형은 그 자체로 통과(미확정) · confirmed+null 은 오류 · claims 값·키 · baselineCandidateRelevant null · 주장 위 메인 값엔 basis 필수 (1.4.0 AC②-3 · R1-2·D135)', () => {
+  const vf = (f, over = {}) => validateFindings(findings([f], over));
+  assert.deepEqual(vf(F({ fixableInDesign: null, unresolved: false, resolution: null })), []);
+  assert.deepEqual(vf(F({ fixableInDesign: null, unresolved: true })), []);
+  assert.deepEqual(vf(F({ fixableInDesign: null, resolution: 'dismissed' })), []);
+  assert.ok(vf(F({ fixableInDesign: null, resolution: 'confirmed' })).some((e) => /null 인 채 confirmed/.test(e)));
+  assert.ok(vf(F({ fixableInDesignClaims: { claude: 'maybe' }, resolution: 'confirmed' })).length > 0);
+  assert.ok(vf(F({ fixableInDesignClaims: { main: 'yes' }, resolution: 'confirmed' })).length > 0);
+  assert.ok(vf(F(), { baselineCandidateRelevant: null }).some((e) => /후보 문서 관련성 미판정/.test(e)));
+  assert.deepEqual(vf(F(), { baselineCandidateRelevant: true }), []);
+  const { baselineCandidateRelevant, ...noKey } = findings([F()]);
+  assert.deepEqual(validateFindings(noKey), []);
+  assert.ok(vf(F({ fixableInDesignClaims: { claude: 'yes' }, fixableInDesign: 'no', unresolved: false, resolution: null })).some((e) => /fixableInDesignBasis/.test(e)));
+  assert.deepEqual(vf(F({ fixableInDesignClaims: { claude: 'yes' }, fixableInDesign: 'no', unresolved: false, resolution: null, fixableInDesignBasis: '전제 깨짐' })), []);
+  assert.deepEqual(vf(F({ fixableInDesignClaims: { claude: 'yes' }, fixableInDesign: 'no', unresolved: false, resolution: 'confirmed' })), []);
+  // CLI 복구 순서(R3-3): 이전 버전이 남긴 confirmed+null → --resolve 없음 ERR · 접미 없는 confirmed ERR · confirmed:design 통과·영속
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([F({ fixableInDesign: null, resolution: 'confirmed', fixableInDesignClaims: { claude: 'no' } })]) });
+  const r0 = runCli(['verdict', '--adapter', adapter, '--work', work]);
+  assert.equal(r0.code, 2);
+  assert.match(r0.first, /F1\.fixableInDesign 이 null 인 채 confirmed — confirmed:fixable\|confirmed:design 으로 정한다/);
+  assert.match(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed']).first, /^ERR .*confirmed:fixable 또는 confirmed:design/);
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed:design']).first, 'VERDICT determined RETURN_TO_DESIGN');
+  assert.equal(readJson(join(work, 'findings.json')).findings[0].fixableInDesign, 'no');
+});
+
+test('render ②: 부록 D 「근거(메인)」·「검토자 주장」 · 없으면 현행 · 미확정 1인 주장은 리뷰어 확인 필요 절에 세 갈래 (1.4.0 AC②-4)', () => {
+  const root = tmp();
+  const judged = renderOne(root, { fnd: findings([S1({ fixableInDesign: 'no', brokenPremise: '조회 전제', fixableInDesignBasis: '기준선 D1 과 어긋남', unresolved: false })]), name: 'j' });
+  assert.match(sectionOf(judged.md, '## 부록 D'), /  - 설계 내 수정 가능: no · 깨진 전제: 조회 전제 · 근거\(메인\): 기준선 D1 과 어긋남 · 검토자 주장: claude=yes\n/);
+  const und = renderOne(root, { fnd: findings([S1({ unresolved: false })]), name: 'u' });
+  const sec = sectionOf(und.md, '## 리뷰어 확인 필요', '\n## ');
+  assert.match(sec, /설계 내 수정 가능 주장: claude=yes/);
+  assert.match(sec, /`verdict --resolve F1=confirmed:fixable` 또는 `verdict --resolve F1=confirmed:design` 또는 `verdict --resolve F1=dismissed`/);
+});
