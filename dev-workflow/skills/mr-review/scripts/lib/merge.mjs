@@ -26,7 +26,8 @@ export const WHY = {
 const WHY_ORDER = Object.values(WHY);
 
 const norm = (t) => String(t ?? '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
-const fingerprint = (f) => `${f.file ?? ''}:${norm(f.title)}`;
+// 지문 = 가린 뒤 정규화(impl R3-1 — spec 3.①-1 R1-1 순서와 같은 원칙): 정규화가 `token=` 같은 선언 문맥을 지우면 뒤의 가림(cleanup deepMask)이 비밀값을 못 알아본다
+const fingerprint = (f, mask) => `${f.file == null ? '' : mask(f.file)}:${norm(mask(f.title ?? ''))}`;
 const uniq = (xs) => [...new Set(xs)];
 const blockingOf = (type) => (type === 'DESIGN_DRIFT' ? null : type !== 'FOLLOW_UP');
 
@@ -39,7 +40,8 @@ function allowedIds(check, pack) {
 
 // 순수 함수(결정적). claude·codex = 스키마를 통과한 검토자 출력(없으면 null). valid = 실행 유효 검토자 목록(메인 판정 — §5).
 // rows = --rows n(선택) · same = [[i, j]](1부터) · codexStats = W/codex-stats.json 값(선택)
-export function mergeReviews({ claude = null, codex = null, check = {}, pack = null, snapshot = {}, codexStats = null, rows = null, same = [], valid = [] }) {
+// mask = 지문용 문자열 가림(cmdMerge 는 출력 입구와 같은 mline — 없으면 그대로)
+export function mergeReviews({ claude = null, codex = null, check = {}, pack = null, snapshot = {}, codexStats = null, rows = null, same = [], valid = [], mask = (v) => String(v) }) {
   const rev = { claude, codex };
   const live = MODELS.filter((m) => valid.includes(m) && rev[m]);
   const allowed = allowedIds(check, pack);
@@ -54,7 +56,7 @@ export function mergeReviews({ claude = null, codex = null, check = {}, pack = n
     items[m] = (live.includes(m) ? rev[m].findings || [] : []).map((f, i) => {
       const ids = (Array.isArray(f.decisionIds) ? f.decisionIds : []).filter((id) => { if (allowed[m].has(id)) return true; drop(m, id); return false; });
       const rws = (Array.isArray(f.intentRows) ? f.intentRows : []).filter((r) => rows == null || (r >= 1 && r <= rows));
-      return { m, n: i + 1, f, ids: uniq(ids), rws: uniq(rws), fp: fingerprint(f) };
+      return { m, n: i + 1, f, ids: uniq(ids), rws: uniq(rws), fp: fingerprint(f, mask) };
     });
   }
 
@@ -230,14 +232,14 @@ export async function cmdMerge(args, ctx) {
   // 출력 입구 한 곳(R3-2): stdout 의 모든 줄(첫 줄·둘째 줄 이하·ERR 문구)이 이 함수를 거친다 — 원문 가림 → 줄바꿈 평탄화 → 다시 가림(report.mjs mline 과 같은 순서)
   const { mline } = makeLineMask(ctx.adapter.mask, knownShas({ mr, snapshot }));
   try {
-    return run(args, work, snapshot).map((l) => mline(l)).join('\n');
+    return run(args, work, snapshot, mline).map((l) => mline(l)).join('\n');
   } catch (e) {
     if (e instanceof Error) e.message = mline(e.message);
     throw e;
   }
 }
 
-function run(args, work, snapshot) {
+function run(args, work, snapshot, mask) {
   if (typeof args.valid !== 'string') throw new MergeError('--valid <claude,codex|claude|codex|-> 가 필요하다 — §5 에서 판정한 실행 유효 검토자 목록');
   const names = args.valid === '-' ? [] : args.valid.split(',');
   if (names.some((n) => !MODELS.includes(n)) || new Set(names).size !== names.length) throw new MergeError(`--valid ${args.valid}: claude·codex 의 쉼표 목록 또는 - 만 허용`);
@@ -260,7 +262,7 @@ function run(args, work, snapshot) {
   }
   let codexStats = null;
   try { codexStats = readOpt(work, 'codex-stats.json'); } catch { codexStats = null; }
-  const res = mergeReviews({ ...rev, check, pack, snapshot, codexStats, rows, same, valid });
+  const res = mergeReviews({ ...rev, check, pack, snapshot, codexStats, rows, same, valid, mask });
 
   // 기존 findings.json(D139) — 같은 head 면 --force 필요 · 다른 head 면 교체 · JSON 아님은 덮어쓰지 않는다
   const fp = path.join(work, 'findings.json');
@@ -269,7 +271,7 @@ function run(args, work, snapshot) {
     let old;
     try { old = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { throw new MergeError('findings.json 이 JSON 이 아니다 — 무엇인지 모르는 파일은 덮어쓰지 않는다(확인 뒤 지우고 다시 실행)'); }
     if (old?.head_sha === snapshot.head_sha && args.force !== true) throw new MergeError('findings.json 이미 있음(같은 head) — --force 로 덮어쓴다(메인이 채운 칸을 잃는다)');
-    if (old?.head_sha !== snapshot.head_sha) lines.push(`replaced: findings.json(head ${String(old?.head_sha ?? '-').slice(0, 7)})`);
+    if (old?.head_sha !== snapshot.head_sha) lines.push(`replaced: findings.json(head ${/^[0-9a-f]{40}$/.test(String(old?.head_sha)) ? old.head_sha.slice(0, 7) : '-'})`);   // SHA 꼴만 자른다 — 임의 값의 앞 7자는 가림 규칙 최소 길이 아래 조각이 된다(impl R3-1 전수 점검)
   }
   // 옛 판정 무효화(R3-1·R4-2): verdict.json 삭제를 먼저 끝낸 뒤 findings.json 을 쓴다 — 삭제 실패면 멈추고 findings.json 은 그대로
   const vp = path.join(work, 'verdict.json');

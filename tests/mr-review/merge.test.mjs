@@ -1,7 +1,7 @@
 // merge 계약 테스트 (spec 2026-10-24 3.③ · 3.①-6 · 3.②-4 — SC-6 merge · SC-5 findings.json)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmp, writeAdapter, runCli, readJson, LIB } from './helpers.mjs';
 
@@ -294,4 +294,30 @@ test('merge: 한 검토자의 intent:[null] 은 그 모델만 invalid(스키마 
   assert.match(r.out, /^MERGED reviewers=claude /);
   assert.equal(line2(r, 'invalid'), 'invalid: codex(스키마 불통과: intent[0])');
   assert.doesNotMatch(r.err, /TypeError/);
+});
+
+test('merge 지문은 가린 뒤 정규화 — 제목·파일의 비밀값이 선언 문맥(=)을 잃은 채 findings.json 에 남지 않고 cleanup 사본에도 없다 · 순수 함수는 mask 를 받아 같은 순서로 (1.4.0 impl R3-1)', () => {
+  const t = 'token=syntheticsecret123 로그 노출';
+  const w = mkW({ claude: REV('claude', [RF({ title: t, file: 'src/password=filesecret77.java' })]), codex: REV('codex', [RF({ title: t, file: 'src/password=filesecret77.java' })]), full: true });
+  const r = merge(w, '--valid', 'claude,codex');
+  assert.equal(r.code, 0, r.out + r.err);
+  const f = fj(w).findings[0];
+  assert.equal(f.source, 'both');                                                                   // 가린 값끼리도 같은 지문으로 짝 지어진다
+  assert.doesNotMatch(f.fingerprint, /syntheticsecret123|filesecret77/);
+  assert.equal(runCli(['cleanup', '--adapter', w.adapter, '--work', w.work]).code, 0);
+  for (const n of readdirSync(w.work)) assert.doesNotMatch(readFileSync(join(w.work, n), 'utf8'), /syntheticsecret123|filesecret77/, n);
+  const mask = (v) => String(v).replace(/token=\S+/g, 'token=[masked]');
+  const res = mergeReviews({ claude: REV('claude', [RF({ title: t })]), valid: ['claude'], check: {}, snapshot: SNAP, mask });
+  assert.equal(res.findings.findings[0].fingerprint, 'src/A.java:tokenmasked로그노출');
+  assert.equal(mergeReviews({ claude: REV('claude', [RF({ title: 'A b.' })]), valid: ['claude'], check: {}, snapshot: SNAP }).findings.findings[0].fingerprint, 'src/A.java:ab');   // mask 없으면 현행
+});
+
+test('merge stdout replaced: 옛 findings.json head 가 40자 SHA 가 아니면 잘라 찍지 않는다(절단 전 가림 우회 금지) (1.4.0 impl R3-1 전수 점검)', () => {
+  const w = mkW({ claude: REV('claude', []) });
+  writeFileSync(join(w.work, 'findings.json'), JSON.stringify({ head_sha: 'pw=abcdefghij' }));
+  const r = merge(w, '--valid', 'claude');
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(line2(r, 'replaced'), 'replaced: findings.json(head -)');
+  writeFileSync(join(w.work, 'findings.json'), JSON.stringify({ head_sha: 'c'.repeat(40) }));
+  assert.equal(line2(merge(w, '--valid', 'claude'), 'replaced'), 'replaced: findings.json(head ccccccc)');
 });

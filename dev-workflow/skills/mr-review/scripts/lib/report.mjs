@@ -27,7 +27,7 @@ export function deepMask(v, maskRules, keepShas = []) {
 const readJson = (work, name) => {
   const p = path.join(work, name);
   if (!fs.existsSync(p)) return null;
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { throw new ReportError(`${name} JSON 파싱 실패: ${e.message.slice(0, 160)}`); }
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { throw new ReportError(`${name} JSON 파싱 실패`); }   // 파서 오류문은 입력 앞 조각을 잘라 인용한다(가림 최소 길이 아래 조각) — 고정 문구만(impl R3-1 전수 점검 · spec 루프 R6-1 원칙)
 };
 const s7 = (s) => (s ? String(s).slice(0, 7) : '-');
 
@@ -686,7 +686,7 @@ export function cleanup({ work, adapter }) {
 export async function cmdReviewValidate(args) {
   if (!args.file) throw new ReportError('--file <검토자 출력 JSON> 이 필요하다');
   let obj;
-  try { obj = JSON.parse(fs.readFileSync(args.file, 'utf8')); } catch (e) { const err = new Error(`INVALID JSON 파싱 실패: ${e.message}`); err.code = 1; err.plain = true; throw err; }
+  try { obj = JSON.parse(fs.readFileSync(args.file, 'utf8')); } catch { const err = new Error('INVALID JSON 파싱 실패'); err.code = 1; err.plain = true; throw err; }
   const r = validateReview(obj, { head: typeof args.head === 'string' ? args.head : null, reviewer: typeof args.reviewer === 'string' ? args.reviewer : null });
   if (r.ok) return 'VALID';
   const err = new Error(`INVALID ${r.errors.join('; ')}`);
@@ -711,7 +711,11 @@ function verdictRun(args, ctx) {
   const check = readJson(ctx.work, 'check.json');
   const snapshot = readJson(ctx.work, 'snapshot.json');
   const deploy = readJson(ctx.work, 'deploy.json');
-  const findings = readJson(ctx.work, 'findings.json');
+  // findings.json 은 한 번만 읽는다 — 판정 계산과 findingsDigest 가 같은 바이트에서 나온다(impl R3-2: 두 읽기 사이 교체로 옛 판정이 새 파일의 지문을 얻던 길)
+  const fp = path.join(ctx.work, 'findings.json');
+  let bytes = fs.existsSync(fp) ? fs.readFileSync(fp) : null;
+  let findings = null;
+  if (bytes) { try { findings = JSON.parse(bytes.toString('utf8')); } catch { throw new ReportError('findings.json JSON 파싱 실패'); } }
   if (!check || !snapshot) throw new ReportError('check.json·snapshot.json 이 필요하다');
   if (!findings) throw new ReportError('findings.json 이 없다 — merge 로 두 검토자 결과를 먼저 합쳐야 한다(SC-5)');
   // 사람 판단 칸(1.4.0 ③ D117·D142) — merge 가 남긴 needsMain 에 decided 가 없는 항목이 있으면 멈춘다. 키 없는 옛 findings.json 은 검사 없음
@@ -735,8 +739,6 @@ function verdictRun(args, ctx) {
   const v = computeVerdict({ check, snapshot, deploy, findings, resolves: {}, judgeId: ctx.adapter.policy.judgeId });
   // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다. 접미(fixable|design)는 fixableInDesign 확정값으로 남는다(R6-3).
   // 영속 순서(1.4.0 ③ C1): 옛 verdict.json 삭제 → findings.json 영속 → 새 verdict.json(findingsDigest = 최종 findings.json 바이트 sha256, R5-1). 두 쓰기 사이에 중단돼도 옛 판정이 남지 않는다
-  const fp = path.join(ctx.work, 'findings.json');
-  let bytes = fs.readFileSync(fp);
   if (touched) { removeVerdict(ctx.work); bytes = Buffer.from(JSON.stringify(findings, null, 2)); fs.writeFileSync(fp, bytes); }
   fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify({ ...v, findingsDigest: sha256(bytes) }, null, 2));
   return `VERDICT ${v.status} ${v.verdict || '-'}`;

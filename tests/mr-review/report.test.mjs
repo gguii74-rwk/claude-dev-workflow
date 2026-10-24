@@ -1960,6 +1960,45 @@ test('findingsDigest: verdict 가 최종 findings.json 바이트 sha256 을 새�
   assert.match(readFileSync(o3, 'utf8'), /리뷰 실패[^\n]*verdict 를 다시 실행/);
 });
 
+test('JSON 파싱 실패 진단 줄은 고정 문구 — 파서 오류문이 인용하는 입력 앞 조각(비밀값 꼴)을 싣지 않는다(review-validate · verdict · readJson) (1.4.0 impl R3-1 전수 점검)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const bad = join(root, 'bad.json');
+  writeFileSync(bad, 'password=SYNTHSECRET9 tail');
+  const r = runCli(['review-validate', '--file', bad]);
+  assert.equal(r.code, 1);
+  assert.equal(r.first, 'INVALID JSON 파싱 실패');
+  const work = fullWork(join(root, 'a'), { fnd: findings([]) });
+  writeFileSync(join(work, 'findings.json'), 'password=SYNTHSECRET9 tail');
+  const v = runCli(['verdict', '--adapter', adapter, '--work', work]);
+  assert.equal(v.first, 'ERR findings.json JSON 파싱 실패');
+  writeFileSync(join(work, 'check.json'), 'password=SYNTHSECRET9 tail');
+  const c = runCli(['verdict', '--adapter', adapter, '--work', work]);
+  assert.equal(c.first, 'ERR check.json JSON 파싱 실패');
+  for (const x of [r, v, c]) assert.doesNotMatch(x.out + x.err, /SYNTH|password=/);
+});
+
+test('verdict 지문은 판정 계산에 쓴 바로 그 바이트로 — 계산 뒤 findings.json 이 바뀌어도 옛 판정이 새 파일의 지문을 얻지 않는다 (1.4.0 impl R3-2)', async () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, 'a'), { fnd: findings([]) });
+  const fp = join(work, 'findings.json');
+  const original = readFileSync(fp);
+  const fs = (await import('node:fs')).default;
+  const real = fs.readFileSync;
+  const { cmdVerdict } = await import(join(LIB, 'report.mjs'));
+  const { loadAdapter } = await import(join(LIB, 'adapter.mjs'));
+  let n = 0;
+  const swapped = Buffer.from(JSON.stringify(findings([F({ title: '나중에 바뀐 차단 결함' })]), null, 2));
+  // findings.json 을 처음 읽은 뒤 파일을 바꿔 둔다(두 번째 읽기가 있으면 새 바이트를 본다)
+  fs.readFileSync = function (p, ...a) { const out = real.call(this, p, ...a); if (String(p) === fp && ++n === 1) fs.writeFileSync(fp, swapped); return out; };
+  try { await cmdVerdict({}, { adapter: loadAdapter(adapter), work }); } finally { fs.readFileSync = real; }
+  const v = readJson(join(work, 'verdict.json'));
+  assert.equal(v.verdict, 'APPROVE');
+  assert.equal(v.findingsDigest, createHash3('sha256').update(original).digest('hex'));            // 계산에 쓴 바이트의 지문 — 바뀐 파일과 불일치 → render 는 리뷰 실패
+  assert.notEqual(v.findingsDigest, createHash3('sha256').update(swapped).digest('hex'));
+});
+
 test('findingsDigest 영속 순서: 옛 verdict.json(지문 없음 APPROVE) 이 있는 W 에서 --resolve 영속 직후 중단되면 verdict.json 이 없다 → render 리뷰 실패 · verdict.json 을 지울 수 없으면 --resolve ERR 이고 findings.json 불변 (1.4.0 AC③-6b · C1)', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
