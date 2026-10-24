@@ -256,6 +256,15 @@ test('merge --valid: 필수 · 목록 밖 파일은 읽지 않고 excluded · �
   assert.match(merge(w, '--force').first, /^ERR .*--valid/);
   assert.match(merge(w, '--force', '--valid', 'claude,gemini').first, /^ERR .*--valid/);
   assert.equal(merge(w, '--force', '--valid', '-').first, 'MERGED reviewers=- findings=0 joined=0 candidates=0 needsMain=0');
+  // cleanup(마스킹 사본) 뒤 재병합도 같은 결과(§5 9단계 ⓒ — 원 validReviewers 를 그대로 넘긴다)
+  const cw = mkW({ full: true, claude: REV('claude', [RF()]), codex: REV('codex', [RF({ title: 'only codex', file: 'q' })]) });
+  assert.equal(merge(cw, '--valid', 'claude').code, 0);
+  const first = readFileSync(join(cw.work, 'findings.json'), 'utf8');
+  assert.equal(runCli(['cleanup', '--adapter', cw.adapter, '--work', cw.work]).code, 0);
+  const rc = merge(cw, '--force', '--valid', readJson(join(cw.work, 'findings.json')).validReviewers.join(','));
+  assert.match(rc.first, /^MERGED reviewers=claude findings=1 /);
+  assert.equal(line2(rc, 'excluded'), 'excluded: codex(--valid 밖)');
+  assert.equal(readFileSync(join(cw.work, 'findings.json'), 'utf8'), first);
   const nf = mkW({ claude: REV('claude') });
   assert.equal(line2(merge(nf, '--valid', 'claude,codex'), 'invalid'), 'invalid: codex(파일 없음)');
   // 삭제 실패 주입 — verdict.json 자리가 비어 있지 않은 디렉터리
