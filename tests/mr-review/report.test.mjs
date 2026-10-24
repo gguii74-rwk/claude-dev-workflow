@@ -1999,6 +1999,65 @@ test('verdict 지문은 판정 계산에 쓴 바로 그 바이트로 — 계산 
   assert.notEqual(v.findingsDigest, createHash3('sha256').update(swapped).digest('hex'));
 });
 
+test('verdict 쓰기도 링크를 따라가지 않는다 — --resolve 영속의 findings.json 이 하드 링크면 공유 원본 불변 · 심볼릭 링크면 ERR(대상 불변) (1.4.0 impl R4-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, 'a'), { fnd: findings([F({ unresolved: true, source: 'codex', confidence: 'low' })]) });
+  const fp = join(work, 'findings.json');
+  const shared = join(root, 'shared.json');
+  writeFileSync(shared, readFileSync(fp));
+  const sbody = readFileSync(shared, 'utf8');
+  rmSync(fp); linkSync(shared, fp);
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=dismissed']).first, 'VERDICT determined APPROVE');
+  assert.equal(readFileSync(shared, 'utf8'), sbody);
+  const w2 = fullWork(join(root, 'b'), { fnd: findings([F({ unresolved: true, source: 'codex', confidence: 'low' })]) });
+  const out2 = join(root, 'out2.json');
+  writeFileSync(out2, readFileSync(join(w2, 'findings.json')));
+  const obody = readFileSync(out2, 'utf8');
+  rmSync(join(w2, 'findings.json')); symlinkSync(out2, join(w2, 'findings.json'));
+  const r = runCli(['verdict', '--adapter', adapter, '--work', w2, '--resolve', 'F1=dismissed']);
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR findings\.json 이 일반 파일이 아니다/);
+  assert.equal(readFileSync(out2, 'utf8'), obody);
+});
+
+test('cleanup 지문 갱신은 가림 루프가 읽은 바이트에 결속 — 가림 뒤 findings.json 이 바뀌면 옛 판정에 새 지문을 새기지 않는다(render 리뷰 실패) (1.4.0 impl R4-2)', async () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, 'a'), { fnd: findings([]) });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT determined APPROVE');
+  const fs = (await import('node:fs')).default;
+  const real = fs.renameSync;
+  const fp = join(work, 'findings.json');
+  fs.renameSync = function (a, b, ...x) { const out = real.call(this, a, b, ...x); if (String(b) === fp) fs.writeFileSync(fp, JSON.stringify(findings([F({ title: '정리 중 끼어든 차단 결함' })]), null, 2)); return out; };
+  const { loadAdapter } = await import(join(LIB, 'adapter.mjs'));
+  try { cleanup({ work, adapter: loadAdapter(adapter) }); } finally { fs.renameSync = real; }
+  const v = readJson(join(work, 'verdict.json'));
+  assert.notEqual(v.findingsDigest, createHash3('sha256').update(readFileSync(fp)).digest('hex'));
+  const out = join(root, 'r.md');
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.doesNotMatch(readFileSync(out, 'utf8'), /추천 판정\(초안\) APPROVE/);
+});
+
+test('render 는 findings.json 을 한 번 읽어 그 바이트로 지문 확인·렌더 — 두 읽기 사이 교체로 승인 블록과 다른 세대 발견이 함께 나가지 않는다 (1.4.0 impl R4-3)', async () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, 'a'), { fnd: findings([]) });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT determined APPROVE');
+  const fp = join(work, 'findings.json');
+  const approved = readFileSync(fp);
+  writeFileSync(fp, JSON.stringify(findings([F({ title: '렌더 중 바뀐 차단 결함' })]), null, 2));
+  const fs = (await import('node:fs')).default;
+  const real = fs.readFileSync;
+  let n = 0;
+  fs.readFileSync = function (p, ...a) { const out = real.call(this, p, ...a); if (String(p) === fp && ++n === 1) fs.writeFileSync(fp, approved); return out; };
+  const { renderReport } = await import(join(LIB, 'report.mjs'));
+  const { loadAdapter } = await import(join(LIB, 'adapter.mjs'));
+  let md;
+  try { md = renderReport({ adapter: loadAdapter(adapter), work }); } finally { fs.readFileSync = real; }
+  assert.ok(!(/추천 판정\(초안\) APPROVE/.test(md) && /렌더 중 바뀐 차단 결함/.test(md)), '승인 블록과 차단 결함이 함께 나갔다');
+});
+
 test('findingsDigest 영속 순서: 옛 verdict.json(지문 없음 APPROVE) 이 있는 W 에서 --resolve 영속 직후 중단되면 verdict.json 이 없다 → render 리뷰 실패 · verdict.json 을 지울 수 없으면 --resolve ERR 이고 findings.json 불변 (1.4.0 AC③-6b · C1)', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
@@ -2007,7 +2066,7 @@ test('findingsDigest 영속 순서: 옛 verdict.json(지문 없음 APPROVE) 이 
   writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'APPROVE', head_sha: HEAD, contractPolicyId: 'TEST-POLICY-v1.0', defects: [], evidence: [], unresolved: [], branches: {}, machineEvidence: [], reasons: [] }));
   // 새 verdict.json 쓰기에서 죽는 프로세스(영속은 끝남) — --import 훅으로 주입
   const hook = join(root, 'crash.mjs');
-  writeFileSync(hook, "import fs from 'node:fs';\nconst w = fs.writeFileSync;\nfs.writeFileSync = function (p, ...a) { if (String(p).endsWith('verdict.json')) throw new Error('injected crash'); return w.call(this, p, ...a); };\n");
+  writeFileSync(hook, "import fs from 'node:fs';\nconst w = fs.writeFileSync;\nfs.writeFileSync = function (p, ...a) { if (String(p).endsWith('verdict.json')) throw new Error('injected crash'); return w.call(this, p, ...a); };\nconst rn = fs.renameSync;\nfs.renameSync = function (a, b, ...x) { if (String(b).endsWith('verdict.json')) throw new Error('injected crash'); return rn.call(this, a, b, ...x); };\n");   // 쓰기가 임시 파일 + 이름 바꾸기가 된 뒤에도(impl R4-1) 새 verdict.json 이 자리 잡는 순간에 죽인다
   const r = spawnSync7(process.execPath, ['--import', hook, CLI, 'verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed:design'], { encoding: 'utf8' });
   assert.equal(r.status, 2, r.stdout + r.stderr);
   assert.equal(readJson(join(work, 'findings.json')).findings[0].fixableInDesign, 'no');      // 영속은 됐다

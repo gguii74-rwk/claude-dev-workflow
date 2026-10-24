@@ -1,7 +1,7 @@
 // merge 계약 테스트 (spec 2026-10-24 3.③ · 3.①-6 · 3.②-4 — SC-6 merge · SC-5 findings.json)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, symlinkSync, linkSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmp, writeAdapter, runCli, readJson, LIB } from './helpers.mjs';
 
@@ -320,4 +320,26 @@ test('merge stdout replaced: 옛 findings.json head 가 40자 SHA 가 아니면 
   assert.equal(line2(r, 'replaced'), 'replaced: findings.json(head -)');
   writeFileSync(join(w.work, 'findings.json'), JSON.stringify({ head_sha: 'c'.repeat(40) }));
   assert.equal(line2(merge(w, '--valid', 'claude'), 'replaced'), 'replaced: findings.json(head ccccccc)');
+});
+
+test('merge 쓰기는 링크를 따라가지 않는다 — findings.json 이 W 밖을 가리키는 심볼릭 링크면 ERR·대상 불변 · 하드 링크면 W 항목만 새 파일로 교체(공유 원본 불변) (1.4.0 impl R4-1)', () => {
+  const w = mkW({ claude: REV('claude', [RF()]) });
+  const outside = join(w.root, 'settings.json');
+  const body = '{"keep":true}';
+  writeFileSync(outside, body);
+  symlinkSync(outside, join(w.work, 'findings.json'));
+  const r = merge(w, '--valid', 'claude');
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR findings\.json 이 일반 파일이 아니다/);
+  assert.equal(readFileSync(outside, 'utf8'), body);
+  assert.ok(lstatSync(join(w.work, 'findings.json')).isSymbolicLink());
+  rmSync(join(w.work, 'findings.json'));
+  const shared = join(w.root, 'shared.json');
+  const sbody = JSON.stringify({ head_sha: 'c'.repeat(40) });
+  writeFileSync(shared, sbody);
+  linkSync(shared, join(w.work, 'findings.json'));
+  assert.equal(merge(w, '--valid', 'claude').code, 0);
+  assert.equal(readFileSync(shared, 'utf8'), sbody);                                              // 하드 링크 원본 불변
+  assert.equal(fj(w).head_sha, HEAD);
+  assert.ok(!readdirSync(w.work).some((n) => n.endsWith('.writing')));                            // 임시 파일 잔존 없음
 });

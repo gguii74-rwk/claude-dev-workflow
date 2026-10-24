@@ -413,7 +413,10 @@ export function renderReport({ adapter, work, early = false }) {
   const keep = knownShas({ mr, snapshot });
   let deploy = readJson(work, 'deploy.json');
   let pack = readJson(work, 'pack.json');
-  let findings = early ? null : readJson(work, 'findings.json');
+  // findings.json 은 한 번만 읽는다 — 지문 확인과 렌더가 같은 바이트(impl R4-3)
+  const findingsBytes = !early && fs.existsSync(path.join(work, 'findings.json')) ? fs.readFileSync(path.join(work, 'findings.json')) : null;
+  let findings = null;
+  if (findingsBytes) { try { findings = JSON.parse(findingsBytes.toString('utf8')); } catch { throw new ReportError('findings.json JSON 파싱 실패'); } }
   let verdict = early ? null : readJson(work, 'verdict.json');
   // 판정 입력의 head 일치 검증 — 같은 work 에 남은 이전 실행의 verdict.json·findings.json 을 현재 head 의 판정으로 쓰지 않는다(F6). 비-early 인데 verdict 가 없으면 리뷰 실패로 렌더한다(판정 블록 없음).
   const failed = (reason) => ({ status: 'review-failed', verdict: null, reasons: [reason], unresolved: [], branches: {}, defects: [], evidence: [], machineEvidence: [], contractPolicyId: check.contract?.policyId || adapter.policy.judgeId, head_sha: snapshot.head_sha });
@@ -423,8 +426,7 @@ export function renderReport({ adapter, work, early = false }) {
     else if (findings?.head_sha && findings.head_sha !== snapshot.head_sha) verdict = failed(`findings.json 의 head ${s7(findings.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 검토 결과는 쓰지 않는다`);
     // 판정 ↔ 발견 일치(1.4.0 ③ R5-1): verdict.json 의 findingsDigest 가 지금 findings.json 바이트와 다르면 그 판정은 이 발견으로 계산한 것이 아니다(재병합·손 편집·영속 중단). 키 없는 옛 verdict.json 은 head 대조만(현행)
     else if (typeof verdict.findingsDigest === 'string') {
-      const fp = path.join(work, 'findings.json');
-      if (!fs.existsSync(fp) || sha256(fs.readFileSync(fp)) !== verdict.findingsDigest) verdict = failed('verdict.json 이 지금 findings.json 으로 계산한 판정이 아니다 — verdict 를 다시 실행');
+      if (!findingsBytes || sha256(findingsBytes) !== verdict.findingsDigest) verdict = failed('verdict.json 이 지금 findings.json 으로 계산한 판정이 아니다 — verdict 를 다시 실행');
     }
   }
   // 리포트 재료는 전부 필드 단위로 먼저 가린다(8b FR2-3 FC1 재판정) — 잔존 필드는 통째로 `[masked:unmaskable]`(maskText). 조립본 전체 검사는 아래에서 한 번 더.
@@ -641,12 +643,13 @@ export function cleanup({ work, adapter }) {
     const fd = fs.openSync(p, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
     try { if (!fs.fstatSync(fd).isFile()) throw new Error(`${f} 일반 파일 아님`); return fs.readFileSync(fd); } finally { fs.closeSync(fd); }
   };
-  const digestBefore = (() => { try { const v = JSON.parse(readRegular('verdict.json').toString('utf8')); return typeof v?.findingsDigest === 'string' && v.findingsDigest === sha256(readRegular('findings.json')); } catch { return false; } })();
+  const seen = {};   // 가림 루프가 실제로 읽은 원문 바이트와 쓴 가린 사본(impl R4-2 — 지문 갱신은 이 둘에만 결속한다)
   for (const f of MASKED_JSON) {
     const p = path.join(work, f);
     if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isFile()) continue;   // 없거나 일반 파일이 아니다(심볼릭 링크·디렉터리) — 따라가 읽거나 쓰지 않는다. 아래 허용 목록 정리가 링크만 지운다(1.3.1 R1-1)
     let obj;
-    try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { if (dropRaw(f, p, null)) raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
+    let buf;
+    try { buf = fs.readFileSync(p); obj = JSON.parse(buf.toString('utf8')); } catch { if (dropRaw(f, p, null)) raw += 1; continue; }   // 파싱 불가 JSON 은 마스킹할 수 없다 — 원문으로 남기지 않고 지운다
     let out;
     try { out = JSON.stringify(deepMask(obj, adapter?.mask || [], keep), null, 2); } catch (e) { dropRaw(f, p, e.message); continue; }   // 마스킹 실패도 같다 — 지우고 나머지를 끝까지 정리한 뒤 알린다(impl C3)
     // 기존 파일 실체(inode)는 고치지 않는다 — 새 파일에 쓰고 이름을 바꿔 교체한다. 하드 링크로 W 밖 원본과 실체를 공유해도 원본은 그대로다(R4-1), 검사 뒤 링크로 바뀌어도 따라가지 않는다(R1-1)
@@ -655,13 +658,20 @@ export function cleanup({ work, adapter }) {
       fs.writeFileSync(tmpFile, out, { flag: 'wx' });
       fs.renameSync(tmpFile, p);
     } catch (e) { tryRm(tmpFile); dropRaw(f, p, e.code || e.message); continue; }   // 교체 실패도 원문을 남기지 않으려 지우고, 나머지 정리를 계속한다
+    seen[f] = { orig: buf, out: Buffer.from(out) };
     masked += 1;
   }
-  if (digestBefore) {
+  // 지문 갱신 조건(impl R4-2): 가림 루프가 읽은 verdict 원문의 지문 = 같은 루프가 읽은 findings 원문의 지문이고, 지금 두 파일이 루프가 쓴 가린 사본 그대로일 때만
+  // — 정리 도중 어느 쪽이든 바뀌었으면 갱신하지 않는다(다음 render 는 리뷰 실패 — fail-closed). 링크는 따라가지 않는다(readRegular)
+  const sf = seen['findings.json'];
+  const sv = seen['verdict.json'];
+  let digestOk = false;
+  try { const v0 = JSON.parse(sv.orig.toString('utf8')); digestOk = typeof v0?.findingsDigest === 'string' && v0.findingsDigest === sha256(sf.orig) && readRegular('findings.json').equals(sf.out) && readRegular('verdict.json').equals(sv.out); } catch { digestOk = false; }
+  if (digestOk) {
     try {
       const vp = path.join(work, 'verdict.json');
-      const v = JSON.parse(readRegular('verdict.json').toString('utf8'));   // 마스킹 루프가 가린 일반 파일만 — 그 사이 링크로 바뀌었으면 갱신하지 않는다
-      v.findingsDigest = sha256(readRegular('findings.json'));
+      const v = JSON.parse(sv.out.toString('utf8'));
+      v.findingsDigest = sha256(sf.out);
       const tmpFile = path.join(work, `.verdict.json.${randomBytes(6).toString('hex')}.digest`);
       fs.writeFileSync(tmpFile, JSON.stringify(v, null, 2), { flag: 'wx' });
       fs.renameSync(tmpFile, vp);
@@ -693,6 +703,16 @@ export async function cmdReviewValidate(args) {
   err.code = 1;
   err.plain = true;
   throw err;
+}
+
+// W 안전 쓰기(impl R4-1 — cleanup 의 1.3.1 R1-1·R4-1 원칙과 같다): 기존 이름이 일반 파일이 아니면(심볼릭 링크·디렉터리) 따라가 쓰지 않고 ERR,
+// 아니면 새 임시 파일(wx)에 쓰고 이름을 바꿔 교체한다 — 하드 링크로 실체를 공유한 W 밖 원본은 그대로다
+export function writeWorkFile(work, name, data) {
+  const p = path.join(work, name);
+  const st = fs.lstatSync(p, { throwIfNoEntry: false });
+  if (st && !st.isFile()) throw new ReportError(`${name} 이 일반 파일이 아니다(심볼릭 링크·디렉터리) — 따라가 쓰지 않는다(확인 뒤 지우고 다시 실행)`);
+  const tmpFile = path.join(work, `.${name}.${randomBytes(6).toString('hex')}.writing`);
+  try { fs.writeFileSync(tmpFile, data, { flag: 'wx' }); fs.renameSync(tmpFile, p); } catch (e) { tryRm(tmpFile); throw e; }
 }
 
 // verdict.json 삭제 — 없으면 그대로, 지우지 못하면 ERR(1.4.0 ③ R3-1·C1: 옛 판정이 새 발견과 함께 렌더되지 않게)
@@ -739,8 +759,8 @@ function verdictRun(args, ctx) {
   const v = computeVerdict({ check, snapshot, deploy, findings, resolves: {}, judgeId: ctx.adapter.policy.judgeId });
   // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다. 접미(fixable|design)는 fixableInDesign 확정값으로 남는다(R6-3).
   // 영속 순서(1.4.0 ③ C1): 옛 verdict.json 삭제 → findings.json 영속 → 새 verdict.json(findingsDigest = 최종 findings.json 바이트 sha256, R5-1). 두 쓰기 사이에 중단돼도 옛 판정이 남지 않는다
-  if (touched) { removeVerdict(ctx.work); bytes = Buffer.from(JSON.stringify(findings, null, 2)); fs.writeFileSync(fp, bytes); }
-  fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify({ ...v, findingsDigest: sha256(bytes) }, null, 2));
+  if (touched) { removeVerdict(ctx.work); bytes = Buffer.from(JSON.stringify(findings, null, 2)); writeWorkFile(ctx.work, 'findings.json', bytes); }
+  writeWorkFile(ctx.work, 'verdict.json', JSON.stringify({ ...v, findingsDigest: sha256(bytes) }, null, 2));
   return `VERDICT ${v.status} ${v.verdict || '-'}`;
 }
 

@@ -3,7 +3,7 @@
 // 사람 판단 칸은 needsMain 으로 남긴다(메인이 decided 를 채우기 전 verdict 는 ERR). 같은 입력 = 같은 바이트(입력 파일 순서·실행 환경 무관).
 import fs from 'node:fs';
 import path from 'node:path';
-import { validateReview, makeLineMask } from './report.mjs';
+import { validateReview, makeLineMask, writeWorkFile } from './report.mjs';
 import { knownShas } from './pack.mjs';
 
 export class MergeError extends Error {}
@@ -267,7 +267,9 @@ function run(args, work, snapshot, mask) {
   // 기존 findings.json(D139) — 같은 head 면 --force 필요 · 다른 head 면 교체 · JSON 아님은 덮어쓰지 않는다
   const fp = path.join(work, 'findings.json');
   const lines = [];
-  if (fs.existsSync(fp)) {
+  const fst = fs.lstatSync(fp, { throwIfNoEntry: false });
+  if (fst && !fst.isFile()) throw new MergeError('findings.json 이 일반 파일이 아니다(심볼릭 링크·디렉터리) — 따라가 읽거나 쓰지 않는다(확인 뒤 지우고 다시 실행)');   // impl R4-1
+  if (fst) {
     let old;
     try { old = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { throw new MergeError('findings.json 이 JSON 이 아니다 — 무엇인지 모르는 파일은 덮어쓰지 않는다(확인 뒤 지우고 다시 실행)'); }
     if (old?.head_sha === snapshot.head_sha && args.force !== true) throw new MergeError('findings.json 이미 있음(같은 head) — --force 로 덮어쓴다(메인이 채운 칸을 잃는다)');
@@ -279,7 +281,7 @@ function run(args, work, snapshot, mask) {
     try { fs.rmSync(vp); } catch { throw new MergeError('verdict.json 을 지울 수 없다 — 옛 판정이 새 발견과 함께 렌더되지 않게 findings.json 을 쓰지 않는다'); }
     lines.push('invalidated: verdict.json');
   }
-  fs.writeFileSync(fp, JSON.stringify(res.findings, null, 2));
+  writeWorkFile(work, 'findings.json', JSON.stringify(res.findings, null, 2));   // 새 파일에 쓰고 이름 바꾸기 — 하드 링크 원본 불변(impl R4-1)
 
   const n = res.notes;
   const byModel = (o, f = (v) => v) => MODELS.filter((m) => o[m] !== undefined && (Array.isArray(o[m]) ? o[m].length : o[m])).map((m) => `${m}: ${f(o[m])}`).join(' · ');
