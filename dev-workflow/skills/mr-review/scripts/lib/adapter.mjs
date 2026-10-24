@@ -72,6 +72,13 @@ export function validate(cfg) {
       if (!rel || /^[\\/]|^[A-Za-z]:|\\/.test(rel) || rel.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')) missing.push(`${key}[${i}](정규 상대 경로만 — 문서 저장소·대상 저장소 밖을 가리킬 수 없다)`);
     }
   }
+  // 기준선 결정 추출 패턴(1.4.0 ① — spec 2026-10-24 3.①-2 D115) — 선택 키, 없으면 엔진 기본 규칙(표 행·목록·제목의 D<n>). 줄 단위 적용(플래그는 엔진이 붙인다)
+  const bd = cfg.baselineDecisions;
+  if (bd !== undefined) {
+    let okBd = !!bd && typeof bd === 'object' && !Array.isArray(bd) && typeof bd.pattern === 'string' && bd.pattern.includes('(?<key>');
+    if (okBd) { try { new RegExp(bd.pattern, 'gm'); } catch { okBd = false; } }
+    if (!okBd) missing.push('baselineDecisions.pattern(명명 그룹 key 필수)');
+  }
   for (const [i, m] of (cfg.mask || []).entries()) {
     if (!m || typeof m.name !== 'string' || typeof m.pattern !== 'string') { missing.push(`mask[${i}]`); continue; }
     let re;
@@ -108,6 +115,7 @@ export function loadAdapter(file) {
     return { path: root, export: r.export === true, glossaryFile: r.glossary ? path.join(root, r.glossary) : null };
   });
   cfg.baselineRepoPaths = cfg.baselineRepoPaths ?? false;
+  cfg.baselineDecisions = cfg.baselineDecisions ?? null;
   cfg.contract.backgroundSections = cfg.contract.backgroundSections ?? ['배경'];
   cfg.file = abs;
   cfg.markdown = md;

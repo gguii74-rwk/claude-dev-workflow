@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { apiJson, apiRaw, encodePath } from './gitlab.mjs';
 import { matchesAny } from './adapter.mjs';
+import { maskText, knownShas } from './pack.mjs';   // 결정 추출은 가린 원문에서(1.4.0 ① R1-1·R2-1) — 마스킹 정본은 pack.mjs
 
 export class CheckError extends Error {}
 
@@ -98,16 +99,53 @@ const TRAIL_PUNCT = /[.,;:!]+$/;
 const ISSUE_URL_RE = /(https?:\/\/[^\s)<>`]+?\/([^\s/)<>`]+))\/-\/issues\/(\d+)/g;
 const ISSUE_REF_RE = /(?:^|[\s(`])#(\d+)\b/g;
 // 코드펜스 안을 줄 단위로 제거 — 여는 줄 `{3,}|~{3,}(들여쓰기 ≤3), 닫는 줄 = 같은 문자·길이 이상 + 뒤는 공백만(CommonMark — `~~~not-close` 는 닫힘 아님, impl C1 R2-6 잔존). 열린 펜스가 끝까지 안 닫히면 끝까지 제외.
-const stripFences = (text) => {
+// 펜스 밖 줄을 [원문 줄 번호(1부터), 줄] 로 — 결정 추출(1.4.0 ①)이 줄 번호를 쓴다
+const outsideFences = (text) => {
   const out = []; let open = null;
-  for (const line of text.split('\n')) {
+  text.split('\n').forEach((line, i) => {
     const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
-    if (open) { if (m && m[1][0] === open[0] && m[1].length >= open.length && /^[ \t]*$/.test(line.slice(m[0].length))) open = null; continue; }
-    if (m) { open = m[1]; continue; }
-    out.push(line);
-  }
-  return out.join('\n');
+    if (open) { if (m && m[1][0] === open[0] && m[1].length >= open.length && /^[ \t]*$/.test(line.slice(m[0].length))) open = null; return; }
+    if (m) { open = m[1]; return; }
+    out.push([i + 1, line]);
+  });
+  return out;
 };
+const stripFences = (text) => outsideFences(text).map(([, l]) => l).join('\n');
+
+// ── 기준선 결정 추출(1.4.0 ① — spec 2026-10-24 3.①-1·2 D115·D128·D129·D131) ─────────────
+// 입력 = 기준선 원문 전체를 maskText 로 가린 텍스트(R1-1·R2-1 — 줄바꿈 통일·여러 줄 비밀값 가림이 문맥과 함께 끝난 뒤). 표시·입력용이다(판정 입력 아님 — D9).
+// 기본 규칙(어댑터 키 없음): 코드펜스 밖 줄의 ⓐ 표 행 첫 데이터 칸 ⓑ 목록 항목 ⓒ 제목 — `D<숫자>`(굵게 허용) 바로 뒤가 공백·`|`·`:`·`.`·`)`·줄 끝일 때만(D128 — `D4·D14`·`D4와` 는 아니다).
+// 같은 key 는 꼴 우선 표 > 목록 > 제목, 같은 꼴은 문서 순 첫 것(D129). 문구는 가린 뒤 공백 정규화 → 300자(초과 `…`) · 원문 1건당 100건(D131)
+export const DECISIONS_MAX = 100;
+const DECISION_TEXT_MAX = 300;
+const DKEY = /^(?:\*\*)?D(\d+)(?:\*\*)?(?=[ \t|:.)]|$)/;
+const tidy = (t) => { const v = [...String(t).replace(/\s+/g, ' ').trim()]; return v.length > DECISION_TEXT_MAX ? `${v.slice(0, DECISION_TEXT_MAX).join('')}…` : v.join(''); };
+const restText = (r) => r.replace(/^(?:\*\*)?D\d+(?:\*\*)?/, '').replace(/^[\s|:.)]+/, '');
+export function extractDecisions(text, pattern = null) {
+  const found = [];
+  for (const [line, l] of outsideFences(String(text))) {
+    if (pattern) {
+      for (const m of l.matchAll(new RegExp(pattern, 'gm'))) {
+        const key = m.groups?.key;
+        if (key) found.push({ form: 0, key, line, text: m.groups.text ?? l.slice(m.index + m[0].length) });
+      }
+      continue;
+    }
+    let m;
+    if (/^\s*\|/.test(l)) {
+      const cells = l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+      if ((m = cells[0]?.match(DKEY))) found.push({ form: 0, key: `D${m[1]}`, line, text: cells.length > 1 ? cells[1] : restText(cells[0]) });
+    } else if ((m = l.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/)) && DKEY.test(m[1])) {
+      found.push({ form: 1, key: `D${m[1].match(DKEY)[1]}`, line, text: restText(m[1]) });
+    } else if ((m = l.match(/^\s{0,3}#{1,6}\s+(.*)$/)) && DKEY.test(m[1])) {
+      found.push({ form: 2, key: `D${m[1].match(DKEY)[1]}`, line, text: restText(m[1]) });
+    }
+  }
+  const best = new Map();
+  for (const f of found) { const b = best.get(f.key); if (!b || f.form < b.form) best.set(f.key, f); }
+  const all = [...best.values()].sort((a, b) => a.line - b.line);
+  return { decisions: all.slice(0, DECISIONS_MAX).map((f) => ({ key: f.key, line: f.line, text: tidy(f.text) })), truncated: all.length > DECISIONS_MAX };
+}
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 
 function splitRefPath(refpath) {
@@ -432,6 +470,21 @@ export function check({ adapter, work }) {
     else r = resolveBody(l, mr, headSha, work, n, aliases);
     baselineLinks.push(r);
   }
+  // 기준선 결정(1.4.0 ① — spec 2026-10-24 3.①-1): 확보된 기준선(repo·repo-path·body — 이슈 제외) 원문 전체를 먼저 가리고 그 결과에서 뽑는다(R1-1·R2-1).
+  // 가림 뒤 잔존이면(maskText 가 통째로 [masked:unmaskable]) 그 기준선은 0건 + baselineDecisionsSkipped(fail-closed). id = B<n>-<key>(n = baseline/<n>.md)
+  const baselineDecisions = [];
+  const baselineDecisionsSkipped = [];
+  let baselineDecisionsTruncated = false;
+  const keepShas = knownShas({ mr, snapshot: snap });
+  for (const l of baselineLinks) {
+    if (l.status !== '확보' || !l.file || !['repo', 'repo-path', 'body'].includes(l.kind)) continue;
+    const bn = Number(l.file.match(/(\d+)\.md$/)?.[1]);
+    const masked = maskText(fs.readFileSync(path.join(work, l.file), 'utf8'), adapter.mask, keepShas);
+    if (masked === '[masked:unmaskable]') { baselineDecisionsSkipped.push(bn); continue; }
+    const r = extractDecisions(masked, adapter.baselineDecisions?.pattern ?? null);
+    if (r.truncated) baselineDecisionsTruncated = true;
+    for (const d of r.decisions) baselineDecisions.push({ id: `B${bn}-${d.key}`, baseline: bn, key: d.key, line: d.line, text: d.text });
+  }
   // 유형 우선순위(1.3.5 ⑤ D105): 문서 링크 > 저장소 문서 경로(확보된 경로 후보 1개 이상) > 이슈 > MR 본문 배경 > 빈칸·자리표시자 > 서술만 — 링크·원문은 전부 수집
   if (baselineType !== '문서 링크' && baselineLinks.some((l) => l.kind === 'repo-path')) baselineType = '저장소 문서 경로';
 
@@ -465,7 +518,7 @@ export function check({ adapter, work }) {
   const would = otherIncomplete.length > 0 || baselineMissing;
   const earlyExit = { would, reason: would ? (baselineMissing ? '기준선 없음(후보 문서도 없음)' : `계약 미완: ${otherIncomplete.join(', ')}`) : '', draftVerdict: would ? (baselineMissing ? 'RETURN_TO_DESIGN' : 'HOLD_EVIDENCE') : null };
 
-  const out = { contract, track, baselineType, baselineLinks, ...(adapter.baselineRepoPaths === true ? { baselineRepoPathMisses } : {}), reason, baselineCandidateFiles, baselineConfirm, attachments, attachmentClaimedButMissing: claimed, deployRequired, deployExempt, deployNote: dNote, rebase, reviewerMismatch, priorVerdicts: notesC.priorVerdicts, authorTokens: notesC.authorTokens, ignoredComments: notesC.ignoredComments, rereview: notesC.rereview, earlyExit };
+  const out = { contract, track, baselineType, baselineLinks, baselineDecisions, ...(baselineDecisionsTruncated ? { baselineDecisionsTruncated } : {}), ...(baselineDecisionsSkipped.length ? { baselineDecisionsSkipped } : {}), ...(adapter.baselineRepoPaths === true ? { baselineRepoPathMisses } : {}), reason, baselineCandidateFiles, baselineConfirm, attachments, attachmentClaimedButMissing: claimed, deployRequired, deployExempt, deployNote: dNote, rebase, reviewerMismatch, priorVerdicts: notesC.priorVerdicts, authorTokens: notesC.authorTokens, ignoredComments: notesC.ignoredComments, rereview: notesC.rereview, earlyExit };
   fs.writeFileSync(path.join(work, 'check.json'), JSON.stringify(out, null, 2));
   return out;
 }

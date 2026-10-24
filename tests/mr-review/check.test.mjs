@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { tmp, writeAdapter, fakeGlab, runCli, readJson, git } from './helpers.mjs';
+import { tmp, writeAdapter, fakeGlab, runCli, readJson, git, LIB } from './helpers.mjs';
 
 const HEAD = 'a'.repeat(40);
 const OLD = 'c'.repeat(40);
@@ -522,4 +522,109 @@ test('배경 별칭은 본문 기준선 표지 — Baseline 「MR 본문 「요�
   const none = checkDesc(descWith('## 변경\n- x', { Baseline: 'MR 본문 「요약」' }), ON);
   assert.equal(none.c.baselineLinks.find((l) => l.kind === 'body').reason, 'MR 본문에 「배경」(또는 「요약」) 절이 없다');
   assert.equal(checkDesc(descWith('## 요약\n- ① 왜: x', { Baseline: '요약 절 참고' }), ON).c.baselineType, 'MR 본문 배경');   // 별칭 이름도 본문 표지
+});
+
+// ── 1.4.0 ① 기준선 결정 추출 (spec 2026-10-24 3.①-1·2 · D115·D128·D129·D131 · R1-1·R2-1) ──
+const { extractDecisions } = await import(join(LIB, 'check.mjs'));
+const bodyDecisions = (bg, adapterPatch = {}, mrOver = {}) => {
+  const { root, adapter, work } = setup({ description: body({ background: bg }), ...mrOver }, adapterPatch);
+  const r = runCli(['check', '--adapter', adapter, '--work', work], fakeGlab(root, []).env);
+  assert.equal(r.code, 0, r.out + r.err);
+  return { c: readJson(join(work, 'check.json')), work };
+};
+
+test('extractDecisions 기본 규칙: 표 행·목록·제목의 D<n> · 굵게 허용 · 코드펜스 밖만 · 원문 줄 번호 · 같은 key 는 꼴 우선(표 > 목록 > 제목) 뒤 문서 순 첫 것 (1.4.0 AC①-1 · D128·D129)', () => {
+  const text = ['# 설계', '| D | 결정 |', '|---|---|', '| D1 | 조회는 매번 비밀번호 |', '| **D3** | 잔존 상태는 변경에만 |', '- D7 탈퇴는 즉시', '### D9 로그 보존', '```', '| D5 | 펜스 안 |', '```', '| D1 | 두 번째 D1 |'].join('\n');
+  const { decisions, truncated } = extractDecisions(text);
+  assert.deepEqual(decisions.map((d) => [d.key, d.line, d.text]), [['D1', 4, '조회는 매번 비밀번호'], ['D3', 5, '잔존 상태는 변경에만'], ['D7', 6, '탈퇴는 즉시'], ['D9', 7, '로그 보존']]);
+  assert.equal(truncated, false);
+  // 구분자 필수(D128) — 나열·조사 붙음은 결정이 아니다
+  for (const l of ['- D4·D14 불변', '- D1~D16 승계', '- D4와 D5', '| D4의 | x |']) assert.deepEqual(extractDecisions(l).decisions, [], l);
+  assert.deepEqual(extractDecisions('- D4: 결정 본문').decisions.map((d) => [d.key, d.text]), [['D4', '결정 본문']]);
+  assert.deepEqual(extractDecisions('- **D4** 굵은 결정').decisions.map((d) => [d.key, d.text]), [['D4', '굵은 결정']]);
+  assert.deepEqual(extractDecisions('### D4) 제목 결정').decisions.map((d) => [d.key, d.text]), [['D4', '제목 결정']]);
+  assert.deepEqual(extractDecisions('1. D6. 숫자 목록').decisions.map((d) => [d.key, d.text]), [['D6', '숫자 목록']]);
+  // 충돌(D129): 20행 불릿 + 80행 표 → 표
+  const lines = Array.from({ length: 90 }, () => '');
+  lines[19] = '- D3: 예외 사례';
+  lines[79] = '| D3 | 잔존 상태는 조회에 쓰지 않는다 |';
+  assert.deepEqual(extractDecisions(lines.join('\n')).decisions.map((d) => [d.key, d.line, d.text]), [['D3', 80, '잔존 상태는 조회에 쓰지 않는다']]);
+  assert.deepEqual(extractDecisions('| D2 | 첫 표 |\n| D2 | 둘째 표 |').decisions.map((d) => d.text), ['첫 표']);
+});
+
+test('extractDecisions 상한: 101건 → 100건 + truncated · 301자 → 300자 + … · 공백 정규화 (1.4.0 AC①-2 · D131)', () => {
+  const many = Array.from({ length: 101 }, (_, i) => `- D${i + 1} 결정 ${i + 1}`).join('\n');
+  const r = extractDecisions(many);
+  assert.equal(r.decisions.length, 100);
+  assert.equal(r.truncated, true);
+  const long = extractDecisions(`- D1 ${'가'.repeat(301)}`).decisions[0].text;
+  assert.equal(long, '가'.repeat(300) + '…');
+  assert.equal(extractDecisions('- D2   여러\t공백   정규화  ').decisions[0].text, '여러 공백 정규화');
+});
+
+test('extractDecisions 어댑터 패턴: 명명 그룹 key·text · 기본 규칙 ⓐⓑⓒ 는 적용하지 않는다 (1.4.0 AC①-4)', () => {
+  const t = '- R1: 패턴 결정\n| D1 | 표 결정 |\n- R2 그룹 밖';
+  assert.deepEqual(extractDecisions(t, '^- (?<key>R\\d+): (?<text>.*)$').decisions.map((d) => [d.key, d.line, d.text]), [['R1', 1, '패턴 결정']]);
+  assert.deepEqual(extractDecisions('- R3 나머지 줄', '^- (?<key>R\\d+)').decisions.map((d) => [d.key, d.text]), [['R3', '나머지 줄']]);
+});
+
+test('check: 확보된 기준선(MR 본문 배경)에서 B<n>-<key> · line 은 baseline 파일 줄 번호 · 확보 기준선 없음 → [] · 이슈 원문은 추출하지 않는다 (1.4.0 AC①-1)', () => {
+  const { c, work } = bodyDecisions('- ① 왜: 요청\n- ② 무엇을: 수정\n| D1 | 조회는 매번 비밀번호 |\n- D7 탈퇴는 즉시');
+  const b = c.baselineLinks.find((l) => l.kind === 'body');
+  const n = Number(b.file.match(/(\d+)\.md$/)[1]);
+  assert.deepEqual(c.baselineDecisions.map((d) => [d.id, d.baseline, d.key, d.text]), [[`B${n}-D1`, n, 'D1', '조회는 매번 비밀번호'], [`B${n}-D7`, n, 'D7', '탈퇴는 즉시']]);
+  const fileLines = readFileSync(join(work, b.file), 'utf8').split('\n');
+  assert.ok(fileLines[c.baselineDecisions[0].line - 1].includes('| D1 |'));
+  assert.ok(!('baselineDecisionsTruncated' in c));
+  assert.ok(!('baselineDecisionsSkipped' in c));
+  // 확보 기준선 없음(자리표시자) → []
+  const { root, adapter, work: w2 } = setup({ description: body({ contractOver: { Baseline: '`<issue/spec/승인 결정 링크>`' } }) });
+  runCli(['check', '--adapter', adapter, '--work', w2], fakeGlab(root, []).env);
+  assert.deepEqual(readJson(join(w2, 'check.json')).baselineDecisions, []);
+  // 이슈 기준선의 D2 는 추출하지 않는다 · 같은 실행의 둘째 기준선(본문) 은 B2
+  const s = setup({ description: body({ background: '- ① 왜: x\n- D4: 본문 결정', contractOver: { Baseline: '#12 · MR 본문 「배경」' } }) });
+  const g = fakeGlab(s.root, [
+    { match: '^api projects/101/issues/12$', json: { iid: 12, title: '이슈', description: '- D2: 이슈 속 결정', updated_at: '2026-10-19T00:00:00Z' } },
+    { match: '^api --paginate projects/101/issues/12/notes', json: [] },
+  ]);
+  runCli(['check', '--adapter', s.adapter, '--work', s.work], g.env);
+  const c3 = readJson(join(s.work, 'check.json'));
+  assert.deepEqual(c3.baselineDecisions.map((d) => d.id), ['B2-D4']);
+});
+
+test('check: 원문 1건 101건이면 100건 + baselineDecisionsTruncated:true (1.4.0 AC①-2)', () => {
+  const { c } = bodyDecisions(Array.from({ length: 101 }, (_, i) => `- D${i + 1} 결정 ${i + 1}`).join('\n'));
+  assert.equal(c.baselineDecisions.length, 100);
+  assert.equal(c.baselineDecisionsTruncated, true);
+});
+
+test('check: 결정은 가린 원문에서 뽑는다 — 여러 줄 비밀값 문맥·잘린 PEM·300자 경계 토큰·어댑터 mask 패턴이 text 에 남지 않는다 · 잔존이면 0건 + baselineDecisionsSkipped · U+2028 로 나뉜 줄도 줄이다 (1.4.0 AC①-2b · R1-1·R2-1)', () => {
+  const ids = (c) => c.baselineDecisions.map((d) => d.id);
+  const all = (c) => JSON.stringify(c.baselineDecisions);
+  const { c: ctx, work: ctxW } = bodyDecisions('- ① 왜: x\npassword: "prefix\n- D1 SUFFIXSECRET99"\n- D3 일반 결정');
+  assert.doesNotMatch(all(ctx), /SUFFIXSECRET99/);
+  const d3 = ctx.baselineDecisions.find((d) => d.key === 'D3');
+  const rawLine = readFileSync(join(ctxW, ctx.baselineLinks.find((l) => l.kind === 'body').file), 'utf8').split('\n').indexOf('- D3 일반 결정') + 1;
+  assert.equal(d3.line, rawLine - 1);   // 가림이 두 줄을 한 줄로 접었다 — line 은 가린 원문 기준(§6 한계)
+  const yaml = bodyDecisions('- ① 왜: x\ndb:\n  password: |\n    - D2 YAMLSECRETVALUE77\n- D5 일반').c;
+  assert.doesNotMatch(all(yaml), /YAMLSECRETVALUE77/);
+  const pem = bodyDecisions('- ① 왜: x\n- D9 -----BEGIN PRIVATE KEY----- MIIEvQIBADANBgkqhkiG9w0BAQEFAASC QUJDREVGR0hJSktMTU5PUFFSU1RVVldY').c;
+  assert.doesNotMatch(all(pem), /MIIEvQIBADANBgkqhkiG9w0BAQEFAASC|QUJDREVGR0hJSktMTU5PUFFSU1RVVldY/);
+  const tok = 'T0KENabcdefghij0123456789KLMNOPQRSTUVWXYZ';
+  const edge = bodyDecisions(`- ① 왜: x\n- D8 ${'가 '.repeat(140)}Authorization: Bearer ${tok}`).c;
+  assert.doesNotMatch(all(edge), new RegExp(tok.slice(0, 8)));
+  const adm = bodyDecisions('- ① 왜: x\n- D6 담당 연락처 010-1234-5678').c;
+  assert.doesNotMatch(all(adm), /010-1234-5678/);
+  assert.match(all(adm), /\[masked:phone\]/);
+  const ls = bodyDecisions('- ① 왜: x - D6 줄 구분 뒤 결정').c;
+  assert.ok(ids(ls).some((i) => /-D6$/.test(i)), all(ls));
+  // 잔존(짝 없는 여러 줄 XML 값) → 0건 + Skipped
+  const res = bodyDecisions('- ① 왜: x\n- D1 결정\n<password>\nUNCLOSEDSECRET').c;
+  assert.deepEqual(res.baselineDecisions, []);
+  const n = Number(res.baselineLinks.find((l) => l.kind === 'body').file.match(/(\d+)\.md$/)[1]);
+  assert.deepEqual(res.baselineDecisionsSkipped, [n]);
+  // 어댑터 패턴 경로에서도 같은 가림
+  const pat = bodyDecisions('- ① 왜: x\n- R1: 연락 010-1234-5678', { baselineDecisions: { pattern: '^- (?<key>R\\d+): (?<text>.*)$' } }).c;
+  assert.deepEqual(ids(pat).map((i) => i.replace(/^B\d+-/, '')), ['R1']);
+  assert.doesNotMatch(all(pat), /010-1234-5678/);
 });

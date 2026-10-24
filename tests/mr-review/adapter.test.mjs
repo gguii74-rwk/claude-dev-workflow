@@ -157,3 +157,13 @@ test('contract.backgroundSections: 키 없음 = ["배경"] · 보존 · 빈 배�
   assert.deepEqual(loadAdapter(writeAdapter(root, { contract: { backgroundSections: ['배경', '요약'] } })).contract.backgroundSections, ['배경', '요약']);
   for (const bad of [[], '배경', [''], ['배경', 3]]) assert.throws(() => loadAdapter(writeAdapter(root, { contract: { backgroundSections: bad } })), (e) => e instanceof AdapterError && /contract\.backgroundSections\(비어 있지 않은 문자열 배열\)/.test(e.message), JSON.stringify(bad));
 });
+
+test('baselineDecisions 선택 키: 없음 → null · 명명 그룹 key 패턴 보존 · 그룹 없음·컴파일 실패·객체 아님 → AdapterError (1.4.0 AC①-3)', () => {
+  const root = tmp();
+  assert.equal(loadAdapter(writeAdapter(root)).baselineDecisions, null);
+  const ok = loadAdapter(writeAdapter(root, { baselineDecisions: { pattern: '^- (?<key>R\\d+): (?<text>.*)$' } }));
+  assert.deepEqual(ok.baselineDecisions, { pattern: '^- (?<key>R\\d+): (?<text>.*)$' });
+  for (const bad of [{ pattern: '^- R\\d+' }, { pattern: '(' }, 'R\\d+', { pattern: 3 }]) {
+    assert.throws(() => loadAdapter(writeAdapter(root, { baselineDecisions: bad })), (e) => e instanceof AdapterError && /baselineDecisions\.pattern\(명명 그룹 key 필수\)/.test(e.message), JSON.stringify(bad));
+  }
+});
