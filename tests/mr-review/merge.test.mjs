@@ -343,3 +343,13 @@ test('merge 쓰기는 링크를 따라가지 않는다 — findings.json 이 W �
   assert.equal(fj(w).head_sha, HEAD);
   assert.ok(!readdirSync(w.work).some((n) => n.endsWith('.writing')));                            // 임시 파일 잔존 없음
 });
+
+test('merge 짝 짓기 비교는 원문 정규화 키 — 가림으로 같아진 서로 다른 파일의 발견을 합치지 않는다(단독 출처 확인 유지) · 저장 지문은 가린 뒤 정규화 그대로 (1.4.0 impl C1-N1 · 감사 이의 R3-1)', () => {
+  const mask = (v) => String(v).replace(/tenant-\w+/g, '[masked]');
+  const res = mergeReviews({ claude: REV('claude', [RF({ title: '권한 검사 누락', file: 'src/tenant-red/routes.js' })]), codex: REV('codex', [RF({ title: '권한 검사 누락', file: 'src/tenant-blue/routes.js' })]), valid: ['claude', 'codex'], check: {}, pack: PACK(), snapshot: SNAP, mask });
+  const fs2 = res.findings.findings;
+  assert.deepEqual(fs2.map((f) => f.source), ['claude', 'codex']);                                  // 합쳐지지 않는다
+  assert.deepEqual(fs2.map((f) => f.fingerprint), ['src/[masked]/routes.js:권한검사누락', 'src/[masked]/routes.js:권한검사누락']);   // 저장은 가린 값
+  assert.equal(res.findings.needsMain.filter((n) => n.why === '단독 출처 설계 내 수정 가능 판단').length, 2);
+  assert.equal(res.counts.joined, 0);
+});

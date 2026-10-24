@@ -26,8 +26,9 @@ export const WHY = {
 const WHY_ORDER = Object.values(WHY);
 
 const norm = (t) => String(t ?? '').toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
-// 지문 = 가린 뒤 정규화(impl R3-1 — spec 3.①-1 R1-1 순서와 같은 원칙): 정규화가 `token=` 같은 선언 문맥을 지우면 뒤의 가림(cleanup deepMask)이 비밀값을 못 알아본다
-const fingerprint = (f, mask) => `${f.file == null ? '' : mask(f.file)}:${norm(mask(f.title ?? ''))}`;
+// 저장 지문 = 가린 뒤 정규화(impl R3-1 — spec 3.①-1 R1-1 순서와 같은 원칙): 정규화가 `token=` 같은 선언 문맥을 지우면 뒤의 가림(cleanup deepMask)이 비밀값을 못 알아본다
+// 짝 짓기 비교 키 = 원문 정규화(impl C1-N1 — 가림은 서로 다른 값을 같은 표시로 바꾼다: 그 값으로 비교하면 다른 발견이 합쳐져 단독 출처 확인이 빠진다). 비교 키는 저장하지 않는다
+const fingerprint = (f, mask = (v) => String(v)) => `${f.file == null ? '' : mask(f.file)}:${norm(mask(f.title ?? ''))}`;
 const uniq = (xs) => [...new Set(xs)];
 const blockingOf = (type) => (type === 'DESIGN_DRIFT' ? null : type !== 'FOLLOW_UP');
 
@@ -56,7 +57,7 @@ export function mergeReviews({ claude = null, codex = null, check = {}, pack = n
     items[m] = (live.includes(m) ? rev[m].findings || [] : []).map((f, i) => {
       const ids = (Array.isArray(f.decisionIds) ? f.decisionIds : []).filter((id) => { if (allowed[m].has(id)) return true; drop(m, id); return false; });
       const rws = (Array.isArray(f.intentRows) ? f.intentRows : []).filter((r) => rows == null || (r >= 1 && r <= rows));
-      return { m, n: i + 1, f, ids: uniq(ids), rws: uniq(rws), fp: fingerprint(f, mask) };
+      return { m, n: i + 1, f, ids: uniq(ids), rws: uniq(rws), fp: fingerprint(f, mask), key: fingerprint(f) };
     });
   }
 
@@ -72,7 +73,7 @@ export function mergeReviews({ claude = null, codex = null, check = {}, pack = n
   }
   const inter = (a, b) => a.filter((v) => b.includes(v));
   const passes = [
-    ['fingerprint', (c, x) => c.fp === x.fp],
+    ['fingerprint', (c, x) => c.key === x.key],
     ['decisionIds', (c, x) => inter(c.ids, x.ids).length > 0],
     ['intentRows', (c, x) => inter(c.rws, x.rws).length > 0 && c.f.file != null && c.f.file === x.f.file],
   ];
