@@ -83,6 +83,17 @@ export function validateFindings(fnd, { confirmedNull = true } = {}) {
   if (!Array.isArray(fnd.validReviewers) || fnd.validReviewers.some((r) => !['claude', 'codex'].includes(r))) errors.push('validReviewers 는 claude|codex 배열');
   // 후보 문서 관련성(1.4.0 ② D135 ⓐ) — 키가 있으면 boolean 만. null 을 「무관」으로 읽어 조용히 RETURN_TO_DESIGN 으로 가지 않게
   if ('baselineCandidateRelevant' in fnd && typeof fnd.baselineCandidateRelevant !== 'boolean') errors.push('baselineCandidateRelevant: 후보 문서 관련성 미판정 — 메인이 후보 문서를 읽고 정한다(true|false)');
+  // 결정 대조표(1.4.0 ① D124 — 메인이 result·claims·basis 를 정정하는 칸): 키가 있으면 값 형식까지 본다(impl R5-1 — 'VIOLATED ' 같은 값이 결정 어김 대응 검사를 빠져나가 APPROVE 되지 않게). 오류 문장에 값은 인용하지 않는다(R2-1)
+  if ('decisions' in fnd) {
+    if (!Array.isArray(fnd.decisions)) errors.push('decisions 는 배열');
+    else fnd.decisions.forEach((d, i) => {
+      if (!d || typeof d !== 'object' || Array.isArray(d)) { errors.push(`decisions[${i}] 객체 아님`); return; }
+      if (typeof d.id !== 'string' || !d.id) errors.push(`decisions[${i}].id 문자열 필요`);
+      else { const j = fnd.decisions.findIndex((x) => x?.id === d.id); if (j < i) errors.push(`decisions[${i}].id 중복(앞 decisions[${j}])`); }
+      if (![...DECISION_RESULTS, '미응답'].includes(d.result)) errors.push(`decisions[${i}].result 는 ${[...DECISION_RESULTS, '미응답'].join('|')}`);
+      if (d.claims != null && (typeof d.claims !== 'object' || Array.isArray(d.claims) || Object.entries(d.claims).some(([k, v]) => !['claude', 'codex'].includes(k) || !DECISION_RESULTS.includes(v)))) errors.push(`decisions[${i}].claims 는 { claude|codex: ${DECISION_RESULTS.join('|')} }`);
+    });
+  }
   if (!Array.isArray(fnd.findings)) { errors.push('findings 배열 필요'); return errors; }
   const ids = new Set();
   fnd.findings.forEach((f, i) => {
@@ -101,6 +112,7 @@ export function validateFindings(fnd, { confirmedNull = true } = {}) {
     if (f.fixableInDesignBasis != null && typeof f.fixableInDesignBasis !== 'string') errors.push(`${f.id ?? i}.fixableInDesignBasis 는 문자열`);
     if (claims != null && ['yes', 'no'].includes(f.fixableInDesign) && !f.resolution && !(typeof f.fixableInDesignBasis === 'string' && f.fixableInDesignBasis.trim())) errors.push(`${f.id ?? i}.fixableInDesignBasis 필요 — 검토자 주장 위에 메인이 정한 설계 내 수정 가능 값의 근거 1줄`);
     // 출처(1.4.0 ① D124) — 메인이 결정 어김을 발견으로 올린 항목은 `main`. 검토자 발견에 요구하는 것과 같은 수준의 근거를 요구한다(감사 가능)
+    if (f.decisionIds !== undefined && !(Array.isArray(f.decisionIds) && f.decisionIds.every((x) => typeof x === 'string' && x !== ''))) errors.push(`${f.id ?? i}.decisionIds 는 비어 있지 않은 문자열 배열`);   // 결정 어김 대응 판정의 입력(impl R5-1)
     if (f.source !== undefined && !['claude', 'codex', 'both', 'main'].includes(f.source)) errors.push(`${f.id ?? i}.source 는 claude|codex|both|main`);
     if (f.source === 'main') {
       const filled = (v) => typeof v === 'string' && v.trim() !== '';

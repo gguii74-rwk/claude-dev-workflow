@@ -2058,6 +2058,32 @@ test('render 는 findings.json 을 한 번 읽어 그 바이트로 지문 확인
   assert.ok(!(/추천 판정\(초안\) APPROVE/.test(md) && /렌더 중 바뀐 차단 결함/.test(md)), '승인 블록과 차단 결함이 함께 나갔다');
 });
 
+test('validateFindings: decisions·decisionIds 칸 값 형식 — result 는 KEPT|VIOLATED|UNKNOWN|미응답 · id 중복 없음 · claims 열거형 · 키 없는 옛 파일 영향 없음 · 공백 붙은 VIOLATED 로 결정 어김 검사를 빠져나가 APPROVE 되지 않는다 (1.4.0 impl R5-1)', () => {
+  const ok = [{ id: 'B1-D1', result: 'KEPT', claims: { codex: 'VIOLATED' }, location: null, basis: '메인 정정' }, { id: 'B1-D3', result: '미응답' }, { id: 'B1-D7', result: 'UNKNOWN', claims: { claude: 'VIOLATED', codex: 'KEPT' }, location: ':357', basis: '코드로 확인' }];
+  assert.deepEqual(validateFindings(findings([], { decisions: ok })), []);
+  assert.deepEqual(validateFindings(findings([])), []);                                             // 키 없음 = 검사 없음
+  const bad = [
+    [{ decisions: 'x' }, 'decisions 는 배열'],
+    [{ decisions: [{ id: 'B1-D1', result: 'VIOLATED ' }] }, 'decisions[0].result 는 KEPT|VIOLATED|UNKNOWN|미응답'],
+    [{ decisions: [{ id: 'B1-D1', result: null }] }, 'decisions[0].result 는 KEPT|VIOLATED|UNKNOWN|미응답'],
+    [{ decisions: [null] }, 'decisions[0] 객체 아님'],
+    [{ decisions: [{ id: '', result: 'KEPT' }] }, 'decisions[0].id 문자열 필요'],
+    [{ decisions: [{ id: 'B1-D1', result: 'KEPT' }, { id: 'B1-D1', result: 'VIOLATED', location: ':1' }] }, 'decisions[1].id 중복(앞 decisions[0])'],
+    [{ decisions: [{ id: 'B1-D1', result: 'UNKNOWN', claims: { claude: 'MAYBE' } }] }, 'decisions[0].claims 는 { claude|codex: KEPT|VIOLATED|UNKNOWN }'],
+    [{ decisions: [{ id: 'B1-D1', result: 'UNKNOWN', claims: { x: 'KEPT' } }] }, 'decisions[0].claims 는 { claude|codex: KEPT|VIOLATED|UNKNOWN }'],
+  ];
+  for (const [over, msg] of bad) assert.ok(validateFindings(findings([], over)).includes(msg), `${JSON.stringify(over)} → ${validateFindings(findings([], over)).join('; ')}`);
+  assert.ok(validateFindings(findings([F({ decisionIds: 'B1-D1' })])).includes('F1.decisionIds 는 비어 있지 않은 문자열 배열'));
+  assert.ok(validateFindings(findings([F({ decisionIds: [null] })])).includes('F1.decisionIds 는 비어 있지 않은 문자열 배열'));
+  // CLI 재현: needsMain 은 채웠고 대응 발견 없이 result 'VIOLATED ' → ERR(APPROVE 아님)
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, 'a'), { fnd: findings([], { decisions: [{ id: 'B1-D1', result: 'VIOLATED ', location: ':357' }], needsMain: [{ id: 'decisions:B1-D1', why: '결정 어김 대응 발견 없음', decided: '확인함' }] }) });
+  const r = runCli(['verdict', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR findings\.json 검증 실패: decisions\[0\]\.result 는 KEPT\|VIOLATED\|UNKNOWN\|미응답/);
+});
+
 test('findingsDigest 영속 순서: 옛 verdict.json(지문 없음 APPROVE) 이 있는 W 에서 --resolve 영속 직후 중단되면 verdict.json 이 없다 → render 리뷰 실패 · verdict.json 을 지울 수 없으면 --resolve ERR 이고 findings.json 불변 (1.4.0 AC③-6b · C1)', () => {
   const root = tmp();
   const adapter = writeAdapter(root);
