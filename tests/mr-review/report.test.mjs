@@ -1946,3 +1946,45 @@ test('render 부록 D alt 표지: 합친 유형과 다른 쪽 원본 유형만 �
   assert.doesNotMatch(md, /joinedBy|decisionIds/);
   assert.deepEqual([...parseAppendixD(md).entries()].map(([id, x]) => [id, x.type, x.title]), [['F1', 'DEFECT', '비밀번호 평문 로그'], ['F2', 'DEFECT', '두 번째']]);
 });
+
+// ── 1.4.0 SKILL.md 문구 (spec 2026-10-24 AC①-10 · AC②-6 · AC③-9) ──
+const sec = (skill, a, b) => skill.slice(skill.indexOf(a), skill.indexOf(b));
+test('SKILL.md §5: 공통 입력 7 기준선 결정 대조표(k건 · decisions · KEPT·VIOLATED·UNKNOWN · VIOLATED 엔 대응 finding) · Codex 프롬프트에 결정 문구를 붙이지 않는다 · 스키마 decisions·decisionIds·intentRows · 사안 키 규칙 · §6 출처 main·메인 정정 (1.4.0 AC①-10)', () => {
+  const skill = skillText();
+  const s5 = sec(skill, '## 5. 독립 병렬 검토', '## 6. 병합');
+  const in7 = s5.split('\n').find((l) => l.startsWith('7. 기준선 결정 대조표'));
+  assert.ok(in7, '공통 입력 7');
+  for (const re of [/기준선 결정 k건/, /`decisions`/, /KEPT/, /VIOLATED/, /UNKNOWN/, /대응[^\n]*finding|finding[^\n]*대응/]) assert.match(in7, re);
+  assert.match(s5, /결정 문구를 붙이지 않는다/);
+  const schema = s5.slice(s5.indexOf('```text'), s5.indexOf('\n```\n', s5.indexOf('```text')));
+  for (const k of ['"decisions"', '"decisionIds"', '"intentRows"', 'KEPT|VIOLATED|UNKNOWN']) assert.ok(schema.includes(k), k);
+  assert.match(s5, /발견마다 관련 기준선 결정 id 와 검증 표 행 번호를 적어라/);
+  assert.doesNotMatch(s5, /다른 검토가/);                                                       // D11
+  const s6 = sec(skill, '## 6. 병합', '## 7. 재리뷰');
+  assert.match(s6, /출처 `main`/);
+  assert.match(s6, /메인 정정/);
+});
+
+test('SKILL.md §6-3: 단독 출처 차단 DEFECT·DESIGN_DRIFT 의 fixableInDesign 은 검토자 1명의 주장 · fixableInDesignBasis · 상충 문단과 D9 유지 · unresolved 를 건드리지 않는다 (1.4.0 AC②-6 · D116·R2-2)', () => {
+  const s6 = sec(skillText(), '## 6. 병합', '## 7. 재리뷰');
+  const r3 = s6.split('\n').find((l) => l.startsWith('3. '));
+  assert.ok(r3, '§6-3');
+  assert.match(r3, /단독 출처[^\n]*검토자 1명의 주장/);
+  assert.match(r3, /`fixableInDesignBasis`/);
+  assert.match(r3, /상충/);
+  assert.match(r3, /엄한 쪽을 자동으로 고르지 않는다\(D9\)/);
+  assert.match(r3, /`unresolved` 를 건드리지 않는다/);
+});
+
+test('SKILL.md §6 전면: <CLI> merge(--valid 필수 · --same · --force) → needsMain 의 decided → verdict · 유형 상충 · 허용 칸 목록 · 금지 「손으로 바꾸지 않는다」 · §8 needsMain 없음·결정 대조·merge 수치 · D41 「메인이 원문을 직접 읽어 적는다」 문구 없음 · 지문 규칙은 merge (가) (1.4.0 AC③-9 · D117·D124·D142)', () => {
+  const skill = skillText();
+  const s6 = sec(skill, '## 6. 병합', '## 7. 재리뷰');
+  for (const s of ['<CLI> merge', '`needsMain`', '`decided`', '`--same`', '`--force`', '`--valid`', '유형 상충', '`coveredBy`', '출처 `main`']) assert.ok(s6.includes(s), s);
+  assert.match(s6, /허용 칸/);
+  assert.match(s6, /`file` \+ 정규화 제목/);
+  assert.doesNotMatch(skill, /메인이 `mr\.json\.description` ?의 검증 표에서 직접 읽은 원문/);
+  const ban = skill.slice(skill.indexOf('## 금지'));
+  assert.match(ban, /손으로 바꾸지 않는다/);
+  const s8 = sec(skill, '## 8. 출력', '## 9.');
+  for (const s of ['needsMain 없음', '기준선 결정 k건 중 어김 n(모름 m)', '결정 추출 생략(기준선 n — 마스킹 잔존)', 'joined', 'candidates']) assert.ok(s8.includes(s), s);
+});
