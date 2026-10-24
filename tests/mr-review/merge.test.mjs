@@ -353,3 +353,11 @@ test('merge 짝 짓기 비교는 원문 정규화 키 — 가림으로 같아진
   assert.equal(res.findings.needsMain.filter((n) => n.why === '단독 출처 설계 내 수정 가능 판단').length, 2);
   assert.equal(res.counts.joined, 0);
 });
+
+test('merge: 문자열이 아닌 file 을 낸 검토자는 invalid(스키마 불통과: findings[0].file) — 다른 파일의 같은 제목 발견이 합쳐져 단독 출처 확인이 빠지지 않는다 (1.4.0 impl R6-1)', () => {
+  const w = mkW({ claude: REV('claude', [RF({ title: '권한 검사 누락', file: { path: 'src/a.js' }, confidence: 'medium' })]), codex: REV('codex', [RF({ title: '권한 검사 누락', file: { path: 'src/b.js' }, confidence: 'medium' })]) });
+  const r = merge(w, '--valid', 'claude,codex');
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^MERGED reviewers=- findings=0 joined=0 /);
+  assert.equal(line2(r, 'invalid'), 'invalid: claude(스키마 불통과: findings[0].file) · codex(스키마 불통과: findings[0].file)');
+});

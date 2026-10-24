@@ -1757,6 +1757,17 @@ test('validateReview 오류 문장은 필드 위치·번호·고정 사유만 �
   assert.equal((c.out + c.err).trim().split('\n').length, 1);
 });
 
+test('validateReview: findings[*].file 은 문자열|null(또는 없음) — 객체·배열·숫자는 INVALID(짝 짓기에서 \'[object Object]\' 로 같아져 다른 발견이 합쳐지지 않게) (1.4.0 impl R6-1)', () => {
+  for (const file of [{ path: 'src/a.js' }, ['src/a.js'], 7, true]) {
+    const r = validateReview(RV({ findings: [RF({ file })] }));
+    assert.equal(r.ok, false, JSON.stringify(file));
+    assert.ok(r.errors.includes('findings[0].file 은 문자열|null'), r.errors.join('; '));
+  }
+  for (const file of ['src/a.js', null]) assert.equal(validateReview(RV({ findings: [RF({ file })] })).ok, true, String(file));
+  const { file, ...noFile } = RF();
+  assert.equal(validateReview(RV({ findings: [noFile] })).ok, true);
+});
+
 test('validateReview: intent 원소는 객체 — [null] 은 INVALID(그 모델만 무효 · 병합이 TypeError 로 멈추지 않는다) · row 없는 객체는 현행 VALID (1.4.0 impl R2-2)', () => {
   const r = validateReview(RV({ intent: [null] }));
   assert.equal(r.ok, false);

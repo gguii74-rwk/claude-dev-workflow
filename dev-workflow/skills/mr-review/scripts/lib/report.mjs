@@ -50,6 +50,7 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
       if (!f || typeof f !== 'object') { errors.push(`findings[${i}] 객체 아님`); return; }
       if (!TYPES.includes(f.type)) errors.push(`findings[${i}].type 은 ${TYPES.join('|')}`);
       if (typeof f.title !== 'string' || !f.title.trim()) errors.push(`findings[${i}].title 필요`);
+      if (f.file != null && typeof f.file !== 'string') errors.push(`findings[${i}].file 은 문자열|null`);   // 짝 짓기 입력(지문·같은 파일) — 객체가 '[object Object]' 로 같아져 다른 발견이 합쳐지지 않게(impl R6-1)
       if (!CONF.includes(f.confidence)) errors.push(`findings[${i}].confidence 는 high|medium|low`);
       if (!['yes', 'no'].includes(f.fixableInDesign)) errors.push(`findings[${i}].fixableInDesign 은 yes|no`);
       if ((f.type === 'DEFECT' || f.type === 'DESIGN_DRIFT') && !(typeof f.scenario === 'string' && f.scenario.trim())) errors.push(`findings[${i}].scenario 는 DEFECT·DESIGN_DRIFT 에 필수`);
