@@ -24,7 +24,7 @@ const findings = (list, over = {}) => ({ head_sha: HEAD, validReviewers: ['claud
 const V = (fnd, { check = baseCheck(), snapshot = baseSnap(), deploy = baseDeploy(), resolves = {} } = {}) => computeVerdict({ check, snapshot, deploy, findings: fnd, resolves, judgeId: 'TEST-POLICY-v1.1' });
 
 test('validateReview: 스키마 통과·실패 사유', () => {
-  const ok = { reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L1', type: 'FOLLOW_UP', title: 't', file: null, line_start: 0, line_end: 0, evidence: '', scenario: '', confidence: 'low', recommendation: '', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true };
+  const ok = { reviewer: 'claude', head_sha: HEAD, findings: [{ lens: 'L1', type: 'FOLLOW_UP', title: 't', file: null, line_start: 0, line_end: 0, evidence: '', scenario: '', confidence: 'low', recommendation: '', fixableInDesign: 'yes', brokenPremise: '' }], intent: [], baselineCandidateRelevant: true, decisions: [] };
   assert.deepEqual(validateReview(ok), { ok: true, errors: [] });
   const bad = { reviewer: 'codex', head_sha: 'short', findings: [{ lens: 'L5', type: 'DEFECT', title: 't', scenario: '', confidence: 'high', fixableInDesign: 'maybe' }], intent: [], baselineCandidateRelevant: 'yes' };
   const r = validateReview(bad);
@@ -409,7 +409,7 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
   const root = tmp();
   const adapter = writeAdapter(root);
   const good = join(root, 'ok.json');
-  writeFileSync(good, JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [], intent: [], baselineCandidateRelevant: false }));
+  writeFileSync(good, JSON.stringify({ reviewer: 'codex', head_sha: HEAD, findings: [], intent: [], baselineCandidateRelevant: false, decisions: [] }));
   assert.equal(runCli(['review-validate', '--file', good]).first, 'VALID');
   assert.equal(runCli(['review-validate', '--file', good, '--head', HEAD, '--reviewer', 'codex']).first, 'VALID');
   const rs = runCli(['review-validate', '--file', good, '--head', 'c'.repeat(40), '--reviewer', 'codex']);
@@ -1145,6 +1145,18 @@ const S2_FIELDS_A = ['mr.title', 'mr.web_url', 'snapshot.unrecovered[0]', 'check
 const S2_FIELDS_B = ['findings[0].title', 'findings[0].file', 'findings[0].line_start', 'findings[0].source', 'findings[0].confidence', 'findings[0].scenario', 'findings[0].brokenPremise', 'findings[0].fixableInDesignClaims.claude'];
 // 장면 C(조기 종료)
 const S2_FIELDS_C = ['check.earlyExit.reason'];
+// 1.4.0: verdict 가 source·fixableInDesignClaims 값을 검사한다(AC①-9·AC②-3) — 주입 값은 verdict 를 통과하지 못하므로 유효 값으로 판정한 뒤
+// 주입본으로 바꾸고 findingsDigest 를 뗀다(1.3.5 이전 verdict.json 꼴 — head 대조만). render 의 평탄화·가림 방어는 같은 입력으로 그대로 시험한다
+const VALID_SRC = ['claude', 'codex', 'both', 'main'];
+const saneFnd = (x) => ({ ...x, findings: x.findings.map((f) => ({ ...f, source: VALID_SRC.find((v) => String(f.source).startsWith(v)) ?? 'both', ...(f.fixableInDesignClaims ? { fixableInDesignClaims: Object.fromEntries(Object.entries(f.fixableInDesignClaims).map(([k, v]) => [['claude', 'codex'].find((n) => k.startsWith(n)) ?? 'claude', String(v).startsWith('no') ? 'no' : 'yes'])) } : {}) })) });
+function verdictThenInject(adapter, work, fnd) {
+  writeFileSync(join(work, 'findings.json'), JSON.stringify(saneFnd(fnd)));
+  const r = runCli(['verdict', '--adapter', adapter, '--work', work]);
+  writeFileSync(join(work, 'findings.json'), JSON.stringify(fnd));
+  const vp = join(work, 'verdict.json');
+  if (existsSync(vp)) { const v = readJson(vp); delete v.findingsDigest; writeFileSync(vp, JSON.stringify(v)); }
+  return r;
+}
 function s2Render(root, scene, s, name) {
   const adapter = writeAdapter(root);
   const I = (v) => `${v}${s}`;
@@ -1173,7 +1185,7 @@ function s2Render(root, scene, s, name) {
   const work = fullWork(join(root, name), { check: c, snap, deploy, fnd, mr, pack: scene !== 'C', reviews: scene !== 'C' });
   writeFileSync(join(work, 'pack.json'), JSON.stringify(pack));
   if (review) writeFileSync(join(work, 'review-claude.json'), JSON.stringify(review));
-  if (scene !== 'C') assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0, scene);
+  if (scene !== 'C') assert.equal(verdictThenInject(adapter, work, fnd).code, 0, scene);
   const out = join(root, `${name}.md`);
   const rr = runCli(['render', '--adapter', adapter, '--work', work, ...(scene === 'C' ? ['--early'] : []), '--out', out]);
   assert.equal(rr.code, 0, rr.out + rr.err);
@@ -1205,7 +1217,7 @@ test('render: 검증되지 않는 검토자 필드 source 의 줄바꿈도 가�
   const adapter = writeAdapter(root);
   const fnd = findings([F({ unresolved: true, source: 'both\n## SOURCEINJ' })]);
   const work = fullWork(join(root, 'a'), { fnd });
-  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  assert.equal(verdictThenInject(adapter, work, fnd).code, 0);
   const out = join(root, 'a.md');
   assert.equal(runCli(['render', '--adapter', adapter, '--work', work, '--out', out]).code, 0);
   const md = readFileSync(out, 'utf8');
@@ -1270,7 +1282,7 @@ test('render: 검토자 출력 객체의 키(fixableInDesignClaims)도 가리고
   const adapter = writeAdapter(root);
   const fnd = findings([F({ unresolved: true, fixableInDesign: null, fixableInDesignClaims: { 'claude\n## KEYINJ\n': 'yes', 'codex password=hunter2pass': 'no' } })]);
   const work = fullWork(join(root, 'a'), { fnd });
-  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).code, 0);
+  assert.equal(verdictThenInject(adapter, work, fnd).code, 0);
   const out = join(root, 'a.md');
   const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
   assert.equal(rr.code, 0, rr.out + rr.err);
@@ -1674,4 +1686,106 @@ test('SKILL.md §0 스킬 버전 비교 스니펫: 같은 설치 = 출력 없음
   assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), 'SKILL_VERSION_UNKNOWN');
   rmSync(join(P, 'installed_plugins.json'));
   assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), 'SKILL_VERSION_UNKNOWN');
+});
+
+// ── 1.4.0 ① 기준선 결정 대조표 — 검토자 스키마 · 부록 E · verdict 입력 검사 (spec 2026-10-24 3.①-5~8 · D123~D125·D131~D135) ──
+const { validateFindings } = await import(join(LIB, 'report.mjs'));
+const RV = (over = {}) => ({ reviewer: 'claude', head_sha: HEAD, findings: [], intent: [], baselineCandidateRelevant: true, decisions: [], ...over });
+const RF = (over = {}) => ({ lens: 'L1', type: 'FOLLOW_UP', title: 't', file: null, line_start: 0, line_end: 0, evidence: '', scenario: '', confidence: 'low', recommendation: '', fixableInDesign: 'yes', brokenPremise: '', ...over });
+test('validateReview: decisions 필수 배열 · result 3종 · VIOLATED 는 location 필수 · 사안 키는 선택이되 원소 형식 검사 (1.4.0 AC①-6 · D123·D125·R5-2)', () => {
+  assert.deepEqual(validateReview(RV()), { ok: true, errors: [] });
+  const { decisions, ...noDec } = RV();
+  assert.ok(validateReview(noDec).errors.includes('decisions 배열 필요'));
+  assert.equal(validateReview(RV({ decisions: [{ id: 'B1-D1', result: 'MAYBE', location: null, basis: '미확인' }] })).ok, false);
+  assert.equal(validateReview(RV({ decisions: [{ id: 'B1-D1', result: 'VIOLATED', location: null, basis: '코드로 확인' }] })).ok, false);
+  assert.equal(validateReview(RV({ decisions: [{ id: '', result: 'KEPT', location: null, basis: '미확인' }] })).ok, false);
+  assert.equal(validateReview(RV({ decisions: [{ id: 'B1-D1', result: 'VIOLATED', location: 'src/A.java:357', basis: '코드로 확인' }, { id: 'B1-D3', result: 'KEPT', location: null, basis: '미확인' }] })).ok, true);
+  assert.equal(validateReview(RV({ findings: [RF()] })).ok, true);                                       // decisionIds·intentRows 생략 = []
+  assert.equal(validateReview(RV({ findings: [RF({ decisionIds: ['B1-D1'], intentRows: [5, 6] })] })).ok, true);
+  for (const bad of [{ intentRows: [null] }, { intentRows: ['5'] }, { intentRows: [0] }, { intentRows: [1.5] }, { decisionIds: [null] }, { decisionIds: [''] }, { decisionIds: 'B1-D1' }, { intentRows: 5 }]) {
+    assert.equal(validateReview(RV({ findings: [RF(bad)] })).ok, false, JSON.stringify(bad));
+  }
+  const root = tmp();
+  const old = join(root, 'old.json');
+  writeFileSync(old, JSON.stringify(noDec));                                                                // 1.3.5 꼴(decisions 없음) → INVALID
+  const r = runCli(['review-validate', '--file', old]);
+  assert.equal(r.code, 1);
+  assert.match(r.first, /^INVALID .*decisions 배열 필요/);
+});
+
+const DCHK = () => ({ ...baseCheck(), baselineDecisions: [{ id: 'B1-D1', baseline: 1, key: 'D1', line: 12, text: '조회는 매번 비밀번호' }, { id: 'B1-D3', baseline: 1, key: 'D3', line: 40, text: '잔존 상태는 변경에만' }, { id: 'B1-D7', baseline: 1, key: 'D7', line: 52, text: '탈퇴는 즉시' }] });
+const DFND = () => [{ id: 'B1-D1', result: 'UNKNOWN', claims: { claude: 'VIOLATED', codex: 'KEPT' }, location: 'src/A.java:357', basis: '코드로 확인' }, { id: 'B1-D3', result: 'KEPT', location: null, basis: '코드로 확인' }, { id: 'B1-D7', result: '미응답' }];
+const MAIN_F = (over = {}) => F({ id: 'F4', source: 'main', type: 'DEFECT', decisionIds: ['B1-D1'], blocking: true, fixableInDesign: 'no', fixableInDesignBasis: '기준선 D1 의 전제가 깨짐', brokenPremise: '조회 때 매번 재인증', scenario: '남은 확인 상태로 조회 응답', evidence: 'src/A.java:357', title: '조회 관문 누락', ...over });
+function renderOne(root, { check = baseCheck(), fnd, name = 'r' } = {}) {
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, name), { check, fnd });
+  const v = runCli(['verdict', '--adapter', adapter, '--work', work]);
+  const out = join(root, `${name}.md`);
+  const rr = runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  return { md: readFileSync(out, 'utf8'), v, work, adapter };
+}
+
+test('render 부록 E: 머리 집계(어김·모름·상충·미응답) · 표 행(상충·미응답·메인 정정) · 관련 발견에 출처 main 포함 · 부록 D 「 · 결정 …」 은 출처 뒤 · 파서 불변 · 「결정 대조 미확인」 없음 (1.4.0 AC①-8 · D132·D134)', () => {
+  const root = tmp();
+  const { md, v } = renderOne(root, { check: DCHK(), fnd: findings([F({ id: 'F3', decisionIds: ['B1-D1'] })], { decisions: DFND() }) });
+  assert.equal(v.first, 'VERDICT determined CHANGES_REQUESTED');
+  const e = sectionOf(md, '## 부록 E');
+  assert.match(e, /^## 부록 E — 기준선 결정 대조표\n\n- 결정 3건 · 어김 0 · 모름 0 · 상충 1 · 미응답 1\n/);
+  assert.ok(e.includes('| id | 결정 | 결과 | 코드 위치 | 관련 발견 |\n|---|---|---|---|---|\n'), e);
+  assert.ok(e.includes('| B1-D1 | 조회는 매번 비밀번호 | UNKNOWN(상충 — claude: VIOLATED / codex: KEPT) | src/A.java:357 | F3 |'), e);
+  assert.ok(e.includes('| B1-D3 | 잔존 상태는 변경에만 | KEPT | - | - |'), e);
+  assert.ok(e.includes('| B1-D7 | 탈퇴는 즉시 | 미응답 | - | - |'), e);
+  const d = sectionOf(md, '## 부록 D', '## 부록 E');
+  const fl = d.split('\n').find((l) => l.startsWith('- **F3**'));
+  assert.match(fl, / · 출처 both · 확신 high · 결정 B1-D1$/);
+  assert.deepEqual([...parseAppendixD(md).entries()].map(([id, x]) => [id, x.type, x.title]), [['F3', 'DEFECT', '비밀번호 평문 로그']]);
+  assert.doesNotMatch(md, /결정 대조 미확인/);
+  // 메인 정정 · 출처 main 발견 · 상한 초과 · 결정 추출 생략
+  const chk = { ...DCHK(), baselineDecisionsTruncated: true, baselineDecisionsSkipped: [2] };
+  const fixed = [{ id: 'B1-D1', result: 'KEPT', claims: { codex: 'VIOLATED' }, location: null, basis: '메인 정정' }, { id: 'B1-D3', result: 'VIOLATED', location: 'src/B.java:9', basis: '코드로 확인' }, { id: 'B1-D7', result: 'UNKNOWN', location: null, basis: '미확인' }];
+  const m2 = renderOne(root, { check: chk, fnd: findings([F({ id: 'F3', decisionIds: ['B1-D3'] }), MAIN_F({ decisionIds: ['B1-D3'] })], { decisions: fixed }), name: 'r2' });
+  assert.equal(m2.v.code, 0, m2.v.out);
+  const e2 = sectionOf(m2.md, '## 부록 E');
+  assert.match(e2, /^## 부록 E — 기준선 결정 대조표\n\n- 결정 3건 · 어김 1 · 모름 1 · 상충 0 · 상한 초과\(100건만\) · 결정 추출 생략\(기준선 2 — 마스킹 잔존\)\n/);
+  assert.ok(e2.includes('| B1-D1 | 조회는 매번 비밀번호 | KEPT(메인 정정 — codex: VIOLATED) | - | - |'), e2);
+  assert.ok(e2.includes('| B1-D3 | 잔존 상태는 변경에만 | VIOLATED | src/B.java:9 | F3, F4 |'), e2);
+  assert.match(sectionOf(m2.md, '## 부록 D', '## 부록 E'), /- \*\*F4\*\* \[L5\] DEFECT \(차단\) — 조회 관문 누락 \(src\/A\.java:3\) · 출처 main · 확신 high · 결정 B1-D3/);
+  // baselineDecisions [] · 키 없음 → 부록 E 없음
+  assert.doesNotMatch(renderOne(root, { check: { ...baseCheck(), baselineDecisions: [] }, fnd: findings([F()]), name: 'r3' }).md, /## 부록 E/);
+  assert.doesNotMatch(renderOne(root, { fnd: findings([F()]), name: 'r4' }).md, /## 부록 E/);
+});
+
+test('verdict: decisions·decisionGaps 는 판정을 바꾸지 않는다 · VIOLATED 에 대응 DEFECT·DESIGN_DRIFT 발견이 없으면 ERR · 출처 main 발견 추가·메인 정정·상충 유지는 통과 (1.4.0 AC①-9 · D124·D133)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const run = (fnd, name) => { const work = fullWork(join(root, name), { check: DCHK(), fnd }); return { r: runCli(['verdict', '--adapter', adapter, '--work', work]), work }; };
+  const plain = run(findings([F({ id: 'F3' })]), 'p');
+  const withDec = run(findings([F({ id: 'F3', decisionIds: ['B1-D1'] })], { decisions: DFND(), decisionGaps: ['B1-D1'] }), 'd');
+  assert.equal(withDec.r.first, plain.r.first);
+  const pick = (w) => { const v = readJson(join(w, 'verdict.json')); return [v.status, v.verdict, v.evidence, v.defects]; };
+  assert.deepEqual(pick(withDec.work), pick(plain.work));
+  const viol = [{ id: 'B1-D1', result: 'VIOLATED', location: 'src/A.java:357', basis: '코드로 확인' }];
+  for (const [name, list] of [['none', [F({ id: 'F3' })]], ['fu', [F({ id: 'F3', type: 'FOLLOW_UP', blocking: false, decisionIds: ['B1-D1'] })]]]) {
+    const { r } = run(findings(list, { decisions: viol }), `v-${name}`);
+    assert.equal(r.code, 2, name);
+    assert.equal(r.first, 'ERR 결정 어김 대응 발견 없음 B1-D1 — 결과를 정정하거나 출처 main 발견을 추가한다', name);
+  }
+  const added = run(findings([F({ id: 'F3', type: 'FOLLOW_UP', blocking: false }), MAIN_F()], { decisions: viol }), 'main');
+  assert.equal(added.r.first, 'VERDICT determined RETURN_TO_DESIGN');
+  const drift = run(findings([F({ id: 'F3', type: 'DESIGN_DRIFT', blocking: false, decisionIds: ['B1-D1'] })], { decisions: viol }), 'drift');   // 유형 기준(D133) — blocking 값 무관
+  assert.equal(drift.r.code, 0, drift.r.out);
+  const corr = run(findings([F({ id: 'F3' })], { decisions: [{ id: 'B1-D1', result: 'KEPT', claims: { codex: 'VIOLATED' }, location: null, basis: '메인 정정' }] }), 'corr');
+  assert.equal(corr.r.code, 0, corr.r.out);
+  const conf = run(findings([F({ id: 'F3' })], { decisions: DFND() }), 'conf');
+  assert.equal(conf.r.code, 0, conf.r.out);
+  // validateFindings — 출처 값 · 출처 main 의 필수 칸
+  const vf = (f) => validateFindings(findings([f]));
+  assert.ok(vf(F({ source: 'x' })).some((e) => /source/.test(e)));
+  assert.deepEqual(vf(MAIN_F()), []);
+  assert.ok(vf(MAIN_F({ decisionIds: [] })).length > 0);
+  assert.ok(vf(MAIN_F({ fixableInDesignBasis: undefined })).length > 0);
+  assert.ok(vf(MAIN_F({ type: 'FOLLOW_UP', blocking: false })).length > 0);
+  assert.ok(vf(MAIN_F({ scenario: '' })).length > 0);
+  assert.ok(vf(MAIN_F({ fixableInDesign: null })).length > 0);
 });

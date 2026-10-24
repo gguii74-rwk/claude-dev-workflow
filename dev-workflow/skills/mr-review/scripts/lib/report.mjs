@@ -11,6 +11,8 @@ export class ReportError extends Error {}
 export const VERDICTS = ['APPROVE', 'HOLD_EVIDENCE', 'CHANGES_REQUESTED', 'RETURN_TO_DESIGN'];
 const TYPES = ['DEFECT', 'MISSING_EVIDENCE', 'DESIGN_DRIFT', 'FOLLOW_UP'];
 const CONF = ['high', 'medium', 'low'];
+const DECISION_RESULTS = ['KEPT', 'VIOLATED', 'UNKNOWN'];
+const DESIGN_TYPES = ['DEFECT', 'DESIGN_DRIFT'];
 const BLOCK_MAX_LINES = 40;
 // 정리(cleanup) 때 남기는 JSON 의 문자열 값에 어댑터 마스킹 + 비밀값 제거(`maskText` = 어댑터 mask + SECRET_MASK, 40자 SHA 보존 — pack.mjs, R5-2·C1-1)를 적용한다(R3-9) — 키 이름은 건드리지 않는다(`"token": "FIXED"` 같은 값이 키워드 패턴에 걸리지 않게 값만 본다).
 // 보존할 SHA 는 호출자가 넘긴 아는 SHA(`knownShas` — 스냅샷·MR 구조화 칸)만이다(8b FR1-2).
@@ -49,6 +51,19 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
       if (!CONF.includes(f.confidence)) errors.push(`findings[${i}].confidence 는 high|medium|low`);
       if (!['yes', 'no'].includes(f.fixableInDesign)) errors.push(`findings[${i}].fixableInDesign 은 yes|no`);
       if ((f.type === 'DEFECT' || f.type === 'DESIGN_DRIFT') && !(typeof f.scenario === 'string' && f.scenario.trim())) errors.push(`findings[${i}].scenario 는 DEFECT·DESIGN_DRIFT 에 필수`);
+      // 사안 키(1.4.0 ③ D123 · R5-2) — 선택(없으면 []), 있으면 원소 형식까지 본다: 행을 못 찾은 검토자의 [null] 끼리 교집합이 맞아 다른 발견이 합쳐지는 길을 막는다
+      if (f.decisionIds !== undefined && !(Array.isArray(f.decisionIds) && f.decisionIds.every((x) => typeof x === 'string' && x !== ''))) errors.push(`findings[${i}].decisionIds 는 비어 있지 않은 문자열 배열`);
+      if (f.intentRows !== undefined && !(Array.isArray(f.intentRows) && f.intentRows.every((x) => Number.isSafeInteger(x) && x >= 1))) errors.push(`findings[${i}].intentRows 는 양의 정수 배열`);
+    });
+  }
+  // 기준선 결정 대조표(1.4.0 ① D123·D125) — 필수 배열(빈 배열 허용 · intent 와 같은 엄격함)
+  if (!Array.isArray(obj.decisions)) errors.push('decisions 배열 필요');
+  else {
+    obj.decisions.forEach((d, i) => {
+      if (!d || typeof d !== 'object') { errors.push(`decisions[${i}] 객체 아님`); return; }
+      if (typeof d.id !== 'string' || !d.id) errors.push(`decisions[${i}].id 문자열 필요`);
+      if (!DECISION_RESULTS.includes(d.result)) errors.push(`decisions[${i}].result 는 ${DECISION_RESULTS.join('|')}`);
+      if (d.result === 'VIOLATED' && !(typeof d.location === 'string' && d.location.trim())) errors.push(`decisions[${i}].location 은 VIOLATED 에 필수`);
     });
   }
   return { ok: errors.length === 0, errors };
@@ -74,8 +89,23 @@ export function validateFindings(fnd) {
     if (f.unresolved != null && typeof f.unresolved !== 'boolean') errors.push(`${f.id ?? i}.unresolved 는 boolean`);
     if (!['yes', 'no', null, undefined].includes(f.fixableInDesign)) errors.push(`${f.id ?? i}.fixableInDesign 은 yes|no|null`);
     if (![null, undefined, 'confirmed', 'dismissed'].includes(f.resolution)) errors.push(`${f.id ?? i}.resolution 은 confirmed|dismissed|null`);
+    // 출처(1.4.0 ① D124) — 메인이 결정 어김을 발견으로 올린 항목은 `main`. 검토자 발견에 요구하는 것과 같은 수준의 근거를 요구한다(감사 가능)
+    if (f.source !== undefined && !['claude', 'codex', 'both', 'main'].includes(f.source)) errors.push(`${f.id ?? i}.source 는 claude|codex|both|main`);
+    if (f.source === 'main') {
+      const filled = (v) => typeof v === 'string' && v.trim() !== '';
+      if (!DESIGN_TYPES.includes(f.type)) errors.push(`${f.id ?? i}: 출처 main 발견은 type DEFECT|DESIGN_DRIFT`);
+      if (!(Array.isArray(f.decisionIds) && f.decisionIds.length && f.decisionIds.every(filled))) errors.push(`${f.id ?? i}: 출처 main 발견은 decisionIds(어긴 결정 id) 필수`);
+      for (const k of ['evidence', 'scenario', 'fixableInDesignBasis']) if (!filled(f[k])) errors.push(`${f.id ?? i}: 출처 main 발견은 ${k} 필수`);
+      if (!['yes', 'no'].includes(f.fixableInDesign)) errors.push(`${f.id ?? i}: 출처 main 발견은 fixableInDesign yes|no`);
+    }
   });
   return errors;
+}
+
+// 결정 어김 대응 발견(1.4.0 ① D124·D133) — VIOLATED 인 결정 id 중 그 id 를 decisionIds 에 가진 DEFECT·DESIGN_DRIFT 발견(blocking 값 무관)이 없는 것. 입력 검사이지 판정 규칙이 아니다(D9)
+export function decisionGaps(fnd) {
+  const covered = new Set((fnd?.findings || []).filter((f) => DESIGN_TYPES.includes(f?.type)).flatMap((f) => (Array.isArray(f.decisionIds) ? f.decisionIds : [])));
+  return [...new Set((Array.isArray(fnd?.decisions) ? fnd.decisions : []).filter((d) => d?.result === 'VIOLATED' && !covered.has(d.id)).map((d) => d.id))];
 }
 
 // ── 배포본 불일치 요약(1.3.2 ⑪ — spec 2026-10-22 3.⑪ D40·D46) ─────────────────────
@@ -466,7 +496,9 @@ export function renderReport({ adapter, work, early = false }) {
     for (const f of merged) {
       // 병합 발견(1.3.5 ④)은 「(차단 — 기계 증거 … 에 병합)」 — 재리뷰 파서(APPENDIX_D_RE)가 이 줄을 이전 차단 발견으로 복원하지 않는다(「4.」 에 없는 항목)
       const mergedTag = (verdict?.merged || []).includes(f.id) ? ` (차단 — 기계 증거 ${(f.coveredBy || []).join(', ')} 에 병합)` : ' (차단)';
-      parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? mergedTag : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}`,
+      // 새 표지(1.4.0 ①)는 ` · 출처 ` 뒤에만 붙인다 — 재리뷰 파서(APPENDIX_D_RE)는 출처 앞까지만 읽는다(3.①-8)
+      const decTag = (f.decisionIds || []).length ? ` · 결정 ${f.decisionIds.join(', ')}` : '';
+      parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? mergedTag : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}${decTag}`,
         `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${claimsText(f.fixableInDesignClaims)}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
         `  - 권고: ${f.recommendation || '-'}`,
         `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);
@@ -474,6 +506,29 @@ export function renderReport({ adapter, work, early = false }) {
     // 기계 증거(machineEvidence)도 같은 줄 형식으로 — 실행 블록 축약 ④ 가 접은 `M-…` 항목을 재리뷰(task-03 parseAppendixD)가 여기서 복원한다(R5-3). 모델 발견만 적으면 접힌 기계 항목은 영구 미확보 → M-rereview 가 남는다.
     for (const m of verdict?.machineEvidence || []) parts.push(`- **${m.id}** [기계] MISSING_EVIDENCE (차단) — ${m.detail} (-:-) · 출처 machine · 확신 -`, `  - 근거: 스크립트 결정적 검사(${m.kind}) — 모델 발견이 아니다`);
     parts.push('');
+    // 부록 E — 기준선 결정 대조표(1.4.0 ① — spec 2026-10-24 3.①-7 D131·D132·D134): check 가 뽑은 결정이 1건 이상일 때만(0건 = 현행 바이트). 헤더·실행 블록·판정 불변(D124 — 남은 어김은 verdict 가 막는다)
+    const decs = check.baselineDecisions || [];
+    if (decs.length) {
+      const byDec = new Map((Array.isArray(findings?.decisions) ? findings.decisions : []).map((d) => [d?.id, d]));
+      const claimStr = (c) => Object.entries(c).map(([k, v]) => `${mline(k)}: ${v}`).join(' / ');
+      const kind = (d) => (!d || d.result === '미응답' ? 'missing' : d.result === 'VIOLATED' ? 'violated' : d.result === 'UNKNOWN' ? (d.claims && d.basis !== '메인 정정' ? 'conflict' : 'unknown') : 'other');
+      const count = (k) => decs.filter((x) => kind(byDec.get(x.id)) === k).length;
+      const skipped = check.baselineDecisionsSkipped || [];
+      const head = [`결정 ${decs.length}건`, `어김 ${count('violated')}`, `모름 ${count('unknown')}`, `상충 ${count('conflict')}`, ...(count('missing') ? [`미응답 ${count('missing')}`] : []), ...(check.baselineDecisionsTruncated ? ['상한 초과(100건만)'] : []), ...(skipped.length ? [`결정 추출 생략(기준선 ${skipped.join(', ')} — 마스킹 잔존)`] : [])];
+      const resultText = (d) => {
+        if (!d || d.result === '미응답') return '미응답';
+        if (d.claims && typeof d.claims === 'object' && d.basis === '메인 정정') return `${d.result}(메인 정정 — ${claimStr(d.claims)})`;
+        if (d.claims && typeof d.claims === 'object' && d.result === 'UNKNOWN') return `UNKNOWN(상충 — ${claimStr(d.claims)})`;
+        return d.result;
+      };
+      parts.push('## 부록 E — 기준선 결정 대조표', '', `- ${head.join(' · ')}`, '', '| id | 결정 | 결과 | 코드 위치 | 관련 발견 |', '|---|---|---|---|---|');
+      for (const x of decs) {
+        const d = byDec.get(x.id);
+        const rel = (findings?.findings || []).filter((f) => (f.decisionIds || []).includes(x.id)).map((f) => f.id);
+        parts.push(`| ${tc(x.id)} | ${tc(x.text)} | ${tc(resultText(d))} | ${tc(d?.location || '-')} | ${tc(rel.join(', ') || '-')} |`);
+      }
+      parts.push('');
+    }
   }
   const text = parts.join('\n');
   // F5 — 산출물 전체 비밀값 제거: 어댑터 개인정보 패턴 + 엔진 내장 비밀값 리터럴 패턴(§5.7 「하드코딩 비밀값은 [masked:secret] <파일:줄>로만」 — 어댑터 mask 에 비밀번호·API 키 패턴이 없어도 적용). SHA 는 보존(R5-2 — maskText).
@@ -596,6 +651,8 @@ export async function cmdVerdict(args, ctx) {
   if (!findings) throw new ReportError('findings.json 이 없다 — 메인이 두 검토자 결과를 병합해 먼저 써야 한다(SC-5)');
   const ferr = validateFindings(findings);
   if (ferr.length) throw new ReportError(`findings.json 검증 실패: ${ferr.slice(0, 5).join('; ')}${ferr.length > 5 ? ` 외 ${ferr.length - 5}건` : ''}`);
+  const gaps = decisionGaps(findings);
+  if (gaps.length) throw new ReportError(`결정 어김 대응 발견 없음 ${gaps.join(', ')} — 결과를 정정하거나 출처 main 발견을 추가한다`);
   const resolves = {};
   for (const r of args.resolve || []) { const m = String(r).match(/^([^=]+)=(.+)$/); if (!m) throw new ReportError(`--resolve 형식: <id>=confirmed|dismissed|confirmed:fixable|confirmed:design (${r})`); resolves[m[1]] = m[2]; }
   for (const id of Object.keys(resolves)) if (!findings.findings.some((f) => f.id === id)) throw new ReportError(`--resolve ${id}: findings.json 에 없는 id — 리뷰어 결정이 조용히 버려지지 않게 멈춘다`);

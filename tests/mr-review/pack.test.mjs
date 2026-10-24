@@ -986,3 +986,51 @@ test('저장소 문서 경로 기준선(repo-path)은 워크트리 모드에서 
   assert.equal(d.p.sources.find((x) => x.kind === 'baseline').packB, 'body');
   assert.match(d.b, /LAST-CRITERION-450/);
 });
+
+// ── 1.4.0 ① 기준선 결정 목록 블록 (spec 2026-10-24 3.①-3 · D130·D131) ──
+const DEC = (n, key, line, text) => ({ id: `B${n}-${key}`, baseline: n, key, line, text });
+test('팩: 기준선 출처 본문 앞에 결정 목록 블록(두 팩) · lines 는 블록 포함 · 헤더 「결정 k건」 · sources[i].decisions · 0건·키 없음은 바이트 불변 (1.4.0 AC①-5)', () => {
+  const s0 = setup();
+  const before = runPack(s0);
+  writeFileSync(join(s0.work, 'check.json'), JSON.stringify({ baselineLinks: [{ kind: 'repo', project: 'docs', path: 'x.md', status: '확보', file: 'baseline/1.md', version: 'abc' }, { kind: 'issue', status: '미확보', file: null }], baselineDecisions: [] }));
+  const zero = runPack(s0);
+  assert.equal(zero.a, before.a);                                                         // 0건 → 블록 없음(현행 바이트)
+  assert.equal(zero.b, before.b);
+  const s = setup();
+  writeFileSync(join(s.work, 'check.json'), JSON.stringify({ baselineLinks: [{ kind: 'repo', project: 'docs', path: 'x.md', status: '확보', file: 'baseline/1.md', version: 'abc' }], baselineDecisions: [DEC(1, 'D1', 12, '조회는 매번 비밀번호를 요구한다'), DEC(1, 'D3', 40, '잔존 상태는 조회에 쓰지 않는다 010-1234-5678')] }));
+  const { p, a, b } = runPack(s);
+  const src = p.sources.find((x) => x.kind === 'baseline');
+  const block = '결정 목록(기계 추출 2건 — `decisions` 의 id 로 쓴다 · 괄호는 아래 원문의 줄 번호):\n- B1-D1 (12행) 조회는 매번 비밀번호를 요구한다\n';
+  assert.ok(a.includes(`### [${src.id}] baseline · baseline/1.md\n\n${block}- B1-D3 (40행) 잔존 상태는 조회에 쓰지 않는다 010-1234-5678\n\n<!-- mr-review source:`), a);
+  assert.ok(b.includes(`### [${src.id}] baseline · baseline/1.md\n\n${block}- B1-D3 (40행) 잔존 상태는 조회에 쓰지 않는다 [masked:phone]\n\n<!-- mr-review source:`), b);   // 결정 문구도 팩 B 마스킹
+  assert.equal(src.decisions, 2);
+  assert.equal(src.lines, 3 + 1 + readFileSync(join(s.work, 'baseline', '1.md'), 'utf8').split('\n').length);   // 블록 3줄 + 빈 줄 + 원문
+  for (const t of [a, b]) assert.ok(t.includes(`- [${src.id}] baseline · baseline/1.md · 결정 2건`), t);
+  assert.equal(p.sources.find((x) => x.kind === 'adapter').decisions, undefined);        // 기준선 출처만
+});
+
+test('팩 결정 블록: 상한 초과 표시 · 전송 금지 기준선의 결정은 팩 B 에 없다 · repo-path 포인터면 포인터 블록 뒤 (1.4.0 AC①-5 · D130·D131 · D4·D14)', () => {
+  const s = setup();
+  writeFileSync(join(s.work, 'baseline', '2.md'), '<!-- mr-review source: beta:guide/other.md@fff -->\n# 베타\n');
+  const hundred = Array.from({ length: 100 }, (_, i) => DEC(1, `D${i + 1}`, i + 2, `결정 ${i + 1}`));
+  writeFileSync(join(s.work, 'check.json'), JSON.stringify({ baselineLinks: [
+    { kind: 'repo', project: 'docs', path: 'x.md', status: '확보', file: 'baseline/1.md', version: 'abc' },
+    { kind: 'repo', project: 'beta', path: 'guide/other.md', status: '확보', file: 'baseline/2.md', version: 'fff' },
+  ], baselineDecisions: [...hundred, DEC(2, 'D4', 2, 'BETA-DECISION-TEXT')], baselineDecisionsTruncated: true }));
+  const { p, a, b } = runPack(s);
+  assert.match(a, /결정 목록\(기계 추출 100건 — `decisions` 의 id 로 쓴다 · 괄호는 아래 원문의 줄 번호 · 상한 초과\(100건만\)\):/);
+  assert.match(a, /BETA-DECISION-TEXT/);
+  assert.doesNotMatch(b, /BETA-DECISION-TEXT|B2-D4/);
+  assert.equal(p.sources.find((x) => x.ref === 'baseline/2.md').decisions, 1);
+  assert.match(b, /\[S\d+\] baseline · \(Codex 미제공\)\n/);                                // 미제공 출처 줄에는 결정 수도 없다
+  // repo-path 포인터(1.3.5 AC⑤-8 픽스처) — 팩 B 는 포인터 블록 뒤에 결정 블록, 팩 A 는 원문 앞
+  const s2 = setup();
+  const spec = 'docs/specs/a.md';
+  const { head } = withWorktree(s2, { [spec]: '# a\n| D1 | 포인터 결정 |\n' });
+  writeFileSync(join(s2.work, 'baseline', '1.md'), `<!-- mr-review source: alpha:${spec}@${head} ref=${head} pinned=true -->\n# a\n| D1 | 포인터 결정 |\n`);
+  writeFileSync(join(s2.work, 'check.json'), JSON.stringify({ baselineLinks: [{ raw: spec, kind: 'repo-path', project: 'alpha', ref: head, path: spec, pinned: true, resolved_sha: head, status: '확보', reason: '', file: 'baseline/1.md', version: head, inDiff: false }], baselineDecisions: [DEC(1, 'D1', 3, '포인터 결정')] }));
+  const r2 = runPack(s2);
+  assert.equal(r2.p.sources.find((x) => x.kind === 'baseline').packB, 'pointer');
+  assert.ok(r2.b.includes(`(워크트리 문서 — 본문은 현재 작업 디렉터리에서 직접 읽어라: \`${spec}\` · 2줄)\n\n결정 목록(기계 추출 1건 — \`decisions\` 의 id 로 쓴다 · 괄호는 아래 원문의 줄 번호):\n- B1-D1 (3행) 포인터 결정\n`), r2.b);
+  assert.ok(r2.a.includes('결정 목록(기계 추출 1건 — `decisions` 의 id 로 쓴다 · 괄호는 아래 원문의 줄 번호):\n- B1-D1 (3행) 포인터 결정\n\n<!-- mr-review source:'), r2.a);
+});
