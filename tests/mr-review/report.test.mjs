@@ -1851,3 +1851,98 @@ test('render ②: 부록 D 「근거(메인)」·「검토자 주장」 · 없�
   assert.match(sec, /설계 내 수정 가능 주장: claude=yes/);
   assert.match(sec, /`verdict --resolve F1=confirmed:fixable` 또는 `verdict --resolve F1=confirmed:design` 또는 `verdict --resolve F1=dismissed`/);
 });
+
+// ── 1.4.0 ③ verdict 의 needsMain 검사 · 판정 ↔ 발견 일치(findingsDigest) · 부록 D alt 표지 (spec 2026-10-24 3.③-3·5·7 · D140·D142 · R3-1·R5-1·C1) ──
+const { createHash: createHash3 } = await import('node:crypto');
+const sha = (p) => createHash3('sha256').update(readFileSync(p)).digest('hex');
+test('verdict needsMain: decided null → ERR(exit 2) · 전부 채우면 현행 계산 · 키 없음은 검사 없음 · ERR 이면 기존 verdict.json 삭제 · blocking null 은 검증 오류 (1.4.0 AC③-6 · D142 · R3-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const nm = (decided) => [{ id: 'F3', why: 'DESIGN_DRIFT 차단 승격 판단', decided }, { id: 'baselineCandidateRelevant', why: '후보 문서 관련성 상충', decided: '후보 문서가 이번 변경을 다룬다' }];
+  const work = fullWork(join(root, 'a'), { fnd: findings([F({ id: 'F3' })], { needsMain: nm(null) }) });
+  writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'APPROVE', head_sha: HEAD }));
+  const r = runCli(['verdict', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 2);
+  assert.equal(r.first, 'ERR needsMain 미처리 F3 — 메인이 판단해 decided 를 채운다');
+  assert.ok(!existsSync(join(work, 'verdict.json')));                                          // ERR → 옛 판정 삭제(R3-1)
+  writeFileSync(join(work, 'findings.json'), JSON.stringify(findings([F({ id: 'F3' })], { needsMain: nm('코드 확인 — :357 관문만 확인') })));
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT determined CHANGES_REQUESTED');
+  const w2 = fullWork(join(root, 'b'), { fnd: findings([F({ type: 'DESIGN_DRIFT', blocking: null })]) });
+  const r2 = runCli(['verdict', '--adapter', adapter, '--work', w2]);
+  assert.equal(r2.code, 2);
+  assert.match(r2.first, /^ERR findings\.json 검증 실패: F1\.blocking 은 boolean/);
+});
+
+test('findingsDigest: verdict 가 최종 findings.json 바이트 sha256 을 새긴다(--resolve 영속 뒤 값 포함) · 뒤에 findings.json 이 바뀌면 render 는 판정 블록 없이 리뷰 실패 · cleanup 은 일치하던 경우만 갱신 (1.4.0 AC③-6b · R5-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, 'a'), { fnd: findings([F({ unresolved: true, source: 'codex', confidence: 'low' })]) });
+  const fp = join(work, 'findings.json');
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work]).first, 'VERDICT undetermined -');
+  assert.equal(readJson(join(work, 'verdict.json')).findingsDigest, sha(fp));
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=dismissed']).first, 'VERDICT determined APPROVE');
+  assert.equal(readJson(join(work, 'verdict.json')).findingsDigest, sha(fp));                  // 영속된 바이트 기준
+  const out = join(root, 'r.md');
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.match(readFileSync(out, 'utf8'), /추천 판정\(초안\) APPROVE/);
+  const f = readJson(fp); f.findings.push(F({ id: 'F2', title: '나중에 추가된 결함' })); writeFileSync(fp, JSON.stringify(f));
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  const md = readFileSync(out, 'utf8');
+  assert.doesNotMatch(md, /추천 판정\(초안\) APPROVE/);
+  assert.match(md, /리뷰 실패[^\n]*verdict\.json 이 지금 findings\.json 으로 계산한 판정이 아니다 — verdict 를 다시 실행/);
+  // verdict → cleanup → render: 판정 블록 유지(cleanup 이 다이제스트 갱신) · cleanup 전에 이미 불일치면 그대로 리뷰 실패
+  const ok = fullWork(join(root, 'b'), { fnd: findings([F({ title: '비밀번호 평문 로그 010-1234-5678' })]) });
+  assert.equal(runCli(['verdict', '--adapter', adapter, '--work', ok]).first, 'VERDICT determined CHANGES_REQUESTED');
+  assert.equal(runCli(['cleanup', '--adapter', adapter, '--work', ok]).code, 0);
+  assert.doesNotMatch(readFileSync(join(ok, 'findings.json'), 'utf8'), /010-1234-5678/);       // 가린 사본
+  assert.equal(readJson(join(ok, 'verdict.json')).findingsDigest, sha(join(ok, 'findings.json')));
+  const o2 = join(root, 'b.md');
+  runCli(['render', '--adapter', adapter, '--work', ok, '--out', o2]);
+  assert.match(readFileSync(o2, 'utf8'), /추천 판정\(초안\) CHANGES_REQUESTED/);
+  const bad = fullWork(join(root, 'c'), { fnd: findings([F()]) });
+  runCli(['verdict', '--adapter', adapter, '--work', bad]);
+  writeFileSync(join(bad, 'findings.json'), JSON.stringify(findings([F(), F({ id: 'F2' })])));
+  runCli(['cleanup', '--adapter', adapter, '--work', bad]);
+  const o3 = join(root, 'c.md');
+  runCli(['render', '--adapter', adapter, '--work', bad, '--out', o3]);
+  assert.match(readFileSync(o3, 'utf8'), /리뷰 실패[^\n]*verdict 를 다시 실행/);
+});
+
+test('findingsDigest 영속 순서: 옛 verdict.json(지문 없음 APPROVE) 이 있는 W 에서 --resolve 영속 직후 중단되면 verdict.json 이 없다 → render 리뷰 실패 · verdict.json 을 지울 수 없으면 --resolve ERR 이고 findings.json 불변 (1.4.0 AC③-6b · C1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const fnd = findings([F({ fixableInDesign: null, fixableInDesignClaims: { claude: 'yes', codex: 'no' } })]);
+  const work = fullWork(join(root, 'a'), { fnd });
+  writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'APPROVE', head_sha: HEAD, contractPolicyId: 'TEST-POLICY-v1.0', defects: [], evidence: [], unresolved: [], branches: {}, machineEvidence: [], reasons: [] }));
+  // 새 verdict.json 쓰기에서 죽는 프로세스(영속은 끝남) — --import 훅으로 주입
+  const hook = join(root, 'crash.mjs');
+  writeFileSync(hook, "import fs from 'node:fs';\nconst w = fs.writeFileSync;\nfs.writeFileSync = function (p, ...a) { if (String(p).endsWith('verdict.json')) throw new Error('injected crash'); return w.call(this, p, ...a); };\n");
+  const r = spawnSync7(process.execPath, ['--import', hook, CLI, 'verdict', '--adapter', adapter, '--work', work, '--resolve', 'F1=confirmed:design'], { encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(readJson(join(work, 'findings.json')).findings[0].fixableInDesign, 'no');      // 영속은 됐다
+  assert.ok(!existsSync(join(work, 'verdict.json')));                                          // 옛 APPROVE 는 영속 전에 지워졌다
+  const out = join(root, 'r.md');
+  runCli(['render', '--adapter', adapter, '--work', work, '--out', out]);
+  const md = readFileSync(out, 'utf8');
+  assert.doesNotMatch(md, /추천 판정\(초안\) APPROVE/);
+  assert.match(md, /리뷰 실패[^\n]*verdict\.json 없음/);
+  // 지울 수 없는 verdict.json(비어 있지 않은 디렉터리) → ERR · findings.json 바이트 불변
+  const w2 = fullWork(join(root, 'b'), { fnd });
+  mkdirSync(join(w2, 'verdict.json', 'x'), { recursive: true });
+  const before = readFileSync(join(w2, 'findings.json'), 'utf8');
+  const r2 = runCli(['verdict', '--adapter', adapter, '--work', w2, '--resolve', 'F1=confirmed:design']);
+  assert.equal(r2.code, 2);
+  assert.match(r2.first, /^ERR .*verdict\.json/);
+  assert.equal(readFileSync(join(w2, 'findings.json'), 'utf8'), before);
+});
+
+test('render 부록 D alt 표지: 합친 유형과 다른 쪽 원본 유형만 「(codex: … 로 분류 — 제목)」 · 같은 유형은 표지 없음 · alt 없는 현행 바이트 · 파서 불변 (1.4.0 AC③-7 · D140)', () => {
+  const root = tmp();
+  const fnd = findings([F({ alt: { codex: { type: 'MISSING_EVIDENCE', title: 'V13 적용일 확인 대기', file: 'design.md', line_start: 522, evidence: 'e' } }, joinedBy: 'decisionIds' }), F({ id: 'F2', title: '두 번째', alt: { codex: { type: 'DEFECT', title: '다른 제목', file: 'x', line_start: 1, evidence: 'e' } }, joinedBy: 'fingerprint' })]);
+  const { md } = renderOne(root, { fnd });
+  const d = sectionOf(md, '## 부록 D');
+  assert.match(d.split('\n').find((l) => l.startsWith('- **F1**')), / · 출처 both · 확신 high · \(codex: MISSING_EVIDENCE 로 분류 — V13 적용일 확인 대기\)$/);
+  assert.match(d.split('\n').find((l) => l.startsWith('- **F2**')), / · 출처 both · 확신 high$/);
+  assert.doesNotMatch(md, /joinedBy|decisionIds/);
+  assert.deepEqual([...parseAppendixD(md).entries()].map(([id, x]) => [id, x.type, x.title]), [['F1', 'DEFECT', '비밀번호 평문 로그'], ['F2', 'DEFECT', '두 번째']]);
+});

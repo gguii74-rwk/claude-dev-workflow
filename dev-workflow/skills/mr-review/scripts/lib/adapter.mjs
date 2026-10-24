@@ -151,11 +151,11 @@ export function matchesAny(p, globs) {
   return (globs || []).some((g) => globToRegExp(g).test(p));
 }
 
-// CLI 인자: --key value · --flag · 반복 --resolve. env.MR_REVIEW_ADAPTER 는 --adapter 의 대체(인자 우선).
-const FLAGS = new Set(['diff-only', 'early', 'paginate']);
-const MULTI = new Set(['resolve']);
+// CLI 인자: --key value · --flag · 반복 --resolve·--same(1.4.0 ③ merge). env.MR_REVIEW_ADAPTER 는 --adapter 의 대체(인자 우선).
+const FLAGS = new Set(['diff-only', 'early', 'paginate', 'force']);
+const MULTI = new Set(['resolve', 'same']);
 export function parseArgs(argv, env = process.env) {
-  const out = { resolve: [] };
+  const out = { resolve: [], same: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith('--')) { (out._ ||= []).push(a); continue; }

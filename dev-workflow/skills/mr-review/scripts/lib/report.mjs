@@ -394,6 +394,14 @@ function fieldMask(v, maskRules, keepShas) {
   return v;
 }
 
+// 표 밖 줄 값(1.3.4 S2 — D73·D88): 원문 마스킹 뒤 줄바꿈을 펴고, 편 값이 달라졌으면 다시 가린다. mline = 원문 가림 → line. render 와 merge 출력(1.4.0 ③ R3-2)이 같이 쓴다
+export function makeLineMask(maskRules, keep) {
+  const line = (v) => { const raw = String(v); const flat = raw.replace(NL, ' '); return flat === raw ? raw : fieldMask(flat, maskRules, keep); };
+  const mline = (v) => line(fieldMask(String(v), maskRules, keep));
+  return { line, mline };
+}
+const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
 export function renderReport({ adapter, work, early = false }) {
   const mr = readJson(work, 'mr.json');
   let snapshot = readJson(work, 'snapshot.json');
@@ -410,14 +418,18 @@ export function renderReport({ adapter, work, early = false }) {
     if (!verdict) verdict = failed('verdict.json 없음 — verdict 를 실행하지 않았다(검토 결과 0개 경로에서도 verdict 를 실행한다)');
     else if (verdict.head_sha !== snapshot.head_sha) verdict = failed(`verdict.json 의 head ${s7(verdict.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 판정은 쓰지 않는다(verdict 를 다시 실행)`);
     else if (findings?.head_sha && findings.head_sha !== snapshot.head_sha) verdict = failed(`findings.json 의 head ${s7(findings.head_sha)} ≠ 스냅샷 head ${s7(snapshot.head_sha)} — 이전 실행의 검토 결과는 쓰지 않는다`);
+    // 판정 ↔ 발견 일치(1.4.0 ③ R5-1): verdict.json 의 findingsDigest 가 지금 findings.json 바이트와 다르면 그 판정은 이 발견으로 계산한 것이 아니다(재병합·손 편집·영속 중단). 키 없는 옛 verdict.json 은 head 대조만(현행)
+    else if (typeof verdict.findingsDigest === 'string') {
+      const fp = path.join(work, 'findings.json');
+      if (!fs.existsSync(fp) || sha256(fs.readFileSync(fp)) !== verdict.findingsDigest) verdict = failed('verdict.json 이 지금 findings.json 으로 계산한 판정이 아니다 — verdict 를 다시 실행');
+    }
   }
   // 리포트 재료는 전부 필드 단위로 먼저 가린다(8b FR2-3 FC1 재판정) — 잔존 필드는 통째로 `[masked:unmaskable]`(maskText). 조립본 전체 검사는 아래에서 한 번 더.
   // 표 밖 줄 값(1.3.4 S2 — spec 2026-10-23 3.S2-3 D73·D88): 원문 마스킹 뒤 줄바꿈을 펴고, 편 값이 달라졌으면 다시 가린다(줄로 나뉘어 있던 `--password⏎x` 가 펴져 `--password x` 가 되어도 여기서 가려진다).
   // 렌더가 조립하는 줄에 들어가는 파일·외부 도구·검토자 출력 유래 문자열은 전부 거친다(D88 원칙) — 조립 자리마다 거는 대신 렌더 입력의 문자열 값 전부에 건다(`lines`). 줄바꿈이 없는 값은 그대로(바이트 동일)
   // 원문 가림은 `lines` 안에서 문자열마다 먼저 한다(review-loop(impl) R1-2 — 앞단 가림에서 빠진 입력(snapshot)이 펴진 뒤에야 가려져 잘린 PEM 본문이 남던 순서 회귀).
   // 객체 키는 원형 그대로 둔다(R2-1 — 가림이 키를 바꾸면 `id`·`title` 같은 구조 필드를 덮어쓴다) — 키가 리포트에 찍히는 자리(`claimsText` — 검토자 출력 fixableInDesignClaims)에서만 가리고 편다(R1-1)
-  const line = (v) => { const raw = String(v); const flat = raw.replace(NL, ' '); return flat === raw ? raw : fieldMask(flat, adapter.mask, keep); };
-  const mline = (v) => line(fieldMask(String(v), adapter.mask, keep));
+  const { line, mline } = makeLineMask(adapter.mask, keep);
   const lines = (v) => (typeof v === 'string' ? mline(v) : Array.isArray(v) ? v.map(lines) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, lines(x)])) : v);
   // 표 셀 값(⑭ — R3-2·R4-1): `lines` 를 거친 값에 `line` 뒤 `cell()` 로 `|` 를 처리한다
   const tc = (v) => cell(line(v));
@@ -515,7 +527,9 @@ export function renderReport({ adapter, work, early = false }) {
       const mergedTag = (verdict?.merged || []).includes(f.id) ? ` (차단 — 기계 증거 ${(f.coveredBy || []).join(', ')} 에 병합)` : ' (차단)';
       // 새 표지(1.4.0 ①)는 ` · 출처 ` 뒤에만 붙인다 — 재리뷰 파서(APPENDIX_D_RE)는 출처 앞까지만 읽는다(3.①-8)
       const decTag = (f.decisionIds || []).length ? ` · 결정 ${f.decisionIds.join(', ')}` : '';
-      parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? mergedTag : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}${decTag}`,
+      // merge 가 합친 다른 쪽 원본(1.4.0 ③ D140) — 유형이 다를 때만 표지(같은 유형·다른 제목은 findings.json alt 와 부록 C 로만)
+      const altTag = Object.entries(f.alt && typeof f.alt === 'object' ? f.alt : {}).filter(([, a]) => a && a.type !== f.type).map(([m, a]) => ` · (${mline(m)}: ${a.type} 로 분류 — ${a.title})`).join('');
+      parts.push(`- **${f.id}** [${f.lens}] ${f.type}${f.blocking ? mergedTag : ''} — ${f.title} (${f.file || '-'}:${f.line_start || '-'}) · 출처 ${f.source} · 확신 ${f.confidence}${decTag}${altTag}`,
         `  - 근거: ${f.evidence || '-'}`, `  - 실패 시나리오: ${f.scenario || '-'}`, `  - 설계 내 수정 가능: ${f.fixableInDesign || '-'}${f.fixableInDesign === 'no' ? ` · 깨진 전제: ${f.brokenPremise || '-'}` : ''}${f.fixableInDesignBasis ? ` · 근거(메인): ${f.fixableInDesignBasis}` : ''}${f.fixableInDesignClaims ? ` · 검토자 주장: ${claimsText(f.fixableInDesignClaims)}${f.fixableInDesign !== 'no' && f.brokenPremise ? ` · 깨진 전제(주장): ${f.brokenPremise}` : ''}` : ''}`,
         `  - 권고: ${f.recommendation || '-'}`,
         `  - 리뷰어 결정: ${f.resolution ? `${f.resolution}${f.dismissReason ? ` · 근거: ${f.dismissReason}` : ''}` : (f.unresolved ? '미확정(리뷰어 확인 필요)' : '-')}`);
@@ -616,6 +630,8 @@ export function cleanup({ work, adapter }) {
   const failed = [];   // 마스킹 못 해 원문을 지운 것
   const stuck = [];    // 지우지 못해 W 에 남은 것 — 원문일 수 있다. 보고는 실제 삭제 결과대로 한다(R6-1)
   const dropRaw = (f, p, why) => { if (tryRm(p)) { if (why) failed.push(`${f}(${why})`); return true; } stuck.push(`${f}(${why || '파싱 불가'} — 원문 잔존)`); return false; };
+  // 판정 ↔ 발견 일치(1.4.0 ③ R5-1): 가리기 전 findings.json 이 verdict.json 의 findingsDigest 와 같았으면, 둘을 가린 뒤 가린 findings.json 의 값으로 다시 쓴다(해시가 가림에 걸려 바뀌지 않게 마스킹 뒤에)
+  const digestBefore = (() => { try { const v = JSON.parse(fs.readFileSync(path.join(work, 'verdict.json'), 'utf8')); return typeof v?.findingsDigest === 'string' && v.findingsDigest === sha256(fs.readFileSync(path.join(work, 'findings.json'))); } catch { return false; } })();
   for (const f of MASKED_JSON) {
     const p = path.join(work, f);
     if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isFile()) continue;   // 없거나 일반 파일이 아니다(심볼릭 링크·디렉터리) — 따라가 읽거나 쓰지 않는다. 아래 허용 목록 정리가 링크만 지운다(1.3.1 R1-1)
@@ -630,6 +646,16 @@ export function cleanup({ work, adapter }) {
       fs.renameSync(tmpFile, p);
     } catch (e) { tryRm(tmpFile); dropRaw(f, p, e.code || e.message); continue; }   // 교체 실패도 원문을 남기지 않으려 지우고, 나머지 정리를 계속한다
     masked += 1;
+  }
+  if (digestBefore) {
+    try {
+      const vp = path.join(work, 'verdict.json');
+      const v = JSON.parse(fs.readFileSync(vp, 'utf8'));
+      v.findingsDigest = sha256(fs.readFileSync(path.join(work, 'findings.json')));
+      const tmpFile = path.join(work, `.verdict.json.${randomBytes(6).toString('hex')}.digest`);
+      fs.writeFileSync(tmpFile, JSON.stringify(v, null, 2), { flag: 'wx' });
+      fs.renameSync(tmpFile, vp);
+    } catch { /* 갱신 못 하면 다음 render 는 리뷰 실패(fail-closed) — verdict 를 다시 돌리면 된다 */ }
   }
   // 허용 9종 밖은 이름을 몰라도 지운다(숨김 파일 포함). 심볼릭 링크는 링크만 — rmSync 는 링크 대상을 따라가지 않는다
   // 지울 수 없는 항목(권한 등)은 모아 두고 나머지를 끝까지 지운 뒤 ERR 로 남은 항목을 알린다 — 항목 하나가 정리 전체를 멈추지 않게(R5-2 잔존)
@@ -659,13 +685,31 @@ export async function cmdReviewValidate(args) {
   throw err;
 }
 
+// verdict.json 삭제 — 없으면 그대로, 지우지 못하면 ERR(1.4.0 ③ R3-1·C1: 옛 판정이 새 발견과 함께 렌더되지 않게)
+function removeVerdict(work) {
+  const vp = path.join(work, 'verdict.json');
+  if (!fs.lstatSync(vp, { throwIfNoEntry: false })) return;
+  try { fs.rmSync(vp); } catch { throw new ReportError('verdict.json 을 지울 수 없다 — findings.json 을 바꾸지 않는다'); }
+}
+
 export async function cmdVerdict(args, ctx) {
+  // ERR 로 끝나면(검증 실패 · needsMain 미처리 · 결정 어김 대응 없음 · --resolve 오류 모두) 그 W 의 verdict.json 을 지운다(1.4.0 ③ R3-1 — fail-closed)
+  try { return verdictRun(args, ctx); } catch (e) { try { removeVerdict(ctx.work); } catch { /* 지우지 못해도 원래 오류를 알린다 — render 는 findingsDigest 로 막는다 */ } throw e; }
+}
+
+function verdictRun(args, ctx) {
   const check = readJson(ctx.work, 'check.json');
   const snapshot = readJson(ctx.work, 'snapshot.json');
   const deploy = readJson(ctx.work, 'deploy.json');
   const findings = readJson(ctx.work, 'findings.json');
   if (!check || !snapshot) throw new ReportError('check.json·snapshot.json 이 필요하다');
-  if (!findings) throw new ReportError('findings.json 이 없다 — 메인이 두 검토자 결과를 병합해 먼저 써야 한다(SC-5)');
+  if (!findings) throw new ReportError('findings.json 이 없다 — merge 로 두 검토자 결과를 먼저 합쳐야 한다(SC-5)');
+  // 사람 판단 칸(1.4.0 ③ D117·D142) — merge 가 남긴 needsMain 에 decided 가 없는 항목이 있으면 멈춘다. 키 없는 옛 findings.json 은 검사 없음
+  if (findings && typeof findings === 'object' && 'needsMain' in findings) {
+    if (!Array.isArray(findings.needsMain)) throw new ReportError('findings.json 검증 실패: needsMain 은 배열');
+    const pending = [...new Set(findings.needsMain.filter((n) => !(typeof n?.decided === 'string' && n.decided.trim())).map((n) => String(n?.id)))];
+    if (pending.length) throw new ReportError(`needsMain 미처리 ${pending.join(', ')} — 메인이 판단해 decided 를 채운다`);
+  }
   const ferr = validateFindings(findings, { confirmedNull: false });
   if (ferr.length) throw new ReportError(`findings.json 검증 실패: ${ferr.slice(0, 5).join('; ')}${ferr.length > 5 ? ` 외 ${ferr.length - 5}건` : ''}`);
   const gaps = decisionGaps(findings);
@@ -680,8 +724,11 @@ export async function cmdVerdict(args, ctx) {
   if (cerr.length) throw new ReportError(`findings.json 검증 실패: ${cerr.slice(0, 5).join('; ')}${cerr.length > 5 ? ` 외 ${cerr.length - 5}건` : ''}`);
   const v = computeVerdict({ check, snapshot, deploy, findings, resolves: {}, judgeId: ctx.adapter.policy.judgeId });
   // --resolve 결정은 findings.json 에 영속화한다 — 다음 호출(다른 후보의 --resolve·render)이 같은 결정을 다시 쓴다. 기각 근거(dismissReason)는 메인이 미리 적어 둔 값이 그대로 남는다. 접미(fixable|design)는 fixableInDesign 확정값으로 남는다(R6-3).
-  if (touched) fs.writeFileSync(path.join(ctx.work, 'findings.json'), JSON.stringify(findings, null, 2));
-  fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify(v, null, 2));
+  // 영속 순서(1.4.0 ③ C1): 옛 verdict.json 삭제 → findings.json 영속 → 새 verdict.json(findingsDigest = 최종 findings.json 바이트 sha256, R5-1). 두 쓰기 사이에 중단돼도 옛 판정이 남지 않는다
+  const fp = path.join(ctx.work, 'findings.json');
+  let bytes = fs.readFileSync(fp);
+  if (touched) { removeVerdict(ctx.work); bytes = Buffer.from(JSON.stringify(findings, null, 2)); fs.writeFileSync(fp, bytes); }
+  fs.writeFileSync(path.join(ctx.work, 'verdict.json'), JSON.stringify({ ...v, findingsDigest: sha256(bytes) }, null, 2));
   return `VERDICT ${v.status} ${v.verdict || '-'}`;
 }
 
