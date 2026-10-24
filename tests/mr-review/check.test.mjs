@@ -608,7 +608,7 @@ test('check: 결정은 가린 원문에서 뽑는다 — 여러 줄 비밀값 �
   assert.equal(d3.line, rawLine - 1);   // 가림이 두 줄을 한 줄로 접었다 — line 은 가린 원문 기준(§6 한계)
   const yaml = bodyDecisions('- ① 왜: x\ndb:\n  password: |\n    - D2 YAMLSECRETVALUE77\n- D5 일반').c;
   assert.doesNotMatch(all(yaml), /YAMLSECRETVALUE77/);
-  const pem = bodyDecisions('- ① 왜: x\n- D9 -----BEGIN PRIVATE KEY----- MIIEvQIBADANBgkqhkiG9w0BAQEFAASC QUJDREVGR0hJSktMTU5PUFFSU1RVVldY').c;
+  const pem = bodyDecisions('- ① 왜: x\n- D9 -----BEGIN PRIVATE KEY-----\u2028MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\u2028QUJDREVGR0hJSktMTU5PUFFSU1RVVldY').c;
   assert.doesNotMatch(all(pem), /MIIEvQIBADANBgkqhkiG9w0BAQEFAASC|QUJDREVGR0hJSktMTU5PUFFSU1RVVldY/);
   const tok = 'T0KENabcdefghij0123456789KLMNOPQRSTUVWXYZ';
   const edge = bodyDecisions(`- ① 왜: x\n- D8 ${'가 '.repeat(140)}Authorization: Bearer ${tok}`).c;
@@ -616,7 +616,7 @@ test('check: 결정은 가린 원문에서 뽑는다 — 여러 줄 비밀값 �
   const adm = bodyDecisions('- ① 왜: x\n- D6 담당 연락처 010-1234-5678').c;
   assert.doesNotMatch(all(adm), /010-1234-5678/);
   assert.match(all(adm), /\[masked:phone\]/);
-  const ls = bodyDecisions('- ① 왜: x - D6 줄 구분 뒤 결정').c;
+  const ls = bodyDecisions('- ① 왜: x\u2028- D6 줄 구분 뒤 결정').c;
   assert.ok(ids(ls).some((i) => /-D6$/.test(i)), all(ls));
   // 잔존(짝 없는 여러 줄 XML 값) → 0건 + Skipped
   const res = bodyDecisions('- ① 왜: x\n- D1 결정\n<password>\nUNCLOSEDSECRET').c;
