@@ -38,10 +38,12 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
   if (!['claude', 'codex'].includes(obj.reviewer)) errors.push('reviewer 는 claude|codex');
   if (!/^[0-9a-f]{40}$/.test(String(obj.head_sha || ''))) errors.push('head_sha 는 40자 SHA');
   // 기대값 대조(F6·D11) — 검토자가 이전 head 의 결과나 다른 검토자 이름을 내면 병합에서 숨겨지지 않게 여기서 떨어뜨린다
-  if (head && obj.head_sha !== head) errors.push(`head_sha ${String(obj.head_sha).slice(0, 7)} ≠ 기대 head ${String(head).slice(0, 7)}(스냅샷) — 이전 head 의 검토 결과`);
-  if (reviewer && obj.reviewer !== reviewer) errors.push(`reviewer ${obj.reviewer} ≠ 기대 ${reviewer}`);
+  // 오류 문장 = 필드 위치·번호·고정 사유만 — 검토자 값은 허용 꼴일 때만 적는다(impl R2-1: 비밀값·줄바꿈이 review-validate 출력으로 새지 않게)
+  if (head && obj.head_sha !== head) errors.push(`head_sha ${/^[0-9a-f]{40}$/.test(String(obj.head_sha)) ? obj.head_sha.slice(0, 7) : '(40자 SHA 아님)'} ≠ 기대 head ${String(head).slice(0, 7)}(스냅샷) — 이전 head 의 검토 결과`);
+  if (reviewer && obj.reviewer !== reviewer) errors.push(`reviewer ${['claude', 'codex'].includes(obj.reviewer) ? obj.reviewer : '(claude|codex 아님)'} ≠ 기대 ${reviewer}`);
   if (!Array.isArray(obj.findings)) errors.push('findings 배열 필요');
   if (!Array.isArray(obj.intent)) errors.push('intent 배열 필요');
+  else obj.intent.forEach((it, i) => { if (!it || typeof it !== 'object' || Array.isArray(it)) errors.push(`intent[${i}] 객체 아님`); });   // [null] 이 병합을 TypeError 로 멈추지 않게 그 모델만 무효(impl R2-2)
   if (typeof obj.baselineCandidateRelevant !== 'boolean') errors.push('baselineCandidateRelevant 는 boolean');
   if (Array.isArray(obj.findings)) {
     obj.findings.forEach((f, i) => {
@@ -62,7 +64,7 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
     obj.decisions.forEach((d, i) => {
       if (!d || typeof d !== 'object') { errors.push(`decisions[${i}] 객체 아님`); return; }
       if (typeof d.id !== 'string' || !d.id) errors.push(`decisions[${i}].id 문자열 필요`);
-      else if (obj.decisions.findIndex((x) => x?.id === d.id) < i) errors.push(`decisions[${i}].id 중복 ${d.id}`);   // 같은 id 둘 = 어느 답인지 모른다 — 병합이 한쪽을 버리지 않게 무효(impl R1-2)
+      else if (obj.decisions.findIndex((x) => x?.id === d.id) < i) errors.push(`decisions[${i}].id 중복(앞 decisions[${obj.decisions.findIndex((x) => x?.id === d.id)}])`);   // 같은 id 둘 = 어느 답인지 모른다 — 병합이 한쪽을 버리지 않게 무효(impl R1-2)
       if (!DECISION_RESULTS.includes(d.result)) errors.push(`decisions[${i}].result 는 ${DECISION_RESULTS.join('|')}`);
       if (d.result === 'VIOLATED' && !(typeof d.location === 'string' && d.location.trim())) errors.push(`decisions[${i}].location 은 VIOLATED 에 필수`);
     });

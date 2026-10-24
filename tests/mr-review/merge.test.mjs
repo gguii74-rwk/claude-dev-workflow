@@ -286,3 +286,12 @@ test('CLI merge: KNOWN·NEEDS_ADAPTER · 첫 줄 형식 · snapshot.json 없음 
   assert.match(merge(w2, '--valid', 'claude').first, /^ERR .*snapshot\.json/);
   assert.match(runCli(['merge', '--work', w.work, '--valid', 'claude'], { MR_REVIEW_ADAPTER: '' }).first, /^ERR .*--adapter/);
 });
+
+test('merge: 한 검토자의 intent:[null] 은 그 모델만 invalid(스키마 불통과: intent[0]) — 정상 검토자로 단일 모델 병합을 끝낸다(TypeError 없음) (1.4.0 impl R2-2)', () => {
+  const w = mkW({ claude: REV('claude', [RF()]), codex: REV('codex', [], { intent: [null] }) });
+  const r = merge(w, '--valid', 'claude,codex');
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^MERGED reviewers=claude /);
+  assert.equal(line2(r, 'invalid'), 'invalid: codex(스키마 불통과: intent[0])');
+  assert.doesNotMatch(r.err, /TypeError/);
+});

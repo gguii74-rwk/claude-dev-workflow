@@ -1735,8 +1735,34 @@ test('validateReview: decisions 의 같은 id 중복은 INVALID — 뒤의 VIOLA
   for (const decisions of [[kept, viol], [viol, kept], [kept, { ...kept }]]) {
     const r = validateReview(RV({ decisions }));
     assert.equal(r.ok, false, JSON.stringify(decisions));
-    assert.ok(r.errors.some((e) => /decisions\[1\]\.id 중복 B1-D1/.test(e)), r.errors.join('; '));
+    assert.ok(r.errors.some((e) => /^decisions\[1\]\.id 중복\(앞 decisions\[0\]\)$/.test(e)), r.errors.join('; '));
   }
+});
+
+test('validateReview 오류 문장은 필드 위치·번호·고정 사유만 — 검토자 값(중복 id · reviewer · head_sha)의 비밀값·줄바꿈을 인용하지 않는다(CLI 한 줄) (1.4.0 impl R2-1)', () => {
+  const evil = 'password=SYNTHPRIVATE12345\n가짜 줄\u2028둘째';
+  const d = { id: evil, result: 'KEPT', location: null, basis: '미확인' };
+  const r = validateReview(RV({ decisions: [d, { ...d }] }));
+  assert.ok(r.errors.includes('decisions[1].id 중복(앞 decisions[0])'), r.errors.join('; '));
+  const w = validateReview(RV({ reviewer: evil, head_sha: evil }), { head: HEAD, reviewer: 'codex' });
+  assert.ok(w.errors.includes('reviewer (claude|codex 아님) ≠ 기대 codex'), w.errors.join('; '));
+  assert.ok(w.errors.includes('head_sha (40자 SHA 아님) ≠ 기대 head aaaaaaa(스냅샷) — 이전 head 의 검토 결과'), w.errors.join('; '));
+  for (const e of [...r.errors, ...w.errors]) assert.doesNotMatch(e, /SYNTHPRIVATE|가짜 줄|\u2028|\n/, e);
+  const root = tmp();
+  const f = join(root, 'dup.json');
+  writeFileSync(f, JSON.stringify(RV({ reviewer: evil, decisions: [d, { ...d }] })));
+  const c = runCli(['review-validate', '--file', f, '--reviewer', 'claude']);
+  assert.equal(c.code, 1);
+  assert.doesNotMatch(c.out + c.err, /SYNTHPRIVATE|가짜 줄|\u2028/);
+  assert.equal((c.out + c.err).trim().split('\n').length, 1);
+});
+
+test('validateReview: intent 원소는 객체 — [null] 은 INVALID(그 모델만 무효 · 병합이 TypeError 로 멈추지 않는다) · row 없는 객체는 현행 VALID (1.4.0 impl R2-2)', () => {
+  const r = validateReview(RV({ intent: [null] }));
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.includes('intent[0] 객체 아님'), r.errors.join('; '));
+  assert.equal(validateReview(RV({ intent: ['x'] })).ok, false);
+  assert.equal(validateReview(RV({ intent: [{ criterion: 'c', result: 'KEPT', location: null, basis: '미확인' }] })).ok, true);
 });
 
 const DCHK = () => ({ ...baseCheck(), baselineDecisions: [{ id: 'B1-D1', baseline: 1, key: 'D1', line: 12, text: '조회는 매번 비밀번호' }, { id: 'B1-D3', baseline: 1, key: 'D3', line: 40, text: '잔존 상태는 변경에만' }, { id: 'B1-D7', baseline: 1, key: 'D7', line: 52, text: '탈퇴는 즉시' }] });
