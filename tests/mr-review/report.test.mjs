@@ -1623,3 +1623,55 @@ test('review-loop description 에 「남의 MR 은 mr-review」 안내 · mr-rev
   assert.match(rl, /someone else's MR/);
   assert.match(desc(join(CLI, '..', '..', 'SKILL.md')), /that is review-loop/);
 });
+
+// ── 1.4.0 ⑦ 옛 버전 스킬 경고 (spec 2026-10-24 3.⑦ D118·D119·D144~D146) ──
+const { spawnSync: spawnSync7 } = await import('node:child_process');
+test('SKILL.md §0: 스킬 버전 비교 블록이 어댑터 확인보다 앞 · SKILL_STALE·SKILL_VERSION_UNKNOWN·SKILL_DEV · ${CLAUDE_SKILL_DIR} · /reload-plugins · 새 세션 · /clear 비해소 · 배너 복사 지시 없음 (1.4.0 AC⑦-1)', () => {
+  const skill = skillText();
+  const s0 = skill.slice(skill.indexOf('## 0. 전제 확인'), skill.indexOf('## 1. 작업 디렉터리'));
+  for (const s of ['SKILL_STALE', 'SKILL_VERSION_UNKNOWN', 'SKILL_DEV', '${CLAUDE_SKILL_DIR}', '`/reload-plugins`', '세션을 새로 열어', '`/clear` 로는 해소되지 않는다']) assert.ok(s0.includes(s), s);
+  const cmp = s0.indexOf('B="${CLAUDE_SKILL_DIR}"');
+  assert.ok(cmp >= 0 && cmp < s0.indexOf('ADAPTER_MISSING'), '비교 블록이 어댑터 확인 블록보다 앞');
+  const block = s0.slice(s0.lastIndexOf('```bash', cmp), s0.indexOf('\n```\n', cmp));
+  assert.doesNotMatch(block, /Base directory/);
+});
+
+test('SKILL.md §0 스킬 버전 비교 스니펫: 같은 설치 = 출력 없음 · 옛 폴더 = SKILL_STALE · 캐시 밖 = SKILL_DEV · 기록 없음·JSON 오류·엔트리 없음·빈 B·installPath 없음 = SKILL_VERSION_UNKNOWN · project 우선 · 심볼릭 링크 실제 경로 (1.4.0 AC⑦-2)', () => {
+  const skill = skillText();
+  const blk = skill.slice(skill.indexOf('B="${CLAUDE_SKILL_DIR}"'));
+  const m = blk.match(/node -e '([\s\S]*?)' "\$P" "\$PWD" "\$B"/);
+  assert.ok(m, 'node -e 스니펫');
+  const run = (P, cwd, B) => { const r = spawnSync7(process.execPath, ['-e', m[1], P, cwd, B], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); return r.stdout.trim(); };
+  const root = tmp();
+  const P = join(root, 'plugins');
+  const ver = (v) => join(P, 'cache', 'm', 'dev-workflow', v);
+  for (const v of ['1.3.2', '1.3.5', '1.4.0']) mkdirSync(join(ver(v), 'skills', 'mr-review'), { recursive: true });
+  const rec = (plugins) => writeFileSync(join(P, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins }));
+  const cwd = join(root, 'proj');
+  mkdirSync(cwd, { recursive: true });
+  rec({ 'dev-workflow@m': [{ scope: 'user', installPath: ver('1.4.0'), version: '1.4.0' }] });
+  assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), '');
+  assert.equal(run(P, cwd, join(ver('1.3.2'), 'skills', 'mr-review')), 'SKILL_STALE loaded=1.3.2 installed=1.4.0');
+  const repo = join(root, 'somewhere', 'repo', 'dev-workflow', 'skills', 'mr-review');
+  mkdirSync(repo, { recursive: true });
+  assert.equal(run(P, cwd, repo), 'SKILL_DEV');
+  assert.equal(run(P, cwd, ''), 'SKILL_VERSION_UNKNOWN');                      // 치환 없음(옛 Claude Code)
+  // project 엔트리(projectPath === PWD) 우선
+  rec({ 'dev-workflow@m': [{ scope: 'user', installPath: ver('1.3.5'), version: '1.3.5' }, { scope: 'project', projectPath: cwd, installPath: ver('1.4.0'), version: '1.4.0' }] });
+  assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), '');
+  assert.equal(run(P, join(root, 'other'), join(ver('1.4.0'), 'skills', 'mr-review')), 'SKILL_STALE loaded=1.4.0 installed=1.3.5');
+  // installPath 가 심볼릭 링크 → 실제 경로로 비교
+  const link = join(root, 'link-140');
+  symlinkSync(ver('1.4.0'), link);
+  rec({ 'dev-workflow@m': [{ scope: 'user', installPath: link, version: '1.4.0' }] });
+  assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), '');
+  // installPath 가 디스크에 없음 → UNKNOWN(STALE 아님)
+  rec({ 'dev-workflow@m': [{ scope: 'user', installPath: ver('9.9.9'), version: '9.9.9' }] });
+  assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), 'SKILL_VERSION_UNKNOWN');
+  rec({ 'other@m': [{ scope: 'user', installPath: ver('1.4.0'), version: '1.4.0' }] });
+  assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), 'SKILL_VERSION_UNKNOWN');
+  writeFileSync(join(P, 'installed_plugins.json'), '{ not json');
+  assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), 'SKILL_VERSION_UNKNOWN');
+  rmSync(join(P, 'installed_plugins.json'));
+  assert.equal(run(P, cwd, join(ver('1.4.0'), 'skills', 'mr-review')), 'SKILL_VERSION_UNKNOWN');
+});

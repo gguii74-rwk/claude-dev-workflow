@@ -32,6 +32,25 @@ description: Use when a designated reviewer wants a read-only, policy-formatted 
 
 ## 0. 전제 확인
 
+**스킬 버전 비교(맨 먼저 — 옛 스킬로는 아무것도 하지 않는다, 1.4.0 ⑦)**: 플러그인을 업데이트한 뒤에도 떠 있던 세션은 옛 버전 폴더의 스킬을 띄울 수 있다. 띄운 스킬 폴더(`${CLAUDE_SKILL_DIR}` — Claude Code 가 이 본문을 불러올 때 이 스킬 폴더의 실제 경로로 치환한다)와 설치 기록(`installed_plugins.json`)의 적용 엔트리(`projectPath === $PWD` → user → managed 순 — 아래 companion 해소와 같은 순위)를 실제 경로 접두로 비교한다.
+
+```bash
+B="${CLAUDE_SKILL_DIR}"; P="${CLAUDE_CODE_PLUGIN_CACHE_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins}"
+node -e 'const fs=require("fs"),p=require("path"),[P,cwd,B]=process.argv.slice(1),rp=(x)=>{try{return fs.realpathSync(x)}catch{return null}},under=(x,r)=>x===r||x.startsWith(r.endsWith(p.sep)?r:r+p.sep);
+const out=(()=>{let b=null;try{if(B&&fs.statSync(B).isDirectory())b=rp(B)}catch{}if(!b)return "SKILL_VERSION_UNKNOWN";
+const c=p.join(P,"cache");if(!under(b,rp(c)||p.resolve(c)))return "SKILL_DEV";
+let d;try{d=JSON.parse(fs.readFileSync(p.join(P,"installed_plugins.json"),"utf8"))}catch{return "SKILL_VERSION_UNKNOWN"}
+const r=(e)=>e.projectPath===cwd?0:e.scope==="user"?1:e.scope==="managed"?2:9;
+const a=Object.entries((d&&d.plugins)||{}).filter(([k])=>k.startsWith("dev-workflow@")).flatMap(([,v])=>Array.isArray(v)?v:[]).filter((e)=>e&&r(e)<9).sort((x,y)=>r(x)-r(y))[0];
+const ip=a&&typeof a.installPath==="string"?rp(a.installPath):null;if(!ip)return "SKILL_VERSION_UNKNOWN";if(under(b,ip))return "";
+const m=b.match(/[\\/]([^\\/]+)[\\/]skills[\\/][^\\/]+[\\/]?$/);return "SKILL_STALE loaded="+(m?m[1]:b)+" installed="+a.version})();if(out)console.log(out)' "$P" "$PWD" "$B"
+```
+
+- `SKILL_STALE loaded=<띄운 버전> installed=<설치 버전>` → **멈춘다**(`collect` 전이라 cleanup 불요) + 안내: 「띄운 스킬 <loaded> ≠ 설치 <installed> — 이 세션은 옛 스킬을 띄운다. **`/reload-plugins` 를 실행한 뒤 다시 띄우고, 그래도 같으면 Claude Code 세션을 새로 열어**(`/clear` 로는 해소되지 않는다) 다시 실행하라.」 옛 스킬의 리포트는 이미 고친 결함을 다시 낸다.
+- `SKILL_VERSION_UNKNOWN` → 시작 요약에 「스킬 버전 비교 불가(설치 기록 없음·읽기 실패·스킬 경로 치환 없음) — 설치 버전을 확인하라」 1줄 + **계속**(비교하지 못한 것을 「최신」이라 말하지 않는다).
+- `SKILL_DEV` → 시작 요약에 「스킬 버전 비교 생략 — 플러그인 캐시 밖 경로(저장소 직접 로드·`--plugin-dir`)」 1줄 + 계속.
+- 출력 없음 → 표시 없음(정상). 이 블록은 1.4.0 부터 들어 있어 그 전 버전 세션에는 효과가 없다.
+
 ```bash
 A="<--adapter 값, 없으면 빈 값>"; [ -n "$A" ] || A="${MR_REVIEW_ADAPTER}"; [ -f "$A" ] || echo ADAPTER_MISSING
 glab auth status 2>&1 | head -3
