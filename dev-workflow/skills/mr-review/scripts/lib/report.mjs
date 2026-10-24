@@ -62,6 +62,7 @@ export function validateReview(obj, { head = null, reviewer = null } = {}) {
     obj.decisions.forEach((d, i) => {
       if (!d || typeof d !== 'object') { errors.push(`decisions[${i}] 객체 아님`); return; }
       if (typeof d.id !== 'string' || !d.id) errors.push(`decisions[${i}].id 문자열 필요`);
+      else if (obj.decisions.findIndex((x) => x?.id === d.id) < i) errors.push(`decisions[${i}].id 중복 ${d.id}`);   // 같은 id 둘 = 어느 답인지 모른다 — 병합이 한쪽을 버리지 않게 무효(impl R1-2)
       if (!DECISION_RESULTS.includes(d.result)) errors.push(`decisions[${i}].result 는 ${DECISION_RESULTS.join('|')}`);
       if (d.result === 'VIOLATED' && !(typeof d.location === 'string' && d.location.trim())) errors.push(`decisions[${i}].location 은 VIOLATED 에 필수`);
     });
@@ -631,7 +632,14 @@ export function cleanup({ work, adapter }) {
   const stuck = [];    // 지우지 못해 W 에 남은 것 — 원문일 수 있다. 보고는 실제 삭제 결과대로 한다(R6-1)
   const dropRaw = (f, p, why) => { if (tryRm(p)) { if (why) failed.push(`${f}(${why})`); return true; } stuck.push(`${f}(${why || '파싱 불가'} — 원문 잔존)`); return false; };
   // 판정 ↔ 발견 일치(1.4.0 ③ R5-1): 가리기 전 findings.json 이 verdict.json 의 findingsDigest 와 같았으면, 둘을 가린 뒤 가린 findings.json 의 값으로 다시 쓴다(해시가 가림에 걸려 바뀌지 않게 마스킹 뒤에)
-  const digestBefore = (() => { try { const v = JSON.parse(fs.readFileSync(path.join(work, 'verdict.json'), 'utf8')); return typeof v?.findingsDigest === 'string' && v.findingsDigest === sha256(fs.readFileSync(path.join(work, 'findings.json'))); } catch { return false; } })();
+  // 두 파일 모두 일반 파일일 때만 읽는다 — 심볼릭 링크는 따라가지 않는다(impl R1-1: W 밖 판정 사본을 가린 적 없는 채 일반 파일로 옮겨 쓰던 길 · 1.3.1 R1-1 과 같은 원칙)
+  const readRegular = (f) => {
+    const p = path.join(work, f);
+    if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isFile()) throw new Error(`${f} 일반 파일 아님`);
+    const fd = fs.openSync(p, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+    try { if (!fs.fstatSync(fd).isFile()) throw new Error(`${f} 일반 파일 아님`); return fs.readFileSync(fd); } finally { fs.closeSync(fd); }
+  };
+  const digestBefore = (() => { try { const v = JSON.parse(readRegular('verdict.json').toString('utf8')); return typeof v?.findingsDigest === 'string' && v.findingsDigest === sha256(readRegular('findings.json')); } catch { return false; } })();
   for (const f of MASKED_JSON) {
     const p = path.join(work, f);
     if (!fs.lstatSync(p, { throwIfNoEntry: false })?.isFile()) continue;   // 없거나 일반 파일이 아니다(심볼릭 링크·디렉터리) — 따라가 읽거나 쓰지 않는다. 아래 허용 목록 정리가 링크만 지운다(1.3.1 R1-1)
@@ -650,8 +658,8 @@ export function cleanup({ work, adapter }) {
   if (digestBefore) {
     try {
       const vp = path.join(work, 'verdict.json');
-      const v = JSON.parse(fs.readFileSync(vp, 'utf8'));
-      v.findingsDigest = sha256(fs.readFileSync(path.join(work, 'findings.json')));
+      const v = JSON.parse(readRegular('verdict.json').toString('utf8'));   // 마스킹 루프가 가린 일반 파일만 — 그 사이 링크로 바뀌었으면 갱신하지 않는다
+      v.findingsDigest = sha256(readRegular('findings.json'));
       const tmpFile = path.join(work, `.verdict.json.${randomBytes(6).toString('hex')}.digest`);
       fs.writeFileSync(tmpFile, JSON.stringify(v, null, 2), { flag: 'wx' });
       fs.renameSync(tmpFile, vp);

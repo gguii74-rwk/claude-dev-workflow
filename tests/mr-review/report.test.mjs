@@ -836,6 +836,22 @@ test('cleanup: 허용 JSON 이름(mr.json)이 W 밖 파일을 가리키는 심�
   assert.match(r.out, /^extra: .*mr\.json/m);
 });
 
+test('cleanup: verdict.json 이 W 밖 판정 사본을 가리키는 심볼릭 링크면 지문이 맞아도 따라가 읽거나 일반 파일로 바꿔 쓰지 않는다 — 원문 비밀값이 W 에 남지 않는다 (1.4.0 impl R1-1)', async () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(join(root, 'w'), { fnd: findings([]) });
+  const outside = join(root, 'verdict-backup.json');
+  const body = JSON.stringify({ status: 'determined', verdict: 'APPROVE', head_sha: HEAD, findingsDigest: (await import('node:crypto')).createHash('sha256').update(readFileSync(join(work, 'findings.json'))).digest('hex'), note: 'password=hunter2pass' });
+  writeFileSync(outside, body);
+  rmSync(join(work, 'verdict.json'), { force: true });
+  symlinkSync(outside, join(work, 'verdict.json'));
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(outside, 'utf8'), body);                                             // 대상 불변
+  for (const f of readdirSync(work)) if (statSync(join(work, f)).isFile()) assert.doesNotMatch(readFileSync(join(work, f), 'utf8'), /hunter2pass/, f);
+  assert.ok(!readdirSync(work).includes('verdict.json'));                                         // 링크는 지운다(허용 9종 = 일반 파일만)
+});
+
 test('SKILL.md: §0 공통 종료 절차에 cleanup ERR 목록이 비었을 때(없음)의 정상 종료 안내 · §8 cleanup 첫 줄 extra=<n> (1.3.1 AC⑤-6 · D33)', () => {
   const skill = readFileSync(join(CLI, '..', '..', 'SKILL.md'), 'utf8');
   const s0 = skill.slice(skill.indexOf('## 0. 전제 확인'), skill.indexOf('## 1. 작업 디렉터리'));
@@ -1711,6 +1727,16 @@ test('validateReview: decisions 필수 배열 · result 3종 · VIOLATED 는 loc
   const r = runCli(['review-validate', '--file', old]);
   assert.equal(r.code, 1);
   assert.match(r.first, /^INVALID .*decisions 배열 필요/);
+});
+
+test('validateReview: decisions 의 같은 id 중복은 INVALID — 뒤의 VIOLATED 가 병합에서 조용히 버려지는 길을 막는다(순서 무관) (1.4.0 impl R1-2)', () => {
+  const kept = { id: 'B1-D1', result: 'KEPT', location: null, basis: '미확인' };
+  const viol = { id: 'B1-D1', result: 'VIOLATED', location: 'src/A.java:357', basis: '코드로 확인' };
+  for (const decisions of [[kept, viol], [viol, kept], [kept, { ...kept }]]) {
+    const r = validateReview(RV({ decisions }));
+    assert.equal(r.ok, false, JSON.stringify(decisions));
+    assert.ok(r.errors.some((e) => /decisions\[1\]\.id 중복 B1-D1/.test(e)), r.errors.join('; '));
+  }
 });
 
 const DCHK = () => ({ ...baseCheck(), baselineDecisions: [{ id: 'B1-D1', baseline: 1, key: 'D1', line: 12, text: '조회는 매번 비밀번호' }, { id: 'B1-D3', baseline: 1, key: 'D3', line: 40, text: '잔존 상태는 변경에만' }, { id: 'B1-D7', baseline: 1, key: 'D7', line: 52, text: '탈퇴는 즉시' }] });

@@ -552,6 +552,15 @@ test('extractDecisions 기본 규칙: 표 행·목록·제목의 D<n> · 굵게 
   assert.deepEqual(extractDecisions('| D2 | 첫 표 |\n| D2 | 둘째 표 |').decisions.map((d) => d.text), ['첫 표']);
 });
 
+test('extractDecisions 표 꼴: 바깥 파이프 없는 표 행도 잡고 셀 안 이스케이프 파이프(\\|)는 구분자가 아니다 — 문구가 잘리지 않는다 · 파이프 섞인 본문 줄은 표로 오인하지 않는다 (1.4.0 impl R1-3)', () => {
+  assert.deepEqual(extractDecisions('D1 | 조회는 매번 비밀번호 | 비고').decisions.map((d) => [d.key, d.text]), [['D1', '조회는 매번 비밀번호']]);
+  assert.deepEqual(extractDecisions('**D2** | 굵은 키').decisions.map((d) => [d.key, d.text]), [['D2', '굵은 키']]);
+  assert.deepEqual(extractDecisions('| D1 | 입력은 A\\|B 중 하나만 허용하고 나머지는 거부한다 |').decisions.map((d) => d.text), ['입력은 A|B 중 하나만 허용하고 나머지는 거부한다']);
+  assert.deepEqual(extractDecisions('D3 | 값은 x\\|y 만').decisions.map((d) => d.text), ['값은 x|y 만']);
+  assert.deepEqual(extractDecisions('D4: 본문 | 파이프 섞인 줄').decisions, []);              // 바깥 파이프 없는 꼴은 첫 칸이 키뿐일 때만
+  assert.deepEqual(extractDecisions('- D5: a | b').decisions.map((d) => [d.key, d.text]), [['D5', 'a | b']]);   // 목록 꼴은 현행
+});
+
 test('extractDecisions 상한: 101건 → 100건 + truncated · 301자 → 300자 + … · 공백 정규화 (1.4.0 AC①-2 · D131)', () => {
   const many = Array.from({ length: 101 }, (_, i) => `- D${i + 1} 결정 ${i + 1}`).join('\n');
   const r = extractDecisions(many);

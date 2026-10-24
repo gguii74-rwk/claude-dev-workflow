@@ -121,6 +121,15 @@ const DECISION_TEXT_MAX = 300;
 const DKEY = /^(?:\*\*)?D(\d+)(?:\*\*)?(?=[ \t|:.)]|$)/;
 const tidy = (t) => { const v = [...String(t).replace(/\s+/g, ' ').trim()]; return v.length > DECISION_TEXT_MAX ? `${v.slice(0, DECISION_TEXT_MAX).join('')}…` : v.join(''); };
 const restText = (r) => r.replace(/^(?:\*\*)?D\d+(?:\*\*)?/, '').replace(/^[\s|:.)]+/, '');
+// 표 행의 칸 — 셀 안 `\|` 는 구분자가 아니다(impl R1-3). 바깥 파이프가 없는 행(`D1 | …`)은 첫 칸이 키뿐일 때만 표로 본다(파이프가 섞인 본문 줄 오인 방지)
+const tableCells = (l) => {
+  const t = l.trim();
+  const lead = t.startsWith('|');
+  if (!lead && !/(?<!\\)\|/.test(t)) return null;
+  const cells = t.replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
+  if (!lead && !/^(?:\*\*)?D\d+(?:\*\*)?$/.test(cells[0])) return null;
+  return cells;
+};
 export function extractDecisions(text, pattern = null) {
   const found = [];
   for (const [line, l] of outsideFences(String(text))) {
@@ -132,9 +141,9 @@ export function extractDecisions(text, pattern = null) {
       continue;
     }
     let m;
-    if (/^\s*\|/.test(l)) {
-      const cells = l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
-      if ((m = cells[0]?.match(DKEY))) found.push({ form: 0, key: `D${m[1]}`, line, text: cells.length > 1 ? cells[1] : restText(cells[0]) });
+    const cells = tableCells(l);
+    if (cells) {
+      if ((m = cells[0].match(DKEY))) found.push({ form: 0, key: `D${m[1]}`, line, text: cells.length > 1 ? cells[1] : restText(cells[0]) });
     } else if ((m = l.match(/^\s*(?:[-*+]|\d+[.)])\s+(.*)$/)) && DKEY.test(m[1])) {
       found.push({ form: 1, key: `D${m[1].match(DKEY)[1]}`, line, text: restText(m[1]) });
     } else if ((m = l.match(/^\s{0,3}#{1,6}\s+(.*)$/)) && DKEY.test(m[1])) {
