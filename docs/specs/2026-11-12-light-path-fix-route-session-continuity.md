@@ -1,6 +1,6 @@
 # 경량 경로 감량 검토 — 실측 2건(부정 결과) · orchestrate 모델표 별칭 갱신 (1.4.1)
 
-- 단계: 1–2 spec 초안 (2026-11-12) → §6 harden 회고 실측(「생략」 기각) → **3 harden-spec 완료 (2026-11-12 — 갭 대장 36건: 사실 18건 조회 해소 · 판단 17건 질문 해소(질문 7건 · 추천 채택 7/7 — 그중 10건은 G1 판정으로 범위와 함께 소멸) · 검증 필요(실측) 1건 · DEFERRED 0)** → **7 구현 완료 (2026-11-12 — `6db7fa7` · SKILL.md 1파일 · AC1~AC3·AC5 통과, §5a)** → 다음 = 8 impl 적대검증 → 9 릴리스(plugin.json 1.4.1)
+- 단계: 1–2 spec 초안 (2026-11-12) → §6 harden 회고 실측(「생략」 기각) → **3 harden-spec 완료 (2026-11-12 — 갭 대장 36건: 사실 18건 조회 해소 · 판단 17건 질문 해소(질문 7건 · 추천 채택 7/7 — 그중 10건은 G1 판정으로 범위와 함께 소멸) · 검증 필요(실측) 1건 · DEFERRED 0)** → **7 구현 완료 (2026-11-12 — `6db7fa7` · SKILL.md 1파일 · AC1~AC3·AC5 통과, §5a)** → **8 impl 적대검증 종결 (2026-11-12 — 적대 R1 approve · finding 0 · 빠른 종료(확인 라운드 없음) · `## 적대검증 ledger (impl)`)** → 다음 = 9 릴리스(plugin.json 1.4.1)
 - 경로: **경량 (사용자 확인 2026-11-12)** — 접촉 표면 무신호(orchestrate SKILL.md 문구 + plugin.json 버전). 4 spec 적대검증 생략(D6) · 5 plan 생략(D7 — 6은 자동 해당없음). 하한 3종(spec 문서 · harden-spec · impl 적대검증)은 수행한다.
 - 출처: 2026-11-12 스킬 재검토(Fable 5.2 세션 — 「작은 기능도 오래 걸린다」는 사용자 체감에 대한 실측) · 사용자 판정 2026-11-12 「1번(경량 경로의 harden·세션 경계)과 모델표 갱신부터 spec 초안」 · 사용자 판정 2026-11-12 Q1b · harden G1~G7(§7) · eval `report/LESSONS-2026-08-12.md` L1·L3·L4·L5 · `report/AB-2026-08-12.md` H2 · `report/OPSHUB2-2026-10-10.md` §3 · `report/UNATTENDED-2026-10-17.md` §0 · 메모리 `track-session-bypass-and-continuation`(2026-10-22 사용자 지시).
 - 선행: **불변** — `2026-08-08-dev-cycle-extension.md` D2·D3·D6 · C-6 G-h(단계 경계 = 새 세션) · `2026-08-12-dev-cycle-lightweight-default.md` D2·§7 · `2026-08-13-lightweight-skip-execution-rate.md` §7. **표기만 대체** — `2026-10-17-orchestrate-skill-delegated-auto-adopt.md` B14·D14의 기본 모델 id(§2 대체 선언).
@@ -226,3 +226,29 @@ H2 D2의 「하한 완화는 소멸률 실측 선행」을 이행한다. 새 런
 | D8 | 릴리스 버전 = 1.4.1(패치) | 사용자 판정(G5) — 새 경로·새 규약이 없다(1.2.1·1.3.x 전례) |
 | D9 | 트랙 완료 조건 = 설치본 1.4.1로 띄우는 다음 실제 트랙 1건의 기동 관측 기록(AC6). 확인만을 위한 트랙은 띄우지 않는다 | 사용자 판정(G6) — 1.2.1 AC7 전례 · 별칭 해소는 harden에서 이미 실측(F3) |
 | D10 | 문면 검증 = 문자열 검사 RED → GREEN(AC5). 서브에이전트 시나리오는 돌리지 않는다 | 사용자 판정(G7) — 1.2.1 전례(F9) · 실제 동작은 AC6이 확인한다 |
+
+## 적대검증 ledger (impl)
+
+보안 크리티컬: no (호출자 지정) — 접촉면 무관(orchestrate SKILL.md 모델표 2칸 + ① 5 문구 1구절)
+
+- 루프 설정: `--phase impl --security no --auto-rounds 1 --base 66cab07`(base SHA `66cab07a5442` = harden 종료 커밋 · 원격 미사용 — 브랜치 upstream 없음) · `--max 5` · `--confirm-rounds 2`(기본) · 위임 모드(`DEV_WORKFLOW_MODE=delegated`).
+- 입도: planless 2커밋(`6db7fa7` 구현 · `63a83a6` §5a 기록) — task 분해가 없어 **통합 1회**로 판정(base = 트랙 기준 `66cab07`). 4 spec 적대검증 생략(D6)이라 이 루프가 spec과 변경을 함께 봤다.
+- 게이트(비-npm repo — §5의 AC3 명령으로 갈음, 루프 시작 HEAD `63a83a6`): 옛 id 2종 0 · 별칭 2종 각 1 · 신규 2구절 각 1 · AC1 단계 문구 2종·AC2 기존 문자열 6종 각 1 · `wc -c` 16,839B(≤ 17,408) · `grep -cE '\$[0-9]'` 0 · `node --test tests/orchestrate/orchestrate.test.mjs` 56/56 · `git diff --stat 66cab07..HEAD -- dev-workflow tests .claude-plugin README.md README.ko.md README.ja.md` = SKILL.md 1파일 · 커밋 트레일러 0.
+- 기결정 가드 focus: 고정 첫 줄 + 이 spec `## 재논의 금지(기결정)` 전문(승계 블록 포함) + 정상보고 단서 강화형 3항. 닫힌 ledger 항목 없음 · 미확인 FIXED 큐 빔(진행 상태 줄 미포함).
+
+| 라운드 | 모드 | 시작 HEAD | verdict | critical / high / medium / low | 전환용 score | 미확인 FIXED 큐 |
+|---|---|---|---|---|---|---|
+| R1 | 적대(자동) | `63a83a6` | approve | 0 / 0 / 0 / 0 | 0 | 0 |
+
+- R1 요지(원문): 「출시를 막을 실질적 결함은 발견하지 못했습니다. spec과 diff가 일치하며 문자열 검사·분량 제한·구문 검사를 통과했습니다. 테스트는 읽기 전용 샌드박스의 임시 디렉터리 생성 EPERM으로 실행하지 못했으며, 정적 검토는 완료했습니다.」 — 실행 로그 10건 · 개별 명령 실패는 무효 사유 아님(게이트는 루프가 실행 — 56/56).
+
+| fingerprint | severity | disposition | 근거 |
+|---|---|---|---|
+| (해당 없음 — blocking·low finding 0건) | — | — | — |
+
+- **종결**: 빠른 종료(§2e) — 미확인 FIXED 큐 0 · 루프 직접 판정 0 · 추천 자동 채택(위임) 0 · 미판정 blocking 0 → 확인 라운드 없음. auto-rounds 1 도달 batch flush = 적재 0건. 적대 소진 1/5 · 확인 소진 0/2 · 복귀 미사용. 최종 verdict = 해당 없음(빠른 종료 — 적대 R1 approve는 보고 항목).
+- 판정 집계: FIXED 0 · ACCEPTED 0 · DEFERRED_TO_IMPL 0 · OUT_OF_SCOPE 0 · DUPLICATE 0 · ESCALATE 0 · DEFER_LOW 0 — 출처별: 사용자 0 · 루프 판정 0 · 추천 자동 채택(위임) 0.
+
+## 확인 대기 대장
+
+해당 없음 — 이 문서의 루프(impl)에서 추천 자동 채택(위임) 0건.
