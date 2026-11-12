@@ -1,6 +1,6 @@
 # 경량 경로 감량 검토 — 실측 2건(부정 결과) · orchestrate 모델표 별칭 갱신 (1.4.1)
 
-- 단계: 1–2 spec 초안 (2026-11-12) → §6 harden 회고 실측(「생략」 기각) → **3 harden-spec 완료 (2026-11-12 — 갭 대장 36건: 사실 18건 조회 해소 · 판단 17건 질문 해소(질문 7건 · 추천 채택 7/7 — 그중 10건은 G1 판정으로 범위와 함께 소멸) · 검증 필요(실측) 1건 · DEFERRED 0)** → 다음 = 7 구현(직접 — 문서 수정) → 8 impl 적대검증 → 9 릴리스
+- 단계: 1–2 spec 초안 (2026-11-12) → §6 harden 회고 실측(「생략」 기각) → **3 harden-spec 완료 (2026-11-12 — 갭 대장 36건: 사실 18건 조회 해소 · 판단 17건 질문 해소(질문 7건 · 추천 채택 7/7 — 그중 10건은 G1 판정으로 범위와 함께 소멸) · 검증 필요(실측) 1건 · DEFERRED 0)** → **7 구현 완료 (2026-11-12 — `6db7fa7` · SKILL.md 1파일 · AC1~AC3·AC5 통과, §5a)** → 다음 = 8 impl 적대검증 → 9 릴리스(plugin.json 1.4.1)
 - 경로: **경량 (사용자 확인 2026-11-12)** — 접촉 표면 무신호(orchestrate SKILL.md 문구 + plugin.json 버전). 4 spec 적대검증 생략(D6) · 5 plan 생략(D7 — 6은 자동 해당없음). 하한 3종(spec 문서 · harden-spec · impl 적대검증)은 수행한다.
 - 출처: 2026-11-12 스킬 재검토(Fable 5.2 세션 — 「작은 기능도 오래 걸린다」는 사용자 체감에 대한 실측) · 사용자 판정 2026-11-12 「1번(경량 경로의 harden·세션 경계)과 모델표 갱신부터 spec 초안」 · 사용자 판정 2026-11-12 Q1b · harden G1~G7(§7) · eval `report/LESSONS-2026-08-12.md` L1·L3·L4·L5 · `report/AB-2026-08-12.md` H2 · `report/OPSHUB2-2026-10-10.md` §3 · `report/UNATTENDED-2026-10-17.md` §0 · 메모리 `track-session-bypass-and-continuation`(2026-10-22 사용자 지시).
 - 선행: **불변** — `2026-08-08-dev-cycle-extension.md` D2·D3·D6 · C-6 G-h(단계 경계 = 새 세션) · `2026-08-12-dev-cycle-lightweight-default.md` D2·§7 · `2026-08-13-lightweight-skip-execution-rate.md` §7. **표기만 대체** — `2026-10-17-orchestrate-skill-delegated-auto-adopt.md` B14·D14의 기본 모델 id(§2 대체 선언).
@@ -96,6 +96,16 @@
 - 7 구현 = 직접 수정(plan 없음 — D7). 게이트 = AC1~AC5.
 - 8 impl 적대검증 — ledger 위치 = 이 spec 말미 `## 적대검증 ledger (impl)`(planless — D7). 비-npm repo라 §1 게이트는 AC3의 명령으로 갈음한다(dev-cycle 8단계 주석).
 - 9 릴리스 = plugin.json 1.4.1(D8) · README 3종 무변경(M2) · 4머신 `/plugin update dev-workflow@claude-dev-workflow` 안내 + 새 세션(G-f). push·머지는 사용자 확인.
+
+### 5a. 구현 기록 (7단계 — 2026-11-12, 맥북)
+
+- 구현 커밋 `6db7fa7` — `dev-workflow/skills/orchestrate/SKILL.md` 1파일(+3 −3줄): 모델표 2칸(26·27행) · ① 5 화면 대조 1구절(39행 — 굵은 글씨 「…`--model`과 대조」 바로 뒤, 공백 없이).
+- **AC5 RED(변경 전)**: `claude-fable-5-1` 1 · `claude-opus-5-5` 1 · ``Fable(`fable`)`` 0 · ``Opus(`opus`)`` 0 · 「별칭이면 계열 이름까지」 0 · 「표기의 버전은 블록에 적는다」 0.
+- **AC5 GREEN(변경 후)**: 옛 id 2종 0 · 별칭 2종 각 1 · 신규 2구절 각 1.
+- **AC1**: 표의 단계 문구 2종 각 1건 그대로. **AC2**: 기존 문자열 6종(「모델 표기」 · 「`--model`과 대조」 · 「렌더링 화면」 · 「확인 불가」 · 「후계·복구 기동도 같다」 · 「모델 id(화면 확인」) 각 1건 유지.
+- **AC3**: `wc -c` 16,839B(가조립 값과 일치 · 상한 17,408B · 여유 569B) · `node --test tests/orchestrate/orchestrate.test.mjs` 56/56 · `grep -cE '\$[0-9]'` 0 · 커밋 메시지 트레일러 없음.
+- **AC4(이 시점)**: `git diff --stat 66cab07..6db7fa7 -- dev-workflow tests .claude-plugin README.md README.ko.md README.ja.md` = SKILL.md 1파일. **plugin.json 1.4.0 → 1.4.1은 9 릴리스 커밋에서 올린다**(§5 · 1.4.0 `d8914d2` 전례) — AC4의 2파일 판정은 릴리스 뒤에 성립한다.
+- builder 재량 M1~M3 그대로: ① 3의 `--model <id>` 자리표시 · README 3종 · marketplace.json 무변경.
 
 ## 6. 선행 회고 실측 — Q1 판정 재료 (harden 전)
 
