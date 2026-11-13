@@ -45,6 +45,7 @@
 **수정**
 1. 값을 두 낱말로 바꾼다: **`worktree=removed`**(이 호출이 워크트리 디렉터리를 지웠다) · **`worktree=absent`**(지울 워크트리 디렉터리가 없었다 — diff-only · 이미 지워짐 · 재실행). 세 번째 낱말은 두지 않는다(D155 — diff-only 도 `absent`).
 2. **지우는 경로 = 항상 `<W>/worktree`**(D152). 현행은 `snapshot.json` 의 `worktree` 값을 그대로 믿고 그 경로를 지운다(조회 사실 `report.mjs:629` — `snapshot.worktree || path.join(work, 'worktree')`). 수집은 항상 `<W>/worktree` 에만 워크트리를 만들므로(조회 사실 `collect.mjs:96`) 정상 동작은 같고, 기록 파일의 값이 다른 곳을 가리킬 때(예: `W` 를 같은 머신의 다른 위치로 복사한 사본에서 cleanup — 사본의 `snapshot.json` 은 원본 경로를 가리킨다) 작업 디렉터리 밖을 지우지 않게 된다. `snapshot.worktree` 값은 지우기에 쓰지 않는다 — 달라도 오류로 알리지 않고 무시한다. `removed|absent` 판정도 `<W>/worktree` 의 존재 여부로 한다(판정 방식은 현행 `fs.existsSync` 그대로).
+   - **경로는 호출 시점에 절대 경로로 한 번 계산해(`path.resolve(work, 'worktree')`) 존재 확인·`git worktree remove` 인자·`fs.rmSync` 세 곳에 같은 값을 쓴다**(review-loop(spec) R1-1). CLI 는 `--work` 를 절대화하지 않으므로(조회 사실 `mr-review.mjs:44`) `path.join` 을 그대로 쓰면 상대 `--work`(예: `--work .`)에서 git 에 `worktree` 같은 상대 인자가 가는데, `git worktree remove` 는 인자를 등록 워크트리 경로의 **끝부분 일치**로도 찾는다 — 사본 `W` 에서 정리하면 원본만 등록돼 있을 때 원본 워크트리를 커밋 안 한 파일째 지운다(현행은 `snapshot.worktree` 의 절대 경로를 써서 이 길이 없다 — D152 가 새로 여는 회귀를 막는다).
 3. 그 밖의 동작은 불변: 워크트리 등록 해제(`git -C <snapshot.checkout> worktree remove --force <W>/worktree`)와 `prune` 은 지금처럼 디렉터리가 **있어서 지울 때만** 돈다 — `absent` 일 때 `prune` 을 새로 돌리지 않는다(D154: 사람이 디렉터리만 지우면 체크아웃에 등록이 남지만 해가 없고 다음 `collect` 가 치운다 — 조회 사실 `collect.mjs:101`). 워크트리 삭제가 실패하면 지금처럼 그 자리에서 예외(`ERR`)로 끝난다(D156 — §6 수용된 한계).
 4. `cleanup()` 반환 객체의 `worktree` 칸도 같은 문자열(`'removed'|'absent'`)로 바꾼다(조회 사실: 호출자 = `cmdCleanup` 과 테스트뿐 — `report.mjs:806` · `tests/mr-review/report.test.mjs`).
 5. 첫 줄의 나머지 칸(`zip=`·`raw=`·`masked=`·`extra=`)·둘째 줄(`extra: …`)·`ERR` 경로 — 불변.
@@ -59,6 +60,7 @@
 - ACⓑ-6 SKILL.md 문구 테스트(`report.test.mjs:861`)가 새 문구(`worktree=<removed|absent>`)를 단언한다.
 - ACⓑ-7(D152): `snapshot.json.worktree` 가 `W` 밖의 실재 디렉터리(안에 파일 있음)를 가리키고 `W/worktree` 도 있음 → cleanup 뒤 `W` 밖 디렉터리와 그 파일은 그대로 · `W/worktree` 는 없음 · `worktree=removed`. 현행 코드에서는 `W` 밖 디렉터리가 지워진다(RED).
 - ACⓑ-8(D152): `snapshot.json.worktree` 가 `W` 밖의 실재 디렉터리를 가리키고 `W/worktree` 는 없음 → `W` 밖 디렉터리 그대로 · `worktree=absent`.
+- ACⓑ-9(R1-1 — 상대 `--work`): 임시 저장소에 실제로 `git worktree add` 로 등록한 원본 `W/worktree`(커밋 안 한 파일 있음)를 둔 `W` 를 통째로 다른 위치에 복사하고, 사본 디렉터리를 현재 디렉터리로 `cleanup --work .`(상대 경로) → 원본 `W/worktree` 와 그 커밋 안 한 파일은 그대로 · 원본 등록도 그대로(`git worktree list`) · 사본의 `worktree` 디렉터리는 없음 · `worktree=removed`. 상대 경로를 절대화하지 않은 구현에서는 원본이 지워진다(RED).
 
 ### 3.ⓔ `merge` 패스 3 — 넓은 발견이 다른 사안을 삼킴
 
@@ -149,7 +151,7 @@
 | plugin.json | 1.4.1 → **1.4.2**(D163) |
 | plan | SC-3·SC-5·SC-6 「1.4.2에서 변경」 부기(impl 트랙) |
 | 어댑터 문서(프로젝트 쪽) | 변경 불요 |
-| `tests/mr-review` | report(ⓑ 신규 6 + 기대값 변경 2 · 문구 1) · merge(ⓔ 신규 8) · check(ⓕ 신규 6) · deploy(ⓕ 신규 1) — 그 밖 기존 전부 불변(수는 어림 — impl 에서 AC 단위로 정한다) |
+| `tests/mr-review` | report(ⓑ 신규 7 + 기대값 변경 2 · 문구 1) · merge(ⓔ 신규 8) · check(ⓕ 신규 6) · deploy(ⓕ 신규 1) — 그 밖 기존 전부 불변(수는 어림 — impl 에서 AC 단위로 정한다) |
 
 ## 5. 검증 · 완료 조건
 
