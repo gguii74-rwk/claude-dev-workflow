@@ -1,6 +1,6 @@
 # mr-review 1.4.2 — 후속 묶음 3건: ⓑ cleanup 워크트리 표기 · ⓔ `merge` 패스 3 오짝 · ⓕ glab 오류문 절단
 
-> 상태: **harden 완료**(3-harden-spec 2026-11-13 09:xx~10:xx · 수동 트랙(초안과 같은 세션) · 판단 갭 14건 전부 질문으로 닫음 → D152~D165(전부 첫 선택지 = 추천안) · 사실 갭은 코드 조회·실험으로 해소 · DEFERRED 0건 · 다음 = 4 review-loop(spec, 보안 yes) — 이 세션은 하지 않는다) · 초안(2026-11-13 09:xx · 2-spec-draft 수동 트랙 · 메인 체크아웃 브랜치 `…/mr-review-1-4-2-fixes`, base main `18d98c0` = 1.4.1 릴리스 · 설계 질의 3건(Q1 경로 · Q2 보류 소항목 범위 · Q3 ⓔ 수정 방향) 전부 첫 선택지 = 추천안 — 답 출처는 「재논의 금지」 머리말).
+> 상태: **4 review-loop(spec) 종결**(2026-11-13 · 위임 트랙 · 보안 yes(호출자 지정) · 적대 2 + 확인 1 · high 1 FIXED(R1-1 cleanup 삭제 경로 절대화 · ACⓑ-9) · 확인 C1 verdict pass · 대장 대기 0 · 다음 = 7 impl — 5·6 생략(D149)) · **harden 완료**(3-harden-spec 2026-11-13 09:xx~10:xx · 수동 트랙(초안과 같은 세션) · 판단 갭 14건 전부 질문으로 닫음 → D152~D165(전부 첫 선택지 = 추천안) · 사실 갭은 코드 조회·실험으로 해소 · DEFERRED 0건 · 다음 = 4 review-loop(spec, 보안 yes) — 이 세션은 하지 않는다) · 초안(2026-11-13 09:xx · 2-spec-draft 수동 트랙 · 메인 체크아웃 브랜치 `…/mr-review-1-4-2-fixes`, base main `18d98c0` = 1.4.1 릴리스 · 설계 질의 3건(Q1 경로 · Q2 보류 소항목 범위 · Q3 ⓔ 수정 방향) 전부 첫 선택지 = 추천안 — 답 출처는 「재논의 금지」 머리말).
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16) · 1.3.1(D17~D34) · 1.3.2(D35~D51) · 1.3.3(D52~D67) · 1.3.4(D68~D89) · 1.3.5(D90~D112) · 1.4.0 spec `docs/specs/2026-10-24-mr-review-1-3-6.md`(D113~D147 — **D136 짝 1:1 · D137 짝 짓기 패스 · D138 후보 표시** · 1.4.0 impl ledger 의 OUT_OF_SCOPE 1건 = 이 spec 의 ⓕ). plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-1~SC-8 — 계약·게이트 정본).
 > 경로: **경량 — 단 4단계(spec 적대검증, 보안 yes)는 유지, 5 plan·6 plan 적대검증 생략**(dev-cycle 1차 판정 + 질문 답 2026-11-13, Q1 — D149. 접촉 표면 스캔: 스키마·마이그레이션·권한·인증·외부 연동 신설 없음 · cleanup 의 삭제 대상은 늘지 않는다(경로를 작업 디렉터리 안으로 좁힐 뿐 — D152) · 다만 ⓔ 는 「단독 출처 확인」이 빠지는 길(판정 엄격함)에, ⓕ 는 가림 경계에 닿는다 → spec 적대검증을 남긴다). plan 을 생략하므로 impl ledger 위치 = 이 문서 말미 `## 적대검증 ledger (impl)`.
 
@@ -220,14 +220,17 @@
 
 | fingerprint | severity | disposition | 근거 · 수정 커밋 |
 |---|---|---|---|
-| R1-1 spec §3.ⓑ-2 · cleanup 삭제 경로 상대 `--work` → git `worktree remove` 끝부분 일치로 원본 워크트리 삭제 · 「존재 확인·git 인자·rmSync 에 같은 절대 경로(path.resolve) + 상대 --work 사본 회귀 AC」 | high | FIXED | `5761b74` — §3.ⓑ-2 에 절대 경로 한 번 계산 규칙 · ACⓑ-9 · §4 테스트 어림 6→7. 미확인 FIXED 큐 편입 |
+| R1-1 spec §3.ⓑ-2 · cleanup 삭제 경로 상대 `--work` → git `worktree remove` 끝부분 일치로 원본 워크트리 삭제 · 「존재 확인·git 인자·rmSync 에 같은 절대 경로(path.resolve) + 상대 --work 사본 회귀 AC」 | high | FIXED | `5761b74` — §3.ⓑ-2 에 절대 경로 한 번 계산 규칙 · ACⓑ-9 · §4 테스트 어림 6→7 · **소멸 확인(C1)** |
 
 | 라운드 | 모드 | 신규 blocking (c/h/m) | score(전환용) | 미확인 FIXED 큐 | verdict |
 |---|---|---|---|---|---|
 | R1 | 적대·자동 | 0/1/0 | 3 | 1 | needs-attention |
 | R2 | 적대·자동 | 0/0/0 | 0 | 1(R1-1 적대 비재출현(R2) — 참고 신호, 큐 유지) | approve |
+| C1 | 확인 | 0/0/0 | 0 | 0(R1-1 소멸 확인) | pass |
 
 - R2 뒤 전환 신호 ②(수정 큐 소진 — 신규 FIXED 후보 0) 발화 → batch ESCALATE 적재 0건(flush 없음) → 확인 모드 진입(C1 · 확인 예산 2 중 1). 루프 직접 판정 0건 · 추천 자동 채택(위임) 0건.
+- **C1(확인 1/2)**: 큐 항목별 결과 = R1-1 **소멸**(`5761b74` — 절대 경로 한 번 계산·세 곳 같은 값 · ACⓑ-9 가 원 지적을 닫음) · 판정 감사 = 해당 없음(루프 직접 판정 0건) · 신규 finding = 없음(§3.ⓑ 수정 2~4·ACⓑ-1~9·§4 표·§6 cleanup 항목 사이 회귀·모순 없음) · 머지 준비도 verdict = **pass**(정적 검토 — AC 의 RED/GREEN 은 impl 단계).
+- **종결(2026-11-13)**: 적대 2라운드(R1·R2) + 확인 1라운드(C1) · 복귀 미사용 · blocking 발견 1건(high 1) = FIXED 1(루프 자동 수정) · ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE 0 · low 0 · 미판정 blocking 0 · 미확인 FIXED 큐 0 · 추천 자동 채택(위임) 0건 · 최종 verdict pass. DEFERRED_TO_IMPL 없음 — impl 에 넘길 추가 AC 는 본문 ACⓑ-9(R1-1)뿐.
 
 ## 확인 대기 대장
 
