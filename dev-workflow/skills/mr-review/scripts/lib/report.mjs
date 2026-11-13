@@ -625,13 +625,16 @@ export function cleanup({ work, adapter }) {
   const problem = markerProblem(work);
   if (problem) throw new ReportError(`${problem} — mr-review 작업 디렉터리로 확인되지 않아 정리하지 않는다: ${topEntries(work, adapter)}`);
   const snapshot = readJson(work, 'snapshot.json') || {};
-  let worktree = false;
-  const wt = snapshot.worktree || path.join(work, 'worktree');
+  // 지우는 워크트리 = 항상 <W>/worktree(1.4.2 D152) — snapshot.json.worktree 값은 지우기에 쓰지 않는다(사본 W 에서 원본을 지우지 않게).
+  // 호출 시점에 절대 경로로 한 번 계산해 존재 확인·git 인자·rmSync 에 같은 값을 쓴다 — 상대 --work 면 git worktree remove 가 끝부분 일치로 원본 등록을 찾는다(spec R1-1)
+  // 표기 = removed(이 호출이 지웠다) | absent(지울 것이 없었다 — diff-only·이미 지워짐·재실행, D155). absent 때 prune 을 새로 돌리지 않는다(D154)
+  let worktree = 'absent';
+  const wt = path.resolve(work, 'worktree');
   if (fs.existsSync(wt)) {
     if (snapshot.checkout) spawnSync('git', ['-C', snapshot.checkout, 'worktree', 'remove', '--force', wt], { encoding: 'utf8' });
     fs.rmSync(wt, { recursive: true, force: true });
     if (snapshot.checkout) spawnSync('git', ['-C', snapshot.checkout, 'worktree', 'prune'], { encoding: 'utf8' });
-    worktree = true;
+    worktree = 'removed';
   }
   let zip = 0;
   const zipDir = path.join(work, 'zip');

@@ -1,7 +1,7 @@
 // report 계약 테스트 (spec §5.5-4 · §5.7 · SC-3 verdict.json · SC-4 · SC-5)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, rmSync, chmodSync, linkSync, statSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlinkSync, rmSync, chmodSync, linkSync, statSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { tmp, writeAdapter, initRepos, runCli, readJson, git, LIB, CLI } from './helpers.mjs';
@@ -400,7 +400,7 @@ test('cleanup: codex.pid 의 프로세스가 살아 있으면 ERR 로 멈추고 
   }
   const ok = runCli(['cleanup', '--adapter', adapter, '--work', work]);
   assert.equal(ok.code, 0, ok.out + ok.err);
-  assert.equal(ok.first, 'CLEANED worktree=false zip=1 raw=2 masked=1 extra=0');                                 // raw = codex.pid + pack-a.md
+  assert.equal(ok.first, 'CLEANED worktree=absent zip=1 raw=2 masked=1 extra=0');                                 // raw = codex.pid + pack-a.md
   assert.ok(!existsSync(join(work, 'codex.pid')));
   assert.equal(readJson(join(work, 'review-codex.json')).findings[0].evidence, 'db.password = "[masked:secret]"');
 });
@@ -441,7 +441,7 @@ test('review-validate CLI · cleanup 은 워크트리·zip·blobs·codex 원시 
   writeFileSync(join(work, 'verdict.json'), JSON.stringify({ status: 'determined', verdict: 'HOLD_EVIDENCE', head_sha: headSha, machineEvidence: [{ id: 'M-baseline-1', kind: 'baseline', detail: '기준선·이슈 원문 미확보: https://gitlab.test/g/x.md?token=synthetic-credential-xyz — 담당 someone@example.test' }] }));
   const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.equal(r.first, 'CLEANED worktree=true zip=1 raw=7 masked=5 extra=0');            // raw = codex.* 4 + pack-a·pack-b 2 + baseline 1 · masked = mr·check·deploy·review-claude·verdict
+  assert.equal(r.first, 'CLEANED worktree=removed zip=1 raw=7 masked=5 extra=0');            // raw = codex.* 4 + pack-a·pack-b 2 + baseline 1 · masked = mr·check·deploy·review-claude·verdict
   assert.ok(!existsSync(join(work, 'worktree')));
   assert.ok(!existsSync(join(work, 'zip')));
   assert.ok(!existsSync(join(work, 'blobs')));
@@ -858,7 +858,8 @@ test('SKILL.md: §0 공통 종료 절차에 cleanup ERR 목록이 비었을 때(
   assert.match(s0, /항목 목록이 `\(없음\)`이면 지울 것이 없는 정상 종료/);
   assert.match(s0, /허용 9종/);
   const s8 = skill.slice(skill.indexOf('## 8. 출력 · 정리'), skill.indexOf('## 9.'));
-  assert.match(s8, /CLEANED worktree=<b> zip=<n> raw=<n> masked=<n> extra=<n>/);
+  assert.match(s8, /CLEANED worktree=<removed\|absent> zip=<n> raw=<n> masked=<n> extra=<n>/);
+  assert.match(s8, /`absent` = 지울 워크트리가 없었다\(diff-only · 이미 지워짐\) — 실패가 아니다/);   // 1.4.2 ACⓑ-6
   assert.match(s8, /snapshot\.json/);
 });
 
@@ -2174,4 +2175,105 @@ test('SKILL.md §6 전면: <CLI> merge(--valid 필수 · --same · --force) → 
   assert.match(ban, /손으로 바꾸지 않는다/);
   const s8 = sec(skill, '## 8. 출력', '## 9.');
   for (const s of ['needsMain 없음', '기준선 결정 k건 중 어김 n(모름 m)', '결정 추출 생략(기준선 n — 마스킹 잔존)', 'joined', 'candidates']) assert.ok(s8.includes(s), s);
+});
+
+// ── 1.4.2 ⓑ cleanup 워크트리 표기 · 삭제 경로 고정 (spec 2026-11-13 3.ⓑ · D152·D155) ──
+const wtSnap = (over = {}) => ({ ...baseSnap(), ...over });
+
+test('cleanup: 워크트리 모드에서 W/worktree 를 지우면 worktree=removed · 디렉터리 없음 (1.4.2 ACⓑ-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  mkdirSync(join(work, 'worktree', 'src'), { recursive: true });
+  writeFileSync(join(work, 'worktree', 'src', 'A.java'), 'class A {}');
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^CLEANED worktree=removed zip=0 /);
+  assert.ok(!existsSync(join(work, 'worktree')));
+});
+
+test('cleanup: 워크트리 모드인데 디렉터리가 이미 없으면 worktree=absent · exit 0 · 나머지 정리는 그대로 (1.4.2 ACⓑ-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  mkdirSync(join(work, 'zip'), { recursive: true });
+  writeFileSync(join(work, 'zip', 'd.zip'), 'x');
+  writeFileSync(join(work, 'pack-a.md'), '원문 팩');
+  writeFileSync(join(work, 'claude.prompt'), '임시');
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^CLEANED worktree=absent zip=1 raw=1 masked=\d+ extra=1$/);   // raw = pack-a.md(baseline/ 은 빈 디렉터리) · extra = claude.prompt
+  assert.ok(!existsSync(join(work, 'zip')));
+  assert.ok(!existsSync(join(work, 'pack-a.md')));
+  assert.ok(!existsSync(join(work, 'claude.prompt')));
+});
+
+test('cleanup: diff-only 는 worktree=absent (1.4.2 ACⓑ-3 · D155)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]), snap: wtSnap({ mode: 'diff-only' }) });
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^CLEANED worktree=absent /);
+});
+
+test('cleanup: 같은 W 에 두 번 — 첫째 worktree=removed · 둘째 worktree=absent (1.4.2 ACⓑ-4)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const work = fullWork(root, { fnd: findings([]) });
+  mkdirSync(join(work, 'worktree'), { recursive: true });
+  const a = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(a.code, 0, a.out + a.err);
+  assert.match(a.first, /^CLEANED worktree=removed /);
+  const b = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(b.code, 0, b.out + b.err);
+  assert.match(b.first, /^CLEANED worktree=absent /);
+});
+
+test('cleanup: snapshot.json.worktree 가 W 밖 실재 디렉터리를 가리켜도 지우는 것은 W/worktree 뿐 — W 밖은 그대로 · removed (1.4.2 ACⓑ-7 · D152)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const outside = join(root, 'elsewhere');
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'keep.txt'), 'keep');
+  const work = fullWork(root, { fnd: findings([]), snap: wtSnap({ worktree: outside }) });
+  mkdirSync(join(work, 'worktree'), { recursive: true });
+  writeFileSync(join(work, 'worktree', 'A.java'), 'class A {}');
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^CLEANED worktree=removed /);
+  assert.equal(readFileSync(join(outside, 'keep.txt'), 'utf8'), 'keep');
+  assert.ok(!existsSync(join(work, 'worktree')));
+});
+
+test('cleanup: snapshot.json.worktree 가 W 밖 실재 디렉터리를 가리키고 W/worktree 는 없으면 W 밖은 그대로 · absent (1.4.2 ACⓑ-8 · D152)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const outside = join(root, 'elsewhere');
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'keep.txt'), 'keep');
+  const work = fullWork(root, { fnd: findings([]), snap: wtSnap({ worktree: outside }) });
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', work]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^CLEANED worktree=absent /);
+  assert.equal(readFileSync(join(outside, 'keep.txt'), 'utf8'), 'keep');
+});
+
+test('cleanup: W 를 다른 위치로 복사한 사본에서 상대 --work(.)로 정리해도 원본 워크트리·커밋 안 한 파일·등록은 그대로 — 사본의 worktree 만 지운다 (1.4.2 ACⓑ-9 · R1-1)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, headSha } = initRepos(root);
+  const orig = fullWork(join(root, 'orig'), { fnd: findings([]) });
+  const origWt = join(orig, 'worktree');
+  git(checkout, 'worktree', 'add', '--detach', origWt, headSha);
+  writeFileSync(join(origWt, 'uncommitted.txt'), '커밋 안 한 작업');
+  writeFileSync(join(orig, 'snapshot.json'), JSON.stringify(wtSnap({ checkout, worktree: origWt, head_sha: headSha })));
+  const copy = join(root, 'copy', 'work');
+  cpSync(orig, copy, { recursive: true });
+  const r = runCli(['cleanup', '--adapter', adapter, '--work', '.'], {}, copy);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /^CLEANED worktree=removed /);
+  assert.ok(!existsSync(join(copy, 'worktree')));
+  assert.equal(readFileSync(join(origWt, 'uncommitted.txt'), 'utf8'), '커밋 안 한 작업');
+  assert.ok(git(checkout, 'worktree', 'list', '--porcelain').split('\n').some((l) => l.startsWith('worktree ') && l.endsWith('/orig/work/worktree')));
 });
