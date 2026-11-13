@@ -1,6 +1,6 @@
 # mr-review 1.4.2 — 후속 묶음 3건: ⓑ cleanup 워크트리 표기 · ⓔ `merge` 패스 3 오짝 · ⓕ glab 오류문 절단
 
-> 상태: **4 review-loop(spec) 종결**(2026-11-13 · 위임 트랙 · 보안 yes(호출자 지정) · 적대 2 + 확인 1 · high 1 FIXED(R1-1 cleanup 삭제 경로 절대화 · ACⓑ-9) · 확인 C1 verdict pass · 대장 대기 0 · 다음 = 7 impl — 5·6 생략(D149)) · **harden 완료**(3-harden-spec 2026-11-13 09:xx~10:xx · 수동 트랙(초안과 같은 세션) · 판단 갭 14건 전부 질문으로 닫음 → D152~D165(전부 첫 선택지 = 추천안) · 사실 갭은 코드 조회·실험으로 해소 · DEFERRED 0건 · 다음 = 4 review-loop(spec, 보안 yes) — 이 세션은 하지 않는다) · 초안(2026-11-13 09:xx · 2-spec-draft 수동 트랙 · 메인 체크아웃 브랜치 `…/mr-review-1-4-2-fixes`, base main `18d98c0` = 1.4.1 릴리스 · 설계 질의 3건(Q1 경로 · Q2 보류 소항목 범위 · Q3 ⓔ 수정 방향) 전부 첫 선택지 = 추천안 — 답 출처는 「재논의 금지」 머리말).
+> 상태: **7 impl 완료**(2026-11-13 · 위임 트랙 · 경량·planless TDD · 커밋 `8b46b34`(ⓑ)·`f066783`(ⓔ)·`6fcd1e3`(ⓕ)·`7c2ffe3`(README·plan) · T1 371/371(기준선 347 + 신규 24) · T2~T7 통과 · 숨은 문자 0 · 미push · **다음 = 8 impl 적대검증**(review-loop `--phase impl`, 보안 yes — ledger = 이 문서 말미 `## 적대검증 ledger (impl)`) — 「구현 기록 (7 impl)」 절) · **4 review-loop(spec) 종결**(2026-11-13 · 위임 트랙 · 보안 yes(호출자 지정) · 적대 2 + 확인 1 · high 1 FIXED(R1-1 cleanup 삭제 경로 절대화 · ACⓑ-9) · 확인 C1 verdict pass · 대장 대기 0 · 다음 = 7 impl — 5·6 생략(D149)) · **harden 완료**(3-harden-spec 2026-11-13 09:xx~10:xx · 수동 트랙(초안과 같은 세션) · 판단 갭 14건 전부 질문으로 닫음 → D152~D165(전부 첫 선택지 = 추천안) · 사실 갭은 코드 조회·실험으로 해소 · DEFERRED 0건 · 다음 = 4 review-loop(spec, 보안 yes) — 이 세션은 하지 않는다) · 초안(2026-11-13 09:xx · 2-spec-draft 수동 트랙 · 메인 체크아웃 브랜치 `…/mr-review-1-4-2-fixes`, base main `18d98c0` = 1.4.1 릴리스 · 설계 질의 3건(Q1 경로 · Q2 보류 소항목 범위 · Q3 ⓔ 수정 방향) 전부 첫 선택지 = 추천안 — 답 출처는 「재논의 금지」 머리말).
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16) · 1.3.1(D17~D34) · 1.3.2(D35~D51) · 1.3.3(D52~D67) · 1.3.4(D68~D89) · 1.3.5(D90~D112) · 1.4.0 spec `docs/specs/2026-10-24-mr-review-1-3-6.md`(D113~D147 — **D136 짝 1:1 · D137 짝 짓기 패스 · D138 후보 표시** · 1.4.0 impl ledger 의 OUT_OF_SCOPE 1건 = 이 spec 의 ⓕ). plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-1~SC-8 — 계약·게이트 정본).
 > 경로: **경량 — 단 4단계(spec 적대검증, 보안 yes)는 유지, 5 plan·6 plan 적대검증 생략**(dev-cycle 1차 판정 + 질문 답 2026-11-13, Q1 — D149. 접촉 표면 스캔: 스키마·마이그레이션·권한·인증·외부 연동 신설 없음 · cleanup 의 삭제 대상은 늘지 않는다(경로를 작업 디렉터리 안으로 좁힐 뿐 — D152) · 다만 ⓔ 는 「단독 출처 확인」이 빠지는 길(판정 엄격함)에, ⓕ 는 가림 경계에 닿는다 → spec 적대검증을 남긴다). plan 을 생략하므로 impl ledger 위치 = 이 문서 말미 `## 적대검증 ledger (impl)`.
 
@@ -210,6 +210,32 @@
 | D163 | 버전 = **1.4.2**(패치). 「1.5.0」은 기각 | 질문 답(harden G10) — 새 명령·새 어댑터 키 없음 · 1.3.x 결함 수정 묶음 전례 · 바뀌는 출력을 읽는 쪽은 같이 배포되는 스킬 문서뿐 |
 | D164 | 9단계 실측 = 확인만을 위한 실행은 띄우지 않고 **설치 갱신 뒤 첫 실제 MR 리뷰에서 관측**. 「릴리스 직후 기존 MR 재실행」은 기각 | 질문 답(harden G11) — 검토자 모델은 실행마다 달라 재실행해도 같은 상황이 재현된다는 보장이 없다 · 1.4.1 트랙의 같은 결정 |
 | D165 | `ERR` 줄(stdout)의 glab 오류문은 **그대로**. 「화면도 고정 문구로」는 기각 | 질문 답(harden G23) — 멈춘 자리에서 원인을 바로 알아야 한다 · 작업 파일·리포트·외부 전송 어디에도 저장되지 않는다 |
+
+## 구현 기록 (7 impl)
+
+2026-11-13 · 위임 트랙(`DEV_WORKFLOW_MODE=delegated`) · 경량·planless(D149) — AC 마다 RED → GREEN(`superpowers:test-driven-development`). base `299cc29` · 브랜치 `…/mr-review-1-4-2-fixes` · 미push. 질문 0건(위험군 없음 · 추천 자동 채택(위임) 0건) · 범위 변경 없음(`collect`·`pack`·`adapter`·`mr-review.mjs`·`plugin.json` 0줄).
+
+| 커밋 | 항목 | RED → GREEN |
+|---|---|---|
+| `8b46b34` | ⓑ `report.mjs` cleanup — 지우는 경로 `path.resolve(work, 'worktree')` 한 번 계산(존재 확인·`git worktree remove`·`rmSync` 같은 값) · `worktree` = `'removed'\|'absent'` · SKILL §8 문구 | report 신규 7 + 기대값 변경 3 실패 → report 120/120 · ACⓑ-9 는 `path.join` 변형(상대 경로 미절대화)에서도 실패함을 따로 확인 |
+| `f066783` | ⓔ `merge.mjs` 패스 3 = 같은 `file` + `rws` 원소 집합 동치(비어 있지 않음) · 후보 `같은 파일 · 같은 행 <번호들>` · SKILL §6 `candidates` 꼴·ⓒ·§6-1 (다) | 신규 9 중 5 실패(ⓔ-1·3·7·8 · SKILL 문구) — ⓔ-2·4·5·6 은 현행 유지 단언(수정 전후 통과) → merge 25/25 |
+| `6fcd1e3` | ⓕ `gitlab.mjs` `GitLabError.kind`·`http` · `NoticeError`(도구 안내 오류 표지) · `storedReason()` · `check.mjs` 사유 3곳 + 자체 throw 3곳 표지 · `deploy.mjs` 사유 1곳 · 가짜 glab 규칙 `stderr` 칸(helpers) | 신규 8 중 7 실패(ⓕ-8 은 판정 불변 단언 — 수정 전후 통과) → check 36/36 · deploy·collect 116/116 |
+| `7c2ffe3` | README 3종 1.4.2 한 줄 · plan SC-3·SC-5·SC-6 「1.4.2에서 변경」 부기 | — |
+
+**AC ↔ 테스트**(이름의 괄호 표지로 찾는다)
+- ⓑ: ACⓑ-1·2·3·4·7·8·9 = `report.test.mjs` 「cleanup: … (1.4.2 ACⓑ-n …)」 7건 · ACⓑ-5 = 기존 「cleanup: codex.pid … (R6-2)」(`false`→`absent`)·「review-validate CLI · cleanup … (F5·F7·R3-9)」(`true`→`removed`) 기대값만 · ACⓑ-6 = 기존 「SKILL.md: §0 공통 종료 절차 … (1.3.1 AC⑤-6 · D33)」에 새 문구·`absent` 구절 단언.
+- ⓔ: ACⓔ-1~8 = `merge.test.mjs` 「merge … (1.4.2 ACⓔ-n …)」 8건 · SKILL 문구 = 「SKILL.md §6: (다) = intentRows 묶음이 같음 … (1.4.2 ⓔ-5 · D150·D157)」 · ACⓔ-9 = 기존 merge 16건 불변 통과 · ACⓔ-10 = 기존 「merge 짝 짓기 … (1.4.0 AC③-2 …)」의 `(같은 파일 src/Q.java)`·`why: "같은 파일"` + ACⓔ-4 둘째 경우.
+- ⓕ: ACⓕ-1·2·3·5·6·7·8 = `check.test.mjs` 「ⓕ … (1.4.2 ACⓕ-n …)」 7건 · ACⓕ-4(+ⓕ-2 의 `deploy.json` 부분) = `deploy.test.mjs` 「ⓕ 배포본 zip 다운로드 실패 … (1.4.2 ACⓕ-4 · ACⓕ-2)」 · ACⓕ-9 = 기존 collect·check 의 glab `ERR` 테스트 불변 통과.
+
+**구현 판단(spec 이 정하지 않은 세부 — 위험군 아님, 8 에서 감사 가능)**
+- `storedReason` 의 `exit` 인데 종료 코드가 정수가 아닐 때(신호로 끝남 — `spawnSync` `status: null`) = `GitLab 조회 실패(종료 코드 알 수 없음)`.
+- `http` 추출 정규식 = `HTTP (\d{3})(?!\d)` 의 마지막 일치 — 네 자리 이상 숫자(`HTTP 4041`)는 상태로 보지 않는다(ACⓕ-6 에 단언).
+- 도구 안내 오류 표지 = `gitlab.mjs` 의 `NoticeError` 클래스(spec 3.ⓕ-3 의 「표지」) — `check.mjs` 의 자체 문구 3곳만 쓴다.
+- ACⓕ-7 통합 재현 = 기준선 디렉터리 자리에 일반 파일을 두어 `mkdir` 실패(`EEXIST`, message 에 절대 경로) — `ENOSPC`·`TypeError`·허용 꼴 밖은 `storedReason` 단위 단언.
+- ACⓕ-2 의 렌더 확인 = `render --early`(check 단계 산출물만으로 렌더 — 「머지 전」 보완 문안에 사유가 실린다).
+
+**게이트(HEAD `7c2ffe3` 기준 — 이 기록 커밋은 spec 1파일)**: T1 **371/371**(기준선 347 · 신규 24 = report 7 · merge 9 · check 7 · deploy 1 · 기존 변경 3 = report 기대값 2 + SKILL 문구 1) · T2 0줄 · T3 56/56 · T4 0 · T5 0 · T6 0(skills·tests) · README·spec·plan 추가 줄 0 · T7 0 · 숨은 문자(Cc·Cf·Zl·Zp, 탭·개행 제외) 원문 0 · `git diff --stat 299cc29..HEAD` = 편집 가능 범위 15파일 · `git status --short` = 기존 미추적 1줄(메인·사용자 몫 메모 파일 — 건드리지 않음).
+- 프롬프트 사실과 다른 점: 없음(HEAD `299cc29` · 미추적 1줄 · T1 기준선 347/347 확인).
 
 ## 적대검증 ledger (spec)
 
