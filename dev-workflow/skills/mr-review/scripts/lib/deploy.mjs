@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
-import { apiRaw } from './gitlab.mjs';
+import { apiRaw, storedReason } from './gitlab.mjs';
 import { matchesAny } from './adapter.mjs';
 import { insideRoot } from './collect.mjs';
 import { maskText, knownShas } from './pack.mjs';
@@ -441,7 +441,7 @@ export function deploy({ adapter, work }) {
           fs.writeFileSync(path.join(work, 'zip', many ? `${i + 1}-${name}` : name), buf);   // 같은 파일명 zip 둘을 덮어쓰지 않게 순번 접두(AC⑬-15)
           zr.downloaded = true;
         } catch (e) {
-          mm.push({ kind: 'download', path: null, detail: tag(i, `다운로드 실패: ${e.message.slice(0, 160)}`) });
+          mm.push({ kind: 'download', path: null, detail: tag(i, `다운로드 실패: ${storedReason(e)}`) });   // glab 오류문·예상 밖 오류의 message 는 저장하지 않는다(1.4.2 ⓕ D151·D159)
           return st;
         }
         try { st.z = readZip(buf); } catch (e) { mm.push({ kind: 'corrupt', path: null, detail: tag(i, `zip 판독 실패: ${e.message}`) }); return st; }

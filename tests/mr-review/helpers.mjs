@@ -89,7 +89,7 @@ export function initRepos(root, { iid = 7, extraHeadFiles = {} } = {}) {
 }
 
 // 가짜 glab: `glab api [--paginate] <path>` 호출을 시나리오 규칙(정규식 → 응답)과 대조한다. 호출 기록은 <scenario>.log.
-// 규칙: { match: '<정규식 — 인자 join(" ")>', json?: any, text?: string, file?: '<경로(바이너리)>', code?: 0, times?: n }
+// 규칙: { match: '<정규식 — 인자 join(" ")>', json?: any, text?: string, file?: '<경로(바이너리)>', stderr?: string, code?: 0, times?: n }
 const FAKE_GLAB = `#!/usr/bin/env node
 const fs = require('node:fs');
 const args = process.argv.slice(2);
@@ -114,6 +114,7 @@ fs.writeFileSync(statePath, JSON.stringify(state));
 if (hit.file) process.stdout.write(fs.readFileSync(hit.file));
 else if (hit.text != null) process.stdout.write(hit.text);
 else process.stdout.write(JSON.stringify(hit.json == null ? null : hit.json));
+if (hit.stderr != null) process.stderr.write(hit.stderr);
 process.exit(hit.code || 0);
 `;
 

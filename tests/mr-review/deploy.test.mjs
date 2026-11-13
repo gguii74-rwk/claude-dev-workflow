@@ -1669,3 +1669,23 @@ test('⑱ zip.excluded 는 해당 없음·zip 누락에도 [] 로 기록 · ⑰ 
   assert.equal(r.first, 'DEPLOY 일치', JSON.stringify(d.mismatches));
   assert.deepEqual(d.zip.excluded, ['docs/notes.md']);
 });
+
+test('ⓕ 배포본 zip 다운로드 실패 → detail 은 「다운로드 실패: GitLab 조회 실패(HTTP 404)」 · zip 이 둘 이상이면 zip#<n> <파일명>: 접두 뒤 같은 문구 · glab 오류문(표식·번호)은 deploy.json 에 없다 (1.4.2 ACⓕ-4 · ACⓕ-2)', () => {
+  const root = tmp();
+  const adapter = writeAdapter(root);
+  const { checkout, baseSha, headSha } = initRepos(root);
+  const MARK = 'QZXV-SYNTH-MARK';
+  const NUM = '8807152345678';
+  const leak = { code: 1, text: JSON.stringify({ message: `${MARK} ${NUM}` }), stderr: `glab: ${MARK} ${NUM}\nglab: HTTP 404\n` };
+  const one = [{ url: `/uploads/${SECRET}/d.zip`, kind: 'zip', filename: 'd.zip', secret: SECRET, where: 'body' }];
+  const w1 = workdir(root, { checkout, baseSha, headSha, attachments: one, name: 'w1' });
+  assert.equal(runCli(['deploy', '--adapter', adapter, '--work', w1], fakeGlab(root, [{ match: 'uploads', ...leak }]).env).first, 'DEPLOY 대조 불가');
+  const d1 = readJson(join(w1, 'deploy.json'));
+  assert.deepEqual(d1.mismatches.filter((m) => m.kind === 'download').map((m) => m.detail), ['다운로드 실패: GitLab 조회 실패(HTTP 404)']);
+  const t1 = readFileSync(join(w1, 'deploy.json'), 'utf8');
+  for (const frag of [MARK.slice(0, 4), NUM.slice(0, 4)]) assert.ok(!t1.includes(frag), frag);
+  const two = [...one, { url: `/uploads/${SECRET}/e.zip`, kind: 'zip', filename: 'e.zip', secret: SECRET, where: 'body' }];
+  const w2 = workdir(root, { checkout, baseSha, headSha, attachments: two, name: 'w2' });
+  runCli(['deploy', '--adapter', adapter, '--work', w2], fakeGlab(root, []).env);
+  assert.deepEqual(readJson(join(w2, 'deploy.json')).mismatches.filter((m) => m.kind === 'download').map((m) => m.detail), ['zip#1 d.zip: 다운로드 실패: GitLab 조회 실패(HTTP 404)', 'zip#2 e.zip: 다운로드 실패: GitLab 조회 실패(HTTP 404)']);
+});

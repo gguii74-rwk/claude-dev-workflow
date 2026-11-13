@@ -637,3 +637,127 @@ test('check: 결정은 가린 원문에서 뽑는다 — 여러 줄 비밀값 �
   assert.deepEqual(ids(pat).map((i) => i.replace(/^B\d+-/, '')), ['R1']);
   assert.doesNotMatch(all(pat), /010-1234-5678/);
 });
+
+// ── 1.4.2 ⓕ 조회 실패 사유 = 고정 문구(glab 오류문을 저장하지 않는다) · 도구 안내 오류는 전체 (spec 2026-11-13 3.ⓕ · D151·D159·D160·D161) ──
+const G = await import(join(LIB, 'gitlab.mjs'));
+const DOC_LINK = 'http://gitlab.test/g/docs/-/blob/' + DOCS_SHA + '/guide/policy.md';
+const DOC_ENC = encodeURIComponent('guide/policy.md').replace(/\./g, '%2E');
+const MARK = 'QZXV-SYNTH-MARK';
+const NUM = '8807152345678';   // 어댑터 rrn 패턴에 맞는 가상 번호(13자리)
+const docSetup = () => setup({ description: body({ track: '정식', contractOver: { Baseline: DOC_LINK } }) });
+const docLink = (work) => readJson(join(work, 'check.json')).baselineLinks.find((x) => x.raw === DOC_LINK);
+
+test('ⓕ 저장소 문서 링크의 원문 조회 실패(HTTP 404) → reason 은 정확히 「원문 확보 실패: GitLab 조회 실패(HTTP 404)」 (1.4.2 ACⓕ-1)', () => {
+  const { root, adapter, work } = docSetup();
+  const g = fakeGlab(root, [{ match: '^api projects/103$', json: { id: 103, web_url: 'http://gitlab.test/g/docs' } }]);   // raw 규칙 없음 → 가짜 glab 기본 실패(stdout 404 본문 · stderr glab: HTTP 404 · exit 1)
+  const r = runCli(['check', '--adapter', adapter, '--work', work], g.env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const l = docLink(work);
+  assert.equal(l.status, '미확보');
+  assert.equal(l.reason, '원문 확보 실패: GitLab 조회 실패(HTTP 404)');
+});
+
+test('ⓕ 누출 재현: glab 실패 본문·표준 오류의 표식·가상 번호는 check.json 과 렌더된 리포트 어디에도 조각조차 남지 않는다 (1.4.2 ACⓕ-2)', () => {
+  const { root, adapter, work } = docSetup();
+  const g = fakeGlab(root, [
+    { match: '^api projects/103$', json: { id: 103, web_url: 'http://gitlab.test/g/docs' } },
+    { match: `^api projects/103/repository/files/${DOC_ENC}/raw`, code: 1, text: JSON.stringify({ message: `${MARK} 연락 ${NUM} 원문` }), stderr: `glab: ${MARK} ${NUM}\nglab: HTTP 404\n` },
+  ]);
+  assert.equal(runCli(['check', '--adapter', adapter, '--work', work], g.env).code, 0);
+  assert.equal(docLink(work).reason, '원문 확보 실패: GitLab 조회 실패(HTTP 404)');
+  const out = join(root, 'report.md');
+  const rr = runCli(['render', '--early', '--adapter', adapter, '--work', work, '--out', out]);
+  assert.equal(rr.code, 0, rr.out + rr.err);
+  const texts = { 'check.json': readFileSync(join(work, 'check.json'), 'utf8'), 'report.md': readFileSync(out, 'utf8') };
+  assert.match(texts['report.md'], /GitLab 조회 실패\(HTTP 404\)/);
+  for (const [name, t] of Object.entries(texts)) for (const frag of [MARK.slice(0, 4), NUM.slice(0, 4)]) assert.ok(!t.includes(frag), `${name} 에 ${frag}`);
+});
+
+test('ⓕ 이슈 댓글 조회 실패 → reason 은 정확히 「이슈 원문 확보 실패: 이슈 댓글 조회 실패: GitLab 조회 실패(HTTP 404)」 (1.4.2 ACⓕ-3)', () => {
+  const { root, adapter, work } = setup({ description: body({ contractOver: { Baseline: '#12' } }) });
+  const g = fakeGlab(root, [{ match: '^api projects/101/issues/12$', json: { iid: 12, title: '버그', description: '- ① 왜: 민원', updated_at: '2026-10-19T00:00:00Z' } }]);
+  runCli(['check', '--adapter', adapter, '--work', work], g.env);
+  const i = readJson(join(work, 'check.json')).baselineLinks.find((x) => x.kind === 'issue' && x.ref === '12');
+  assert.equal(i.reason, '이슈 원문 확보 실패: 이슈 댓글 조회 실패: GitLab 조회 실패(HTTP 404)');
+});
+
+test('ⓕ 도구 안내 오류(범위 밖 링크)는 160자를 넘어도 자르지 않고 문구 전체를 저장한다 (1.4.2 ACⓕ-5 · D159)', () => {
+  const longUrl = 'https://elsewhere.invalid/' + 'deep-namespace/'.repeat(12) + 'alpha/-/blob/main/docs/approved.md';
+  const { root, adapter, work } = setup({ description: body({ track: '정식', contractOver: { Baseline: longUrl } }) });
+  const g = fakeGlab(root, [{ match: '^api projects/101$', json: { id: 101, web_url: 'http://gitlab.test/g/alpha' } }]);
+  runCli(['check', '--adapter', adapter, '--work', work], g.env);
+  const f = readJson(join(work, 'check.json')).baselineLinks.find((x) => x.raw === longUrl);
+  assert.equal(f.status, '미확보');
+  assert.ok(f.reason.length > 200, f.reason);
+  assert.ok(f.reason.startsWith(`원문 확보 실패: 링크의 호스트·프로젝트 경로(${f.project_url})가 등록 프로젝트 alpha(http://gitlab.test/g/alpha)와 다르다`), f.reason);
+  assert.ok(f.reason.endsWith('— 범위 밖 링크'), f.reason);
+});
+
+test('ⓕ 저장 문구 단위: HTTP 상태 없음 → 종료 코드 · 둘이면 마지막 · http 는 숫자 3자리만 · 실행 불가 · 응답 형식 오류 · 호스트 미설정 (1.4.2 ACⓕ-6 · D160·D161)', () => {
+  const root = tmp();
+  const g = fakeGlab(root, [
+    { match: 'nohttp$', code: 1, text: '{}', stderr: 'glab: something broke\n' },
+    { match: 'twohttp$', code: 1, text: '{}', stderr: 'glab: upstream said HTTP 500 Internal (HTTP 404)\n' },
+    { match: 'longhttp$', code: 1, text: '{}', stderr: 'glab: HTTP 4041 then HTTP 403abc\n' },
+    { match: 'notjson$', text: '<html>not json</html>' },
+  ]);
+  const saved = { glab: process.env.MR_REVIEW_GLAB, sc: process.env.FAKE_GLAB_SCENARIO };
+  Object.assign(process.env, g.env);
+  const caught = (fn) => { try { fn(); } catch (e) { return e; } assert.fail('던지지 않음'); };
+  try {
+    G.setHost('gitlab.test');
+    const e1 = caught(() => G.apiJson('nohttp'));
+    assert.deepEqual([e1 instanceof G.GitLabError, e1.kind, e1.http, G.storedReason(e1)], [true, 'exit', null, 'GitLab 조회 실패(종료 코드 1)']);
+    const e2 = caught(() => G.apiJson('twohttp'));
+    assert.deepEqual([e2.http, G.storedReason(e2)], ['404', 'GitLab 조회 실패(HTTP 404)']);
+    const e3 = caught(() => G.apiJson('longhttp'));
+    assert.match(e3.http, /^\d{3}$/);
+    assert.equal(e3.http, '403');
+    assert.match(e3.message, /실패\(exit 1\)/);                                   // ERR 줄로 가는 message 는 현행 그대로(D165)
+    const e4 = caught(() => G.apiJson('notjson'));
+    assert.deepEqual([e4.kind, G.storedReason(e4)], ['format', 'GitLab 조회 실패(응답 형식 오류)']);
+    process.env.MR_REVIEW_GLAB = join(root, 'no-such-glab');
+    const e5 = caught(() => G.apiJson('x'));
+    assert.deepEqual([e5.kind, G.storedReason(e5)], ['spawn', 'GitLab 조회 실패(glab 실행 불가)']);
+    G.setHost(null);
+    const e6 = caught(() => G.apiJson('x'));
+    assert.deepEqual([e6.kind, G.storedReason(e6)], ['host', 'GitLab 조회 실패(호스트 미설정)']);
+  } finally {
+    G.setHost(null);
+    for (const [k, v] of [['MR_REVIEW_GLAB', saved.glab], ['FAKE_GLAB_SCENARIO', saved.sc]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});
+
+test('ⓕ 예상 밖 오류는 「내부 오류(<코드>)」 — message(로컬 경로)를 저장하지 않는다 · TypeError → 이름 · 허용 꼴 아니면 알 수 없음 · 도구 안내 오류는 전체 (1.4.2 ACⓕ-7 · D159)', () => {
+  const { root, adapter, work } = docSetup();
+  writeFileSync(join(work, 'baseline'), 'baseline 자리에 일반 파일 — mkdir 실패(EEXIST, message 에 절대 경로)');
+  const g = fakeGlab(root, [
+    { match: '^api projects/103$', json: { id: 103, web_url: 'http://gitlab.test/g/docs' } },
+    { match: `^api projects/103/repository/files/${DOC_ENC}/raw`, text: '# 정책 원문' },
+  ]);
+  assert.equal(runCli(['check', '--adapter', adapter, '--work', work], g.env).code, 0);
+  assert.equal(docLink(work).reason, '원문 확보 실패: 내부 오류(EEXIST)');
+  const text = readFileSync(join(work, 'check.json'), 'utf8');
+  assert.ok(!text.includes(root) && !text.includes('mkdir'), text);
+  const enospc = Object.assign(new Error(`ENOSPC: no space left on device, write '${join(root, 'x')}'`), { code: 'ENOSPC' });
+  assert.equal(G.storedReason(enospc), '내부 오류(ENOSPC)');
+  assert.equal(G.storedReason(new TypeError('x is not a function at /home/someone/secret')), '내부 오류(TypeError)');
+  assert.equal(G.storedReason(Object.assign(new Error('m'), { code: 'bad code', name: 'Weird Name!' })), '내부 오류(알 수 없음)');
+  assert.equal(G.storedReason(Object.assign(new Error('m'), { code: 'e1' })), '내부 오류(Error)');      // code 가 허용 꼴이 아니면 name
+  assert.equal(G.storedReason(new G.NoticeError('브랜치·태그를 찾지 못함: ' + 'x'.repeat(300))), '브랜치·태그를 찾지 못함: ' + 'x'.repeat(300));
+});
+
+test('ⓕ 판정 불변: 원문 조회 실패 픽스처의 verdict 결과·기계 증거 id 는 사유 문구와 무관 — HOLD_EVIDENCE · M-baseline-1 (1.4.2 ACⓕ-8)', async () => {
+  const { computeVerdict } = await import(join(LIB, 'report.mjs'));
+  const { root, adapter, work } = docSetup();
+  runCli(['check', '--adapter', adapter, '--work', work], fakeGlab(root, [{ match: '^api projects/103$', json: { id: 103, web_url: 'http://gitlab.test/g/docs' } }]).env);
+  const check = readJson(join(work, 'check.json'));
+  const snapshot = readJson(join(work, 'snapshot.json'));
+  const deploy = { applicable: false, result: '해당 없음', mismatches: [] };
+  const findings = { head_sha: HEAD, validReviewers: ['claude', 'codex'], crossChecked: true, baselineCandidateRelevant: true, findings: [], intent: [], outsideWorktreePaths: [] };
+  const v = computeVerdict({ check, snapshot, deploy, findings, resolves: {}, judgeId: 'TEST-POLICY-v1.1' });
+  const old = computeVerdict({ check: { ...check, baselineLinks: check.baselineLinks.map((l) => (l.status === '미확보' ? { ...l, reason: `원문 확보 실패: glab api x 실패(exit 1): {"message":"404"} glab: HTTP 404` } : l)) }, snapshot, deploy, findings, resolves: {}, judgeId: 'TEST-POLICY-v1.1' });
+  assert.equal(v.verdict, old.verdict);
+  assert.deepEqual(v.machineEvidence.map((m) => m.id), old.machineEvidence.map((m) => m.id));
+  assert.ok(v.machineEvidence.some((m) => m.id.startsWith('M-baseline-')), JSON.stringify(v.machineEvidence));
+});

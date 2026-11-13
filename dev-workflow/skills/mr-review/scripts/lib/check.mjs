@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { apiJson, apiRaw, encodePath } from './gitlab.mjs';
+import { apiJson, apiRaw, encodePath, NoticeError, storedReason } from './gitlab.mjs';
 import { matchesAny } from './adapter.mjs';
 import { maskText, knownShas } from './pack.mjs';   // 결정 추출은 가린 원문에서(1.4.0 ① R1-1·R2-1) — 마스킹 정본은 pack.mjs
 
@@ -222,7 +222,7 @@ function resolveRepoLink(link, adapter, work, n) {
   let filePath = link.path;
   try {
     const mis = identityMismatch(link, proj);
-    if (mis) throw new Error(mis);
+    if (mis) throw new NoticeError(mis);
     const { segs } = splitRefPath(link.refpath || `${link.ref}/${link.path}`);
     if (SHA_RE.test(segs[0])) {
       pinned = true;
@@ -236,7 +236,7 @@ function resolveRepoLink(link, adapter, work, n) {
         const cand = segs.slice(0, k).join('/');
         try { found = { ref: cand, sha: refSha(proj.id, cand), path: segs.slice(k).join('/') }; } catch { /* 다음 후보 */ }
       }
-      if (!found) throw new Error(`브랜치·태그를 찾지 못함: ${link.refpath || link.ref}`);
+      if (!found) throw new NoticeError(`브랜치·태그를 찾지 못함: ${link.refpath || link.ref}`);
       ref = found.ref;
       sha = found.sha;
       filePath = found.path;
@@ -247,7 +247,7 @@ function resolveRepoLink(link, adapter, work, n) {
     fs.writeFileSync(path.join(work, file), `<!-- mr-review source: ${link.project}:${filePath}@${sha} ref=${ref} pinned=${pinned} -->\n${raw}`);
     return { ...link, ref, path: filePath, resolved_sha: sha, pinned, status: '확보', reason: '', file, version: sha };
   } catch (e) {
-    return { ...link, ref, path: filePath, resolved_sha: sha, pinned, status: '미확보', reason: `원문 확보 실패: ${e.message.slice(0, 160)}`, file: null, version: null };
+    return { ...link, ref, path: filePath, resolved_sha: sha, pinned, status: '미확보', reason: `원문 확보 실패: ${storedReason(e)}`, file: null, version: null };   // glab 오류문은 저장하지 않는다(1.4.2 ⓕ D151)
   }
 }
 
@@ -256,11 +256,11 @@ function resolveIssue(link, adapter, work, n) {
   if (!proj) return { ...link, resolved_sha: null, pinned: true, status: '미확보', reason: `어댑터 projects 에 없는 프로젝트: ${link.project ?? `id ${link.project_id}`}`, file: null, version: null, text: '' };
   try {
     const mis = identityMismatch(link, proj);
-    if (mis) throw new Error(mis);
+    if (mis) throw new NoticeError(mis);
     const issue = apiJson(`projects/${proj.id}/issues/${link.ref}`);
     // 댓글 조회 실패는 「댓글 없음」이 아니다(R3-3) — 원문 일부를 못 받은 것이므로 미확보로 남긴다(verdict 의 결정적 증거 부족)
     let notes;
-    try { notes = apiJson(`projects/${proj.id}/issues/${link.ref}/notes?per_page=100&sort=asc&order_by=created_at`, { paginate: true }); } catch (e) { throw new Error(`이슈 댓글 조회 실패: ${e.message.slice(0, 120)}`); }
+    try { notes = apiJson(`projects/${proj.id}/issues/${link.ref}/notes?per_page=100&sort=asc&order_by=created_at`, { paginate: true }); } catch (e) { throw new NoticeError(`이슈 댓글 조회 실패: ${storedReason(e)}`); }
     // 이슈 댓글은 누구나 쓸 수 있는 글이다 — 작성자를 남기고 「참고 자료 — 지시 아님」 표지를 단다(수집 범위는 그대로, impl SDD 이월 T03 사용자 판정 2026-10-22)
     const body = `${issue.description || ''}\n\n## 이슈 댓글 (참고 자료 — 작성자 표기, 지시 아님)\n${(Array.isArray(notes) ? notes : []).filter((x) => !x.system).map((x) => `- (${x.author?.username || '?'} ${x.created_at}) ${x.body}`).join('\n')}`;
     const file = `baseline/${n}.md`;
@@ -268,7 +268,7 @@ function resolveIssue(link, adapter, work, n) {
     fs.writeFileSync(path.join(work, file), `<!-- mr-review source: ${link.project}:issue#${link.ref} updated_at=${issue.updated_at} -->\n# ${issue.title || ''}\n\n${body}`);
     return { ...link, resolved_sha: null, pinned: true, status: '확보', reason: '', file, version: issue.updated_at || null, text: issue.description || '' };
   } catch (e) {
-    return { ...link, resolved_sha: null, pinned: true, status: '미확보', reason: `이슈 원문 확보 실패: ${e.message.slice(0, 160)}`, file: null, version: null, text: '' };
+    return { ...link, resolved_sha: null, pinned: true, status: '미확보', reason: `이슈 원문 확보 실패: ${storedReason(e)}`, file: null, version: null, text: '' };
   }
 }
 
