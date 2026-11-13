@@ -1,6 +1,6 @@
 # mr-review 1.4.2 — 후속 묶음 3건: ⓑ cleanup 워크트리 표기 · ⓔ `merge` 패스 3 오짝 · ⓕ glab 오류문 절단
 
-> 상태: **7 impl 완료**(2026-11-13 · 위임 트랙 · 경량·planless TDD · 커밋 `8b46b34`(ⓑ)·`f066783`(ⓔ)·`6fcd1e3`(ⓕ)·`7c2ffe3`(README·plan) · T1 371/371(기준선 347 + 신규 24) · T2~T7 통과 · 숨은 문자 0 · 미push · **다음 = 8 impl 적대검증**(review-loop `--phase impl`, 보안 yes — ledger = 이 문서 말미 `## 적대검증 ledger (impl)`) — 「구현 기록 (7 impl)」 절) · **4 review-loop(spec) 종결**(2026-11-13 · 위임 트랙 · 보안 yes(호출자 지정) · 적대 2 + 확인 1 · high 1 FIXED(R1-1 cleanup 삭제 경로 절대화 · ACⓑ-9) · 확인 C1 verdict pass · 대장 대기 0 · 다음 = 7 impl — 5·6 생략(D149)) · **harden 완료**(3-harden-spec 2026-11-13 09:xx~10:xx · 수동 트랙(초안과 같은 세션) · 판단 갭 14건 전부 질문으로 닫음 → D152~D165(전부 첫 선택지 = 추천안) · 사실 갭은 코드 조회·실험으로 해소 · DEFERRED 0건 · 다음 = 4 review-loop(spec, 보안 yes) — 이 세션은 하지 않는다) · 초안(2026-11-13 09:xx · 2-spec-draft 수동 트랙 · 메인 체크아웃 브랜치 `…/mr-review-1-4-2-fixes`, base main `18d98c0` = 1.4.1 릴리스 · 설계 질의 3건(Q1 경로 · Q2 보류 소항목 범위 · Q3 ⓔ 수정 방향) 전부 첫 선택지 = 추천안 — 답 출처는 「재논의 금지」 머리말).
+> 상태: **8 review-loop(impl) 종결**(2026-11-13 · 위임 트랙 · 보안 yes(호출자 지정) · `--auto-rounds 1 --base 299cc29` · 적대 1(R1 approve · finding 0) + 확인 0 = 빠른 종료 · blocking 0 · 대장 대기 0 · 다음 = 9 릴리스(plugin.json 1.4.2) — ledger = 이 문서 말미 `## 적대검증 ledger (impl)`) · **7 impl 완료**(2026-11-13 · 위임 트랙 · 경량·planless TDD · 커밋 `8b46b34`(ⓑ)·`f066783`(ⓔ)·`6fcd1e3`(ⓕ)·`7c2ffe3`(README·plan) · T1 371/371(기준선 347 + 신규 24) · T2~T7 통과 · 숨은 문자 0 · 미push · **다음 = 8 impl 적대검증**(review-loop `--phase impl`, 보안 yes — ledger = 이 문서 말미 `## 적대검증 ledger (impl)`) — 「구현 기록 (7 impl)」 절) · **4 review-loop(spec) 종결**(2026-11-13 · 위임 트랙 · 보안 yes(호출자 지정) · 적대 2 + 확인 1 · high 1 FIXED(R1-1 cleanup 삭제 경로 절대화 · ACⓑ-9) · 확인 C1 verdict pass · 대장 대기 0 · 다음 = 7 impl — 5·6 생략(D149)) · **harden 완료**(3-harden-spec 2026-11-13 09:xx~10:xx · 수동 트랙(초안과 같은 세션) · 판단 갭 14건 전부 질문으로 닫음 → D152~D165(전부 첫 선택지 = 추천안) · 사실 갭은 코드 조회·실험으로 해소 · DEFERRED 0건 · 다음 = 4 review-loop(spec, 보안 yes) — 이 세션은 하지 않는다) · 초안(2026-11-13 09:xx · 2-spec-draft 수동 트랙 · 메인 체크아웃 브랜치 `…/mr-review-1-4-2-fixes`, base main `18d98c0` = 1.4.1 릴리스 · 설계 질의 3건(Q1 경로 · Q2 보류 소항목 범위 · Q3 ⓔ 수정 방향) 전부 첫 선택지 = 추천안 — 답 출처는 「재논의 금지」 머리말).
 > 선행: 1.3.0 spec `docs/specs/2026-10-21-mr-review-skill-design.md`(D1~D16) · 1.3.1(D17~D34) · 1.3.2(D35~D51) · 1.3.3(D52~D67) · 1.3.4(D68~D89) · 1.3.5(D90~D112) · 1.4.0 spec `docs/specs/2026-10-24-mr-review-1-3-6.md`(D113~D147 — **D136 짝 1:1 · D137 짝 짓기 패스 · D138 후보 표시** · 1.4.0 impl ledger 의 OUT_OF_SCOPE 1건 = 이 spec 의 ⓕ). plan `docs/plans/2026-10-21-mr-review-skill.md`(SC-1~SC-8 — 계약·게이트 정본).
 > 경로: **경량 — 단 4단계(spec 적대검증, 보안 yes)는 유지, 5 plan·6 plan 적대검증 생략**(dev-cycle 1차 판정 + 질문 답 2026-11-13, Q1 — D149. 접촉 표면 스캔: 스키마·마이그레이션·권한·인증·외부 연동 신설 없음 · cleanup 의 삭제 대상은 늘지 않는다(경로를 작업 디렉터리 안으로 좁힐 뿐 — D152) · 다만 ⓔ 는 「단독 출처 확인」이 빠지는 길(판정 엄격함)에, ⓕ 는 가림 경계에 닿는다 → spec 적대검증을 남긴다). plan 을 생략하므로 impl ledger 위치 = 이 문서 말미 `## 적대검증 ledger (impl)`.
 
@@ -257,6 +257,25 @@
 - R2 뒤 전환 신호 ②(수정 큐 소진 — 신규 FIXED 후보 0) 발화 → batch ESCALATE 적재 0건(flush 없음) → 확인 모드 진입(C1 · 확인 예산 2 중 1). 루프 직접 판정 0건 · 추천 자동 채택(위임) 0건.
 - **C1(확인 1/2)**: 큐 항목별 결과 = R1-1 **소멸**(`5761b74` — 절대 경로 한 번 계산·세 곳 같은 값 · ACⓑ-9 가 원 지적을 닫음) · 판정 감사 = 해당 없음(루프 직접 판정 0건) · 신규 finding = 없음(§3.ⓑ 수정 2~4·ACⓑ-1~9·§4 표·§6 cleanup 항목 사이 회귀·모순 없음) · 머지 준비도 verdict = **pass**(정적 검토 — AC 의 RED/GREEN 은 impl 단계).
 - **종결(2026-11-13)**: 적대 2라운드(R1·R2) + 확인 1라운드(C1) · 복귀 미사용 · blocking 발견 1건(high 1) = FIXED 1(루프 자동 수정) · ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE 0 · low 0 · 미판정 blocking 0 · 미확인 FIXED 큐 0 · 추천 자동 채택(위임) 0건 · 최종 verdict pass. DEFERRED_TO_IMPL 없음 — impl 에 넘길 추가 AC 는 본문 ACⓑ-9(R1-1)뿐.
+
+## 적대검증 ledger (impl)
+
+보안 크리티컬: yes (호출자 지정) — 접촉면 = ⓑ cleanup 삭제 경로(비가역) · ⓔ 단독 출처 확인 우회 · ⓕ 외부 문자열 저장(가림 경계)
+
+- 루프 설정: `--phase impl --security yes --auto-rounds 1 --base 299cc29`(base `299cc29c82040a0a434d2f35ce12347a0f9032f6` = spec 적대검증 종결 커밋 · 브랜치 upstream 없음 — origin 미사용) · `--max 5` · `--confirm-rounds 2` · 세션 모드 위임(`DEV_WORKFLOW_MODE=delegated`) · 루프 시작 HEAD `17d372d` · 입도 = planless 통합 1회(구현이 ⓑ·ⓔ·ⓕ 커밋 3개 + 문서 — 변경 15파일이 한 diff 로 충분).
+- §1 impl 게이트(SC-7 T1~T7) 루프 시작 시: T1 371/371 · T2 0줄 · T3 56/56 · T4 0줄 · T5 0 · T6 0(README·spec·plan 추가 줄 0) · T7 0 · 숨은 문자 0.
+- score 산식 = 미판정 blocking(수정 전 스냅샷, 미확인 FIXED 큐 제외) · critical 4 · high 3 · medium 1. 가드 focus = 고정 첫 줄 + 재논의 금지 전문(D148~D165·승계 머리말) + §6 수용된 한계 · 진행 상태 줄 없음(큐 0).
+
+| fingerprint | severity | disposition | 근거 · 수정 커밋 |
+|---|---|---|---|
+| (없음 — R1 finding 0) | — | — | — |
+
+| 라운드 | 모드 | 신규 blocking (c/h/m) | score(전환용) | 미확인 FIXED 큐 | verdict |
+|---|---|---|---|---|---|
+| R1 | 적대·자동 | 0/0/0 | 0 | 0 | approve |
+
+- R1: codex 정적 검토(실행 로그 22건 · 샌드박스 개별 명령 실패 1건은 무효 사유 아님) — 구문 검사 16모듈 · 병합 경계 384건 · 저장 사유 경계 16건 자체 점검 통과 보고 · finding 0. 「구현 판단」 4가지(종료 코드 없음 문구 · HTTP 3자리만 · `NoticeError` · ACⓕ-7 EEXIST 재현)에 대한 지적 없음.
+- **종결(2026-11-13) — 빠른 종료**: 미확인 FIXED 큐 0 · 루프 직접 판정 0 · 추천 자동 채택(위임) 0 · 미판정 blocking 0 → 확인 라운드 없음(§2e). 적대 1라운드 · 확인 0 · 복귀 미사용 · blocking 0 · FIXED/ACCEPTED/DEFERRED_TO_IMPL/OUT_OF_SCOPE/DUPLICATE/ESCALATE 0 · low 0 · 최종 verdict = 해당 없음(빠른 종료 — 적대 R1 verdict approve). 다음 = 9 릴리스(plugin.json 1.4.2).
 
 ## 확인 대기 대장
 
