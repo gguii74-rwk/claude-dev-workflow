@@ -210,3 +210,22 @@
 | D163 | 버전 = **1.4.2**(패치). 「1.5.0」은 기각 | 질문 답(harden G10) — 새 명령·새 어댑터 키 없음 · 1.3.x 결함 수정 묶음 전례 · 바뀌는 출력을 읽는 쪽은 같이 배포되는 스킬 문서뿐 |
 | D164 | 9단계 실측 = 확인만을 위한 실행은 띄우지 않고 **설치 갱신 뒤 첫 실제 MR 리뷰에서 관측**. 「릴리스 직후 기존 MR 재실행」은 기각 | 질문 답(harden G11) — 검토자 모델은 실행마다 달라 재실행해도 같은 상황이 재현된다는 보장이 없다 · 1.4.1 트랙의 같은 결정 |
 | D165 | `ERR` 줄(stdout)의 glab 오류문은 **그대로**. 「화면도 고정 문구로」는 기각 | 질문 답(harden G23) — 멈춘 자리에서 원인을 바로 알아야 한다 · 작업 파일·리포트·외부 전송 어디에도 저장되지 않는다 |
+
+## 적대검증 ledger (spec)
+
+보안 크리티컬: yes (호출자 지정) — 접촉면 = ⓑ cleanup 삭제 경로(비가역) · ⓔ 단독 출처 확인 우회 · ⓕ 외부 문자열 저장(가림 경계)
+
+- 루프 설정: `--phase spec --security yes --auto-rounds 3 --base 18d98c0`(base = main = origin/main `18d98c0aaa39b4123f7b7b55b53414a2155bfd33`) · `--max 5` · `--confirm-rounds 2` · 세션 모드 위임(`DEV_WORKFLOW_MODE=delegated`) · 루프 시작 HEAD `ca80db5`.
+- score 산식 = 미판정 blocking(수정 전 스냅샷, 미확인 FIXED 큐 제외) · critical 4 · high 3 · medium 1.
+
+| fingerprint | severity | disposition | 근거 · 수정 커밋 |
+|---|---|---|---|
+| R1-1 spec §3.ⓑ-2 · cleanup 삭제 경로 상대 `--work` → git `worktree remove` 끝부분 일치로 원본 워크트리 삭제 · 「존재 확인·git 인자·rmSync 에 같은 절대 경로(path.resolve) + 상대 --work 사본 회귀 AC」 | high | FIXED | `5761b74` — §3.ⓑ-2 에 절대 경로 한 번 계산 규칙 · ACⓑ-9 · §4 테스트 어림 6→7. 미확인 FIXED 큐 편입 |
+
+| 라운드 | 모드 | 신규 blocking (c/h/m) | score(전환용) | 미확인 FIXED 큐 | verdict |
+|---|---|---|---|---|---|
+| R1 | 적대·자동 | 0/1/0 | 3 | 1 | needs-attention |
+
+## 확인 대기 대장
+
+해당 없음
