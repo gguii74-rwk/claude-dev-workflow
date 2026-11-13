@@ -361,3 +361,91 @@ test('merge: 문자열이 아닌 file 을 낸 검토자는 invalid(스키마 불
   assert.match(r.first, /^MERGED reviewers=- findings=0 joined=0 /);
   assert.equal(line2(r, 'invalid'), 'invalid: claude(스키마 불통과: findings[0].file) · codex(스키마 불통과: findings[0].file)');
 });
+
+// ── 1.4.2 ⓔ 패스 3 = 같은 file + intentRows 묶음 동치 · 행 겹친 같은 파일 후보 표시 (spec 2026-11-13 3.ⓔ · D150·D157) ──
+const ROWS_1_11 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+const wideNarrow = (codexOver = {}) => both([RF({ type: 'DESIGN_DRIFT', title: '설계 이탈 넓은 발견', file: 'p', intentRows: ROWS_1_11 })], [RF({ type: 'MISSING_EVIDENCE', title: '행 5 증거 없음', file: 'p', intentRows: [5], ...codexOver })]);
+
+test('merge 패스 3: 넓은 발견(행 1~11)이 같은 파일의 다른 사안(행 5)을 삼키지 않는다 — joined=0 · 둘 다 단독 · 후보에 겹친 행 (1.4.2 ACⓔ-1 · D150·D157)', () => {
+  const w = wideNarrow();
+  const r = merge(w, '--valid', 'claude,codex');
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /findings=2 joined=0 candidates=1 /);
+  assert.deepEqual(fj(w).findings.map((f) => [f.source, f.joinedBy ?? null]), [['claude', null], ['codex', null]]);
+  assert.equal(line2(r, 'candidates'), 'candidates: claude:1~codex:1(같은 파일 p · 같은 행 5)');
+  assert.deepEqual(fj(w).mergeCandidates, [{ pair: ['F1', 'F2'], why: '같은 파일 · 같은 행 5' }]);
+});
+
+test('merge 패스 3: 행 묶음이 같고 같은 파일이면 합친다 — 순서·중복 무관 (1.4.2 ACⓔ-2)', () => {
+  const w1 = both([RF({ title: 'X', file: 'p', intentRows: [13] })], [RF({ title: 'Y', file: 'p', intentRows: [13] })]);
+  assert.match(merge(w1, '--valid', 'claude,codex').first, /findings=1 joined=1 candidates=0 /);
+  assert.equal(fj(w1).findings[0].joinedBy, 'intentRows');
+  const w2 = both([RF({ title: 'X', file: 'p', intentRows: [5, 6] })], [RF({ title: 'Y', file: 'p', intentRows: [6, 5, 5] })]);
+  assert.match(merge(w2, '--valid', 'claude,codex').first, /findings=1 joined=1 candidates=0 /);
+  assert.deepEqual([fj(w2).findings[0].joinedBy, fj(w2).findings[0].intentRows], ['intentRows', [5, 6]]);
+});
+
+test('merge 패스 3: 일부만 겹치면([13] ↔ [13, 14]) 합치지 않고 후보 「같은 파일 … · 같은 행 13」 (1.4.2 ACⓔ-3)', () => {
+  const w = both([RF({ title: 'X', file: 'p', intentRows: [13] })], [RF({ title: 'Y', file: 'p', intentRows: [13, 14] })]);
+  const r = merge(w, '--valid', 'claude,codex');
+  assert.match(r.first, /findings=2 joined=0 candidates=1 /);
+  assert.equal(line2(r, 'candidates'), 'candidates: claude:1~codex:1(같은 파일 p · 같은 행 13)');
+  assert.deepEqual(fj(w).mergeCandidates, [{ pair: ['F1', 'F2'], why: '같은 파일 · 같은 행 13' }]);
+});
+
+test('merge 패스 3: --rows 로 걸러 낸 뒤 비교 — [5, 99] ↔ [5] 는 합침 · 걸러 낸 뒤 둘 다 빈 묶음([99] ↔ [98])은 합치지 않고 행 표기 없는 같은 파일 후보 (1.4.2 ACⓔ-4)', () => {
+  const w1 = both([RF({ title: 'X', file: 'p', intentRows: [5, 99] })], [RF({ title: 'Y', file: 'p', intentRows: [5] })]);
+  assert.match(merge(w1, '--valid', 'claude,codex', '--rows', '20').first, /findings=1 joined=1 candidates=0 /);
+  assert.equal(fj(w1).findings[0].joinedBy, 'intentRows');
+  const w2 = both([RF({ title: 'X', file: 'p', intentRows: [99] })], [RF({ title: 'Y', file: 'p', intentRows: [98] })]);
+  const r2 = merge(w2, '--valid', 'claude,codex', '--rows', '20');
+  assert.match(r2.first, /findings=2 joined=0 candidates=1 /);
+  assert.equal(line2(r2, 'candidates'), 'candidates: claude:1~codex:1(같은 파일 p)');
+  assert.deepEqual(fj(w2).mergeCandidates, [{ pair: ['F1', 'F2'], why: '같은 파일' }]);
+});
+
+test('merge 패스 3: 같은 행 묶음이라도 파일이 다르면 합치지 않고 「같은 행 n」 후보 — 현행 유지 (1.4.2 ACⓔ-5 · D138)', () => {
+  const w = both([RF({ title: 'X', file: 'p', intentRows: [7] })], [RF({ title: 'Y', file: 'q', intentRows: [7] })]);
+  const r = merge(w, '--valid', 'claude,codex');
+  assert.match(r.first, /findings=2 joined=0 candidates=1 /);
+  assert.equal(line2(r, 'candidates'), 'candidates: claude:1~codex:1(같은 행 7)');
+  assert.deepEqual(fj(w).mergeCandidates, [{ pair: ['F1', 'F2'], why: '같은 행 7' }]);
+});
+
+test('merge: ACⓔ-1 입력도 --force --same claude:1=codex:1 이면 합친다(joinedBy same) (1.4.2 ACⓔ-6)', () => {
+  const w = wideNarrow();
+  assert.equal(merge(w, '--valid', 'claude,codex').code, 0);
+  const r = merge(w, '--valid', 'claude,codex', '--force', '--same', 'claude:1=codex:1');
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.first, /findings=1 joined=1 candidates=0 /);
+  assert.deepEqual([fj(w).findings[0].source, fj(w).findings[0].joinedBy], ['both', 'same']);
+});
+
+test('merge: 넓은 발견에 삼켜지지 않은 단독 codex 발견(medium)은 「단독 출처 낮은 확신 차단」을 받는다 (1.4.2 ACⓔ-7)', () => {
+  const w = wideNarrow({ confidence: 'medium' });
+  assert.equal(merge(w, '--valid', 'claude,codex').code, 0);
+  const f = fj(w);
+  const narrow = f.findings.find((x) => x.title === '행 5 증거 없음');
+  assert.equal(narrow.source, 'codex');
+  assert.ok(f.needsMain.some((n) => n.id === narrow.id && n.why === '단독 출처 낮은 확신 차단'), JSON.stringify(f.needsMain));
+});
+
+test('merge 결정성: ACⓔ-1·ACⓔ-3 입력을 다른 파일 순서로 넣어도 findings.json 바이트 동일 (1.4.2 ACⓔ-8)', () => {
+  const claude = [RF({ type: 'DESIGN_DRIFT', title: '넓음', file: 'p', intentRows: ROWS_1_11 }), RF({ title: 'X', file: 'q', intentRows: [13] })];
+  const codex = [RF({ type: 'MISSING_EVIDENCE', title: '좁음', file: 'p', intentRows: [5] }), RF({ title: 'Y', file: 'q', intentRows: [13, 14] })];
+  const a = both(claude, codex);
+  const b = both(claude, codex, { codexFirst: true });
+  assert.equal(merge(a, '--valid', 'claude,codex').code, 0);
+  assert.equal(merge(b, '--valid', 'claude,codex').code, 0);
+  assert.equal(readFileSync(join(b.work, 'findings.json'), 'utf8'), readFileSync(join(a.work, 'findings.json'), 'utf8'));
+  assert.deepEqual(fj(a).mergeCandidates.map((c) => c.why), ['같은 파일 · 같은 행 5', '같은 파일 · 같은 행 13']);
+});
+
+test('SKILL.md §6: (다) = intentRows 묶음이 같음(비어 있지 않음) 그리고 같은 file · candidates 괄호 꼴 「같은 파일 … · 같은 행 …」 · ⓒ 행이 겹친 후보부터 본다 (1.4.2 ⓔ-5 · D150·D157)', () => {
+  const skill = readFileSync(join(LIB, '..', '..', 'SKILL.md'), 'utf8');
+  const s6 = skill.slice(skill.indexOf('## 6. 병합'), skill.indexOf('## 7. 재리뷰'));
+  assert.match(s6, /\(다\) `intentRows` 묶음이 같음\(비어 있지 않음\) \*\*그리고\*\* 같은 `file`/);
+  assert.doesNotMatch(s6, /\(다\) `intentRows` 교집합/);
+  assert.match(s6, /`\(같은 파일 <경로> · 같은 행 <번호들>\)`/);
+  assert.match(s6, /행이 겹친 후보부터 본다/);
+});

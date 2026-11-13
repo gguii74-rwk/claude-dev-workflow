@@ -61,7 +61,8 @@ export function mergeReviews({ claude = null, codex = null, check = {}, pack = n
     });
   }
 
-  // 짝 짓기(D136·D137): 1:1 · 패스 0 --same → 1 지문 → 2 decisionIds → 3 intentRows + 같은 file. 패스 안은 claude 순 → 아직 짝 없는 codex 첫 것
+  // 짝 짓기(D136·D137·D150): 1:1 · 패스 0 --same → 1 지문 → 2 decisionIds → 3 intentRows 묶음 동치(비어 있지 않음) + 같은 file. 패스 안은 claude 순 → 아직 짝 없는 codex 첫 것
+  // 패스 3 은 일부만 겹치는 쌍을 합치지 않는다(1.4.2 ⓔ — 넓은 발견이 다른 사안을 삼켜 단독 출처 확인이 빠지던 길). 그런 쌍은 같은 파일 후보로 남는다(D138)
   const pairOf = new Map();   // claude item → { x: codex item, by }
   const usedX = new Set();
   for (const [i, j] of same) {
@@ -72,10 +73,11 @@ export function mergeReviews({ claude = null, codex = null, check = {}, pack = n
     pairOf.set(c, { x, by: 'same' }); usedX.add(x);
   }
   const inter = (a, b) => a.filter((v) => b.includes(v));
+  const sameRows = (a, b) => a.length > 0 && a.length === b.length && a.every((v) => b.includes(v));   // rws 는 uniq 된 값 — 원소 집합 동치
   const passes = [
     ['fingerprint', (c, x) => c.key === x.key],
     ['decisionIds', (c, x) => inter(c.ids, x.ids).length > 0],
-    ['intentRows', (c, x) => inter(c.rws, x.rws).length > 0 && c.f.file != null && c.f.file === x.f.file],
+    ['intentRows', (c, x) => sameRows(c.rws, x.rws) && c.f.file != null && c.f.file === x.f.file],
   ];
   for (const [by, ok] of passes) {
     for (const c of items.claude) {
@@ -120,15 +122,18 @@ export function mergeReviews({ claude = null, codex = null, check = {}, pack = n
   for (const c of items.claude) { const p = pairOf.get(c); build(p ? [c, p.x] : [c], p?.by); }
   for (const x of items.codex) if (!usedX.has(x)) build([x]);
 
-  // 병합 후보(D138): 합쳐지지 않은 claude·codex 쌍 — 같은 파일 · 또는 행이 겹치는데 파일이 다름
+  // 병합 후보(D138): 합쳐지지 않은 claude·codex 쌍 — 같은 파일 · 또는 행이 겹치는데 파일이 다름. 같은 파일인데 행도 겹치면 겹친 행을 함께 적는다(D157)
   const idOf = new Map(meta.map(({ f, parts }) => [parts[0], f.id]));
   const mergeCandidates = [];
   for (const c of items.claude.filter((y) => !pairOf.has(y))) {
     for (const x of items.codex.filter((y) => !usedX.has(y))) {
       let why = null;
       let label = null;
-      if (c.f.file != null && c.f.file === x.f.file) { why = '같은 파일'; label = `같은 파일 ${c.f.file}`; }
-      else if (inter(c.rws, x.rws).length) { why = `같은 행 ${inter(c.rws, x.rws).join(', ')}`; label = why; }
+      const rowsHit = inter(c.rws, x.rws);
+      if (c.f.file != null && c.f.file === x.f.file) {
+        const rowsPart = rowsHit.length ? ` · 같은 행 ${rowsHit.join(', ')}` : '';
+        why = `같은 파일${rowsPart}`; label = `같은 파일 ${c.f.file}${rowsPart}`;
+      } else if (rowsHit.length) { why = `같은 행 ${rowsHit.join(', ')}`; label = why; }
       if (!why) continue;
       mergeCandidates.push({ pair: [idOf.get(c), idOf.get(x)], why });
       notes.candidates.push(`claude:${c.n}~codex:${x.n}(${label})`);
