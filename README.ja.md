@@ -16,6 +16,7 @@
 | orchestrate | skill | `/dev-workflow:orchestrate` | （1.2.0 以上）**メインセッション**がトラックを Orca ターミナルで運用する共通手順 — 起動 · 監視 · 質問ルーティング · 段階終了の検証・ハンドオフ · 後継（プロジェクト規約優先） |
 | mr-review | skill | `/dev-workflow:mr-review <プロジェクト> <iid>` | (1.3.0 以上) **他人の MR** を読み取り専用でレビュー — 作成ルールの機械チェック · レビュー head の固定 · 2 モデル（Claude サブエージェント + Codex task）の独立レビュー · チームポリシーの判定 4 種形式のドラフトレポート。プロジェクトのアダプター文書が必要 |
 | コンテキスト閾値ナッジ | Stop hook | （自動） | コンテキスト使用量が閾値（デフォルト 40%）を超えたらハンドオフ作成 + `/clear` を促し、以降は **15%p 区間ごとに再ナッジ**（40 → 55 → 70 → 85%、上限なし） |
+| 圧縮後の再読込 | SessionStart hook (`compact`) | （自動） | （1.5.0 以上）会話が圧縮（要約）された直後に固定の案内文を入れる — dev-workflow スキルの実行中なら、その SKILL.md 全文と進行状態ファイル（review-loop はループファイル）を読み直し、中断した所から続ける |
 
 ## 目次
 
@@ -232,6 +233,8 @@ CLAUDE_CTX_LIMIT=200000     # コンテキストトークン上限を直接指�
 
 **セッションモード — 手動 / 委任（1.1.0 以上）。** メインセッション（オーケストレーター）がトラックセッションを起動し、その質問に代わりに答える運用のためにセッションモードを選ぶ。**手動**（デフォルト — `DEV_WORKFLOW_MODE` 未設定）は人が段階ごとに確認しながら進め、**委任**（`DEV_WORKFLOW_MODE=delegated` — 前後の空白を除いた値が完全一致する場合のみ、それ以外の値は手動）は夜間・不在時にエージェント（通常はメインセッション）がこのセッションのユーザー役を代行する — 質問はオーケストレーターが答え、後継もオーケストレーターが起動する。ブレインストーミング・harden-spec・ui-mockup は人・好みの段階なのでモードに関係なく人が行い、その後の review-loop(spec) から手動または委任で進める。メインセッション自身は手動（自分の後継は上の自動引き継ぎのまま）。**設定はトラックターミナル作成コマンドの接頭辞**が基本: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 後継ターミナルを起動するときも同じ接頭辞を付ける（付け忘れるとその後継だけ自動引き継ぎに戻る）。Windows（PowerShell）は `$env:DEV_WORKFLOW_MODE='delegated'; claude …` の形（未実測）。settings.json の `env` に入れるとプロジェクトのすべてのセッション — **メインセッションまで** — が委任になり自分の後継を起動できなくなるので、それを承知の上でのみ使う。**委任の効果（1.2.0）**: ① Orca ターミナルでも自動引き継ぎの代わりに Orca の外と同じ `/clear` 案内ナッジを受ける — 後継はオーケストレーターが起動する（1.1.0、Orca の外では効果なし）② review-loop・dev-cycle がリスク群以外の質問の推奨案を自動採用する — リスク群（critical・セキュリティ・方向の前提・AC・目標・非目標・既決定の変更）は引き続き質問し、自動採用した決定は出典 `추천 자동 채택(위임)`（推奨の自動採用）で記録され確認ラウンドの監査対象になる ③ その決定は**確認待ち台帳**（spec・plan 末尾の `## 확인 대기 대장`）に集まり、段階境界でユーザーが確認・撤回する。1.1.x のインストールは ① のみ。旧バージョンのインストールはこの変数を知らない — `doctor` でバージョンを確認する。
 
+**圧縮後の再読込フック（1.5.0 以上）。** 2 つ目のフック（`SessionStart`、matcher `compact`）が、会話が圧縮（自動または `/compact`）された直後に動く。圧縮後は呼び出したスキル本文が先頭部分しか残らず（スキルごとに約 5,000 トークン）、進行状態は要約文にしか残らないため、フックがプラグインのスキルフォルダの絶対パスを含む固定の案内文を入れる — dev-workflow スキルの実行中なら、その SKILL.md 全文（スキルを再度呼び出さない）と進行状態ファイルを読み直す。review-loop は今後ラウンドごとに書き直すループファイル `.remember/loop-<ledger>-<phase>.md` を読み、「圧縮後の継続」（§0b）に従う。トラックプロンプトファイルで始めたセッションならそのファイルも読み直し、会話の中にしかなかった作業リストは成果物ファイルと照合して作り直し、要約文よりファイル・git を信じる。dev-workflow スキルを実行していないセッションには「無視する」という案内になる。上のコンテキスト閾値ナッジと並んで動き、ナッジの状態ファイルを読みも書きもしない。このフックだけを止めるスイッチはない — プラグインを無効化する（またはすべてのフックを止める）方法しかない。
+
 ### 10. `mr-review` — 他人の MR の 2 モデルレビュードラフト
 
 指名されたレビュアーが MR 番号ひとつで **判定ドラフトのレポート** を受け取る。リポジトリも GitLab も変更しない（コメント・承認は人が行う）。自分の spec/plan/実装を直す `review-loop` とは別物。
@@ -302,15 +305,16 @@ claude-dev-workflow/
 │   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
 │   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
 │   ├── skills/mr-review/{SKILL.md,scripts/mr-review.mjs,scripts/lib/{adapter,gitlab,collect,check,deploy,pack,report}.mjs}
-│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
+│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs, scripts/compact-reread-hook.mjs}
 ├── tests/orchestrate/                # orchestrate.mjs のテスト（スタブ orca — プラグインの外）
 ├── tests/mr-review/                  # mr-review テスト（偽 glab + ローカル bare git — プラグイン外）
+├── tests/hooks/                      # compact-reread-hook テスト（プラグイン外）
 ├── README.md                         # 英語（デフォルト）
 └── README.ko.md / README.ja.md       # 韓国語 / 日本語
 ```
 
 `plugin.json` の `version` を上げたコミットでのみユーザーは更新を受け取る。version を省略すると git commit SHA がバージョンになり、毎コミットが新バージョン扱いになる。ユーザーは `/plugin update` またはバックグラウンド自動更新で更新する。
 
-テスト: `node --test tests/orchestrate/orchestrate.test.mjs`（orchestrate — スタブ `orca`）· `node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs tests/mr-review/check.test.mjs tests/mr-review/deploy.test.mjs tests/mr-review/pack.test.mjs tests/mr-review/report.test.mjs`（mr-review — 偽 `glab` とローカル bare git。実際の GitLab・Orca は不要）。この repo に npm ゲートはない（ディレクトリ引数は禁止 — Node 21 以上はモジュールパスとして解釈）。
+テスト: `node --test tests/orchestrate/orchestrate.test.mjs`（orchestrate — スタブ `orca`）· `node --test tests/hooks/compact-reread-hook.test.mjs`（圧縮後の再読込フック）· `node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs tests/mr-review/check.test.mjs tests/mr-review/deploy.test.mjs tests/mr-review/pack.test.mjs tests/mr-review/report.test.mjs`（mr-review — 偽 `glab` とローカル bare git。実際の GitLab・Orca は不要）。この repo に npm ゲートはない（ディレクトリ引数は禁止 — Node 21 以上はモジュールパスとして解釈）。
 
 **README は 3 言語で維持する** — `README.md`（英語、デフォルト）/ `README.ko.md` / `README.ja.md`。内容を変えるときは **3 ファイルを一緒に更新**する（ドリフト防止）。

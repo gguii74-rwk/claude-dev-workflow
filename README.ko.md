@@ -16,6 +16,7 @@
 | orchestrate | skill | `/dev-workflow:orchestrate` | (1.2.0 이상) **메인 세션**이 트랙을 오르카 터미널로 운영하는 공통 절차 — 기동 · 감시 · 질문 라우팅 · 단계 종료 검증·핸드오프 · 후계 (프로젝트 규약 우선) |
 | mr-review | skill | `/dev-workflow:mr-review <프로젝트> <iid>` | (1.3.0 이상) **남의 MR**을 읽기 전용으로 리뷰 — 작성 규칙 기계 검사 · 리뷰 head 고정 · 두 모델(Claude 서브에이전트 + Codex task) 독립 검토 · 팀 정책 판정 4종 형식의 초안 리포트. 프로젝트 어댑터 문서 필요 |
 | 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%)를 넘으면 핸드오프 작성 + `/clear` 안내를 넛지하고, 이후 **15%p 구간마다 재넛지**(40 → 55 → 70 → 85%, 상한 없음) |
+| 압축 뒤 재읽기 | SessionStart hook (`compact`) | (자동) | (1.5.0 이상) 대화가 압축(요약)된 직후 고정 안내문을 넣는다 — dev-workflow 스킬을 실행하던 중이면 그 SKILL.md 전문과 진행 상태 파일(review-loop는 루프 파일)을 다시 읽고 하던 곳에서 이어 간다 |
 
 ## 목차
 
@@ -232,6 +233,8 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 
 **세션 모드 — 수동 / 위임 (1.1.0 이상).** 메인 세션(오케스트레이터)이 트랙 세션을 띄우고 그 질문에 대신 답하는 운영을 위해 세션 모드를 고른다. **수동**(기본 — `DEV_WORKFLOW_MODE` 미설정)은 사람이 단계별로 확인하며 진행하고, **위임**(`DEV_WORKFLOW_MODE=delegated` — 앞뒤 공백을 뗀 값이 정확히 일치할 때만, 그 외 값은 수동)은 야간·부재 중에 에이전트(통상 메인 세션)가 이 세션의 사용자 역할을 대행한다 — 질문은 오케스트레이터가 답하고 후계도 오케스트레이터가 띄운다. 브레인스토밍·harden-spec·ui-mockup은 사람·취향 단계라 모드와 무관하게 사람이 하고, 그 뒤 review-loop(spec)부터 수동 또는 위임으로 진행한다. 메인 세션 자신은 수동이다(자기 후계는 위 자동 인계 그대로). **설정은 트랙 터미널 생성 명령의 접두**가 기본이다: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 후계 터미널을 띄울 때도 같은 접두를 붙인다(빠뜨리면 그 후계만 자동 인계로 돌아간다). Windows(PowerShell)는 `$env:DEV_WORKFLOW_MODE='delegated'; claude …` 형태(미실측). settings.json `env`에 넣으면 프로젝트의 모든 세션 — **메인 세션까지** — 위임이 되어 자기 후계를 못 띄우므로 그 점을 알고 쓸 때만 쓴다. **위임 효과(1.2.0)**: ① 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다 — 후계는 오케스트레이터가 띄운다(1.1.0, 오르카 밖에서는 효과 없음) ② review-loop·dev-cycle이 위험군 외 질문의 추천안을 자동 채택한다 — 위험군(critical·보안·방향 전제·AC·목표·비목표·기결정 변경)은 여전히 묻고, 자동 채택한 결정은 출처 `추천 자동 채택(위임)`으로 기록되어 확인 라운드의 감사 대상이 된다 ③ 그 결정은 **확인 대기 대장**(spec·plan 말미 `## 확인 대기 대장`)에 모여 단계 경계에서 사용자가 확인·번복한다. 1.1.x 설치본은 ①만 받는다. 구버전 설치본은 이 변수를 모른다 — `doctor`로 버전을 확인한다.
 
+**압축 뒤 재읽기 훅 (1.5.0 이상).** 두 번째 훅(`SessionStart`, matcher `compact`)이 대화가 압축(자동 또는 `/compact`)된 직후 돈다. 압축 뒤에는 호출했던 스킬 본문이 앞부분만 남고(스킬당 약 5,000토큰) 진행 상태는 요약문에만 남으므로, 훅이 플러그인 스킬 폴더의 절대 경로를 담은 고정 안내문을 넣는다 — dev-workflow 스킬을 실행하던 중이면 그 SKILL.md 전문(스킬을 다시 호출하지 않는다)과 진행 상태 파일을 다시 읽는다. review-loop는 이제 라운드마다 다시 쓰는 루프 파일 `.remember/loop-<ledger>-<phase>.md`를 읽고 「압축 뒤 이어가기」(§0b)를 따른다. 트랙 프롬프트 파일로 시작한 세션이면 그 파일도 다시 읽고, 대화에만 있던 작업 목록은 산출물 파일과 대조해 다시 만들며, 요약문보다 파일·git을 믿는다. dev-workflow 스킬을 실행하던 중이 아닌 세션에는 「무시한다」는 안내다. 위의 컨텍스트 임계 넛지와 같이 돌고, 넛지의 상태 파일을 읽지도 쓰지도 않는다. 이 훅만 끄는 스위치는 없다 — 플러그인을 비활성화(또는 모든 훅 끄기)하는 방법뿐이다.
+
 ### 10. `mr-review` — 남의 MR 두 모델 리뷰 초안
 
 지정된 리뷰어가 MR 번호 하나로 **판정 초안 리포트**를 받는다. 저장소도 GitLab도 바꾸지 않는다(댓글·승인은 사람이 한다). 자기 spec/plan/구현을 고치는 `review-loop`와 다르다.
@@ -302,15 +305,16 @@ claude-dev-workflow/
 │   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
 │   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
 │   ├── skills/mr-review/{SKILL.md,scripts/mr-review.mjs,scripts/lib/{adapter,gitlab,collect,check,deploy,pack,report}.mjs}
-│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs}
+│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs, scripts/compact-reread-hook.mjs}
 ├── tests/orchestrate/                # orchestrate.mjs 테스트(스텁 orca — 플러그인 밖)
 ├── tests/mr-review/                  # mr-review 테스트(가짜 glab + 로컬 bare git — 플러그인 밖)
+├── tests/hooks/                      # compact-reread-hook 테스트(플러그인 밖)
 ├── README.md                         # 영어(기본)
 └── README.ko.md / README.ja.md       # 한국어 / 일본어
 ```
 
 `plugin.json`의 `version`을 올린 커밋에서만 사용자가 업데이트를 받는다. 버전을 생략하면 git commit SHA가 버전이 되어 매 커밋이 새 버전으로 취급된다. 사용자는 `/plugin update` 또는 백그라운드 자동 업데이트로 갱신한다.
 
-테스트: `node --test tests/orchestrate/orchestrate.test.mjs`(orchestrate — 스텁 `orca`) · `node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs tests/mr-review/check.test.mjs tests/mr-review/deploy.test.mjs tests/mr-review/pack.test.mjs tests/mr-review/report.test.mjs`(mr-review — 가짜 `glab`·로컬 bare git, 실제 GitLab·오르카 불필요). 이 repo에는 npm 게이트가 없다(폴더 인자 금지 — Node 21 이상은 모듈 경로로 해석).
+테스트: `node --test tests/orchestrate/orchestrate.test.mjs`(orchestrate — 스텁 `orca`) · `node --test tests/hooks/compact-reread-hook.test.mjs`(압축 뒤 재읽기 훅) · `node --test tests/mr-review/adapter.test.mjs tests/mr-review/collect.test.mjs tests/mr-review/check.test.mjs tests/mr-review/deploy.test.mjs tests/mr-review/pack.test.mjs tests/mr-review/report.test.mjs`(mr-review — 가짜 `glab`·로컬 bare git, 실제 GitLab·오르카 불필요). 이 repo에는 npm 게이트가 없다(폴더 인자 금지 — Node 21 이상은 모듈 경로로 해석).
 
 **README는 3개 언어로 유지한다** — `README.md`(영어, 기본) / `README.ko.md` / `README.ja.md`. 내용을 바꿀 때는 **3개 파일을 함께 갱신**한다(드리프트 방지).
