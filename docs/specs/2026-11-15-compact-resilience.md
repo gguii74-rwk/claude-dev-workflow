@@ -390,6 +390,27 @@ dev-workflow 스킬(review-loop · harden-spec · orchestrate · mr-review 등)�
 - **C1 (확인 · HEAD `6e0d20d`)**: 응답 완전(큐 5건 전부 명시 결과 · 감사 · 신규 · verdict) · 소멸 확인 = R1-1 · R1-2 · R2-1 · R2-2 · R3-1 · 판정 감사 R4-1 = 이상 없음(「빈도가 낮다는 주장은 미실측 추정」 단서 — 한계와 시험 관측 계획을 고려해 비례적) · 신규 finding 없음 · 머지 준비도 verdict = **통과**(AC12·AC13 검증 의무 유지). 확인 소진 1
 - **종결**: 성공 종료(미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 verdict 통과) · 적대 4 / 확인 1 · 복귀 미사용 · disposition = FIXED 5 · ACCEPTED 1(추천 자동 채택(위임)) · OUT_OF_SCOPE·DEFERRED_TO_IMPL·DUPLICATE·ESCALATE 0 · low 0 · DEFERRED_TO_IMPL 없음(구현 연결 대상 없음)
 
+## 적대검증 ledger (impl)
+
+보안 크리티컬: yes (호출자 지정 — 사용자 상시 지시 2026-10-22) — 접촉면 = 모든 세션·모든 저장소에 도는 훅(세션 컨텍스트 주입)
+
+- 루프: base `35a7071`(spec 적대검증 종결·대장 확인 커밋 = 구현 착수 직전 HEAD — 이 브랜치는 원격 없음) · 브랜치 `gguii74-rwk/compact-resilience-1-5-0` · 예산 `--max 5` · `--confirm-rounds 2` · `--auto-rounds 1` · 위임 모드(`DEV_WORKFLOW_MODE=delegated`) · 설치본 1.4.2 문면으로 실행(§3e)
+- 입도 = planless — 커밋 4개(훅 · SKILL.md · README · 구현 기록)가 한 기능이라 task별 증분 없이 base `35a7071` 통합 1회로 판정
+- §1 impl 게이트(이 저장소는 npm 아님 — 트랙 지정 갈음): G1 11/11 · G2 56/56 · 371/371 · AC5 0줄 · `node --check` 통과 · AC10 89,311B · 맨 `$`+숫자 0 · G3 0 · G4 0
+- score 산식 = 전환용(미확인 FIXED 큐 제외 · §2c 분류 직후 스냅샷)
+
+| 라운드 | HEAD | verdict | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 |
+|---|---|---|---|---|---|
+| R1 (적대 · 자동) | `30ad203` | needs-attention | 0/0/1 (신규 1) | 1 | 0 → 1 |
+
+| # | fingerprint | severity | disposition | 근거 |
+|---|---|---|---|---|
+| R1-1 | SKILL.md §0b 위치 판정표 · 「루프 파일 없음 · ledger 종결 기록」 행이 현재 루프 소속을 확인하지 않음 · 같은 문서·phase를 다시 검증하는 새 루프가 R1 기록 전에 압축되면 옛 종결 기록으로 §4에 가 리뷰 없이 끝남 → 현재 루프의 종결 증거일 때만 종결 행 | medium | FIXED `dfe4344` (루프 판정 — 자동 모드) | 종결 행 = 종결 기록(§3)을 더한 커밋 == HEAD(§4는 커밋하지 않음) · 그 밖의 루프 파일 없음 = R1 기동 전(남은 종결·라운드 기록은 옛 루프 것) · spec §3c 표 동기화. 판정표 11행·AC8·D19·D28 불변 · SKILL.md 89,311 → 89,364B |
+
+**미확인 FIXED 큐**: R1-1(`dfe4344`)
+
+- 자동 모드 종료(적대 소진 1 = `--auto-rounds`) — batch ESCALATE 적재 0건이라 일괄 제시 없음 · R2부터 정밀 모드
+
 ## 확인 대기 대장
 
 | # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
