@@ -39,15 +39,13 @@ const assertNotice = (r) => {
   assert.ok(out.hookSpecificOutput.additionalContext.length <= 2000);
 };
 
-test('AC1 hooks.json — SessionStart(compact) 그룹 1개 · Stop 불변', () => {
+test('AC1 hooks.json — hooks 키 = SessionStart(compact) 그룹 1개뿐', () => {
   const h = JSON.parse(readFileSync(HOOKS_JSON, 'utf8')).hooks;
+  assert.deepEqual(Object.keys(h), ['SessionStart']);
   assert.equal(h.SessionStart.length, 1);
   assert.equal(h.SessionStart[0].matcher, 'compact');
   assert.deepEqual(h.SessionStart[0].hooks, [
     { type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/compact-reread-hook.mjs"' },
-  ]);
-  assert.deepEqual(h.Stop, [
-    { hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-threshold-hook.mjs"' }] },
   ]);
 });
 

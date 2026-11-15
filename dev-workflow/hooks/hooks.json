@@ -1,15 +1,5 @@
 {
   "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-threshold-hook.mjs\""
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "matcher": "compact",
