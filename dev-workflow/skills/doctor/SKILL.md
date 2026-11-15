@@ -273,7 +273,7 @@ const x=C.includes("X");
 console.log(out.join("\n"));
 console.log("상태: "+(C.length?"자동 압축 꺼짐":brk>=0?"판정 불가":R.some(x=>/autoCompactWindow$|AUTO_COMPACT_WINDOW$/.test(x.k))?"설정됨":"미설정(모델 기본값)"));
 if(C.length)console.log("안내: 이 플러그인은 대화 길이를 알려 주지 않는다");
-if(C.includes("A"))console.log("안내: autoCompactEnabled false — /config의 Auto-compact를 켠다"+(x?"":" (또는 직접 /compact)"));
+if(C.includes("A"))console.log("안내: autoCompactEnabled false — /config의 Auto-compact를 "+(x?"켠다":"켜거나 직접 /compact"));
 if(C.includes("D"))console.log("안내: DISABLE_AUTO_COMPACT 참 값 — 그 변수를 넣은 곳(셸 · 설정 env 블록 — 근거 칸의 출처)에서 지우고 새 세션"+(x?"":" — 그 전까지는 직접 /compact"));
 if(x)console.log("안내: DISABLE_COMPACT 참 값 — 수동 /compact도 막혀 있다(모든 압축 꺼짐) — 그 변수를 넣은 곳에서 지우고 새 세션");
 if(!C.length&&brk<0&&!R.some(x=>/autoCompactWindow$|AUTO_COMPACT_WINDOW$/.test(x.k)))console.log("안내: 1M 모델은 약 967K에서 압축된다 — 바꾸려면 /dev-workflow:setup (참고)");
