@@ -12,10 +12,9 @@
 | harden-spec | skill | `/dev-workflow:harden-spec` | spec 초안을 plan/구현 전에 적대적으로 압박해 놓친 갭·가정·불변식 위반을 파내고 spec을 굳힌다 (project-aware) |
 | ui-mockup | skill | `/dev-workflow:ui-mockup` | (옵션, 3.5단계) 굳은 spec이 화면을 만들거나 구성을 바꿀 때: 비실행 HTML 목업을 발산해 사용자가 고르고, UI 결정을 spec에 기결정으로 기록 |
 | setup | skill | `/dev-workflow:setup` | (명시 요청 시) 이 repo의 CLAUDE.md에 파이프라인 규약 포인터를 멱등 삽입 |
-| doctor | skill | `/dev-workflow:doctor` | 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 컨텍스트 윈도)을 읽기 전용으로 일괄 진단하고, 조치는 기존 경로로 위임 |
+| doctor | skill | `/dev-workflow:doctor` | 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 압축 지점 설정)을 읽기 전용으로 일괄 진단하고, 조치는 기존 경로로 위임 |
 | orchestrate | skill | `/dev-workflow:orchestrate` | (1.2.0 이상) **메인 세션**이 트랙을 오르카 터미널로 운영하는 공통 절차 — 기동 · 감시 · 질문 라우팅 · 단계 종료 검증·핸드오프 · 후계 (프로젝트 규약 우선) |
 | mr-review | skill | `/dev-workflow:mr-review <프로젝트> <iid>` | (1.3.0 이상) **남의 MR**을 읽기 전용으로 리뷰 — 작성 규칙 기계 검사 · 리뷰 head 고정 · 두 모델(Claude 서브에이전트 + Codex task) 독립 검토 · 팀 정책 판정 4종 형식의 초안 리포트. 프로젝트 어댑터 문서 필요 |
-| 컨텍스트 임계 넛지 | Stop hook | (자동) | 컨텍스트 사용량이 임계(기본 40%)를 넘으면 핸드오프 작성 + `/clear` 안내를 넛지하고, 이후 **15%p 구간마다 재넛지**(40 → 55 → 70 → 85%, 상한 없음) |
 | 압축 뒤 재읽기 | SessionStart hook (`compact`) | (자동) | (1.5.0 이상) 대화가 압축(요약)된 직후 고정 안내문을 넣는다 — dev-workflow 스킬을 실행하던 중이면 그 SKILL.md 전문과 진행 상태 파일(review-loop는 루프 파일)을 다시 읽고 하던 곳에서 이어 간다 |
 
 ## 목차
@@ -31,7 +30,7 @@
   - [setup](#6-setup--repo에-파이프라인-채택)
   - [doctor](#7-doctor--환경-진단)
   - [orchestrate](#8-orchestrate--메인-세션의-트랙-운영)
-  - [컨텍스트 임계 핸드오프 훅](#9-컨텍스트-임계-핸드오프-훅-자동)
+  - [압축 뒤 재읽기 훅](#9-압축-뒤-재읽기-훅-자동)
   - [mr-review](#10-mr-review--남의-mr-두-모델-리뷰-초안)
 - [특정 repo에서 clone 시 자동 적용](#특정-repo에서-clone-시-자동-적용)
 - [트러블슈팅](#트러블슈팅)
@@ -80,7 +79,7 @@ claude plugin list                        # dev-workflow@claude-dev-workflow, co
 /dev-workflow:dev-cycle
 ```
 
-권장 순서: **brainstorming → 스펙 → harden-spec → ui-mockup(옵션 — 화면이 바뀔 때만) → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl) → 통합·후속 검증**. 단계 경계(spec→plan, plan→impl)는 새 세션 + `/clear`가 규약이라, dev-cycle은 **현재 단계만 안내하고 다음은 넛지**한다(한 세션 오토파일럿 아님). 1·7·9단계(brainstorming·subagent-driven-development·finishing-a-development-branch)는 `superpowers` 플러그인 권장 — 없으면 자체 설계/구현/종료 절차로 대체 가능(하드 의존 아님).
+권장 순서: **brainstorming → 스펙 → harden-spec → ui-mockup(옵션 — 화면이 바뀔 때만) → review-loop(spec) → writing-plans-split → review-loop(plan) → subagent-driven-development → review-loop(impl) → 통합·후속 검증**. 단계 경계(spec→plan, plan→impl)는 새 세션 + `/clear`가 규약이라, dev-cycle은 **현재 단계만 안내하고 다음은 안내**한다(한 세션 오토파일럿 아님). 1·7·9단계(brainstorming·subagent-driven-development·finishing-a-development-branch)는 `superpowers` 플러그인 권장 — 없으면 자체 설계/구현/종료 절차로 대체 가능(하드 의존 아님).
 
 0.11.0부터 지도가 **착수부터 종료까지 전 구간**을 덮는다. **9단계 — 통합·후속 검증(PR·머지·배포·실측)** 은 여기에 체크 항목을 복제하지 않고 **그 repo 규약을 가리키는 포인터**다(배포 대상이 없는 repo — 플러그인 등 — 에서는 릴리스 + 설치 갱신 안내가 그 자리를 대신한다). 착수 시에는 **5항목 브리프**(설계 결론·실측 근거·변경 대상 파일·검증 방법·9단계까지의 완료 조건)를 1회 **화면에만 출력**한다 — 파일은 만들지 않는다. 그리고 **경량 경로**가 "전부 아니면 무(無)" 이분법을 대체한다: 분기 축은 **접촉 표면·가역성이고 규모가 아니다** — 스키마·마이그레이션·권한·인증·보안 경계·외부 연동·데이터 손상/유실·비가역은 아무리 작아도 정식이다(12 task 문구 정리는 경량, 1 task 컬럼 삭제는 정식). 어떤 경량 트랙도 생략하지 못하는 **하한 3종 = spec 문서 · 3단계 harden-spec · 8단계 impl 적대검증**. 그 위의 단계는 **하나씩 개별로** 생략하고 **생략할 때마다 spec의 재논의 금지 블록에 근거를 남기며**, "지금 어느 단계인가" 판별은 그 기록을 읽은 뒤에 답한다 — 기록 없는 부재는 여전히 미완이다. 경량 승인은 **그 세션에서만 유효**하다 — `/clear` 이후에는 추정하지 않고 다시 묻고, 거절·모호한 답의 기본값은 정식이다. 확인 자체가 불가한 운용(질문을 전달할 수 없는 비대화 실행, 사용자의 부재·자율 진행 명시)에서는 0.17.0부터 **접촉 표면 스캔이 판정을 대신한다** — 명확히 무신호면 경량, 신호가 있거나 스캔이 불명확하면 정식(fail-closed)이고, 자동 판정으로 경량 진입할 때는 spec에 감사 기록 1줄을 남긴다(재개 시에는 기록과 무관하게 재스캔). 스캔이 대신하는 것은 그 경량/정식 확인뿐이다 — 가드 1의 fail-closed 확인이나 9단계 머지·배포 승인 등 다른 확인은 자동 결정되지 않으며, 물을 수 없으면 미완으로 남긴다.
 
@@ -179,7 +178,7 @@ brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에*
 /dev-workflow:setup
 ```
 
-이어서 **컨텍스트 임계 훅의 윈도 크기**(`CLAUDE_CTX_LIMIT`)를 물어 settings.json(글로벌 또는 프로젝트, 선택)에 적는다 — 훅은 윈도 크기를 런타임에 알 수 없어 기본 1M을 가정하므로, 200k 모델을 쓰면 명시해야 넛지가 제때 뜬다.
+이어서 **자동 압축 지점**(`autoCompactWindow`)을 제안해 settings.json(글로벌 · 프로젝트 로컬 · 프로젝트 중 선택)에 적는다 — 값이 없으면 `600000`(이 플러그인의 출발값 · 조정 중)이 첫 선택지, 이미 있으면 「현재 값 유지」가 첫 선택지다. 최상위 키 하나만 쓰고, 모델별 저장값(`/autocompact`)과 옛 변수는 알리기만 한다. 새 세션부터 적용된다.
 
 명시 요청 시에만 동작하며 마커 블록 밖 내용은 건드리지 않는다. 협업자·플러그인 미설치자도 CLAUDE.md만 보고 규약과 설치법을 알 수 있다.
 
@@ -191,7 +190,7 @@ brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에*
 /dev-workflow:doctor
 ```
 
-명시 호출 외에 **증상 문장**("넛지가 안 떠", "codex가 안 돌아", "플러그인 최신인가", "버전 맞나")에서도 뜬다. 점검은 4항목이다 — ① 설치본 버전(엔트리 배열을 전부 열거해 user·project·local 스코프를 빠짐없이 본다) ② 마켓플레이스 최신 여부 ③ codex(CLI 존재·인증·companion 3종까지만, 그 이상은 `codex doctor`로 위임) ④ `CLAUDE_CTX_LIMIT`과 **현재 모델**의 대조(훅은 윈도 크기를 런타임에 알 수 없어 이 검사를 못 한다).
+명시 호출 외에 **증상 문장**("codex가 안 돌아", "플러그인 최신인가", "버전 맞나")에서도 뜬다. 점검은 4항목이다 — ① 설치본 버전(엔트리 배열을 전부 열거해 user·project·local 스코프를 빠짐없이 본다) ② 마켓플레이스 최신 여부 ③ codex(CLI 존재·인증·companion 3종까지만, 그 이상은 `codex doctor`로 위임) ④ 압축 지점 설정 조회(환경 변수 · 설정 3곳의 값과 출처 · 자동 압축 꺼짐 표시 · 옛 변수 잔존 — 좋고 나쁨은 판정하지 않는다).
 
 **버전 판정은 `dev-workflow/` subtree 비교로 한다.** 단순 sha 비교는 docs 커밋만 있어도 거짓 경보를 내고, `git log` 기반 판정은 되돌린 이력에서 트리가 같은데도 뒤처짐이라 답한다. 근거가 없으면(네트워크 실패·`gitCommitSha` 결측) **"판정 불가"**로 적고 "최신"이라 말하지 않는다. 정상이든 아니든 **4항목 표를 항상 출력**하고, 프로브 하나가 실패해도 나머지를 계속해 표 4행을 유지한다 — 환경이 가장 망가진 순간에 아무 정보도 못 얻는 일이 없게.
 
@@ -209,31 +208,21 @@ brainstorming으로 뽑은 **spec 초안을 plan·구현으로 넘기기 전에*
 - **② 감시** — 대기마다 `watch`를 백그라운드로 1회. 판정 `DONE | HANDOFF | SETTLED | QUESTION | PERMISSION | TIMEOUT | ERR`.
 - **③ 질문** — 사람 단계와 수동으로 돌리는 트랙은 전부 사용자에게. 위임 트랙은 위험군(critical · 보안 · 방향 전제 · AC·목표·비목표·기결정 변경 · `[감사 이의]` · 권한 프롬프트)만 사용자에게. push · 다른 머신 변경 · 외부 실측 · 비가역은 언제나 사용자. 모든 전송 직전 `alive` 후 화면 재확인.
 - **④ 단계 종료** — 메인이 트랙 보고를 직접 검증(커밋 범위 · 게이트 · AI 서명 · diff 범위 · 확인 대기 대장)하고 대기 항목을 사용자에게 물은 뒤 핸드오프를 쓰고 단계 경계에서 멈춘다.
-- **⑤ 후계 · 페어링 · 다중 트랙** — `HANDOFF`는 사유가 넛지일 때만, 옛 세션 종료를 확인한 뒤에 자동 재개하고, 예기치 않게 끝난 트랙은 `claude --resume <세션 id>`로 복구하며, 원격 트랙은 `--environment`로 운영한다.
+- **⑤ 후계 · 페어링 · 다중 트랙** — `HANDOFF`는 보고하고 재개 지시를 기다리며, 재개할 때는 옛 세션 종료를 확인한 뒤에 새 터미널을 띄우고(닫기 전 codex 잡 확인 명령 = 동봉 참조 문서 `references/codex-job-check.md`), 예기치 않게 끝난 트랙은 `claude --resume <세션 id>`로 복구하며, 원격 트랙은 `--environment`로 운영한다.
 
-동봉 스크립트 `scripts/orchestrate.mjs`(오르카 상세의 유일한 거처): `watch`(트랙 상태) · `alive`(터미널 **과** claude 세션 생존 — exit 0 생존 / 1 종료 / 2 판독 불가 / 3 stale 핸들) · `key`(TUI 키 `enter` `tab` `shift-tab` `up` `down` `text`). 동봉 템플릿 `templates/track-prompt.md`(역할 · 읽을 파일 · 기결정 · 진행 범위 · review-loop 인자 · 사실 확인 · 정지 조건 · `[TRACK-DONE …]`/`[TRACK-HANDOFF …]` 표지 · 넛지 시 행동).
+동봉 스크립트 `scripts/orchestrate.mjs`(오르카 상세의 유일한 거처): `watch`(트랙 상태) · `alive`(터미널 **과** claude 세션 생존 — exit 0 생존 / 1 종료 / 2 판독 불가 / 3 stale 핸들) · `key`(TUI 키 `enter` `tab` `shift-tab` `up` `down` `text`). 동봉 템플릿 `templates/track-prompt.md`(역할 · 읽을 파일 · 기결정 · 진행 범위 · review-loop 인자 · 사실 확인 · 정지 조건 · `[TRACK-DONE …]`/`[TRACK-HANDOFF …]` 표지).
 
 > ⚠️ 위임 트랙의 기동 명령 기본값에는 `--dangerously-skip-permissions`가 들어 있다 — 권한 창을 누를 사람이 없어서다. 안전장치는 프롬프트의 정지 조건(push 금지·비가역 금지)과 언제나 사용자에게 묻는 라우팅 행이고, 그래도 뜨는 권한 창은 메인이 허용하지 않는다(사용자 부재면 자동 거부된다).
 
-### 9. 컨텍스트 임계 핸드오프 훅 (자동)
+### 9. 압축 뒤 재읽기 훅 (자동)
 
-설치하면 바로 동작한다. 설정 불필요. 대화 컨텍스트 사용량이 임계(기본 40%)를 넘으면, 멈추기 전에 핸드오프를 작성하고 `/clear` 하라고 안내한다 — 컨텍스트가 터져 작업이 끊기기 전에 인계하도록 돕는다. 0.12.0부터 이 넛지는 **1회로 끝나지 않는다**: 임계 위로 **15%p 구간마다 재발화**한다(40 → 55 → 70 → 85%, 상한 없음). 첫 넛지를 흘려도 auto-compact가 걸릴 때까지 무경고로 남지 않는다. 재넛지는 지시 내용을 그대로 두고 사실만 더한다(이전에 안내했고 지금 몇 %인지). 사용률이 두 구간 이상 떨어지면 — auto-compact는 session id를 유지한다 — 새 주기로 보고 임계부터 다시 넛지한다. 0.18.0부터 넛지는 그 의미도 말한다 — **현재 작업 단위만 마무리**(리뷰 라운드 1회·SDD task 1개·수정 1건·질문 라운드 1회)하고 새 단위를 시작하지 않는다. 백그라운드 작업이 진행 중이면 완료 전 `/clear`하지 않고, 완료 알림으로 깨어나면 결과를 기록만 하고 멈춘 뒤 인계한다.
+**1.6.0에서 바뀐 것.** 컨텍스트 임계 넛지(Stop 훅)와 오르카 자동 인계가 없어졌다 — 한 단계 안의 대화 길이는 Claude Code의 자동 압축에 맡기고, 단계 사이는 지금처럼 새 세션이다. 압축 지점은 `/dev-workflow:setup` 또는 직접 설정한다(아래 「압축 지점 설정」). `CLAUDE_CTX_THRESHOLD` · `CLAUDE_CTX_LIMIT`은 더는 쓰이지 않는다(지워도 된다). 갱신 뒤 새 세션부터 적용되고, 머신·스코프마다 버전이 다른 동안은 그 세션이 도는 설치본을 따른다. **자동 압축을 꺼 둔 환경에서는 이 플러그인이 대화 길이를 알려 주지 않는다.**
 
-환경변수로 조정(선택):
+**압축 뒤 재읽기 훅 (1.5.0 이상).** 이 훅(`SessionStart`, matcher `compact`)이 대화가 압축(자동 또는 `/compact`)된 직후 돈다. 압축 뒤에는 호출했던 스킬 본문이 앞부분만 남고(스킬당 약 5,000토큰) 진행 상태는 요약문에만 남으므로, 훅이 플러그인 스킬 폴더의 절대 경로를 담은 고정 안내문을 넣는다 — dev-workflow 스킬을 실행하던 중이면 그 SKILL.md 전문(스킬을 다시 호출하지 않는다)과 진행 상태 파일을 다시 읽는다. review-loop는 이제 라운드마다 다시 쓰는 루프 파일 `.remember/loop-<ledger>-<phase>.md`를 읽고 「압축 뒤 이어가기」(§0b)를 따른다. 트랙 프롬프트 파일로 시작한 세션이면 그 파일도 다시 읽고, 대화에만 있던 작업 목록은 산출물 파일과 대조해 다시 만들며, 요약문보다 파일·git을 믿는다. dev-workflow 스킬을 실행하던 중이 아닌 세션에는 「무시한다」는 안내다. 이 훅만 끄는 스위치는 없다 — 플러그인을 비활성화(또는 모든 훅 끄기)하는 방법뿐이다.
 
-```
-CLAUDE_CTX_THRESHOLD=0.5    # 임계를 50%로 (0~1, 기본 0.4)
-DEV_WORKFLOW_MODE=delegated # 위임 모드(1.1.0 이상) — 아래 「세션 모드」. 트랙 터미널 생성 명령의 접두로 건다
-CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
-                            # 미지정 시 1,000,000(최신 모델 기준). 200k 윈도 모델을 쓸 때만 지정한다
-                            # — 윈도 크기는 런타임에서 알 수 없어 자동 감지하지 않는다
-```
+**압축 지점 설정.** settings.json(사용자 · 프로젝트 · 로컬 어디든)에 설정 키 1줄 `"autoCompactWindow": 600000`을 넣으면 모든 모델에 걸린다. 세션 안의 `/autocompact`는 현재 모델에만 저장된다(`modelSettings` — 같은 파일의 설정 키보다 그 모델에는 우선한다). 값 범위는 100,000~1,000,000 · 환경 변수 `CLAUDE_CODE_AUTO_COMPACT_WINDOW`가 있으면 그 값이 우선 · 모델 창보다 크면 모델 창으로 깎여 200K 모델에는 영향이 없다. 60만은 이 플러그인의 출발값이라 조정 대상이다.
 
-1.0.0부터 **오르카 터미널**(`ORCA_TERMINAL_HANDLE`이 있는 세션)에서는 넛지의 `/clear` 안내가 **자동 인계**로 바뀐다: 핸드오프를 쓴 뒤 같은 체크아웃에 후계 `claude` 터미널을 직접 띄우고(제목 `<작업명>-<토큰>`), 재개 프롬프트를 파일(`.remember/successor-<토큰>.prompt`)로 조립해 보낸 다음 정지한다. 후계는 이 폴더에서 다른 세션의 codex 작업이 돌고 있지 않은지 확인한 뒤(최대 10분 대기) 첫 동작으로 옛 세션을 정상 종료시키며(`/exit` 전송 → 종료 확인 → `terminal close`), 그 전에는 codex를 실행하지 않는다. 사전 검증에서 실패하면 아직 만든 터미널이 없으므로 바로 현행 `/clear` 안내로 돌아가고, 생성·기동·전달 어느 단계가 실패하면 이 폴더에서 다른 세션의 codex 작업이 끝나기를 기다린 뒤(최대 10분) 만들다 만 터미널을 정리하고 소멸을 확인한 뒤에만 현행 `/clear` 안내로 돌아간다 — 후계를 하나로 확정할 수 없거나(생성 응답 유실 — 생성 직전 목록에 없던 새 핸들은 후보로 보고만 하고 1개여도 채택하지 않는다) 작업 검사가 통과하지 않거나 정리를 확인하지 못하면 `/clear`를 안내하지 않고 차단 상태를 보고한다. 단계 경계(spec→plan, plan→impl)의 `/clear`는 대상이 아니다 — 후계는 다른 단계를 시작하지 않고 사용자에게 확인한다. 오르카 밖에서는 이전과 같다.
-
-**세션 모드 — 수동 / 위임 (1.1.0 이상).** 메인 세션(오케스트레이터)이 트랙 세션을 띄우고 그 질문에 대신 답하는 운영을 위해 세션 모드를 고른다. **수동**(기본 — `DEV_WORKFLOW_MODE` 미설정)은 사람이 단계별로 확인하며 진행하고, **위임**(`DEV_WORKFLOW_MODE=delegated` — 앞뒤 공백을 뗀 값이 정확히 일치할 때만, 그 외 값은 수동)은 야간·부재 중에 에이전트(통상 메인 세션)가 이 세션의 사용자 역할을 대행한다 — 질문은 오케스트레이터가 답하고 후계도 오케스트레이터가 띄운다. 브레인스토밍·harden-spec·ui-mockup은 사람·취향 단계라 모드와 무관하게 사람이 하고, 그 뒤 review-loop(spec)부터 수동 또는 위임으로 진행한다. 메인 세션 자신은 수동이다(자기 후계는 위 자동 인계 그대로). **설정은 트랙 터미널 생성 명령의 접두**가 기본이다: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 후계 터미널을 띄울 때도 같은 접두를 붙인다(빠뜨리면 그 후계만 자동 인계로 돌아간다). Windows(PowerShell)는 `$env:DEV_WORKFLOW_MODE='delegated'; claude …` 형태(미실측). settings.json `env`에 넣으면 프로젝트의 모든 세션 — **메인 세션까지** — 위임이 되어 자기 후계를 못 띄우므로 그 점을 알고 쓸 때만 쓴다. **위임 효과(1.2.0)**: ① 오르카 터미널에서도 자동 인계 대신 오르카 밖과 같은 `/clear` 안내 넛지를 받는다 — 후계는 오케스트레이터가 띄운다(1.1.0, 오르카 밖에서는 효과 없음) ② review-loop·dev-cycle이 위험군 외 질문의 추천안을 자동 채택한다 — 위험군(critical·보안·방향 전제·AC·목표·비목표·기결정 변경)은 여전히 묻고, 자동 채택한 결정은 출처 `추천 자동 채택(위임)`으로 기록되어 확인 라운드의 감사 대상이 된다 ③ 그 결정은 **확인 대기 대장**(spec·plan 말미 `## 확인 대기 대장`)에 모여 단계 경계에서 사용자가 확인·번복한다. 1.1.x 설치본은 ①만 받는다. 구버전 설치본은 이 변수를 모른다 — `doctor`로 버전을 확인한다.
-
-**압축 뒤 재읽기 훅 (1.5.0 이상).** 두 번째 훅(`SessionStart`, matcher `compact`)이 대화가 압축(자동 또는 `/compact`)된 직후 돈다. 압축 뒤에는 호출했던 스킬 본문이 앞부분만 남고(스킬당 약 5,000토큰) 진행 상태는 요약문에만 남으므로, 훅이 플러그인 스킬 폴더의 절대 경로를 담은 고정 안내문을 넣는다 — dev-workflow 스킬을 실행하던 중이면 그 SKILL.md 전문(스킬을 다시 호출하지 않는다)과 진행 상태 파일을 다시 읽는다. review-loop는 이제 라운드마다 다시 쓰는 루프 파일 `.remember/loop-<ledger>-<phase>.md`를 읽고 「압축 뒤 이어가기」(§0b)를 따른다. 트랙 프롬프트 파일로 시작한 세션이면 그 파일도 다시 읽고, 대화에만 있던 작업 목록은 산출물 파일과 대조해 다시 만들며, 요약문보다 파일·git을 믿는다. dev-workflow 스킬을 실행하던 중이 아닌 세션에는 「무시한다」는 안내다. 위의 컨텍스트 임계 넛지와 같이 돌고, 넛지의 상태 파일을 읽지도 쓰지도 않는다. 이 훅만 끄는 스위치는 없다 — 플러그인을 비활성화(또는 모든 훅 끄기)하는 방법뿐이다.
+**세션 모드 — 수동 / 위임 (1.1.0 이상).** 메인 세션(오케스트레이터)이 트랙 세션을 띄우고 그 질문에 대신 답하는 운영을 위해 세션 모드를 고른다. **수동**(기본 — `DEV_WORKFLOW_MODE` 미설정)은 사람이 단계별로 확인하며 진행하고, **위임**(`DEV_WORKFLOW_MODE=delegated` — 앞뒤 공백을 뗀 값이 정확히 일치할 때만, 그 외 값은 수동)은 야간·부재 중에 에이전트(통상 메인 세션)가 이 세션의 사용자 역할을 대행한다 — 질문은 오케스트레이터가 답한다. 브레인스토밍·harden-spec·ui-mockup은 사람·취향 단계라 모드와 무관하게 사람이 하고, 그 뒤 review-loop(spec)부터 수동 또는 위임으로 진행한다. 메인 세션 자신은 수동이다. **설정은 트랙 터미널 생성 명령의 접두**가 기본이다: `orca terminal create … --command 'DEV_WORKFLOW_MODE=delegated claude …'` — 재개용 새 터미널을 띄울 때도 같은 접두를 붙인다. Windows(PowerShell)는 `$env:DEV_WORKFLOW_MODE='delegated'; claude …` 형태(미실측). settings.json `env`에 넣으면 프로젝트의 모든 세션 — **메인 세션까지** — 위임이 되어 메인의 질문까지 자동 채택되므로 그 점을 알고 쓸 때만 쓴다. **위임 효과(1.2.0)**: ① review-loop·dev-cycle이 위험군 외 질문의 추천안을 자동 채택한다 — 위험군(critical·보안·방향 전제·AC·목표·비목표·기결정 변경)은 여전히 묻고, 자동 채택한 결정은 출처 `추천 자동 채택(위임)`으로 기록되어 확인 라운드의 감사 대상이 된다 ② 그 결정은 **확인 대기 대장**(spec·plan 말미 `## 확인 대기 대장`)에 모여 단계 경계에서 사용자가 확인·번복한다. 구버전 설치본은 이 변수를 모른다 — `doctor`로 버전을 확인한다.
 
 ### 10. `mr-review` — 남의 MR 두 모델 리뷰 초안
 
@@ -283,7 +272,7 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 
 ## 트러블슈팅
 
-- **무엇이 문제인지 모르겠을 때** — `/dev-workflow:doctor`가 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 컨텍스트 윈도)을 한 번에 대조해 준다. 아래 항목들은 그 결과가 가리키는 조치다.
+- **무엇이 문제인지 모르겠을 때** — `/dev-workflow:doctor`가 환경 4항목(설치본 버전 · 마켓플레이스 최신 · codex · 압축 지점 설정)을 한 번에 대조해 준다. 아래 항목들은 그 결과가 가리키는 조치다.
 - **`marketplace add openai/codex-plugin-cc` 에서 SSH 인증 실패** (`Permission denied (publickey)`) — codex를 이미 쓰고 있다면 codex 마켓플레이스가 이미 `openai-codex`로 등록돼 있어 이 줄 자체가 불필요하다. `claude plugin marketplace list`로 `openai-codex`가 보이면 건너뛰면 된다. SSH 키가 없는 환경이면 슬래시 커맨드가 SSH를 시도하다 실패할 수 있는데, 어차피 안 해도 되는 작업이다.
 - **`dependency-unsatisfied` 또는 codex가 안 깔림** — `openai-codex` 마켓플레이스가 등록 안 된 상태다. `/plugin marketplace add openai/codex-plugin-cc` 후 `/plugin install dev-workflow@claude-dev-workflow`를 다시 실행하면 의존이 해결된다.
 - **`review-loop`가 codex 단계에서 멈춤** — codex CLI 미설치/미인증이다. `/codex:setup`으로 설정한다.
@@ -291,8 +280,6 @@ CLAUDE_CTX_LIMIT=200000     # 컨텍스트 토큰 상한 직접 지정
 
 ## 주의
 
-- user 스코프로 설치하면 컨텍스트 임계 Stop 훅이 **모든 프로젝트**에서 동작한다. 넛지 메시지는 `.remember/remember.md`에 핸드오프를 쓰라고 안내하며, **오르카 터미널에서는 넛지 뒤 후계 터미널 생성·`.remember/successor-<토큰>.prompt` 파일 쓰기·옛 세션 종료(`/exit`)가 자동으로 일어난다**(위임 모드 세션 제외 — 「세션 모드」) — `.remember/`를 쓰지 않는 프로젝트에서도 그 디렉터리가 생긴다(프롬프트 파일은 전달이 확인되면 지우고, 인계가 실패했을 때만 남는다). 오르카 밖에서는 안내 문구만 나오고 아무것도 자동으로 실행되지 않는다(현행과 같다).
-- 오르카 터미널 핸들은 환경변수라 그 터미널 안에서 시작된 모든 프로세스가 물려받는다. 오르카 탭 안에서 띄운 중첩 `claude`(Bash로 실행한 `claude -p`, tmux 속 claude 등)가 넛지를 받으면 부모 탭을 자기 터미널로 여겨, 그 후계가 부모 세션에 `/exit`를 보낸다. 오르카 탭 안에서 긴 중첩 `claude`는 돌리지 말고 오르카 밖에서 돌린다 — 불가피하면 `DEV_WORKFLOW_MODE=delegated claude -p …`로 띄운다(1.1.0 이상): 부모 탭 핸들을 물려받아도 후계를 스폰하지 않는다.
 - `writing-plans-split`은 분할 plan 관례를 쓰는 repo를 전제로 한다. 단일 plan 파일을 쓰는 repo에서는 `superpowers:writing-plans`를 그대로 쓰면 된다.
 
 ## 개발 / 릴리스
@@ -303,9 +290,9 @@ claude-dev-workflow/
 ├── dev-workflow/                     # 플러그인
 │   ├── .claude-plugin/plugin.json    # name, version, dependencies(codex@openai-codex)
 │   ├── skills/{dev-cycle,harden-spec,ui-mockup,writing-plans-split,review-loop,setup,doctor,orchestrate}/SKILL.md
-│   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md}
+│   ├── skills/orchestrate/{SKILL.md,scripts/orchestrate.mjs,templates/track-prompt.md,references/codex-job-check.md}
 │   ├── skills/mr-review/{SKILL.md,scripts/mr-review.mjs,scripts/lib/{adapter,gitlab,collect,check,deploy,pack,report}.mjs}
-│   └── hooks/{hooks.json, scripts/context-threshold-hook.mjs, scripts/compact-reread-hook.mjs}
+│   └── hooks/{hooks.json, scripts/compact-reread-hook.mjs}
 ├── tests/orchestrate/                # orchestrate.mjs 테스트(스텁 orca — 플러그인 밖)
 ├── tests/mr-review/                  # mr-review 테스트(가짜 glab + 로컬 bare git — 플러그인 밖)
 ├── tests/hooks/                      # compact-reread-hook 테스트(플러그인 밖)
