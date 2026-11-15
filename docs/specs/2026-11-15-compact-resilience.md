@@ -403,6 +403,7 @@ dev-workflow 스킬(review-loop · harden-spec · orchestrate · mr-review 등)�
 |---|---|---|---|---|---|
 | R1 (적대 · 자동) | `30ad203` | needs-attention | 0/0/1 (신규 1) | 1 | 0 → 1 |
 | R2 (적대 · 정밀) | `4edc8f0` | needs-attention | 0/0/1 (신규 1 — R1-1 수정의 남은 경로 · R1-1 적대 비재출현 — 큐 유지) | 1 | 1 → 2 |
+| R3 (적대 · 정밀) | `ea56963` | approve | 0/0/0 (신규 없음 · R1-1·R2-1 적대 비재출현 — 큐 유지) | 0 | 2 |
 
 | # | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|---|
@@ -413,6 +414,7 @@ dev-workflow 스킬(review-loop · harden-spec · orchestrate · mr-review 등)�
 **미확인 FIXED 큐**: R1-1(`dfe4344`) · R2-1(`1e3c8c6`)
 
 - 자동 모드 종료(적대 소진 1 = `--auto-rounds`) — batch ESCALATE 적재 0건이라 일괄 제시 없음 · R2부터 정밀 모드
+- R3 뒤 전환 신호 2(수정 큐 소진 — 신규 FIXED 후보 0) 발화 → batch 적재 0건 → 확인 모드 진입(확인 필수 — 미확인 FIXED 2 · 루프 직접 판정·자동 채택 0). 적대 소진 3 · 확인 소진 0
 
 ## 확인 대기 대장
 
