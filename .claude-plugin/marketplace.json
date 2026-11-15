@@ -1,13 +1,13 @@
 {
   "name": "claude-dev-workflow",
   "owner": { "name": "gguii74-rwk" },
-  "description": "내부 개발 워크플로 도구 마켓플레이스 — 적대검증 루프·분할 계획·컨텍스트 핸드오프.",
+  "description": "내부 개발 워크플로 도구 마켓플레이스 — 적대검증 루프·분할 계획·압축 뒤 재읽기.",
   "allowCrossMarketplaceDependenciesOn": ["openai-codex"],
   "plugins": [
     {
       "name": "dev-workflow",
       "source": "./dev-workflow",
-      "description": "dev-cycle · harden-spec · ui-mockup · review-loop · writing-plans-split · setup · doctor · orchestrate · mr-review 스킬 + 컨텍스트 임계 Stop 훅 · 압축 뒤 재읽기 SessionStart 훅. review-loop는 codex 플러그인을 의존."
+      "description": "dev-cycle · harden-spec · ui-mockup · review-loop · writing-plans-split · setup · doctor · orchestrate · mr-review 스킬 + 압축 뒤 재읽기 SessionStart 훅. review-loop는 codex 플러그인을 의존."
     }
   ]
 }
