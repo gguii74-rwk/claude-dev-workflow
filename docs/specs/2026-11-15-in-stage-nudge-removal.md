@@ -465,6 +465,7 @@
   - setup에도 값만 투영하는 조회 블록을 넣었다(§3e 1 「그 값들만 뽑아 읽는다」의 수단). 쓰기는 현행처럼 대상 키만 고치는 편집이다(JSON 재직렬화는 「통째로 재작성」 금지에 걸린다).
   - 테스트 픽스처는 §2 표의 「4곳」이 아니라 **5줄**(49 · 250 · 257 · 271 · 272행)이었다 — 전부 바꿨다(이름 · 수 · 단언 불변).
   - README: 재읽기 단락의 「두 번째 훅」 → 「이 훅」(훅이 하나가 됨) · 세션 모드 위임 효과를 ①② 재번호 · 「1.1.x 설치본은 ①만」 삭제(①이 넛지 효과라 소멸) · 환경변수 예시 블록과 함께 그 안의 `DEV_WORKFLOW_MODE` 줄도 삭제(같은 내용이 세션 모드 문단에 있다).
+  - **(8단계 R1-1 · `14a9291`)** doctor 꺼짐 판정 — §3f 「셸이나 실효 `env` 블록에서 참 값」을 「셸 값과 실효 `env` 값의 참 · 거짓이 엇갈리면 원인으로 세지 않고 `판정 불가`」로 좁혔다(이기는 쪽이 실행 환경마다 다르다 — impl ledger R1-1).
   - review-loop 재개 계약은 「(중단 없는 경로와 같다)」 · 「새 필드는 없다」를 줄여 1구절로 썼다(수신 시점 모드 · 카운터 재증가 금지 · 결과 의존 전이 · 예약분 · 고아 라운드 재실행은 그대로).
 - **게이트**: G1 훅 11/11 · orchestrate 56/56 · mr-review 371/371 · G2 `git diff a6f95da..HEAD -- dev-workflow tests README*` 추가 줄 식별자 0 · 이 spec 0(단계 줄의 기존 브랜치 이름 제외) · G3 `a6f95da..HEAD` 커밋 본문 AI 서명 · 트레일러 0 · G4 diff = §2 표의 7단계 파일 14개(`plugin.json` · `marketplace.json` · `compact-reread-hook.mjs` · `orchestrate.mjs` · 다른 스킬 · 1.5.0 spec 0줄) + 이 spec(이 절 · 단계 줄) · `git status --short` = 기존 미추적 1건뿐 · 확인 대기 대장 대기 0(이 단계의 추천 자동 채택 0 · 질문 0).
 - **크기**: review-loop 87,170B(≤ 89,389) · orchestrate 17,086B(≤ 17,408 · 여유 322) · doctor 39,070B(≤ 39,072 · 여유 2) · setup 6,753B · dev-cycle 16,444B · 템플릿 3,952B · 참조 문서 3,617B. 맨 `$`+숫자(review-loop · setup · doctor) 0. **doctor 여유가 2바이트다** — 8단계 수정이 doctor를 늘려야 하면 같은 절 안에서 줄이거나 사유를 적고 사용자 확인(크기 상한 = 위험군).
@@ -507,6 +508,27 @@
 - C2(재진입 확인 · 예약분 — 카운터 불변: 적대 소진 5 · 확인 소진 1): 완전 응답(실행 로그 14건) · 소멸 확인 R1-3 · R6-1 · 판정 감사 대상 없음 · 신규 finding 없음 · verdict **pass** → 성공 종료(미판정 blocking 0 · 미확인 FIXED 큐 0 · 확인 verdict 통과)
 - **종결(2026-11-15)**: blocking 8건(high 1 · medium 7) 전부 FIXED — 출처 전부 루프 판정(사용자 판정 0 · 추천 자동 채택(위임) 0 · ESCALATE 0) · ACCEPTED / DEFERRED_TO_IMPL / OUT_OF_SCOPE / DUPLICATE 0 · low 0. 루프 건강: 재론률 0/8 · 철회 조항 0 · 사람개입률 0/8. 확인 verdict 참고(C2): 구현 착수 때 §3j · AC-G 시험 게이트 충족 확인이 필요 — 이 spec의 기존 게이트 그대로(새 조건 아님)
 
+## 적대검증 ledger (impl)
+
+보안 크리티컬: yes (호출자 지정 — 사용자 상시 지시 2026-10-22) — 접촉면 = codex 잡 종료 경로(참조 문서 · ⑤-1 (a)) · 사용자 설정 파일 쓰기(setup 압축 지점)
+
+- 루프: base `a6f95da`(구현 착수 직전 · 호출자 지정 — upstream 없음) · 브랜치 `gguii74-rwk/in-stage-nudge-removal-1-6-0` · 예산 `--max 5` · `--confirm-rounds 2` · `--auto-rounds 1` · 위임 모드(`DEV_WORKFLOW_MODE=delegated`) · 설치본 1.5.0 문면으로 실행 · 입도 = planless 통합 1회(task 증분 없음 — 커밋이 파일 묶음별이라 전체를 한 diff로 본다) · §1 impl 게이트 = 트랙 프롬프트의 G1~G4 · AC1 · AC2 · 크기 · AC12로 갈음(npm 아님) — R1 전 통과(11/11 · 56/56 · 371/371)
+- score 산식 = 전환용(미확인 FIXED 큐 제외 · §2c 분류 직후 스냅샷)
+
+| 라운드 | HEAD | verdict | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 |
+|---|---|---|---|---|---|
+| R1 (적대 · 자동) | `984a869` | needs-attention | 0/0/1 (신규 1) | 1 | 0 → 1 |
+
+| # | fingerprint | severity | disposition | 근거 |
+|---|---|---|---|---|
+| R1-1 | doctor SKILL.md §4 조회 블록 `on()` · 압축 끄기 변수(`DISABLE_AUTO_COMPACT` · `DISABLE_COMPACT`)의 셸 값과 설정 `env` 값을 OR로 합쳐 거짓 override를 무시(셸 `0` + 설정 env `1` → 꺼짐 오진 — Desktop · self-hosted runner는 실행 환경이 설정 env를 이긴다) → 실효값 하나로 판정 · 엇갈림은 판정 불가 · 검증 사례 추가 | medium | FIXED `14a9291` (추천 자동 채택(위임) — 메인 대리 · R1 batch flush · 위험군 판단(§3f 판정 규칙 변경 · doctor 크기 상한)으로 질문했고 첫 선택지 「엇갈리면 판정 불가」 채택) · **[자동 채택(위임)] 확인 임무 ③ 우선 감사 대상** | 공식 settings-reference 「How env values interact with your shell」 원문 — 설정 env가 셸 export를 덮되 Desktop · runner가 띄운 세션은 실행 환경이 이긴다 → 엇갈림의 실효값은 실행 환경마다 다르다. 수정: 셸 값과 스코프 최상위 설정 env 값이 모두 있고 참 · 거짓이 다르면 그 변수는 원인으로 세지 않고 `판정 불가`(다른 원인으로 꺼짐이 확정되면 꺼짐이 먼저) · 「엇갈린다」 안내 1줄 · 엇갈린 `DISABLE_COMPACT`도 `/compact` 권고 억제 · 「참 값」 안내 줄은 확정 참일 때만. 하네스(가짜 설정 20사례 × bash · zsh) — 엇갈림 4사례만 바뀌고 나머지 16사례 출력 동일 · 비밀값 0. 크기 39,072 → 39,071B(같은 절 안에서 중복 정규식 묶음 · 주석 꼬리 · 코드가 계산하는 규칙을 되풀이한 설명 괄호 축약). spec §3f 문면(「셸이나 실효 env 블록에서 참 값」)은 G4로 본문을 고치지 않으므로 이 행과 「구현 기록」이 대신 기록한다. D8 · D19 불변 |
+
+**미확인 FIXED 큐**: R1-1(`14a9291`)
+
+- R1: 유효 응답(실행 로그 23건) · 적대 소진 0 → 1 = auto-rounds 도달 → batch flush(적재 1건 = R1-1 — 위험군이라 질문 · 진행 질문은 추천 채택) → 이후 정밀 모드
+
 ## 확인 대기 대장
 
-해당 없음
+| # | 일시 | phase·지점 | 질문 요지(쉬운 말 1줄) | 채택 선택지 | 출처 | 상태 |
+|---|---|---|---|---|---|---|
+| 1 | 2026-11-16 | impl · R1 batch flush(위험군 질문) | doctor가 압축 끄기 변수의 셸 값과 설정 env 값이 엇갈릴 때 어떻게 판정할지 (impl R1-1) | 엇갈리면 판정 불가 (FIXED) → `14a9291` | 추천 자동 채택(위임) | 확인 대기 |
