@@ -46,7 +46,7 @@ const A = box(['⏺ 작업 중입니다', '  1단계 진행']);
 const B = box(['⏺ 작업 중입니다', '  1단계 진행', '  2단계 완료']);
 const DONE_LINE = '[TRACK-DONE 5 abc1234]';
 const D = box(['⏺ 단계 종료 보고', '  커밋 abc1234', `  ${DONE_LINE}`, '✻ Worked for 1m 2s']);
-const H = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', '  [TRACK-HANDOFF .remember/loop-x-spec.md]']);
+const H = box(['⏺ 사용자 중단으로 핸드오프를 썼다', '  사유: 사용자 중단', '  [TRACK-HANDOFF .remember/loop-x-spec.md]']);
 const Q = ['⏺ 질문이 있습니다', '', ' 판정 방식을 고르세요', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
 const P = ['⏺ Bash(sh -c "rm -f x")', '', ' Command contains rm that could not be checked', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No'];
 const QP = ['⏺ 질문이 있습니다', '', ' 권한 창 문구 「Do you want to proceed?」를 어떻게 처리할까요?', '❯ 1. 지금 고친다 (추천)', '  2. 알고도 둔다', '', 'Enter to select · ↑/↓ to navigate · Esc to cancel'];
@@ -247,14 +247,14 @@ test('AC3 표지: DONE 줄 아래 구분선 사이에 그려진 질문 창은 �
 });
 
 test('AC3 표지: HANDOFF 줄 아래 구분선 사이에 그려진 권한 창은 본문 경계가 아니다 → PERMISSION(HANDOFF 아님)', () => {
-  const lines = ['⏺ 넛지를 받아 핸드오프를 썼다', '  [TRACK-HANDOFF .remember/loop-x-spec.md]', SEP, ...P.slice(1), SEP];
+  const lines = ['⏺ 사용자 중단으로 핸드오프를 썼다', '  [TRACK-HANDOFF .remember/loop-x-spec.md]', SEP, ...P.slice(1), SEP];
   const r = run('watch', ['term_t', '5'], { read: [read(lines)], wait: [BUSY] });
   assert.equal(r.first, 'PERMISSION');
 });
 
 test('AC3 표지: 화면 폭에서 접힌 긴 HANDOFF 표지(공백 없는 이어진 줄)는 이어 붙여 HANDOFF + 전체 경로', () => {
   const marker = '[TRACK-HANDOFF .remember/loop-2026-10-17-orchestrate-skill-delegated-auto-adopt-impl.md]';
-  const lines = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', `  ${marker.slice(0, 60)}`, `  ${marker.slice(60)}`]);
+  const lines = box(['⏺ 사용자 중단으로 핸드오프를 썼다', '  사유: 사용자 중단', `  ${marker.slice(0, 60)}`, `  ${marker.slice(60)}`]);
   const r = run('watch', ['term_t', '5'], { read: [read(lines)], wait: [BUSY] });
   assert.equal(r.first, 'HANDOFF');
   assert.equal(r.out.split('\n')[1], marker);
@@ -268,8 +268,8 @@ test('AC3 표지: 닫히지 않은 인용 표지 아래 문장(공백 포함)은
 
 test('AC3 표지: 아직 출력 중인 닫히지 않은 표지(`]` 없음)는 받지 않고 완성된 다음 화면에서 HANDOFF', () => {
   const marker = '[TRACK-HANDOFF .remember/loop-x-spec.md]';
-  const partial = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', '  [TRACK-HANDOFF .remember/loop-']);
-  const done = box(['⏺ 넛지를 받아 핸드오프를 썼다', '  사유: 넛지', `  ${marker}`]);
+  const partial = box(['⏺ 사용자 중단으로 핸드오프를 썼다', '  사유: 사용자 중단', '  [TRACK-HANDOFF .remember/loop-']);
+  const done = box(['⏺ 사용자 중단으로 핸드오프를 썼다', '  사유: 사용자 중단', `  ${marker}`]);
   const r = run('watch', ['term_t', '5'], { read: [read(partial), read(done)], wait: [BUSY] });
   assert.equal(r.first, 'HANDOFF');
   assert.equal(r.out.split('\n')[1], marker);
