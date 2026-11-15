@@ -256,24 +256,24 @@ for (const e of active) {
 # 셸 환경 변수 5종 + settings 3곳(사용자 · 프로젝트 · 프로젝트 로컬)
 node -e '
 const fs=require("fs"),E=["CLAUDE_CODE_AUTO_COMPACT_WINDOW","DISABLE_AUTO_COMPACT","DISABLE_COMPACT","CLAUDE_CTX_LIMIT","CLAUDE_CTX_THRESHOLD"];
-const V=v=>typeof v==="number"||typeof v==="boolean"||(typeof v==="string"&&v.length<=40)?String(v):"형식 이상";
-const T=v=>/^(1|true|yes|on)$/i.test(v.trim()),O=v=>!!v&&typeof v==="object"&&!Array.isArray(v);
+const V=v=>typeof v=="number"||typeof v=="boolean"||(typeof v=="string"&&v.length<=40)?String(v):"형식 이상";
+const T=v=>/^(1|true|yes|on)$/i.test(v.trim()),O=v=>!!v&&typeof v=="object"&&!Array.isArray(v);
 const N=["사용자","프로젝트","프로젝트 로컬"],R=[],out=[];let brk=-1;
 const add=(r,w,k,v)=>{R.push({r,k,v:V(v)});out.push(w+"\t"+k+"\t"+V(v))};
-for(const k of E)if(process.env[k]!==undefined)add(3,"셸",k,process.env[k]);
-process.argv.slice(1).forEach((f,r)=>{let s;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){if(e.code!=="ENOENT")brk=r;out.push(N[r]+" "+f+"\t"+(e.code==="ENOENT"?"없음":"읽기·파싱 실패"));return}
- if(!O(s))return void(brk=r,out.push(N[r]+" "+f+"\t읽기·파싱 실패"));const w=N[r]+" "+f,n=R.length;
- for(const k of ["autoCompactWindow","autoCompactEnabled"])if(k in s)add(r,w,k,s[k]);
+for(const k of E)if(k in process.env)add(3,"셸",k,process.env[k]);
+process.argv.slice(1).forEach((f,r)=>{const w=N[r]+" "+f;let s;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){const z=e.code=="ENOENT";if(!z)brk=r;out.push(w+"\t"+(z?"없음":"읽기·파싱 실패"));return}
+ if(!O(s))return void(brk=r,out.push(w+"\t읽기·파싱 실패"));const n=R.length;
+ for(const k of ["autoCompactWindow","autoCompactEnabled"])if(k in s)add(r,w,k,k<"autoCompactW"&&s[k]!==!!s[k]?{}:s[k]);
  if(O(s.modelSettings))for(const m in s.modelSettings)if(O(s.modelSettings[m])&&"autoCompactWindow" in s.modelSettings[m])add(r,w,"modelSettings."+V(m)+".autoCompactWindow",s.modelSettings[m].autoCompactWindow);
- if(O(s.env))for(const k of E)if(k in s.env)add(r,w,"env."+k,s.env[k]);if(R.length===n)out.push(w+"\t값 없음")});
-const top=k=>R.filter(x=>x.r<3&&x.r>brk&&x.k===k).sort((a,b)=>b.r-a.r)[0];
-const on=k=>{const s=R.find(x=>x.r===3&&x.k===k),e=top("env."+k);return s&&e&&T(s.v)!==T(e.v)?2:+!!(s&&T(s.v)||e&&T(e.v))};
-const C=[],d=on("DISABLE_AUTO_COMPACT"),X=on("DISABLE_COMPACT"),u=brk>=0||(d|X)>1;const ae=top("autoCompactEnabled");if(ae?.v==="false")C.push("A");if(d==1)C.push("D");if(X==1)C.push("X");
+ if(O(s.env))for(const k of E)if(k in s.env)add(r,w,"env."+k,s.env[k]);if(R.length==n)out.push(w+"\t값 없음")});
+const top=k=>R.filter(x=>x.r<3&&x.r>brk&&x.k==k).sort((a,b)=>b.r-a.r)[0];
+const on=k=>{const s=R.find(x=>x.r==3&&x.k==k),e=top("env."+k);return s&&e&&T(s.v)!=T(e.v)?2:+!!(s&&T(s.v)||e&&T(e.v))};
+const C=[],d=on("DISABLE_AUTO_COMPACT"),X=on("DISABLE_COMPACT"),u=brk>=0||(d|X)>1;const ae=top("autoCompactEnabled");if(ae?.v=="false")C.push("A");if(d==1)C.push("D");if(X==1)C.push("X");
 const x=X>0,w=R.some(x=>/autoCompactWindow$|AUTO_COMPACT_WINDOW$/.test(x.k));
 console.log(out.join("\n"));
 console.log("상태: "+(C.length?"자동 압축 꺼짐":u?"판정 불가":w?"설정됨":"미설정(모델 기본값)"));
 if(C.length)console.log("안내: 이 플러그인은 대화 길이를 알려 주지 않는다");
-if((d|X)>1)console.log("안내: 셸과 설정 env 값이 엇갈린다 — 우선은 실행 환경마다 다르다");
+if((d|X)>1)console.log("안내: 셸과 설정 env 값이 엇갈린다 — 우선은 환경마다 다르다");
 if(C.includes("A"))console.log("안내: autoCompactEnabled false — /config의 Auto-compact를 "+(x?"켠다":"켜거나 직접 /compact"));
 if(C.includes("D"))console.log("안내: DISABLE_AUTO_COMPACT 참 값 — 그 변수를 넣은 곳(셸 · 설정 env 블록 — 근거 칸의 출처)에서 지우고 새 세션"+(x?"":" — 그 전까지는 직접 /compact"));
 if(X&1)console.log("안내: DISABLE_COMPACT 참 값 — 수동 /compact도 막혀 있다(모든 압축 꺼짐) — 그 변수를 넣은 곳에서 지우고 새 세션");
@@ -286,7 +286,7 @@ const old=R.filter(x=>/CLAUDE_CTX_/.test(x.k));console.log("옛 변수: "+(old.l
 
 **`grep`으로 훑지 않는다 — 값 하나씩만 투영한다.** `grep`은 **일치한 줄 전체**를 출력한다. settings.json이 한 줄로 minify돼 있으면 같은 줄의 **API 토큰·자격증명이 통째로 도구 출력과 세션 기록에 남는다**(합성 픽스처로 재현 확인). 그래서 파싱해 대상 키만 찍고(숫자 · 불리언 · 짧은 문자열이 아니면 값 대신 `형식 이상`), **읽기·파싱이 실패해도 원문이나 인접 필드를 출력하지 않는다** — 실패는 파일명 + 상태로만 적는다.
 
-**상태**(위에서부터 먼저 해당하는 것 — 프로브 계산): `자동 압축 꺼짐`(실효값 — `DISABLE_AUTO_COMPACT` · `DISABLE_COMPACT`가 셸이나 실효 `env` 블록에서 참 값(`1` · `true` · `yes` · `on`, 대소문자 무관 — 거짓 값과 문서에 없는 값은 원인 아님 · 셸과 실효 `env`가 엇갈리면 `판정 불가`)이거나 `autoCompactEnabled`의 실효값이 `false`. 실효값 = 그 키를 가진 파일 중 스코프가 가장 높은 것(프로젝트 로컬 > 프로젝트 > 사용자)) → `판정 불가`(읽기·파싱에 실패한 파일이 있다 — 그보다 우선하는 출처(셸 · 더 높은 스코프의 읽힌 파일)만으로 꺼짐이 확정되면 꺼짐이 먼저) → `설정됨`(압축 창 값이 한 곳이라도 있다) → `미설정(모델 기본값)`. **상태는 doctor가 읽은 곳(셸 · 설정 3곳) 기준이다.**
+**상태**(위에서부터 먼저 해당하는 것 — 프로브 계산): `자동 압축 꺼짐`(실효값 — `DISABLE_AUTO_COMPACT` · `DISABLE_COMPACT`가 셸이나 실효 `env` 블록에서 참 값(`1` · `true` · `yes` · `on`, 대소문자 무관 — 거짓 값과 문서에 없는 값은 원인 아님 · 셸과 실효 `env`가 엇갈리면 `판정 불가`)이거나 `autoCompactEnabled`의 실효값이 불리언 `false`. 실효값 = 그 키를 가진 파일 중 스코프가 가장 높은 것(프로젝트 로컬 > 프로젝트 > 사용자)) → `판정 불가`(읽기·파싱에 실패한 파일이 있다 — 그보다 우선하는 출처(셸 · 더 높은 스코프의 읽힌 파일)만으로 꺼짐이 확정되면 꺼짐이 먼저) → `설정됨`(압축 창 값이 한 곳이라도 있다) → `미설정(모델 기본값)`. **상태는 doctor가 읽은 곳(셸 · 설정 3곳) 기준이다.**
 
 **근거 칸**: 찾은 값 전부를 출처와 함께 + 우선순위 1줄 「환경 변수 > 설정 파일(관리 > 명령줄 > 프로젝트 로컬 > 프로젝트 > 사용자) · 같은 파일 안에서는 모델별 저장값이 최상위 값보다 우선(그 모델에만) · 관리 설정 · 명령줄은 doctor가 읽지 않는다 — 있으면 그 값이 위 상태보다 우선한다」 + `옛 변수:` 줄. 다른 파일에 있는 모델별 저장값과 최상위 값 사이의 우선은 단정하지 않는다. **좋다 · 나쁘다를 판정하지 않는다** — 60만은 출발값이고 다른 값도 틀린 것이 아니다. 프로브의 `안내:` 줄은 조치 안내로 그대로 붙인다(원인별).
 
