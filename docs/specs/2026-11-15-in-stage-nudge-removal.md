@@ -518,14 +518,18 @@
 | 라운드 | HEAD | verdict | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 |
 |---|---|---|---|---|---|
 | R1 (적대 · 자동) | `984a869` | needs-attention | 0/0/1 (신규 1) | 1 | 0 → 1 |
+| R2 (적대 · 정밀) | `b607d85` | needs-attention | 0/0/2 (신규 2 · 큐 1건 적대 비재출현) | 1 | 1 → 2 |
 
 | # | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|---|
 | R1-1 | doctor SKILL.md §4 조회 블록 `on()` · 압축 끄기 변수(`DISABLE_AUTO_COMPACT` · `DISABLE_COMPACT`)의 셸 값과 설정 `env` 값을 OR로 합쳐 거짓 override를 무시(셸 `0` + 설정 env `1` → 꺼짐 오진 — Desktop · self-hosted runner는 실행 환경이 설정 env를 이긴다) → 실효값 하나로 판정 · 엇갈림은 판정 불가 · 검증 사례 추가 | medium | FIXED `14a9291` (추천 자동 채택(위임) — 메인 대리 · R1 batch flush · 위험군 판단(§3f 판정 규칙 변경 · doctor 크기 상한)으로 질문했고 첫 선택지 「엇갈리면 판정 불가」 채택) · **[자동 채택(위임)] 확인 임무 ③ 우선 감사 대상** | 공식 settings-reference 「How env values interact with your shell」 원문 — 설정 env가 셸 export를 덮되 Desktop · runner가 띄운 세션은 실행 환경이 이긴다 → 엇갈림의 실효값은 실행 환경마다 다르다. 수정: 셸 값과 스코프 최상위 설정 env 값이 모두 있고 참 · 거짓이 다르면 그 변수는 원인으로 세지 않고 `판정 불가`(다른 원인으로 꺼짐이 확정되면 꺼짐이 먼저) · 「엇갈린다」 안내 1줄 · 엇갈린 `DISABLE_COMPACT`도 `/compact` 권고 억제 · 「참 값」 안내 줄은 확정 참일 때만. 하네스(가짜 설정 20사례 × bash · zsh) — 엇갈림 4사례만 바뀌고 나머지 16사례 출력 동일 · 비밀값 0. 크기 39,072 → 39,071B(같은 절 안에서 중복 정규식 묶음 · 주석 꼬리 · 코드가 계산하는 규칙을 되풀이한 설명 괄호 축약). spec §3f 문면(「셸이나 실효 env 블록에서 참 값」)은 G4로 본문을 고치지 않으므로 이 행과 「구현 기록」이 대신 기록한다. D8 · D19 불변 |
+| R2-1 | doctor SKILL.md §4 조회 블록 `on()` · 조회 대상 설정 파일 하나가 읽기 실패(EACCES · 파싱)인데 셸 `DISABLE_COMPACT=1`만으로 꺼짐 확정 — 읽지 못한 파일의 env가 셸을 덮을 가능성 미배제 → 읽기 실패가 있으면 셸 참 값만으로 꺼짐을 확정하지 않는다 | medium | ACCEPTED (루프 판정 — 정밀 모드) · **확인 임무 ③ 우선 감사 대상** | 결함 아님 — spec AC9가 「깨진 JSON + 셸 `DISABLE_COMPACT=1` → `자동 압축 꺼짐`」을 명시한 사례이고 §3f 「그 파일보다 우선하는 출처(셸 환경 변수 …)만으로 꺼짐이 확정되면 그쪽이 먼저」 그대로다. 근거: doctor가 보는 셸 값은 Claude Code 프로세스 환경(설정 `env`가 시작 때 이미 써 넣어진 값 — env-vars 「Precedence」)이고, doctor가 읽지 못한 파일은 같은 사용자로 도는 Claude Code도 읽지 못해 그 `env`가 적용되지 않는다 → 셸 값이 실효값. R1-1(읽힌 두 값의 엇갈림 — 이기는 쪽이 실행 환경마다 다름)과 다르다. 고치면 AC9 사례의 기대값이 바뀐다(위험군) — 보완 단계 없음 |
+| R2-2 | doctor SKILL.md §4 조회 블록 `add()` · 표시용 문자열 변환 뒤 값으로 판정해 `autoCompactEnabled`의 문자열 `"false"`도 꺼짐으로 확정(공식 타입 Boolean) → 판정용 원값 분리 · 불리언 false만 꺼짐 · 불리언 아님 = 형식 오류 · 사례 추가 | medium | FIXED `e58f09a` (루프 판정 — 정밀 모드) | §3f 「`autoCompactEnabled`의 실효값이 `false`」(공식 settings-reference — Boolean)를 엄밀히 — 불리언이 아닌 값은 `형식 이상`으로 표시하고 원인으로 세지 않는다(env 변수의 「문서에 없는 값은 원인 아님」과 같은 처리 · 새 `판정 불가` 원인은 만들지 않는다 — §3f 상태 어휘 불변). RED(문자열 `"false"` → 꺼짐) → GREEN. 하네스 25사례 × bash · zsh — 문자열 2사례 외 출력 동일 · 비밀값 0. 크기 39,071B 유지(같은 블록 안 축약) |
 
-**미확인 FIXED 큐**: R1-1(`14a9291`)
+**미확인 FIXED 큐**: R1-1(`14a9291`) · R2-2(`e58f09a`)
 
 - R1: 유효 응답(실행 로그 23건) · 적대 소진 0 → 1 = auto-rounds 도달 → batch flush(적재 1건 = R1-1 — 위험군이라 질문 · 진행 질문은 추천 채택) → 이후 정밀 모드
+- R2: 유효 응답(실행 로그 28건) · 신규 medium 2(R2-1 ACCEPTED · R2-2 FIXED) · score 1 → 1(보안 트랙 — 신호 1 무시 · 신규 FIXED 1이라 신호 2 미발화) → 적대 계속
 
 ## 확인 대기 대장
 
