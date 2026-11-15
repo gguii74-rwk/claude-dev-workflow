@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Use when the dev-workflow pipeline's own environment looks broken — the context-threshold nudge never fires, codex is unavailable outside a running review-loop, or the installed plugin may be stale on this machine. 트리거 예 — "넛지가 안 떠", "codex가 안 돌아", "플러그인 최신인가", "버전 맞나", "환경 점검해줘". Does NOT trigger on codex failures inside a running review-loop (that is review-loop's own concern), on vague failure sentences that name no tool or symptom ("왜 안 돼", "에러 났어"), or on the same words about another product ("playwright 플러그인 최신인가", "node 버전 맞나", "codex로 딴 작업 돌리는데 안 돌아").
+description: Use when the dev-workflow pipeline's own environment looks broken — codex is unavailable outside a running review-loop, or the installed plugin may be stale on this machine. 트리거 예 — "codex가 안 돌아", "플러그인 최신인가", "버전 맞나", "환경 점검해줘". Does NOT trigger on codex failures inside a running review-loop (that is review-loop's own concern), on vague failure sentences that name no tool or symptom ("왜 안 돼", "에러 났어"), or on the same words about another product ("playwright 플러그인 최신인가", "node 버전 맞나", "codex로 딴 작업 돌리는데 안 돌아").
 ---
 
 # doctor
@@ -17,7 +17,7 @@ description: Use when the dev-workflow pipeline's own environment looks broken �
 
 ## 언제 뜨고, 언제 뜨면 안 되는가
 
-**뜬다** — dev-workflow 파이프라인의 **환경 요소**(컨텍스트 넛지 · codex 연동 · 플러그인 버전)를 가리키는 증상 문장. 제품 이름이 붙지 않아도 된다: "넛지가 안 떠" · "codex가 안 돌아" · "플러그인 최신인가" · "버전 맞나".
+**뜬다** — dev-workflow 파이프라인의 **환경 요소**(codex 연동 · 플러그인 버전 · 압축 지점 설정)를 가리키는 증상 문장. 제품 이름이 붙지 않아도 된다: "codex가 안 돌아" · "플러그인 최신인가" · "버전 맞나".
 
 **뜨면 안 된다** — 아래 4종.
 
@@ -123,7 +123,7 @@ git -C "$C" rev-parse "$OID:dev-workflow"          # 최신 subtree id — 엔�
 
 **기본 브랜치를 로컬에서 유도하지 않는다.** clone의 fetch refspec은 `+refs/heads/main:refs/remotes/origin/main` **한 줄뿐**이라(실측), 평범한 `git fetch origin`은 **`origin/HEAD`를 갱신하지도, 다른 브랜치를 가져오지도 않는다**. 원격 기본 브랜치가 바뀌면 로컬 `origin/HEAD`는 옛 `origin/main`을 계속 가리키고, 낡은 기준과 비교한 결과가 **"최신"으로 오판**된다. 그래서 `ls-remote --symref`로 **원격에 직접 묻고** 그 브랜치를 지목해 fetch한 뒤 `FETCH_HEAD`에서 subtree를 읽는다 — 새 remote-tracking ref를 만들지 않으므로 clone에 남는 상태가 늘지 않는다. 원격 HEAD를 못 읽으면 **`main`으로 추정하지 말고 판정 불가**다((b)).
 
-**네트워크 호출은 매달리지 않게 감싼다.** `git ls-remote`·`git fetch`는 자격증명 프롬프트나 blackhole에서 **실패로 돌아오지 않고 그대로 멈출 수 있다** — 그러면 뒤의 codex·CTX 프로브와 **표 4행 출력에 아예 도달하지 못한다**. 이것은 아래 §출력의 "부분 실패에도 계속"이 받는 경우가 아니다: 실패로 전환되지 않기 때문이다.
+**네트워크 호출은 매달리지 않게 감싼다.** `git ls-remote`·`git fetch`는 자격증명 프롬프트나 blackhole에서 **실패로 돌아오지 않고 그대로 멈출 수 있다** — 그러면 뒤의 codex·압축 지점 프로브와 **표 4행 출력에 아예 도달하지 못한다**. 이것은 아래 §출력의 "부분 실패에도 계속"이 받는 경우가 아니다: 실패로 전환되지 않기 때문이다.
 
 - `GIT_TERMINAL_PROMPT=0` — 자격증명 프롬프트를 끄고 즉시 실패시킨다.
 - `perl -e 'alarm shift; exec @ARGV' <초> <명령>` — **wall-clock 상한**. `alarm` 타이머는 `exec`을 넘어 유지되므로 git이 SIGALRM으로 죽는다(실측: 5초 제한이 30초 sleep을 5.011초에 exit 142로 끊고, 정상 명령은 그대로 통과).
@@ -250,35 +250,46 @@ for (const e of active) {
 
 **이 3종이 전부다.** 3종이 정상인데도 문제가 있으면 `codex doctor`로 위임한다 — 깊은 진단을 여기서 재구현하지 않는다. codex의 **플러그인 버전은 대조하지 않는다**(버전 대조 범위는 dev-workflow 하나뿐이다).
 
-### 4. `CLAUDE_CTX_LIMIT` — 실제 환경변수 값이 먼저다
+### 4. 압축 지점 설정 — 조회만
 
 ```bash
-echo "env: ${CLAUDE_CTX_LIMIT:-<미설정>}"
-```
-
-```bash
-# settings 3곳 — 원문 줄을 찍지 않고 값 하나만 투영한다
+# 셸 환경 변수 5종 + settings 3곳(사용자 · 프로젝트 · 프로젝트 로컬) — 원문 줄을 찍지 않고 값 하나씩만 투영한다
 node -e '
-const fs=require("fs");
-for (const f of process.argv.slice(1)) {
-  let v;
-  try { v = (JSON.parse(fs.readFileSync(f,"utf8")).env||{}).CLAUDE_CTX_LIMIT; }
-  catch (e) { console.log([f, fs.existsSync(f) ? "읽기·파싱 실패" : "없음"].join("\t")); continue; }
-  console.log([f, v === undefined ? "값 없음" : String(v)].join("\t"));
-}' "$R/settings.json" .claude/settings.json .claude/settings.local.json
+const fs=require("fs"),E=["CLAUDE_CODE_AUTO_COMPACT_WINDOW","DISABLE_AUTO_COMPACT","DISABLE_COMPACT","CLAUDE_CTX_LIMIT","CLAUDE_CTX_THRESHOLD"];
+const V=v=>typeof v==="number"||typeof v==="boolean"||(typeof v==="string"&&v.length<=40)?String(v):"형식 이상";
+const T=v=>/^(1|true|yes|on)$/i.test(v.trim()),O=v=>!!v&&typeof v==="object"&&!Array.isArray(v);
+const N=["사용자","프로젝트","프로젝트 로컬"],R=[],out=[];let brk=-1;
+const add=(r,w,k,v)=>{R.push({r,k,v:V(v)});out.push(w+"\t"+k+"\t"+V(v))};
+for(const k of E)if(process.env[k]!==undefined)add(3,"셸",k,process.env[k]);
+process.argv.slice(1).forEach((f,r)=>{let s;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){if(e.code!=="ENOENT")brk=r;out.push(N[r]+" "+f+"\t"+(e.code==="ENOENT"?"없음":"읽기·파싱 실패"));return}
+ if(!O(s))return void(brk=r,out.push(N[r]+" "+f+"\t읽기·파싱 실패"));const w=N[r]+" "+f,n=R.length;
+ for(const k of ["autoCompactWindow","autoCompactEnabled"])if(k in s)add(r,w,k,s[k]);
+ if(O(s.modelSettings))for(const m in s.modelSettings)if(O(s.modelSettings[m])&&"autoCompactWindow" in s.modelSettings[m])add(r,w,"modelSettings."+V(m)+".autoCompactWindow",s.modelSettings[m].autoCompactWindow);
+ if(O(s.env))for(const k of E)if(k in s.env)add(r,w,"env."+k,s.env[k]);if(R.length===n)out.push(w+"\t값 없음")});
+const top=k=>R.filter(x=>x.r<3&&x.r>brk&&x.k===k).sort((a,b)=>b.r-a.r)[0];
+const on=k=>R.some(x=>x.r===3&&x.k===k&&T(x.v))||!!(top("env."+k)&&T(top("env."+k).v));
+const C=[];const ae=top("autoCompactEnabled");if(ae&&ae.v==="false")C.push("A");if(on("DISABLE_AUTO_COMPACT"))C.push("D");if(on("DISABLE_COMPACT"))C.push("X");
+const x=C.includes("X");
+console.log(out.join("\n"));
+console.log("상태: "+(C.length?"자동 압축 꺼짐":brk>=0?"판정 불가":R.some(x=>/autoCompactWindow$|AUTO_COMPACT_WINDOW$/.test(x.k))?"설정됨":"미설정(모델 기본값)"));
+if(C.length)console.log("안내: 이 플러그인은 대화 길이를 알려 주지 않는다");
+if(C.includes("A"))console.log("안내: autoCompactEnabled false — /config의 Auto-compact를 켠다"+(x?"":" (또는 직접 /compact)"));
+if(C.includes("D"))console.log("안내: DISABLE_AUTO_COMPACT 참 값 — 그 변수를 넣은 곳(셸 · 설정 env 블록 — 근거 칸의 출처)에서 지우고 새 세션"+(x?"":" — 그 전까지는 직접 /compact"));
+if(x)console.log("안내: DISABLE_COMPACT 참 값 — 수동 /compact도 막혀 있다(모든 압축 꺼짐) — 그 변수를 넣은 곳에서 지우고 새 세션");
+if(!C.length&&brk<0&&!R.some(x=>/autoCompactWindow$|AUTO_COMPACT_WINDOW$/.test(x.k)))console.log("안내: 1M 모델은 약 967K에서 압축된다 — 바꾸려면 /dev-workflow:setup (참고)");
+const old=R.filter(x=>/CLAUDE_CTX_/.test(x.k));console.log("옛 변수: "+(old.length?"남아 있음 — 더는 쓰이지 않음 — 지워도 된다":"없음"))
+' "$R/settings.json" .claude/settings.json .claude/settings.local.json
 ```
 
-`.claude/…` 두 곳은 **현재 repo** 기준이다(프로젝트 스코프 설정이라 그게 맞다) — project-scope 설치가 다른 repo에 있어도 그 repo의 settings를 뒤지지 않는다. 상대경로이므로 **repo 루트에서 돌린다**(cwd가 repo 밖이면 조용히 "값 없음"이 된다).
+`.claude/…` 두 곳은 **현재 repo** 기준이다 — **repo 루트에서 돌린다**(밖이면 조용히 "없음"이 된다).
 
-**`grep`으로 훑지 않는다 — 값 하나만 투영한다.** `grep`은 필드가 아니라 **일치한 줄 전체**를 출력한다. settings.json이 한 줄로 minify돼 있거나 `env` 객체가 한 줄이면, 같은 줄에 있던 **API 토큰·자격증명이 통째로 도구 출력과 세션 기록에 남는다**(합성 픽스처로 재현 확인). 그래서 파싱해 `env.CLAUDE_CTX_LIMIT` 하나만 찍고, **읽기·파싱이 실패해도 원문이나 인접 필드를 출력하지 않는다** — 실패는 파일명 + 상태로만 적는다. 파일 부재와 값 없음은 구분할 필요가 없으므로(둘 다 "이 파일에 값 없음") 종료코드도 보지 않는다.
+**`grep`으로 훑지 않는다 — 값 하나씩만 투영한다.** `grep`은 **일치한 줄 전체**를 출력한다. settings.json이 한 줄로 minify돼 있으면 같은 줄의 **API 토큰·자격증명이 통째로 도구 출력과 세션 기록에 남는다**(합성 픽스처로 재현 확인). 그래서 파싱해 대상 키만 찍고(숫자 · 불리언 · 짧은 문자열이 아니면 값 대신 `형식 이상`), **읽기·파싱이 실패해도 원문이나 인접 필드를 출력하지 않는다** — 실패는 파일명 + 상태로만 적는다.
 
-훅이 실제로 읽는 것은 **프로세스 환경변수**다(`hooks/scripts/context-threshold-hook.mjs`). 셸 프로필 등 다른 경로로 주입되면 settings.json grep만으로는 "미설정" 오탐이 난다. settings.json 3곳은 **"어디서 왔는가 / 어디에 넣으면 되는가"**를 밝혀 조치 안내를 붙이는 용도로 병행 조회한다.
+**상태**(위에서부터 먼저 해당하는 것 — 프로브 계산): `자동 압축 꺼짐`(실효값 — `DISABLE_AUTO_COMPACT` · `DISABLE_COMPACT`가 셸이나 실효 `env` 블록에서 참 값(`1` · `true` · `yes` · `on`, 대소문자 무관 — 거짓 값과 문서에 없는 값은 원인 아님)이거나 `autoCompactEnabled`의 실효값이 `false`. 실효값 = 그 키를 가진 파일 중 스코프가 가장 높은 것(프로젝트 로컬 > 프로젝트 > 사용자)) → `판정 불가`(읽기·파싱에 실패한 파일이 있다 — 그보다 우선하는 출처(셸 · 더 높은 스코프의 읽힌 파일)만으로 꺼짐이 확정되면 꺼짐이 먼저) → `설정됨`(압축 창 값이 한 곳이라도 있다) → `미설정(모델 기본값)`. **상태는 doctor가 읽은 곳(셸 · 설정 3곳) 기준이다.**
 
-**한계 — 이 `echo`가 보는 것은 셸 프로세스의 env다.** Claude Code 프로세스가 훅에 넘기는 env와 다를 수 있다(셸 프로필이 주입하면 셸에만 보이고, 반대도 가능하다). 스킬이 볼 수 있는 최선이므로 그대로 쓰되, **settings.json 어디에도 없는데 env에만 값이 있으면 주입 지점을 사용자에게 확인**한다.
+**근거 칸**: 찾은 값 전부를 출처와 함께 + 우선순위 1줄 「환경 변수 > 설정 파일(관리 > 명령줄 > 프로젝트 로컬 > 프로젝트 > 사용자) · 같은 파일 안에서는 모델별 저장값이 최상위 값보다 우선(그 모델에만) · 관리 설정 · 명령줄은 doctor가 읽지 않는다 — 있으면 그 값이 위 상태보다 우선한다」 + `옛 변수:` 줄. 다른 파일에 있는 모델별 저장값과 최상위 값 사이의 우선은 단정하지 않는다. **좋다 · 나쁘다를 판정하지 않는다** — 60만은 출발값이고 다른 값도 틀린 것이 아니다. 프로브의 `안내:` 줄은 조치 안내로 그대로 붙인다(원인별 — `DISABLE_COMPACT`가 원인에 있으면 어느 줄에서도 `/compact`를 권하지 않는다).
 
-**현재 모델은 네가 안다** — 훅은 런타임에 윈도 크기를 알 수 없지만(모델 ID가 베어 ID라 `[1m]` 접미사가 없다) 스킬은 자기 모델을 안다. 이 대조가 doctor의 고유 기여다.
-
-## 판정 규칙 5건
+## 판정 규칙 3건
 
 **(a) 버전 뒤처짐·스코프 드리프트는 `dev-workflow/` subtree 비교로 판정한다.**
 
@@ -292,30 +303,6 @@ for (const f of process.argv.slice(1)) {
 
 **(c) 마켓플레이스 clone 부재는 "미등록"으로 별도 표시한다.** 네트워크 실패와 **원인도 조치도 다르다** — 전자는 기다림, 후자는 `marketplace add` → `install`이다.
 
-**(d) `CLAUDE_CTX_LIMIT`은 실제 환경변수 값을 먼저 본다.** settings.json 3곳은 출처·조치 위치를 밝히는 병행 조회다.
-
-**(e) 모델↔limit 불일치는 양방향으로 판정한다.**
-
-**먼저 두 수를 확정한다 — 어느 쪽도 눈대중으로 넘기지 않는다.**
-
-- **유효 limit** = 환경변수에 양수 값이 있으면 그 값, **없으면 훅 기본값 `1,000,000`**이다(훅은 미설정 시 1M을 가정한다). settings.json 값은 **출처 표시용**이지 유효 값이 아니다 — 훅은 프로세스 환경변수만 읽는다.
-- **모델 윈도** = 모델 메타데이터가 정한다. **`[1m]` 접미사로 가르지 않는다.**
-  - **Claude 5 계열(`claude-opus-5` · `claude-sonnet-5` · `claude-fable-5`)은 접미사와 무관하게 `1,000,000`이다.** 셋 다 `context:{window:1e6, native_1m:true}`로 정의돼 있다(Claude Code 2.1.226 실측). `[1m]`은 Opus의 **선택 접미사**(`supports_1m_suffix`)일 뿐 1M 여부를 만드는 표식이 아니다.
-  - 200k 모델(예: Haiku 4.5)은 `200,000`이다.
-  - **모르는 모델이면 `200,000`으로 단정하지 말고 판정 불가**다((b)).
-
-  **접미사로 판정하면 Claude 5 세션 전체가 오진된다.** 베어 ID 세션을 200k로 보면 유효 limit(미설정 시 훅 기본 1M) > 윈도(200k)가 되어 **정상 상태를 "과소평가"로 찍고 `CLAUDE_CTX_LIMIT=200000`을 유도**한다. 그 안내를 따르면 실제 1M 세션이 8% 지점에서 40%로 계산돼 **조기 넛지**가 뜬다 — 훅이 스스로 *"과대평가가 더 해롭다"*고 적어 둔 바로 그 방향이다.
-
-그다음 둘을 비교한다. **네 조합이 전부 이 표에 들어온다** — 판정을 못 내리는 상태가 남으면 (b)로 흘러가 "판정 불가"가 되는데, 그건 이 검사에서는 오답이다.
-
-| 유효 limit vs 모델 윈도 | 판정 | 결과 |
-|---|---|---|
-| **같다** (1M 모델 + 미설정 · 200k 모델 + 200k 설정) | **정상** | — |
-| **유효 limit > 모델 윈도** (200k 모델인데 미설정이거나 1M으로 설정) | **과소평가** | 사용량이 5배 과소평가돼 **넛지가 아예 안 뜬다** |
-| **유효 limit < 모델 윈도** (1M 모델인데 200k로 설정) | **과대평가** | 실제 8% 사용 시점을 40%로 계산해 **조기 넛지**가 뜬다 |
-
-훅은 설정된 양수 값을 **검증 없이 그대로** 쓰므로 두 방향이 다 실패한다. 훅 자신이 과대평가 쪽을 *"더 해롭다"*고 적어 뒀다 — 한 방향만 보는 진단은 그쪽을 못 잡는다.
-
 ## 출력
 
 **정상이든 아니든 4항목 표를 항상 출력한다.** 조치 안내만 이상 항목에 붙인다. 증상 트리거로 뜬 경우 사용자는 이미 문제를 의심하는 중이라 "이상 없음" 한 줄로는 납득되지 않고, 무엇을 봤는지 안 보이면 결국 수동 대조로 되돌아간다 — 그것이 doctor가 없애려던 행동이다.
@@ -325,9 +312,9 @@ for (const f of process.argv.slice(1)) {
 | 1 | 설치본 | **엔트리마다** 최신 / 뒤처짐 / 판정 불가 / 미설치 + **스코프 간 드리프트 유무** | 엔트리별 scope(·projectPath) · version · sha(짧게) · subtree id |
 | 2 | 마켓플레이스 | 등록됨 / 미등록 / 판정 불가 | clone 경로 · 최신 subtree id(비교 기준을 확보했는가) |
 | 3 | codex | 정상 / CLI 없음 / 미로그인 / companion 없음 / **판정 불가** | **3종 각각의 결과** — CLI 경로 · `login status` 출력 · companion 경로(또는 판정 불가 사유) |
-| 4 | `CLAUDE_CTX_LIMIT` | 정상 / 과소평가 / 과대평가 / 판정 불가 | 현재 모델 · 모델 윈도 · 유효 limit · 출처 |
+| 4 | 압축 지점 설정 | 설정됨 / 미설정(모델 기본값) / 자동 압축 꺼짐 / 판정 불가 | 값 · 출처 · 옛 변수 잔존 여부 |
 
-**근거 칸에 적을 것이 없으면 `해당 없음`으로 적고 빈칸으로 두지 않는다.** 엔트리 0건일 때의 스코프 간 드리프트, 어디에도 값이 없을 때의 CTX_LIMIT 출처가 그렇다 — 후자는 "출처 없음 = **유효 limit이 훅 기본값**"이라는 뜻이므로 그렇게 적는다.
+**근거 칸에 적을 것이 없으면 `해당 없음`으로 적고 빈칸으로 두지 않는다.** 엔트리 0건일 때의 스코프 간 드리프트가 그렇다.
 
 **행은 4개로 고정하고 엔트리 수만큼 늘리지 않는다.** 설치 엔트리가 여럿이면 1행 안에 **스코프별 판정을 모두 적고**, 스코프 간 드리프트도 거기 적는다 — 드리프트 전용 행을 새로 만들지 않는다. **뒤처짐 판정은 1행 소관**이고 2행은 *비교 기준(최신 subtree id)을 얻었는가*만 답한다. 둘을 섞으면 스코프가 갈릴 때 2행에 단일 값을 적을 수 없다.
 
@@ -344,7 +331,7 @@ for (const f of process.argv.slice(1)) {
 | **스코프 간 드리프트** | 뒤처진 스코프의 안내를 따른다 — 드리프트는 그 갱신으로 해소된다. **모든 스코프가 최신인데 드리프트가 남으면** 근거를 다시 본다((b)의 판정 불가일 수 있다) |
 | 판정 불가 | 원인(네트워크·필드 결측)을 밝히고 재시도를 안내한다. **설치본 엔트리의 판정 불가는 점검 2의 `WHY`별 조치를 따른다**(형식·유형 이상·경로 없음 = 그 스코프 갱신 · 시간 초과 = 재시도 · 보강 fetch 실패 = 재시도 후 반복되면 갱신). **"최신"이라는 단어를 쓰지 않는다** |
 | codex 이상 | `/codex:setup`. 3종이 정상인데도 문제면 `codex doctor`. **단 `판정 불가`에는 `/codex:setup`을 안내하지 않는다** — codex가 아니라 레지스트리를 못 읽은 것이라 아래 `판정 불가` 행을 따른다 |
-| CTX_LIMIT 이상 | `/dev-workflow:setup`이 값을 묻고 settings.json에 쓴다. **doctor가 직접 쓰지 않는다.** 반영은 Claude Code 재시작 후. 단 **값의 출처가 환경변수면 settings.json에 써도 환경변수가 이긴다** — 그 경우 주입 지점(셸 프로필 등)을 함께 안내한다 |
+| 압축 지점 설정 | 프로브의 `안내:` 줄(꺼짐 = 원인별 복구 · 미설정 = 참고 · 옛 변수 = 지워도 된다). 값을 바꾸려면 `/dev-workflow:setup` — **doctor가 직접 쓰지 않는다** |
 
 **스코프 행은 사용자가 갱신할 수 있는 3종까지다.** 그 밖의 스코프(예: `managed`)가 열거되면 조치를 지어내지 말고 **판정과 근거만 보고**한다 — 진단 전용이라는 원칙이 그대로 적용된다.
 
