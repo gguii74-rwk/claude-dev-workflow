@@ -402,12 +402,15 @@ dev-workflow 스킬(review-loop · harden-spec · orchestrate · mr-review 등)�
 | 라운드 | HEAD | verdict | critical/high/medium (신규/잔존) | 전환용 score | 미확인 FIXED 큐 |
 |---|---|---|---|---|---|
 | R1 (적대 · 자동) | `30ad203` | needs-attention | 0/0/1 (신규 1) | 1 | 0 → 1 |
+| R2 (적대 · 정밀) | `4edc8f0` | needs-attention | 0/0/1 (신규 1 — R1-1 수정의 남은 경로 · R1-1 적대 비재출현 — 큐 유지) | 1 | 1 → 2 |
 
 | # | fingerprint | severity | disposition | 근거 |
 |---|---|---|---|---|
 | R1-1 | SKILL.md §0b 위치 판정표 · 「루프 파일 없음 · ledger 종결 기록」 행이 현재 루프 소속을 확인하지 않음 · 같은 문서·phase를 다시 검증하는 새 루프가 R1 기록 전에 압축되면 옛 종결 기록으로 §4에 가 리뷰 없이 끝남 → 현재 루프의 종결 증거일 때만 종결 행 | medium | FIXED `dfe4344` (루프 판정 — 자동 모드) | 종결 행 = 종결 기록(§3)을 더한 커밋 == HEAD(§4는 커밋하지 않음) · 그 밖의 루프 파일 없음 = R1 기동 전(남은 종결·라운드 기록은 옛 루프 것) · spec §3c 표 동기화. 판정표 11행·AC8·D19·D28 불변 · SKILL.md 89,311 → 89,364B |
 
-**미확인 FIXED 큐**: R1-1(`dfe4344`)
+| R2-1 | SKILL.md §0b 위치 판정표 · 「종결 처리 중」 행이 HEAD 일치만 봄 · HEAD가 옛 종결 커밋과 같고 tracked 미커밋 변경이 있는 새 루프가 §2a 커밋 전에 압축되면 §4로 가 리뷰 생략 → 종결 행에 tracked clean 조건 | medium | FIXED `1e3c8c6` (루프 판정 — 정밀 모드) | 종결 행 = 종결 커밋 == HEAD · tracked 변경 없음(§3이 clean 확인 · §4 무커밋이라 정상 종결은 둘 다 충족) · spec §3c 표 동기화. **R1-1과 같은 계열 2회째**(R1-1 수정의 남은 경로 — 수정 1구절) — 3회째면 더 고치지 않고 판정. SKILL.md 89,364 → 89,389B |
+
+**미확인 FIXED 큐**: R1-1(`dfe4344`) · R2-1(`1e3c8c6`)
 
 - 자동 모드 종료(적대 소진 1 = `--auto-rounds`) — batch ESCALATE 적재 0건이라 일괄 제시 없음 · R2부터 정밀 모드
 
