@@ -336,10 +336,11 @@ test('AC3 alive: 묶음 질문의 최종 제출 화면(꼬리말 없음) + 상�
   assert.match(r.first, /^ALIVE .*질문 창/);
 });
 
-test('AC3 alive: 미연결·고아 → exit 1', () => {
+test('AC3 alive: 미연결 → exit 1(고아 표시와 무관)', () => {
   const r = run('alive', ['term_t'], { show: [{ stdout: { ok: true, result: { terminal: { connected: false, writable: false, orphaned: true } } } }] });
   assert.equal(r.code, 1);
   assert.match(r.first, /^EXITED/);
+  assert.match(r.first, / · 화면 분리\(orphaned\)$/);
 });
 
 test('AC3 alive: 연결됐으나 claude 종료 표지 + 셸 프롬프트(셸만 남음) → exit 1', () => {
@@ -453,4 +454,102 @@ test('AC3 key: 키 사이에 질문 창이 닫히고 입력 상자로 바뀌면 
   assert.equal(r.code, 2);
   assert.match(r.out, /질문 창 → 프롬프트 박스/);
   assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
+});
+
+// ── 1.6.1 고아(orphaned) 터미널 13건(spec 2026-11-16 §3d · AC1~AC9) — 고아 = 화면에 탭이 안 붙었다는 표시일 뿐, 판정은 화면으로
+const SHOW_ORPHAN = { stdout: { ok: true, result: { terminal: { handle: 'term_t', connected: true, writable: true, orphaned: true } } } };
+const TAG = / · 화면 분리\(orphaned\)$/;
+
+test('1.6.1 T1 alive: 고아 + 프롬프트 박스 → exit 0 + 꼬리표', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_ORPHAN], read: [read(A)] });
+  assert.equal(r.code, 0);
+  assert.match(r.first, /^ALIVE/);
+  assert.match(r.first, /프롬프트 박스/);
+  assert.match(r.first, TAG);
+});
+
+test('1.6.1 T2 alive: 고아 + 질문 창 → exit 0 + 꼬리표', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_ORPHAN], read: [read(Q)] });
+  assert.equal(r.code, 0);
+  assert.match(r.first, /질문 창/);
+  assert.match(r.first, TAG);
+});
+
+test('1.6.1 T3 alive: 고아 + 권한 창 → exit 0 + (권한 창) 뒤 꼬리표', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_ORPHAN], read: [read(P)] });
+  assert.equal(r.code, 0);
+  assert.match(r.first, /\(권한 창\) · 화면 분리\(orphaned\)$/);
+});
+
+test('1.6.1 T4 alive: 고아 + 종료 표지 + 셸 프롬프트 → exit 1 + 꼬리표', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_ORPHAN], read: [read(X)] });
+  assert.equal(r.code, 1);
+  assert.match(r.first, /^EXITED/);
+  assert.match(r.first, TAG);
+});
+
+test('1.6.1 T5 alive: 고아 + 판독 불가 화면 → exit 2 + 종료로 보지 않는다 + 꼬리표', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_ORPHAN], read: [read(['빌드 출력 1', '빌드 출력 2'])] });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^UNREADABLE/);
+  assert.match(r.first, /종료로 보지 않는다/);
+  assert.match(r.first, TAG);
+});
+
+test('1.6.1 T6 alive: 고아 + 쓰기 불가 → exit 2 + 꼬리표 · 화면 읽기 0회', () => {
+  const r = run('alive', ['term_t'], { show: [{ stdout: { ok: true, result: { terminal: { connected: true, writable: false, orphaned: true } } } }], read: [read(A)] });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^UNREADABLE/);
+  assert.match(r.first, TAG);
+  assert.equal(r.calls.filter((c) => c[1] === 'read').length, 0);
+});
+
+test('1.6.1 T7 alive: 고아 + 화면 읽기에서 stale → exit 3 · 꼬리표 없음', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_ORPHAN], read: [{ code: 1, stdout: { ok: false, error: { code: 'terminal_handle_stale', message: 'terminal_handle_stale' } } }] });
+  assert.equal(r.code, 3);
+  assert.match(r.first, /^STALE/);
+  assert.doesNotMatch(r.out, /화면 분리/);
+});
+
+test('1.6.1 T8 alive: 고아 + 화면 출처 screen-unavailable → exit 2 ERR · 꼬리표 없음', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_ORPHAN], read: [read(A, 'screen-unavailable')] });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR/);
+  assert.match(r.out, /종료로 보지 않는다/);
+  assert.doesNotMatch(r.out, /화면 분리/);
+});
+
+test('1.6.1 T9 alive: 미연결 + 고아 아님 → exit 1 · 미연결 · 꼬리표 없음', () => {
+  const r = run('alive', ['term_t'], { show: [{ stdout: { ok: true, result: { terminal: { connected: false, writable: false, orphaned: false } } } }] });
+  assert.equal(r.code, 1);
+  assert.match(r.first, /^EXITED/);
+  assert.match(r.first, /미연결/);
+  assert.doesNotMatch(r.out, /화면 분리/);
+});
+
+test('1.6.1 T10 alive: 고아 아님 + 프롬프트 박스 → exit 0 · 꼬리표 없음', () => {
+  const r = run('alive', ['term_t'], { show: [SHOW_OK], read: [read(A)] });
+  assert.equal(r.code, 0);
+  assert.doesNotMatch(r.out, /화면 분리/);
+});
+
+test('1.6.1 T11 key: 고아 + 질문 창 → 보낸다(SENT 1 · send 1회)', () => {
+  const r = run('key', ['term_k', 'enter'], { show: [SHOW_ORPHAN], read: [read(Q)], send: [SENT] });
+  assert.equal(r.code, 0);
+  assert.equal(r.first, 'SENT 1');
+  assert.equal(r.calls.filter((c) => c[1] === 'send').length, 1);
+});
+
+test('1.6.1 T12 key: 고아 + 종료 표지 + 셸 프롬프트 → 하나도 보내지 않고 exit 2', () => {
+  const r = run('key', ['term_k', 'enter'], { show: [SHOW_ORPHAN], read: [read(X)], send: [SENT] });
+  assert.equal(r.code, 2);
+  assert.match(r.first, /^ERR 전송 중단 — 0\/1/);
+  assert.equal(r.calls.filter((c) => c[1] === 'send').length, 0);
+});
+
+test('1.6.1 T13 key: 전송 도중 고아 → 고아 아님으로 바뀌어도(같은 질문 창) 계속 보낸다', () => {
+  const r = run('key', ['term_k', 'down', 'enter'], { show: [SHOW_ORPHAN, SHOW_OK], read: [read(Q)], send: [SENT] });
+  assert.equal(r.code, 0);
+  assert.equal(r.first, 'SENT 2');
+  assert.equal(r.calls.filter((c) => c[1] === 'send').length, 2);
 });

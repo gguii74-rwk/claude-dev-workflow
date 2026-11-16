@@ -206,7 +206,7 @@ async function watch(handle, maxSeconds, consumed, env) {
   emit('TIMEOUT', lines);
 }
 
-// exit 0 생존 · 1 종료(미연결·고아·셸만 남음) · 2 판독 불가/ERR · 3 stale — 조건은 상호 배타(spec §3w)
+// exit 0 생존 · 1 종료(미연결·셸만 남음) · 2 판독 불가/ERR · 3 stale — 조건은 상호 배타(spec §3w). `orphaned`는 판정에 쓰지 않는다(화면에 탭이 없다는 표시 — 1.6.1)
 function alive(handle, env) {
   const res = orca(env, ['terminal', 'show', '--terminal', handle]);
   if (res.ok === false) {
@@ -216,8 +216,10 @@ function alive(handle, env) {
   const t = res.result?.terminal;
   const missing = ['connected', 'writable', 'orphaned'].filter((k) => typeof t?.[k] !== 'boolean');
   if (missing.length) throw new Fail(formatFail(missing.map((k) => `result.terminal.${k}`).join(', ')));
-  if (!t.connected || t.orphaned) return [1, `EXITED 터미널 미연결 또는 고아(connected=${t.connected}, orphaned=${t.orphaned})`];
-  if (!t.writable) return [2, 'UNREADABLE 쓰기 불가 — 종료로 보지 않는다'];
+  // 고아면 판정 줄(ALIVE·EXITED·UNREADABLE) 끝에 꼬리표 — STALE·ERR 줄 제외 · 판정은 바꾸지 않는다(1.6.1 D2)
+  const tag = t.orphaned ? ' · 화면 분리(orphaned)' : '';
+  if (!t.connected) return [1, `EXITED 터미널 미연결(connected=false)${tag}`];
+  if (!t.writable) return [2, `UNREADABLE 쓰기 불가 — 종료로 보지 않는다${tag}`];
   const r = readScreen(env, handle);
   if (r.stale) return [3, `STALE 핸들이 바뀌었다(${STALE_CODE}) — 종료가 아니다, 식별 규칙으로 재획득`];
   const lines = r.lines;
@@ -229,7 +231,7 @@ function alive(handle, env) {
   // 종료 표지 = 맨 아래 입력 요소(마지막 구분선·열린 창 문구)보다 아래의 「Resume this session with」(그 위는 본문 인용) + 그 뒤 셸 프롬프트 복귀
   const exitMarked = exitIdx > Math.max(el.lastSep, el.dialogIdx);
   if (exitMarked && shellAfter(exitIdx)) {
-    return [1, 'EXITED claude 종료 표지와 셸 프롬프트 복귀 — 셸만 남음'];
+    return [1, `EXITED claude 종료 표지와 셸 프롬프트 복귀 — 셸만 남음${tag}`];
   }
   // 종료 안내 없이 셸로 돌아간 잔존 화면(SIGKILL 등)은 생존으로 보지 않는다 — 입력 요소(박스·열린 창) 뒤 마지막 줄이 셸 프롬프트 모양이면 제외
   const box = el.box && !shellAfter(el.lastSep);
@@ -238,8 +240,8 @@ function alive(handle, env) {
   const kind = box ? '프롬프트 박스' : el.dialogKind === 'PERMISSION' ? '권한 창' : '질문 창';
   // 창 내용 식별값 = 창 문구 줄까지(그 아래 상태줄 제외) − 스피너 줄, 선택 표시 ❯·앞 공백 무시 — 같은 종류의 다른 질문으로 바뀐 것을 key가 잡는다(impl R4-1)
   const content = box ? null : hash(lines.slice(0, el.dialogIdx + 1).filter((l) => !SPINNER_PREFIXES.some((p) => l.trimStart().startsWith(p))).map((l) => l.replace(/^[\s❯]+/, '')));
-  if ((box || dialog) && !exitMarked) return [0, `ALIVE claude 입력 상태(${kind})`, kind, content];
-  return [2, 'UNREADABLE 생존·종료 어느 쪽도 확정할 수 없다 — 종료로 보지 않는다'];
+  if ((box || dialog) && !exitMarked) return [0, `ALIVE claude 입력 상태(${kind})${tag}`, kind, content];
+  return [2, `UNREADABLE 생존·종료 어느 쪽도 확정할 수 없다 — 종료로 보지 않는다${tag}`];
 }
 
 async function key(handle, keys, env) {
