@@ -199,6 +199,7 @@
 - 다중 트랙 조율(우선순위·의존) · 대장 비대 규칙 · 메인 컨텍스트 절약 규칙 — 실측 뒤 필요하면(H12·H14·H20).
 - Windows 오르카에서 스크립트·접두·`--session-id` 생성 실측(첫 Windows 위임 사용 때).
 - → 1.2.1 트랙 `docs/specs/2026-10-18-orchestrate-followup-small-borrowings.md`(분량 상한 17KB로 갱신 — AC1 「≤ 15KB」 대체).
+- → 1.6.1 트랙 `docs/specs/2026-11-16-orchestrate-alive-orphaned.md`(§3w `alive` exit 1에서 「고아」 제외 — AC3 「종료/고아(exit 1)」 대체).
 
 ## 잔여 리스크 (DEFERRED)
 
