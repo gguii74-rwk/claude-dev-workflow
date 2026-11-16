@@ -1,6 +1,6 @@
 # orchestrate `alive` — 화면에서 분리된(고아) 터미널을 종료로 오판 (1.6.1)
 
-- 단계: 1–2 spec 초안 `ed5e9e3` (2026-11-16 · 수동 트랙 · 브랜치 `gguii74-rwk/orchestrate-alive-orphaned-1-6-1`, base main `408bf16` = 1.6.0 트랙 종결 상태 · 설계 질문 4건 Q1~Q4 + 경로 질문 Q5 전부 첫 선택지 → D1~D11) → **3 harden-spec 완료 (2026-11-16 · 초안과 같은 세션 — 갭 대장 36건: 사실 23건 조회 해소 · 판단 9건 질문 해소(Q6~Q14 전부 첫 선택지 = 추천안 → D2 · D5 · D9 · D10 확정 · D12~D16) · 검증 필요(실측) 4건 · DEFERRED 0 — §6d)** → **4 review-loop(spec) 종결 (2026-11-16 · 위임 트랙 — 적대 2 + 확인 2 · C1 감사 이의 D16 → C1-1 FIXED `cd1a4d4`(D16 무해성 근거를 「효과 없음」으로 한정 · AC13 갈래 (라) 「안전 불일치」 신설) · C2 소멸 확인 · verdict pass · 확인 대기 대장 #1 확인(사용자 본인 답 · 메인 전달) — `## 적대검증 ledger (spec)`)** → 다음 = 7 구현(경량 planless TDD — §5).
+- 단계: 1–2 spec 초안 `ed5e9e3` (2026-11-16 · 수동 트랙 · 브랜치 `gguii74-rwk/orchestrate-alive-orphaned-1-6-1`, base main `408bf16` = 1.6.0 트랙 종결 상태 · 설계 질문 4건 Q1~Q4 + 경로 질문 Q5 전부 첫 선택지 → D1~D11) → **3 harden-spec 완료 (2026-11-16 · 초안과 같은 세션 — 갭 대장 36건: 사실 23건 조회 해소 · 판단 9건 질문 해소(Q6~Q14 전부 첫 선택지 = 추천안 → D2 · D5 · D9 · D10 확정 · D12~D16) · 검증 필요(실측) 4건 · DEFERRED 0 — §6d)** → **4 review-loop(spec) 종결 (2026-11-16 · 위임 트랙 — 적대 2 + 확인 2 · C1 감사 이의 D16 → C1-1 FIXED `cd1a4d4`(D16 무해성 근거를 「효과 없음」으로 한정 · AC13 갈래 (라) 「안전 불일치」 신설) · C2 소멸 확인 · verdict pass · 확인 대기 대장 #1 확인(사용자 본인 답 · 메인 전달) — `## 적대검증 ledger (spec)`)** → **7 구현 완료 (2026-11-16 · 위임 트랙 · 경량 planless TDD — `ceea062` · `af29b23` · `282e68e` · 69/69 · AC1~AC12 · AC15 통과 — `## 구현 기록`)** → 다음 = 8 review-loop(impl).
 - 경로: **경량 (dev-cycle 1차 판정 + 질문 답 2026-11-16, Q5 — D6)** — 4 spec 적대검증은 **유지** · 5 plan 생략(6은 자동 해당없음). 하한 3종(spec 문서 · harden-spec · impl 적대검증)은 수행한다. 접촉 표면 스캔: 스키마 · 마이그레이션 · 권한 · 인증 · 외부 연동 신설 · 데이터 유실 · 비가역 — 해당 없음. 다만 `alive`는 「살아 있는 세션을 둘로 만든다」「셸만 남은 터미널에 키를 보낸다」를 막는 안전 판정이고 1.2.0 spec 적대검증에서 같은 판정에 high 지적이 3번 나왔다(R2-1 · R4-1 · R6-1) → spec 적대검증을 남긴다. plan을 생략하므로 impl ledger 위치 = 이 문서 말미 `## 적대검증 ledger (impl)`.
 - 출처: 핸드오프 「[다음 세션 시작점] 1.6.0 트랙 종결」 남은 것 ③ ⓓ · 사용자 지시 2026-11-16 14:18 「좋습니다. 진행해주세요」(후속 후보 4건 중 ⓓ 먼저 — 핸드오프 트랙 블록) · 맥북 관측 기록 2026-11-15~16(§1 · §6a) · 메모리 `orchestrator-delegate-answers` 「터미널 「고아」 판정(2026-11-15)」 절 · 원 설계 `2026-10-17-orchestrate-skill-delegated-auto-adopt.md`(1.2.0 — §3w · F2 · AC3).
 - 선행: **불변** — 1.2.0 D1~D44(특히 D3 오르카 상세는 스크립트 1곳 · D6 자가 점검 · D15 전송 전 `alive` + 종료 시 `--resume` · D16 · D23 · D36 본문 오르카 허용 범위 · 표지 2종 · 제목으로 터미널을 고르지 않는다) · 1.2.1 D9(orchestrate SKILL.md 분량 상한 17,408바이트) · 1.5.0 D1~D28 · 1.6.0 D블록. `alive` exit 코드 0 · 1 · 2 · 3의 뜻과 「조건 상호 배타」는 그대로다. **선행 spec 문장 변경 1건** — 1.2.0 §3w · AC3의 「exit 1 = 종료 · 미연결 · **고아**」에서 「고아」를 뺀다(§3e — 이 트랙의 수정 목적 그 자체 · Q1 답).
@@ -310,6 +310,35 @@ if (!t.connected || t.orphaned) return [1, `EXITED 터미널 미연결 또는 �
 | D14 | 실측 날 맥북에서 고아가 재현되지 않으면 원값 · 버전을 적고 멈춘다 — 종결 여부는 사용자 판정 | Q7 「기록하고 멈춰 사용자 판정」 — 선례 1.6.0 시험 게이트 미충족 처리 |
 | D15 | 1.2.0 spec `## 7. 후속` 끝에 이 spec 포인터 1구절 — 옛 문서의 본문 · 결정 표는 고치지 않는다 | Q13 「한 구절 단다」 — 선례 1.2.1 AC6(`8e1f236`) |
 | D16 | 실측에서 수정이 **「효과 없음」**(새 exit 0 없음 — AC13 갈래 (다))이면 1.6.1은 되돌리지 않는다 — 실측 원값으로 다시 설계해 다음 버전(1.6.2)으로 낸다. **「안전 불일치」**(새 exit 0인데 화면 · 전송이 실제와 다름 — 갈래 (라))면 그 머신의 「화면 분리」 터미널에 `key` 자동 전송 · 종료 복구를 멈추고 1.6.0 시기 우회로 돌아간다 — 되돌림 릴리스 또는 1.6.2는 사용자 판정 | Q14 「되돌리지 않고 다음 버전에서 고친다」 — 효과 없음이면 동작이 1.6.0과 같아 해가 없다 · review-loop(spec) C1 감사 이의 → C1-1 재판정 「범위를 좁혀 고친다」(2026-11-16 · 메인 경유 답 — 확인 대기 대장 #1): 무해성 근거는 효과 없음에만 선다 |
+
+## 구현 기록 (7 — 경량 planless TDD · 2026-11-16)
+
+- 세션: 위임 트랙(`DEV_WORKFLOW_MODE=delegated`) · spark2 · Node v24.20.0 · 구현 base = `bb874ed`. 이 단계의 질문 0건(대리 채택 0 · 확인 대기 대장 추가 0).
+- 커밋(논리 단위 3개 + 이 기록):
+
+| 커밋 | 내용 | 파일 |
+|---|---|---|
+| `ceea062` | `alive()` 수정(§3a — 종료 조건에서 `orphaned` 제거 · 꼬리표 · 미연결 줄 문구 · 머리 주석) + 테스트 T1~T13 · 기존 1건 이름 변경 + 꼬리표 단언(§3d) | `orchestrate.mjs` · `orchestrate.test.mjs` |
+| `af29b23` | SKILL.md 「## 함정 (1줄씩)」 끝 1줄(§3c 원문 그대로) | orchestrate `SKILL.md` |
+| `282e68e` | 1.2.0 spec `## 7. 후속` 끝 포인터 1구절(§3e 원문 그대로) | `2026-10-17-orchestrate-skill-delegated-auto-adopt.md` |
+
+- **RED(테스트 먼저 — `alive()` 수정 전)**: `node --test tests/orchestrate/orchestrate.test.mjs` = 69건 중 **58 통과 · 11 실패**. 실패 = T1 · T2 · T3 · T5 · T6 · T7 · T8(고아 경로가 화면 판독 전에 exit 1로 끝남 — `actual: 1`) · T4(exit 1은 같지만 줄이 `EXITED 터미널 미연결 또는 고아(connected=true, orphaned=true)` — 꼬리표 없음) · 이름 변경분(`EXITED 터미널 미연결 또는 고아(connected=false, orphaned=true)` — 꼬리표 없음) · T11 · T13(`key`가 첫 키의 `alive` exit 1로 `ERR 전송 중단` — `actual: 2`). **수정 전에 이미 통과한 3건과 이유**: T9(현행 미연결 줄에도 `미연결`이 있고 `화면 분리`가 없다 — 현행 동작 보존 확인용) · T10(고아 아님 경로 — 회귀 방지용) · T12(현행은 고아라서 exit 1, 수정 뒤는 셸만 남은 화면이라서 exit 1 — 결과는 같고 원인이 다르다: 수정 뒤에는 화면 판독이 막는다).
+- **GREEN**: 같은 명령 = **69/69**(신규 13 · 이름 변경 1 · 삭제 0). 회귀 없음 — `node --test tests/hooks/compact-reread-hook.test.mjs` 11/11 · `node --test tests/mr-review/*.test.mjs` 371/371.
+- **AC 게이트 결과**(HEAD `282e68e` 기준):
+
+| AC | 결과 |
+|---|---|
+| AC1 ~ AC9 | 통과 — T1 ~ T13 · 이름 변경 테스트(줄 끝 꼬리표 단언) 전부 통과 |
+| AC5 (문자열) | `grep -cE '미연결 또는 고아\|미연결·고아' orchestrate.mjs` = 0 |
+| AC6 | 기존 55건 이름 · 입력 · 단언 무변경 통과 |
+| AC10 | 69/69 · 테스트 파일 diff 삭제 줄 = `-test('AC3 alive: 미연결·고아 → exit 1', () => {` 1줄뿐(numstat +100 / −1) |
+| AC11 | `화면 분리` 줄 1개(97행 — 「## 함정」 93행 아래) · `terminal switch` · `focus` · 「표시일 뿐」 · 「사용자 지시 없이」 모두 포함 · `git diff bb874ed -- SKILL.md` 추가 1 · 삭제 0 · **17,328B**(spec 계산값 17,328과 일치 · 상한 17,408 — 여유 80B) · 1.2.0 AC1 금지 문자열 0건 |
+| AC12 | `node --check orchestrate.mjs` 통과 · `grep -nE '\$[0-9]' SKILL.md` 0건 · `git diff bb874ed --stat` = 4파일(스크립트 · 테스트 · SKILL.md · 1.2.0 spec) + 이 기록 커밋의 이 spec = 5파일 · `README*.md` · `templates/` · `references/` · `hooks/` · `plugin.json` diff 0 · `orchestrate.mjs` 변경 덩어리 전부 `alive()`와 그 머리 주석 안(numstat +8 / −6 — `key()` · `watch()` · `readScreen()` 무변경) |
+| AC15 | 1.2.0 spec diff 추가 1 · 삭제 0 — §3e 1구절 |
+| AC13 · AC14 | 이 단계 범위 밖(AC13 = 릴리스 뒤 맥북 실측 · AC14 = 9 릴리스) |
+
+- **spec과 다른 점: 없다.** 구현 세부 — 꼬리표는 `terminal show` 응답 검사 뒤 한 번 계산(`const tag`)해 `ALIVE` · `EXITED`(미연결 · 셸만 남음) · `UNREADABLE`(쓰기 불가 · 판독 불가) 다섯 줄 끝에 붙이고 `STALE`(화면 읽기 stale) · `ERR`(`readScreen` 예외)에는 붙지 않는다. 고아 아닌 미연결 줄은 `EXITED 터미널 미연결(connected=false)`로 바뀐다(§3a 「미연결 줄의 문구」 — 옛 `… 또는 고아(connected=false, orphaned=false)`). 테스트 T13은 `show` 큐를 [고아, 고아 아님]으로 두어 둘째 키부터 고아 아님 응답이 반복된다.
+- 트랙 프롬프트의 사실(§6)과 git · 파일 대조: 전부 일치(구현 전 HEAD `bb874ed` · clean · 56/56 · SKILL.md 17,086B · plugin.json 1.6.0 · Node v24.20.0).
 
 ## 적대검증 ledger (spec)
 
